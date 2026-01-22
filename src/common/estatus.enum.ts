@@ -1,0 +1,57 @@
+export enum EstatusEnum {
+  ACTIVO = 1, //activo o no usado
+  INACTIVO = 0, //inactivo usado
+}
+
+export enum TipoCodigoAutenticacion {
+  CONFIRMACION_CORREO = 0,
+  RECUPERACION_CONTRASENA = 1,
+}
+
+export enum EnumModulos {
+  CLIENTES = 1,
+  USUARIOS = 2,
+  ROLES = 3,
+  PERMISOS = 4,
+  MODULOS = 5,
+  USUARIOSPERMISOS = 6,
+  USUARIOSREGIONES = 7,
+  USUARIOSINSTALACIONES = 8,
+  OPERADORES = 9,
+  VEHICULOS = 10,
+  DISPOSITIVOS = 11,
+  BLUEVOXS = 12,
+  INSTALACIONES = 13,
+  TURNOS = 14,
+  VIAJES = 15,
+  REGIONES = 16,
+  RUTAS = 17,
+  DERROTEROS = 18,
+  TARIFAS = 19,
+  MONEDEROS = 20,
+  PASAJEROS = 21,
+  BITACORA = 0,
+  CONTEOPASAJEROS = 23,
+  POSICIONES = 24,
+  TRANSACCIONES = 25,
+  ADMINISTRACION = 26,
+  MONITOREO = 27,
+  VIAJESCONTEOS = 28,
+  VIAJESTRANSACCIONES = 29,
+  HISTORICOTRANSACCIONES = 30,
+  CATALOGOPASAJERO = 31,
+}
+
+export enum EnumSolicitudPasajero {
+  NOSOLICITADO = 0,
+  SOLICITADO = 1,
+  APROBADO = 2,
+  RECHAZADO = 3,
+}
+
+export enum EnumFiltros {
+  ALDIA = 1,
+  SEMANA = 2,
+  MES = 3,
+}
+
