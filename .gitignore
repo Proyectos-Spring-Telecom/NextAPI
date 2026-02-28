@@ -3,6 +3,12 @@
 /node_modules
 /build
 
+#docs
+/docs
+
+#gitignore
+.gitignore
+
 # Logs
 logs
 *.log
