@@ -1,11 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe} from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpStringResponseFilter } from './utils/http-string-response.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Prefijo global: todas las rutas bajo /api (auth, mesas, clientes, etc.)
+  app.setGlobalPrefix('api');
 
   app.useGlobalFilters(new HttpStringResponseFilter());
 
@@ -16,10 +19,11 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-    .setTitle('Sentinel API')
-    .setDescription('Documentación de la API de SENTINEL') 
-    .setVersion('1.0') 
+    .setTitle('Next API')
+    .setDescription('Documentación de la API de NEXT')
+    .setVersion('1.0')
     .addServer('http://localhost:3010', 'Servidor Local')
+    .addServer('https://springtelecom.mx/nextAPI', 'Servidor Spring')
     .addBearerAuth(
       {
         type: 'http',
@@ -42,21 +46,21 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
+  SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
       defaultModelsExpandDepth: -1,
     },
-  }); 
-  
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       
-      forbidNonWhitelisted: true, 
-      transform: true,      
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
-  
+
   await app.listen(process.env.PORT ?? 3010);
 }
 bootstrap();

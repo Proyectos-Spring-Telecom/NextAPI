@@ -28,8 +28,10 @@ export class AuthController {
   // 🔹 POST ROUTES - Rutas específicas primero
   // ========================================
 
-  @Post('usuario/recuperar/acceso')
-  async email(@Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto) {
+  @Post('usuario/solicitud/recuperacion')
+  async solicitudRecuperacion(
+    @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
+  ) {
     return await this.authService.recuperarContrasena(loginAuthConfirmacionDto);
   }
 
@@ -42,11 +44,11 @@ export class AuthController {
     );
   }
 
-/*   @Post('operador/login')
+  @Post('operador/accesso/nip')
   @HttpCode(200)
   async loginPin(@Body() loginAuthPinDto: LoginAuthPinDto) {
-    return this.authService.singInPin(loginAuthPinDto);
-  } */
+    return this.authService.signInPin(loginAuthPinDto);
+  }
 
   @Post()
   @HttpCode(200)
@@ -60,8 +62,12 @@ export class AuthController {
 
   @Post('cambiar/accesso')
   @UseGuards(JwtAuthGuard)
-  async resetPassword(@Body() loginAuthResetDto: LoginAuthResetDto) {
-    return await this.authService.resetPassword(loginAuthResetDto);
+  async resetPassword(
+    @Body() loginAuthResetDto: LoginAuthResetDto,
+    @Request() req: { user: { userId: number } },
+  ) {
+    const idUser = req.user.userId;
+    return await this.authService.resetPassword(+idUser, loginAuthResetDto);
   }
 
   @Patch('verify')

@@ -20,7 +20,11 @@ import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
-import { EstatusEnum, TipoCodigoAutenticacion } from 'src/common/estatus.enum';
+import {
+  EnumModulos,
+  EstatusEnum,
+  TipoCodigoAutenticacion,
+} from 'src/common/estatus.enum';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { horaDesfasada } from 'src/utils/correccion-hora';
 
@@ -379,24 +383,23 @@ export class AuthService {
           userName: loginAuthDto.userName,
           estatus: 1,
           emailConfirmado: 1,
-          cliente2: {
-            estatus: 1,
-          },
-
+          cliente2: { estatus: 1 },
         },
       });
+
       if (!user) {
         throw new NotFoundException('No se encontró al usuario.');
       }
 
-      if (
-        !user ||
-        !(await bcrypt.compare(loginAuthDto.password, user.passwordHash))
-      ) {
-        console.log({
-          user: user,
-          message: 'Entro a verificar los valores y no son iguales',
-        });
+      if (!user.passwordHash) {
+        throw new UnauthorizedException('Credenciales invalidas');
+      }
+
+      const passwordValid = await bcrypt.compare(
+        loginAuthDto.password,
+        user.passwordHash,
+      );
+      if (!passwordValid) {
         throw new UnauthorizedException('Credenciales invalidas');
       }
 
@@ -417,109 +420,170 @@ export class AuthService {
         ultimoLogin: fechaActual,
       });
 
-
       return {
-        message: `login exitoso`,
-        id: Number(`${user.id}`),
-        nombre: `${user.nombre}`,
-        apellidoPaterno: `${user.apellidoPaterno}`,
-        apellidoMaterno: `${user.apellidoMaterno}`,
-        idCliente: Number(`${user.idCliente}`),
-        nombreCliente: `${user.cliente2?.nombre}`,
-        apellidoPaternoCliente: `${user.cliente2?.apellidoPaterno}`,
-        apellidoMaternoCliente: `${user.cliente2?.apellidoMaterno}`,
-        logotipo: `${user.cliente2.logotipo}`,
-        telefono: `${user.telefono}`,
-        ultimoLogin: `${user.ultimoLogin}`,
-        fechaCreacion: `${user.fechaCreacion}`,
-        fotoPerfil: `${user.fotoPerfil}`,
-        userName: `${user.userName}`,
+        message: 'login exitoso',
+        id: Number(user.id),
+        nombre: user.nombre ?? '',
+        apellidoPaterno: user.apellidoPaterno ?? '',
+        apellidoMaterno: user.apellidoMaterno ?? '',
+        idCliente: Number(user.idCliente),
+        nombreCliente: user.cliente2?.nombre ?? '',
+        apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
+        apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
+        logotipo: user.cliente2?.logotipo ?? '',
+        telefono: user.telefono ?? '',
+        ultimoLogin: user.ultimoLogin ?? '',
+        fechaCreacion: user.fechaCreacion ?? '',
+        fotoPerfil: user.fotoPerfil ?? '',
+        userName: user.userName ?? '',
         rol: user.idRol2,
         token: this.jwtService.sign(payload),
-        permisos: permisos,
+        permisos,
       };
-    } catch (error) {
-      console.log(error)
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new InternalServerErrorException(error);
-    }
-  }
-
-  // ========================================
-  //confirmacion de correo
-  // ========================================
-  async verifyUser(codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
-    try {
-      //Buscamos el codigo en la tabla CodigoAutenticacion tiene que ser  Tipo: 0 y Estatus: 1
-      const codigoValido = await this.codigoAutenticacioRepository.findOne({
-        where: {
-          codigo: codigoPasajeroAutenticacion.codigo,
-          tipo: TipoCodigoAutenticacion.CONFIRMACION_CORREO,
-          usado: EstatusEnum.ACTIVO,
-        },
-      });
-
-      //En caso de no encontrar manda error
-      if (!codigoValido) {
-        throw new BadRequestException('Código inválido o ya usado');
-      }
-
-      //Buscamos al usuario por la relacion que tiene la tabla CodigoAutenticacion
-      const user = await this.usuariosRepository.findOne({
-        where: { id: codigoValido.idUsuario },
-      });
-      if (!user) throw new BadRequestException('Usuario no encontrado');
-
-      //Generamos la fecha con un retraso de 6 horas para que se guarde de manera correcta
-      function pad(n: number) {
-        return n < 10 ? '0' + n : n;
-      }
-
-      const ahora = new Date();
-      const desfaseMs = -6 * 60 * 60 * 1000; // -6 horas en milisegundos
-      const fechaDesfasada = new Date(ahora.getTime() + desfaseMs);
-
-      const fechaActual = `${fechaDesfasada.getFullYear()}-${pad(fechaDesfasada.getMonth() + 1)}-${pad(fechaDesfasada.getDate())} ${pad(fechaDesfasada.getHours())}:${pad(fechaDesfasada.getMinutes())}:${pad(fechaDesfasada.getSeconds())}`;
-
-      //Verificamos que la fecha no sea mayor a la de expiracion en caso de ser asi
-      //el codigo ha expirado
-      if (fechaDesfasada > codigoValido.fechaExpiracion) {
-        throw new BadRequestException('El código ha expirado');
-      }
-
-      //cambiamos el estatus del email a 1 del usuario correspondiente
-      await this.usuariosRepository.update(user.id, { emailConfirmado: 1 });
-
-      //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { id: user.id, EmailConfirmado: 1 };
-      await this.bitacoraLogger.logToBitacora(
-        'Usuarios',
-        `Se verifico un usuarios con nombre: ${user.nombre}`,
-        'CREATE',
-        querylogger,
-        Number(user.id),
-        2,
-        EstatusEnumBitcora.SUCCESS,
-      );
-
-      //en la tabla CodigoAutenticacion actualizamos para dar a entender que ya se uso el codigo
-      await this.codigoAutenticacioRepository.update(codigoValido.id, {
-        usado: EstatusEnum.INACTIVO,
-        estatus: EstatusEnum.INACTIVO,
-        fechaUso: fechaActual,
-      });
-
-      return `La verificación del usuario ${user.nombre} se ha completado con éxito.
-Muchas gracias por su preferencia.`;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
       throw new InternalServerErrorException({
-        message: 'Ocurrió un error al registrar pasajero.',
-        error: error.message,
+        message: 'Ha ocurrido un error durante el proceso de autenticación.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  // ========================================
+  // Login por PIN (userName + código 6 u 8 dígitos)
+  // ========================================
+  async signInPin(loginAuthPin: LoginAuthPinDto) {
+    try {
+      const user = await this.usuariosRepository.findOne({
+        relations: ['idRol2', 'cliente2'],
+        where: {
+          userName: loginAuthPin.userName,
+          estatus: 1,
+          emailConfirmado: 1,
+          cliente2: { estatus: 1 },
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException('No se encontró al usuario.');
+      }
+
+      if (!user.pinHash) {
+        throw new UnauthorizedException('Credenciales invalidas');
+      }
+
+      const pinValid = await bcrypt.compare(loginAuthPin.codigo, user.pinHash);
+      if (!pinValid) {
+        throw new UnauthorizedException('Credenciales invalidas');
+      }
+
+      const permisos = await this.permisosRepository.find({
+        select: ['idPermiso'],
+        where: { idUsuario: user.id, estatus: 1 },
+      });
+
+      const payload = {
+        id: user.id,
+        email: user.userName,
+        idCliente: user.idCliente,
+        rol: user.idRol,
+      };
+
+      const { fechaActual } = await horaDesfasada();
+      await this.usuariosRepository.update(user.id, {
+        ultimoLogin: fechaActual,
+      });
+
+      return {
+        message: 'login exitoso',
+        id: Number(user.id),
+        nombre: user.nombre ?? '',
+        apellidoPaterno: user.apellidoPaterno ?? '',
+        apellidoMaterno: user.apellidoMaterno ?? '',
+        idCliente: Number(user.idCliente),
+        nombreCliente: user.cliente2?.nombre ?? '',
+        apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
+        apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
+        logotipo: user.cliente2?.logotipo ?? '',
+        telefono: user.telefono ?? '',
+        ultimoLogin: user.ultimoLogin ?? '',
+        fechaCreacion: user.fechaCreacion ?? '',
+        fotoPerfil: user.fotoPerfil ?? '',
+        userName: user.userName ?? '',
+        rol: user.idRol2,
+        token: this.jwtService.sign(payload),
+        permisos,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Ha ocurrido un error durante el proceso de autenticación.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  // ========================================
+  // Verificar correo con código de 4 dígitos
+  // ========================================
+  async verifyUser(codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
+    try {
+      const codigoValido = await this.codigoAutenticacioRepository.findOne({
+        where: {
+          codigo: codigoPasajeroAutenticacion.codigo,
+          tipo: TipoCodigoAutenticacion.CONFIRMACION_CORREO,
+          usado: EstatusEnum.ACTIVO, // 1 = no usado (disponible)
+        },
+      });
+
+      if (!codigoValido) {
+        throw new BadRequestException('Código inválido o ya usado');
+      }
+
+      const user = await this.usuariosRepository.findOne({
+        where: { id: codigoValido.idUsuario },
+      });
+      if (!user) {
+        throw new BadRequestException('Usuario no encontrado');
+      }
+
+      const { fechaDesfasada, fechaActual } = await horaDesfasada();
+
+      if (fechaDesfasada > codigoValido.fechaExpiracion) {
+        throw new BadRequestException('El código ha expirado');
+      }
+
+      await this.usuariosRepository.update(user.id, { emailConfirmado: 1 });
+
+      const querylogger = { id: user.id, emailConfirmado: 1 };
+      await this.bitacoraLogger.logToBitacora(
+        'Usuarios',
+        `Se verificó un usuario con nombre: ${user.nombre}.`,
+        'UPDATE',
+        querylogger,
+        Number(user.id),
+        EnumModulos.USUARIOS,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      await this.codigoAutenticacioRepository.update(codigoValido.id, {
+        usado: EstatusEnum.INACTIVO,
+        estatus: EstatusEnum.INACTIVO,
+        fechaUso: fechaDesfasada,
+      });
+
+      return `La verificación del usuario ${user.nombre} se ha completado con éxito. Muchas gracias por su preferencia.`;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al verificar el usuario.',
+        error: (error as Error)?.message,
       });
     }
   }
@@ -567,7 +631,7 @@ Muchas gracias por su preferencia.`;
       }
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al recuperar contraseña del usuario.',
-        error: error.message,
+        error: (error as Error)?.message,
       });
     }
   }
@@ -658,37 +722,55 @@ Muchas gracias por su preferencia.`;
       }
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al confirmar el usuario.',
-        error: error.message,
+        error: (error as Error)?.message,
       });
     }
   }
 
   // ========================================
-  //actualizar contraseña
+  //actualizar contraseña (usuario autenticado por token)
   // ========================================
-  async resetPassword(loginAuthResetDto: LoginAuthResetDto) {
+  async resetPassword(idUser: number, dto: LoginAuthResetDto) {
     try {
       const user = await this.usuariosRepository.findOne({
-        where: { userName: loginAuthResetDto.userName },
+        where: { id: idUser },
       });
-      if (!user) throw new BadRequestException('Usuario no encontrado');
+      if (!user) {
+        throw new BadRequestException('Usuario no encontrado');
+      }
 
-      const hashedPassword = await bcrypt.hash(loginAuthResetDto.password, 10); //encriptamos la contraseña
-      loginAuthResetDto.password = hashedPassword;
+      if (dto.passwordNueva !== dto.passwordConfirmacion) {
+        throw new BadRequestException(
+          'La contraseña y la confirmación deben coincidir.',
+        );
+      }
+
+      const isSamePassword = await bcrypt.compare(
+        dto.passwordNueva,
+        user.passwordHash,
+      );
+      if (isSamePassword) {
+        throw new BadRequestException(
+          'La nueva contraseña no puede ser igual a la anterior.',
+        );
+      }
+
+      const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
       await this.usuariosRepository.update(user.id, {
         passwordHash: hashedPassword,
       });
-      //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { id: user.id, EmailConfirmado: 1 };
+
+      const querylogger = { id: user.id };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
-        `Se actualizo la contraseña del usuarios con ID: ${user.id}`,
-        'CREATE',
+        `Se ha actualizado la contraseña del usuario con ID: ${user.id}.`,
+        'UPDATE',
         querylogger,
-        Number(user.id),
-        2,
+        idUser,
+        EnumModulos.USUARIOS,
         EstatusEnumBitcora.SUCCESS,
       );
+
       return `La contraseña del usuario ${user.nombre} ha sido actualizada exitosamente.`;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -696,7 +778,7 @@ Muchas gracias por su preferencia.`;
       }
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al actualizar contraseña del usuario.',
-        error: error.message,
+        error: (error as Error)?.message,
       });
     }
   }

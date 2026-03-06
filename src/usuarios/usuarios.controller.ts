@@ -23,6 +23,7 @@ import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { UpdateUsuarioEstatusDto } from './dto/update-usuario-estatus.dto';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
+import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -39,6 +40,7 @@ export class UsuariosController {
   // ==================== POST ====================
 
   @Post()
+  @Roles(1)
   @ApiOperation({ 
     summary: 'Crear un nuevo usuario',
     description: 'Registra un nuevo usuario en el sistema asociado al usuario autenticado'
@@ -233,45 +235,64 @@ export class UsuariosController {
     );
   }
 
-  @Patch('actualizar/contrasena/:id')
-  @ApiOperation({ 
-    summary: 'Cambiar contraseña de usuario',
-    description: 'Actualiza la contraseña de un usuario específico'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID del usuario',
-    example: 1
+  @Patch('actualizar/contrasena')
+  @ApiOperation({
+    summary: 'Cambiar mi contraseña',
+    description: 'Actualiza la contraseña del usuario autenticado (ID desde token)',
   })
   @ApiBody({ type: UpdateUsuarioContrasena })
   @ApiResponse({
     status: 200,
     description: 'Contraseña actualizada exitosamente',
   })
-  @ApiResponse({ 
-    status: 400, 
-    description: 'Contraseña inválida' 
+  @ApiResponse({
+    status: 400,
+    description: 'Contraseña inválida',
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Usuario no encontrado' 
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado',
   })
   @ApiResponse({
     status: 401,
-    description: 'No autorizado'
+    description: 'No autorizado',
   })
   async updateContrasena(
-    @Param('id', ParseIntPipe) id: number,
     @Body() updateUsuarioContrasena: UpdateUsuarioContrasena,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
     return await this.usuariosService.updateContrasena(
-      id,
-      idUser,
+      +idUser,
+      String(idUser),
       updateUsuarioContrasena,
     );
+  }
+
+  @Patch('mi-nip')
+  @ApiOperation({
+    summary: 'Crear o actualizar mi NIP',
+    description: 'Crea o actualiza el NIP del usuario autenticado (ID desde token)',
+  })
+  @ApiBody({ type: UpdateMiPinDto })
+  @ApiResponse({
+    status: 200,
+    description: 'NIP actualizado exitosamente',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autorizado',
+  })
+  async createMyPin(
+    @Body() updateMiPinDto: UpdateMiPinDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    const idUser = req.user.userId;
+    return await this.usuariosService.createMyPin(+idUser, updateMiPinDto);
   }
 
   @Patch(':id')

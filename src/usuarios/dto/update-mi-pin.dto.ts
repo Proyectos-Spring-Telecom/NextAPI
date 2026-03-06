@@ -1,16 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, Matches, Validate } from 'class-validator';
+import { IsNotEmpty, IsString, Matches, Validate } from 'class-validator';
 import { PinValidator } from 'src/common/validators/pin.validator';
 
-export class LoginAuthPinDto {
-  @IsEmail()
-  @IsNotEmpty()
-  @ApiProperty({
-    description: 'Usuario',
-    example: 'ejemplo@ejemplo.com',
-  })
-  userName: string;
-
+export class UpdateMiPinDto {
   @IsString()
   @IsNotEmpty()
   @Matches(/^(\d{6}|\d{8})$/, {
@@ -18,8 +10,8 @@ export class LoginAuthPinDto {
   })
   @Validate(PinValidator)
   @ApiProperty({
-    description: 'PIN numérico de 6 u 8 dígitos',
+    description: 'NIP de 6 u 8 dígitos',
     examples: ['482915', '93746281'],
   })
-  codigo: string;
+  pinHash: string;
 }

@@ -29,6 +29,11 @@ import Joi from 'joi';
         AWS_SECRET_ACCESS_KEY: Joi.string().required(),
         AWS_S3_BUCKET: Joi.string().required(),
         UPLOAD_MAX_SIZE: Joi.string().required(),
+        HOST: Joi.string().required(),
+        SMTP: Joi.number().required(),
+        E_MAIL: Joi.string().required(),
+        MAIL_PASSWORD: Joi.string().required(),
+        MAIL_FRONTEND_URL: Joi.string().optional(),
       }),
     }),
 
