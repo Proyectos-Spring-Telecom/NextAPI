@@ -10,6 +10,13 @@ import { PermisosModule } from './permisos/permisos.module';
 import { RolesModule } from './roles/roles.module';
 import { S3Module } from './s3/s3.module';
 import { MailModule } from './mail/mail.module';
+import { CatCategoriaLicenciaModule } from './cat-categoria-licencia/cat-categoria-licencia.module';
+import { CatEstatusDispositivoModule } from './cat-estatus-dispositivo/cat-estatus-dispositivo.module';
+import { CatMarcaDispositivoModule } from './cat-marca-dispositivo/cat-marca-dispositivo.module';
+import { CatEstatusInstalacionModule } from './cat-estatus-instalacion/cat-estatus-instalacion.module';
+import { CatEstatusOperadorModule } from './cat-estatus-operador/cat-estatus-operador.module';
+import { CatEstatusSimModule } from './cat-estatus-sim/cat-estatus-sim.module';
+import { CatEstatusVehiculoModule } from './cat-estatus-vehiculo/cat-estatus-vehiculo.module';
 import Joi from 'joi';
 
 @Module({
@@ -76,6 +83,20 @@ import Joi from 'joi';
     MailModule,
 
     ModulosModule,
+
+    CatCategoriaLicenciaModule,
+
+    CatEstatusDispositivoModule,
+
+    CatMarcaDispositivoModule,
+
+    CatEstatusInstalacionModule,
+
+    CatEstatusOperadorModule,
+
+    CatEstatusSimModule,
+
+    CatEstatusVehiculoModule,
   ],
 })
 export class AppModule {}
