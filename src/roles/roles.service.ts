@@ -114,7 +114,8 @@ export class RolesService {
       paginated: {
         total: total,
         page,
-        lastPage: Math.ceil(total / limit),
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
     };
 

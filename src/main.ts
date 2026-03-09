@@ -43,6 +43,11 @@ async function bootstrap() {
     .addTag('Permisos', 'Gestión de permisos')
     .addTag('S3 - archivos', 'Carga de archivos a S3')
     .addTag('Usuarios', 'Gestión de usuarios')
+    .addTag('Catálogo Marca Vehículo', 'Marcas de vehículos (Ford, Chevrolet, etc.)')
+    .addTag('Catálogo Modelo Vehículo', 'Modelos de vehículos por marca')
+    .addTag('Catálogo Modelo Dispositivo', 'Modelos de dispositivos GPS por marca')
+    .addTag('Catálogo Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
+    .addTag('Catálogo Planes Telefonía', 'Planes de datos/telefonía por operador')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

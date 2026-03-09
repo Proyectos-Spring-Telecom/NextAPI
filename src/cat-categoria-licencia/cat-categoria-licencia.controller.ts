@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Put,
   Request,
   Query,
   ParseIntPipe,
@@ -101,7 +100,7 @@ export class CatCategoriaLicenciaController {
     return this.catCategoriaLicenciaService.findOne(id);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @ApiOperation({ summary: 'Actualizar categoría de licencia' })
   @ApiParam({ name: 'id', description: 'ID de la categoría' })
   @ApiResponse({ status: 200, description: 'Categoría actualizada' })

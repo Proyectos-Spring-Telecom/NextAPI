@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Put,
   Request,
   Query,
   ParseIntPipe,
@@ -101,7 +100,7 @@ export class CatEstatusSimController {
     return this.catEstatusSimService.findOne(id);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @ApiOperation({ summary: 'Actualizar estatus de SIM' })
   @ApiParam({ name: 'id', description: 'ID del estatus' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })

@@ -13,10 +13,15 @@ import { MailModule } from './mail/mail.module';
 import { CatCategoriaLicenciaModule } from './cat-categoria-licencia/cat-categoria-licencia.module';
 import { CatEstatusDispositivoModule } from './cat-estatus-dispositivo/cat-estatus-dispositivo.module';
 import { CatMarcaDispositivoModule } from './cat-marca-dispositivo/cat-marca-dispositivo.module';
+import { CatModeloDispositivoModule } from './cat-modelo-dispositivo/cat-modelo-dispositivo.module';
 import { CatEstatusInstalacionModule } from './cat-estatus-instalacion/cat-estatus-instalacion.module';
 import { CatEstatusOperadorModule } from './cat-estatus-operador/cat-estatus-operador.module';
 import { CatEstatusSimModule } from './cat-estatus-sim/cat-estatus-sim.module';
+import { CatTelefoniaModule } from './cat-telefonia/cat-telefonia.module';
+import { CatPlanesTelefoniaModule } from './cat-planes-telefonia/cat-planes-telefonia.module';
 import { CatEstatusVehiculoModule } from './cat-estatus-vehiculo/cat-estatus-vehiculo.module';
+import { CatMarcaVehiculoModule } from './cat-marca-vehiculo/cat-marca-vehiculo.module';
+import { CatModeloVehiculoModule } from './cat-modelo-vehiculo/cat-modelo-vehiculo.module';
 import Joi from 'joi';
 
 @Module({
@@ -90,13 +95,23 @@ import Joi from 'joi';
 
     CatMarcaDispositivoModule,
 
+    CatModeloDispositivoModule,
+
     CatEstatusInstalacionModule,
 
     CatEstatusOperadorModule,
 
     CatEstatusSimModule,
 
+    CatTelefoniaModule,
+
+    CatPlanesTelefoniaModule,
+
     CatEstatusVehiculoModule,
+
+    CatMarcaVehiculoModule,
+
+    CatModeloVehiculoModule,
   ],
 })
 export class AppModule {}

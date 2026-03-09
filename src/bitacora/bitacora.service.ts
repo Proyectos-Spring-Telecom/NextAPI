@@ -274,7 +274,8 @@ WHERE u.IdCliente IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente
         paginated: {
           total: total,
           page,
-          lastPage: Math.ceil(total / limit),
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
       };
       return result;

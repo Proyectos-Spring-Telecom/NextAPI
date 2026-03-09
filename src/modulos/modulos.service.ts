@@ -132,7 +132,8 @@ export class ModulosService {
         paginated: {
           total: total,
           page,
-          lastPage: Math.ceil(total / limit),
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
       };
       return result;

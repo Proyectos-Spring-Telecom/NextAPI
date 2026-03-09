@@ -244,7 +244,7 @@ export class ClientesController {
     @Request() req
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    const idCliente = req.user.ididCliente;
+    const idCliente = req.user.idCliente;
     return await this.clientesService.removeCliente(id, idUser, +idCliente);
   }
 }

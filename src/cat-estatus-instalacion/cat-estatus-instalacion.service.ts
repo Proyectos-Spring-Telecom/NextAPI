@@ -116,7 +116,8 @@ export class CatEstatusInstalacionService {
         paginated: {
           total,
           page,
-          lastPage: Math.ceil(total / limit),
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
       };
     } catch (error) {

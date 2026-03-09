@@ -6,7 +6,8 @@ export interface ApiResponseCommon {
 export interface Paginated {
   total: number;
   page: number;
-  lastPage: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface ApiDerroteroResponse {

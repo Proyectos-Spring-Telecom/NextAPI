@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Put,
   Request,
   Query,
   ParseIntPipe,
@@ -101,7 +100,7 @@ export class CatEstatusVehiculoController {
     return this.catEstatusVehiculoService.findOne(id);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @ApiOperation({ summary: 'Actualizar estatus de vehículo' })
   @ApiParam({ name: 'id', description: 'ID del estatus' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })

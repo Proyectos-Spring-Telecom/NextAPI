@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Put,
   Request,
   Query,
   ParseIntPipe,
@@ -101,7 +100,7 @@ export class CatMarcaDispositivoController {
     return this.catMarcaDispositivoService.findOne(id);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @ApiOperation({ summary: 'Actualizar marca de dispositivo' })
   @ApiParam({ name: 'id', description: 'ID de la marca' })
   @ApiResponse({ status: 200, description: 'Marca actualizada' })
