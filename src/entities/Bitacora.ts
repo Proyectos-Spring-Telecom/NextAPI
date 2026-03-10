@@ -46,8 +46,8 @@ export class Bitacora {
   @Column("bigint", { name: "IdUsuario" })
   idUsuario: number;
 
-  @Column("bigint", { name: "IdModulo" })
-  idModulo: number;
+  @Column("bigint", { name: "IdModulo", nullable: true })
+  idModulo: number | null;
 
   @ManyToOne(() => Modulos, (modulos) => modulos.bitacoras, {
     onDelete: "NO ACTION",

@@ -69,7 +69,7 @@ export class ModulosController {
     return await this.modulosService.update(id,updateModuloDto, idUser);
   }
 
-  @Patch(':id/estatus')
+  @Patch('estatus/:id')
   async updateModuloEstatus(
     @Param('id') id: string,
     @Request() req,

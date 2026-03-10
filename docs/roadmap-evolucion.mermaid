@@ -1,0 +1,107 @@
+graph TB
+    subgraph FASE1["🟢 FASE 1 — Mismo Servidor (ACTUAL)"]
+        direction TB
+        F1_DESC["Un solo servidor físico/VPS<br/>Docker Compose con 4 containers"]
+        F1_NGINX["Nginx :80"]
+        F1_NEXT["Next :3000"]
+        F1_SHIFT["Shift :3001"]
+        F1_MYSQL["MySQL :3306<br/>next_db + shift_db"]
+
+        F1_NGINX --> F1_NEXT
+        F1_NGINX --> F1_SHIFT
+        F1_NEXT --> F1_MYSQL
+        F1_SHIFT --> F1_MYSQL
+        F1_SHIFT -.->|"HTTP localhost"| F1_NEXT
+
+        F1_COMM["📡 Comunicación:<br/>REST síncrono (HTTP)<br/>Webhooks simples POST<br/>Cache: Map en memoria<br/>JWT compartido (misma secret)"]
+    end
+
+    subgraph FASE2["🔵 FASE 2 — Docker + Redis"]
+        direction TB
+        F2_DESC["Mismo servidor pero preparado para separar"]
+        F2_NGINX2["Nginx :80"]
+        F2_NEXT2["Next :3000"]
+        F2_SHIFT2["Shift :3001"]
+        F2_MYSQL2["MySQL :3306"]
+        F2_REDIS["Redis :6379<br/>Cache distribuido"]
+
+        F2_NGINX2 --> F2_NEXT2
+        F2_NGINX2 --> F2_SHIFT2
+        F2_NEXT2 --> F2_MYSQL2
+        F2_SHIFT2 --> F2_MYSQL2
+        F2_SHIFT2 --> F2_REDIS
+        F2_NEXT2 --> F2_REDIS
+        F2_SHIFT2 -.->|"HTTP Docker network"| F2_NEXT2
+
+        F2_COMM["📡 Comunicación:<br/>REST síncrono (Docker DNS)<br/>Webhooks + Cache Redis<br/>Health checks<br/>Graceful degradation"]
+    end
+
+    subgraph FASE3["🟡 FASE 3 — Servidores Separados + Event Bus"]
+        direction TB
+        F3_DESC["Cada servicio en su propio servidor"]
+
+        F3_LB["Load Balancer"]
+        F3_NEXT3["Servidor A<br/>Next :3000"]
+        F3_SHIFT3["Servidor B<br/>Shift :3001"]
+        F3_RABBIT["RabbitMQ<br/>Event Bus"]
+        F3_MYSQL_A["MySQL A<br/>next_db"]
+        F3_MYSQL_B["MySQL B<br/>shift_db"]
+        F3_REDIS3["Redis Cluster"]
+
+        F3_LB --> F3_NEXT3
+        F3_LB --> F3_SHIFT3
+        F3_NEXT3 --> F3_MYSQL_A
+        F3_SHIFT3 --> F3_MYSQL_B
+        F3_NEXT3 --> F3_RABBIT
+        F3_SHIFT3 --> F3_RABBIT
+        F3_NEXT3 --> F3_REDIS3
+        F3_SHIFT3 --> F3_REDIS3
+
+        F3_COMM["📡 Comunicación:<br/>Eventos asíncronos (RabbitMQ)<br/>REST solo para queries<br/>Cache Redis compartido<br/>CI/CD independiente por servicio"]
+    end
+
+    subgraph FASE4["🟣 FASE 4 — Kubernetes"]
+        direction TB
+        F4_DESC["Orquestación y auto-scaling"]
+        F4_INGRESS["K8s Ingress"]
+        F4_NEXT4["Next Pods x3<br/>Auto-scaling"]
+        F4_SHIFT4["Shift Pods x2<br/>Auto-scaling"]
+        F4_RABBIT4["RabbitMQ Cluster"]
+        F4_OBS["Prometheus + Grafana<br/>Jaeger (tracing)"]
+        F4_DB4["Managed MySQL<br/>(RDS / Cloud SQL)"]
+
+        F4_INGRESS --> F4_NEXT4
+        F4_INGRESS --> F4_SHIFT4
+        F4_NEXT4 --> F4_RABBIT4
+        F4_SHIFT4 --> F4_RABBIT4
+        F4_NEXT4 --> F4_DB4
+        F4_SHIFT4 --> F4_DB4
+        F4_OBS -.-> F4_NEXT4
+        F4_OBS -.-> F4_SHIFT4
+
+        F4_COMM["📡 Comunicación:<br/>Service Mesh (mTLS)<br/>Eventos + CQRS<br/>Nuevos microservicios<br/>(notificaciones, reportes, billing)"]
+    end
+
+    FASE1 ==>|"Agregar Redis<br/>Docker network"| FASE2
+    FASE2 ==>|"Separar servidores<br/>Agregar RabbitMQ"| FASE3
+    FASE3 ==>|"Migrar a K8s<br/>Managed DB"| FASE4
+
+    classDef fase1 fill:#052e16,stroke:#34D399,stroke-width:2px,color:#D1FAE5
+    classDef fase2 fill:#0c1929,stroke:#38BDF8,stroke-width:2px,color:#BAE6FD
+    classDef fase3 fill:#1a1708,stroke:#FBBF24,stroke-width:2px,color:#FEF3C7
+    classDef fase4 fill:#1a0f2e,stroke:#A78BFA,stroke-width:2px,color:#E0D5FF
+    classDef node1 fill:#064e3b,stroke:#34D399,stroke-width:1px,color:#D1FAE5
+    classDef node2 fill:#0c4a6e,stroke:#38BDF8,stroke-width:1px,color:#BAE6FD
+    classDef node3 fill:#713f12,stroke:#FBBF24,stroke-width:1px,color:#FEF3C7
+    classDef node4 fill:#3b0764,stroke:#A78BFA,stroke-width:1px,color:#E0D5FF
+    classDef comm fill:#111827,stroke:#334155,stroke-width:1px,color:#94A3B8
+
+    class FASE1 fase1
+    class FASE2 fase2
+    class FASE3 fase3
+    class FASE4 fase4
+    class F1_DESC,F1_NGINX,F1_NEXT,F1_SHIFT,F1_MYSQL node1
+    class F2_DESC,F2_NGINX2,F2_NEXT2,F2_SHIFT2,F2_MYSQL2,F2_REDIS node2
+    class F3_DESC,F3_LB,F3_NEXT3,F3_SHIFT3,F3_RABBIT,F3_MYSQL_A,F3_MYSQL_B,F3_REDIS3 node3
+    class F4_DESC,F4_INGRESS,F4_NEXT4,F4_SHIFT4,F4_RABBIT4,F4_OBS,F4_DB4 node4
+    class F1_COMM,F2_COMM,F3_COMM,F4_COMM comm

@@ -1,10 +1,12 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { CatTelefonia } from './CatTelefonia';
@@ -85,6 +87,12 @@ export class CatPlanesTelefonia {
 
   @Column('tinyint', { name: 'Estatus', default: 1 })
   estatus: number;
+
+  @CreateDateColumn({ name: 'FechaCreacion' })
+  fechaCreacion: Date;
+
+  @UpdateDateColumn({ name: 'FechaActualizacion' })
+  fechaActualizacion: Date;
 
   @ManyToOne(() => CatTelefonia, {
     onDelete: 'RESTRICT',

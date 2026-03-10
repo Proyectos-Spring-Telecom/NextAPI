@@ -115,7 +115,7 @@ export class CatEstatusInstalacionController {
     return this.catEstatusInstalacionService.update(id, dto, idUser);
   }
 
-  @Patch(':id/estatus')
+  @Patch('estatus/:id')
   @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
   @ApiParam({ name: 'id', description: 'ID del estatus' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })

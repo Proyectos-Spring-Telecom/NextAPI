@@ -115,7 +115,7 @@ export class CatMarcaDispositivoController {
     return this.catMarcaDispositivoService.update(id, dto, idUser);
   }
 
-  @Patch(':id/estatus')
+  @Patch('estatus/:id')
   @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
   @ApiParam({ name: 'id', description: 'ID de la marca' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })

@@ -1,0 +1,116 @@
+graph TB
+    %% ════════════════════════════════════════
+    %% CAPA 1: FRONTEND
+    %% ════════════════════════════════════════
+    subgraph FRONTEND["🖥️ FRONTEND — Angular"]
+        direction LR
+        NEXT_APP["📡 Next App<br/>─────────────<br/>• Mapa en vivo GPS<br/>• Dashboard de flota<br/>• ABM Vehículos<br/>• ABM Operadores<br/>• Dispositivos / SIMs<br/>• Alertas y Geocercas"]
+        SHIFT_APP["🔧 ShiftControl App<br/>─────────────<br/>• Dashboard de turnos<br/>• Check-in / Check-out<br/>• Checklist vehículo<br/>• Bitácora de estado<br/>• Incidencias<br/>• Reportes"]
+    end
+
+    %% ════════════════════════════════════════
+    %% CAPA 2: REVERSE PROXY
+    %% ════════════════════════════════════════
+    NGINX["🔀 Nginx Reverse Proxy<br/>───────────────────<br/>/api/v1/vehiculos → Next :3000<br/>/api/v1/operadores → Next :3000<br/>/api/v1/posiciones → Next :3000<br/>/api/v1/turnos → Shift :3001<br/>/api/v1/bitacora → Shift :3001<br/>/ws/posiciones → Next WebSocket"]
+
+    %% ════════════════════════════════════════
+    %% CAPA 3: BACKENDS
+    %% ════════════════════════════════════════
+    subgraph NEXT_SERVICE["📡 NEXT SERVICE — NestJS :3000<br/>🏷️ MASTER — Source of Truth"]
+        direction TB
+        AUTH["🔐 AuthModule<br/>Emite JWT"]
+        VEHICULOS_MOD["🚐 VehiculosModule"]
+        OPERADORES_MOD["👷 OperadoresModule"]
+        LICENCIAS_MOD["📋 LicenciasModule"]
+        DISPOSITIVOS_MOD["📟 DispositivosModule"]
+        SIMS_MOD["📶 SimsModule"]
+        POSICIONES_MOD["📍 PosicionesModule<br/>TCP Receiver + WebSocket"]
+        WEBHOOK_EMIT["📤 WebhookEmitter<br/>Notifica cambios a Shift"]
+    end
+
+    subgraph SHIFT_SERVICE["🔧 SHIFT SERVICE — NestJS :3001<br/>🏷️ CONSUMER — Control Operativo"]
+        direction TB
+        JWT_GUARD["🔐 JwtGuard<br/>Valida JWT de Next"]
+        TURNOS_MOD["📅 TurnosModule"]
+        BITACORA_MOD["📝 BitácoraVehículoModule"]
+        CHECKLIST_MOD["✅ ChecklistModule"]
+        INCIDENCIAS_MOD["⚠️ IncidenciasModule"]
+        NEXT_API_CLIENT["🔗 NextApiClient<br/>HTTP Client → Next API<br/>+ Cache con TTL"]
+        WEBHOOK_RECV["📥 WebhookReceiver<br/>Invalida cache"]
+    end
+
+    %% ════════════════════════════════════════
+    %% CAPA 4: BASES DE DATOS
+    %% ════════════════════════════════════════
+    subgraph NEXT_DB["🗄️ MySQL: next_db"]
+        direction TB
+        T_CLIENTES[("Clientes")]
+        T_USUARIOS[("Usuarios")]
+        T_ROLES[("Roles / Permisos")]
+        T_VEHICULOS[("Vehiculos")]
+        T_OPERADORES[("Operadores")]
+        T_LICENCIAS[("Licencias")]
+        T_DISPOSITIVOS[("Dispositivos")]
+        T_SIMS[("Sims")]
+        T_INSTALACIONES[("Instalaciones")]
+        T_POSICIONES[("Posiciones GPS")]
+        T_CATALOGOS[("Catálogos<br/>Marca, Modelo, Tipo...")]
+    end
+
+    subgraph SHIFT_DB["🗄️ MySQL: shift_db"]
+        direction TB
+        T_TURNOS[("Turnos<br/>vehiculo_id ← ref<br/>operador_id ← ref")]
+        T_BITACORA[("BitácoraVehículo")]
+        T_CHECKLIST[("ChecklistItems")]
+        T_INCIDENCIAS[("IncidenciasTurno")]
+        T_CAT_TURNO[("CatEstatusTurno")]
+        T_CAT_CHECK[("CatItemsChecklist")]
+        T_BITACORA_SYS[("Bitácora sistema")]
+    end
+
+    %% ════════════════════════════════════════
+    %% CONEXIONES
+    %% ════════════════════════════════════════
+
+    %% Frontend → Nginx
+    NEXT_APP -->|HTTP / WS| NGINX
+    SHIFT_APP -->|HTTP| NGINX
+
+    %% Nginx → Backends
+    NGINX -->|"/api/v1/vehiculos/*<br/>/api/v1/operadores/*<br/>/api/v1/posiciones/*<br/>/ws/posiciones/*"| NEXT_SERVICE
+    NGINX -->|"/api/v1/turnos/*<br/>/api/v1/bitacora/*<br/>/api/v1/checklist/*"| SHIFT_SERVICE
+
+    %% Backends → DBs
+    NEXT_SERVICE -->|"Lectura/Escritura<br/>directa"| NEXT_DB
+    SHIFT_SERVICE -->|"Lectura/Escritura<br/>directa"| SHIFT_DB
+
+    %% SHIFT consume NEXT API
+    NEXT_API_CLIENT -->|"GET /vehiculos/:id<br/>GET /operadores/:id<br/>GET /posiciones/ultima/:id<br/>WS /posiciones/live/:imei"| NEXT_SERVICE
+
+    %% Webhooks NEXT → SHIFT
+    WEBHOOK_EMIT -->|"POST /webhooks/next<br/>vehiculo.updated<br/>operador.suspended<br/>licencia.expired"| WEBHOOK_RECV
+
+    %% ════════════════════════════════════════
+    %% ESTILOS
+    %% ════════════════════════════════════════
+    classDef frontend fill:#1a1a2e,stroke:#38BDF8,stroke-width:2px,color:#F1F5F9
+    classDef nginx fill:#1a1a2e,stroke:#A78BFA,stroke-width:2px,color:#F1F5F9
+    classDef nextSvc fill:#0c1929,stroke:#38BDF8,stroke-width:2px,color:#38BDF8
+    classDef shiftSvc fill:#1a1708,stroke:#FBBF24,stroke-width:2px,color:#FBBF24
+    classDef nextDb fill:#0a1520,stroke:#38BDF8,stroke-width:1px,color:#38BDF8
+    classDef shiftDb fill:#1a1708,stroke:#FBBF24,stroke-width:1px,color:#FBBF24
+    classDef nextMod fill:#0f1d30,stroke:#38BDF8,stroke-width:1px,color:#CBD5E1
+    classDef shiftMod fill:#1f1a08,stroke:#FBBF24,stroke-width:1px,color:#CBD5E1
+    classDef table fill:#111827,stroke:#334155,stroke-width:1px,color:#94A3B8
+
+    class FRONTEND frontend
+    class NGINX nginx
+    class NEXT_SERVICE nextSvc
+    class SHIFT_SERVICE shiftSvc
+    class NEXT_DB nextDb
+    class SHIFT_DB shiftDb
+    class AUTH,VEHICULOS_MOD,OPERADORES_MOD,LICENCIAS_MOD,DISPOSITIVOS_MOD,SIMS_MOD,POSICIONES_MOD,WEBHOOK_EMIT nextMod
+    class JWT_GUARD,TURNOS_MOD,BITACORA_MOD,CHECKLIST_MOD,INCIDENCIAS_MOD,NEXT_API_CLIENT,WEBHOOK_RECV shiftMod
+    class T_CLIENTES,T_USUARIOS,T_ROLES,T_VEHICULOS,T_OPERADORES,T_LICENCIAS,T_DISPOSITIVOS,T_SIMS,T_INSTALACIONES,T_POSICIONES,T_CATALOGOS table
+    class T_TURNOS,T_BITACORA,T_CHECKLIST,T_INCIDENCIAS,T_CAT_TURNO,T_CAT_CHECK,T_BITACORA_SYS table
+    class NEXT_APP,SHIFT_APP frontend

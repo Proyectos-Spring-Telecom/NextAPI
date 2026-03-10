@@ -141,7 +141,7 @@ export class CatPlanesTelefoniaController {
     return this.catPlanesTelefoniaService.update(id, dto, idUser);
   }
 
-  @Patch(':id/estatus')
+  @Patch('estatus/:id')
   @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
   @ApiParam({ name: 'id', description: 'ID del plan' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })

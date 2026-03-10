@@ -76,7 +76,7 @@ export class PermisosController {
     return await this.permisosService.update(id, updatePermisoDto, idUser);
   }
 
-  @Patch(':id/estatus')
+  @Patch('estatus/:id')
   async updatePermisoEstatus(
     @Param('id') id: string,
     @Request() req,

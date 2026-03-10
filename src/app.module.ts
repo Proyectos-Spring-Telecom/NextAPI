@@ -22,6 +22,16 @@ import { CatPlanesTelefoniaModule } from './cat-planes-telefonia/cat-planes-tele
 import { CatEstatusVehiculoModule } from './cat-estatus-vehiculo/cat-estatus-vehiculo.module';
 import { CatMarcaVehiculoModule } from './cat-marca-vehiculo/cat-marca-vehiculo.module';
 import { CatModeloVehiculoModule } from './cat-modelo-vehiculo/cat-modelo-vehiculo.module';
+import { CatReferenciaServicioModule } from './cat-referencia-servicio/cat-referencia-servicio.module';
+import { CatTipoAlertaModule } from './cat-tipo-alerta/cat-tipo-alerta.module';
+import { CatTipoCombustibleModule } from './cat-tipo-combustible/cat-tipo-combustible.module';
+import { CatTipoDispositivoModule } from './cat-tipo-dispositivo/cat-tipo-dispositivo.module';
+import { CatTipoGeocercaModule } from './cat-tipo-geocerca/cat-tipo-geocerca.module';
+import { CatTipoLicenciaModule } from './cat-tipo-licencia/cat-tipo-licencia.module';
+import { CatTipoVehiculoModule } from './cat-tipo-vehiculo/cat-tipo-vehiculo.module';
+import { CatTipoVerificacionesModule } from './cat-tipo-verificaciones/cat-tipo-verificaciones.module';
+import { SimsModule } from './sims/sims.module';
+import { DispositivosModule } from './dispositivos/dispositivos.module';
 import Joi from 'joi';
 
 @Module({
@@ -112,6 +122,26 @@ import Joi from 'joi';
     CatMarcaVehiculoModule,
 
     CatModeloVehiculoModule,
+
+    CatReferenciaServicioModule,
+
+    CatTipoAlertaModule,
+
+    CatTipoCombustibleModule,
+
+    CatTipoDispositivoModule,
+
+    CatTipoGeocercaModule,
+
+    CatTipoLicenciaModule,
+
+    CatTipoVehiculoModule,
+
+    CatTipoVerificacionesModule,
+
+    SimsModule,
+
+    DispositivosModule,
   ],
 })
 export class AppModule {}

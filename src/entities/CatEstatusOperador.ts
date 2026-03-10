@@ -5,7 +5,7 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 @Index('IX_CatEstatusOperador_Estatus', ['estatus'])
 @Entity('CatEstatusOperador')
 export class CatEstatusOperador {
-  @PrimaryGeneratedColumn({ type: 'int', name: 'Id' })
+  @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
   @Column('varchar', { name: 'Nombre', length: 50 })

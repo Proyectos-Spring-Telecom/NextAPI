@@ -1,0 +1,57 @@
+sequenceDiagram
+    autonumber
+    participant U as 👤 Usuario<br/>(Angular)
+    participant N as 🔀 Nginx
+    participant S as 🔧 SHIFT<br/>NestJS :3001
+    participant C as 🧊 Cache<br/>(en memoria)
+    participant X as 📡 NEXT<br/>NestJS :3000
+    participant SDB as 🗄️ shift_db
+    participant XDB as 🗄️ next_db
+
+    Note over U,XDB: ══════ PASO 1: LOGIN (una sola vez) ══════
+
+    U->>N: POST /api/v1/auth/login
+    N->>X: proxy → Next :3000
+    X->>XDB: SELECT Usuarios WHERE userName=...
+    XDB-->>X: Usuario encontrado
+    X-->>N: { accessToken: "eyJ...", user: {...} }
+    N-->>U: JWT Token (contiene idCliente, idRol)
+
+    Note over U,XDB: ══════ PASO 2: CREAR TURNO ══════
+
+    U->>N: POST /api/v1/turnos<br/>{ vehiculoId: 12, operadorId: 7 }<br/>Header: Bearer eyJ...
+    N->>S: proxy → Shift :3001
+
+    Note over S: JwtGuard valida el token<br/>usando la MISMA JWT_SECRET<br/>que Next (no llama a Next)
+
+    S->>C: ¿Cache tiene vehiculo:12?
+
+    alt Cache HIT
+        C-->>S: Datos del vehículo (cache)
+    else Cache MISS
+        S->>X: GET /api/v1/vehiculos/12<br/>Header: Bearer eyJ...
+        X->>XDB: SELECT Vehiculos WHERE Id=12
+        XDB-->>X: Vehículo datos
+        X-->>S: { id:12, placa:"ABC-123", estatus:"Disponible" }
+        S->>C: Guardar en cache (TTL: 5 min)
+    end
+
+    S->>X: GET /api/v1/operadores/7<br/>Header: Bearer eyJ...
+    X->>XDB: SELECT Operadores + Licencias WHERE Id=7
+    XDB-->>X: Operador con licencia
+    X-->>S: { id:7, nombre:"Carlos", licenciaVigente: true }
+
+    Note over S: ═══ VALIDACIONES ═══<br/>✅ Vehículo pertenece al cliente<br/>✅ Vehículo está disponible<br/>✅ Operador está activo<br/>✅ Licencia vigente<br/>✅ No hay turno activo para este vehículo
+
+    S->>SDB: INSERT INTO Turnos<br/>(vehiculo_id=12, operador_id=7, ...)
+    SDB-->>S: Turno creado (id: 1)
+    S-->>N: 201 Created { id:1, vehiculoId:12, ... }
+    N-->>U: Turno creado exitosamente
+
+    Note over U,XDB: ══════ PASO 3: WEBHOOK (async) ══════
+
+    Note over X: Alguien edita un vehículo en Next
+    X->>XDB: UPDATE Vehiculos SET ...
+    X->>S: POST /webhooks/next<br/>{ event:"vehiculo.updated", entityId:12 }
+    S->>C: Invalidar cache vehiculo:12
+    S-->>X: 200 OK { received: true }
