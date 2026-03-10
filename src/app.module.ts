@@ -32,6 +32,8 @@ import { CatTipoVehiculoModule } from './cat-tipo-vehiculo/cat-tipo-vehiculo.mod
 import { CatTipoVerificacionesModule } from './cat-tipo-verificaciones/cat-tipo-verificaciones.module';
 import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
+import { InstalacionesModule } from './instalaciones/instalaciones.module';
+import { VehiculosModule } from './vehiculos/vehiculos.module';
 import Joi from 'joi';
 
 @Module({
@@ -142,6 +144,10 @@ import Joi from 'joi';
     SimsModule,
 
     DispositivosModule,
+
+    InstalacionesModule,
+
+    VehiculosModule,
   ],
 })
 export class AppModule {}
