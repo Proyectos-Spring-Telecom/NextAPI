@@ -50,6 +50,7 @@ export class InstalacionesController {
     const idUser = req.user.userId;
     return this.instalacionesService.create(dto, idCliente, idUser);
   }
+  
 
   @Get('list')
   @ApiOperation({ summary: 'Lista completa de instalaciones' })
