@@ -3,7 +3,6 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -26,7 +25,23 @@ import {
   TipoCodigoAutenticacion,
 } from 'src/common/estatus.enum';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
-import { horaDesfasada } from 'src/utils/correccion-hora';
+
+const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas';
+const DUMMY_BCRYPT_HASH =
+  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+function jwtExpiresInSeconds(): number {
+  const raw = process.env.JWT_EXPIRES_IN ?? '15m';
+  const match = /^(\d+)([smhd])$/.exec(raw);
+  if (!match) return 900;
+  const n = parseInt(match[1], 10);
+  const u = match[2];
+  if (u === 's') return n;
+  if (u === 'm') return n * 60;
+  if (u === 'h') return n * 3600;
+  if (u === 'd') return n * 86400;
+  return 900;
+}
 
 @Injectable()
 export class AuthService {
@@ -40,373 +55,32 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly emailService: MailService,
     private readonly bitacoraLogger: BitacoraLoggerService,
-  ) { }
+  ) {}
 
-  /*   // ========================================
-    //Creacion de una afiliacion
-    // ========================================
-    async createPasajero(createAltaPasajaroDto: CreateAltaPasajaroDto) {
-      try {
-        //Buscamos el monedero que este dado de alta
-        const monederos = await this.monederoService.findOneMonederoBySerie(
-          createAltaPasajaroDto.numeroSerieMonedero,
-        );
-  
-        if (monederos.data.idPasajero) {
-          throw new BadRequestException(
-            `El monedero con numero de serie ${createAltaPasajaroDto.numeroSerieMonedero} esta ligado a un pasajero`,
-          );
-        }
-  
-        const existUsuario = await this.usuariosRepository.findOne({
-          //Buscamos si existe usuario
-          where: { userName: createAltaPasajaroDto.correo },
-        });
-        if (existUsuario) {
-          throw new BadRequestException('El usuario ya se encuentra registrado.');
-        }
-  
-        const hashedPassword = await bcrypt.hash(
-          createAltaPasajaroDto.passwordHash,
-          10,
-        ); //encriptamos la contraseña
-        createAltaPasajaroDto.passwordHash = hashedPassword;
-  
-        //creamos el body para crear un usuario que le permita loguearse
-        const bodyUsuario = {
-          userName: createAltaPasajaroDto.correo,
-          passwordHash: createAltaPasajaroDto.passwordHash,
-          emailConfirmado: 0,
-          nombre: createAltaPasajaroDto.nombre,
-          apellidoPaterno: createAltaPasajaroDto.apellidoPaterno,
-          apellidoMaterno: createAltaPasajaroDto.apellidoMaterno,
-          telefono: createAltaPasajaroDto.telefono,
-          fotoPerfil:
-            'https://transmovi.s3.us-east-2.amazonaws.com/imagenes/user_default.png',
-          estatus: 1,
-          idRol: 9,
-          idCliente: monederos.data.idCliente,
-        };
-  
-        //Creamos el usuario
-        const newUser = await this.usuariosRepository.create(bodyUsuario);
-        const userSave = await this.usuariosRepository.save(newUser); //creamos el usuario
-  
-        //Le añadimos los permisos correspondientes
-        const permisosIds = [122];
-        if (permisosIds.length > 0) {
-          const usuariosPermisos = permisosIds.map((permisoId) =>
-            this.permisosRepository.create({
-              idUsuario: userSave.id,
-              idPermiso: permisoId,
-            }),
-          );
-  
-          //guardamos los permisos
-          await this.permisosRepository.save(usuariosPermisos);
-        }
-  
-        //Creamos el body del pasajero
-        const bodyPasajero = {
-          nombre: createAltaPasajaroDto.nombre,
-          apellidoPaterno: createAltaPasajaroDto.apellidoPaterno,
-          apellidoMaterno: createAltaPasajaroDto.apellidoMaterno,
-          telefono: createAltaPasajaroDto.telefono,
-          fechaNacimiento: createAltaPasajaroDto.fechaNacimiento,
-          correo: createAltaPasajaroDto.correo,
-          estatus: 1,
-          estadoSolicitud: EnumSolicitudPasajero.NOSOLICITADO,
-        };
-  
-        //Creamos el pasajero
-        const pasajero = await this.pasajeroService.createPasajerosAfiliacion(
-          bodyPasajero,
-          userSave.id,
-        );
-  
-        //armamos el payload para el token
-        const payload = {
-          id: userSave.id,
-          email: userSave.userName,
-        };
-  
-        //creamos el token
-        const token = this.jwtService.sign(payload, {
-          expiresIn: `${process.env.JWT_CONFIRMACION}`,
-        });
-  
-        //Llamamos la funcion que nos genera el codigo
-        const codigo = await this.generarCodigo(
-          userSave.id,
-          TipoCodigoAutenticacion.CONFIRMACION_CORREO,
-        );
-        //Enviar correo de confirmacion
-        const name = `${userSave.nombre} ${userSave.apellidoPaterno} ${userSave.apellidoMaterno ?? ''}`;
-        await this.emailService.sendConfirmationEmail(
-          userSave.userName,
-          name,
-          token,
-          codigo,
-        );
-  
-        //afiliamos el monedero al pasajero y cambiamos estatus activo
-        function pad(n: number) {
-          return n < 10 ? '0' + n : n;
-        }
-  
-        const ahora = new Date();
-        const desfaseMs = -6 * 60 * 60 * 1000; // -6 horas en milisegundos
-        const fechaDesfasada = new Date(ahora.getTime() + desfaseMs);
-  
-        const fechaActual = `${fechaDesfasada.getFullYear()}-${pad(fechaDesfasada.getMonth() + 1)}-${pad(fechaDesfasada.getDate())} ${pad(fechaDesfasada.getHours())}:${pad(fechaDesfasada.getMinutes())}:${pad(fechaDesfasada.getSeconds())}`;
-  
-        await this.monederoService.updateMonedero(
-          monederos.data.id,
-          userSave.id,
-          {
-            idPasajero: pasajero.data?.id,
-            fechaActivacion: fechaActual,
-            estatus: EstatusEnum.ACTIVO,
-          },
-        );
-  
-        //-----Registro en la bitacora----- SUCCESS
-        const querylogger = { createAltaPasajaroDto };
-        await this.bitacoraLogger.logToBitacora(
-          'Usuarios',
-          `Se ha creado un usuario con nombre: ${userSave.nombre}.`,
-          'CREATE',
-          querylogger,
-          Number(userSave.id),
-          2,
-          EstatusEnumBitcora.SUCCESS,
-        );
-  
-        const { passwordHash: _, ...usuarioSinPassword } = newUser;
-  
-        //Api response
-        const result: ApiCrudResponse = {
-          status: 'success',
-          message: 'Usuario creado correctamente',
-          data: {
-            id: Number(usuarioSinPassword.id),
-            nombre:
-              `${usuarioSinPassword.nombre} ${usuarioSinPassword.apellidoPaterno} ` ||
-              '',
-          },
-        };
-        return result;
-      } catch (error) {
-        if (error instanceof HttpException) {
-          throw error;
-        }
-        throw new InternalServerErrorException(
-          'Ha ocurrido un error durante el proceso de creación del pasajero.',
-        );
-      }
-    }
-   */
-  /* // ========================================
-   //Login por PIN
-   // ========================================
-   async singInPin(loginAuthPin: LoginAuthPinDto) {
-     try {
-       //buscamos el usuario
-        Debe tener el mismo correo
-          Debe estar activo en estatus
-          debe estar confirmado el correo
-          y el cliente al que pertenece debe estar activo
-       
-       const user = await this.usuariosRepository.findOne({
-         relations: ['idRol2', 'idCliente2'],
-         where: {
-           userName: loginAuthPin.userName,
-           estatus: 1,
-           emailConfirmado: 1,
-           idCliente2: {
-             estatus: 1,
-           },
-         },
-       });
- 
- 
-       if (user?.idCliente2?.estatus === 0) {
-         throw new UnauthorizedException(
-           'Acceso denegado: el cliente ha sido dado de baja.',
-         );
-       }
-       if (!user) {
-         throw new NotFoundException('No se encontró al usuario.');
-       }
-       if (user.deviceId !== loginAuthPin.deviceId) {
-         throw new NotFoundException('El dispositivo reportado no coincide con el dispositivo asignado al usuario.');
-       }
- 
-       if (
-         !user ||
-         !user.pinHash ||
-         !(await bcrypt.compare(loginAuthPin.pinHash, user.pinHash))
-       ) {
-         throw new UnauthorizedException('Credenciales invalidas');
-       }
-       const permisos = await this.permisosRepository.find({
-         select: ['idPermiso'],
-         where: { idUsuario: user.id, estatus: 1 },
-       });
- 
-       function pad(n: number) {
-         return n < 10 ? '0' + n : n;
-       }
- 
-       const ahora = new Date();
-       const desfaseMs = -6 * 60 * 60 * 1000; // -6 horas en milisegundos
-       const fechaDesfasada = new Date(ahora.getTime() + desfaseMs);
- 
-       const fechaActual = `${fechaDesfasada.getFullYear()}-${pad(fechaDesfasada.getMonth() + 1)}-${pad(fechaDesfasada.getDate())} ${pad(fechaDesfasada.getHours())}:${pad(fechaDesfasada.getMinutes())}:${pad(fechaDesfasada.getSeconds())}`;
- 
-       await this.usuariosRepository.update(user.id, {
-         ultimoLogin: fechaActual,
-       });
-       const pin = user.pinHash ? 1 : 0;
-       const operador = await this.usuariosRepository.query(`
-           WITH DatosUsuario AS (
-     SELECT
-         u.Id AS IdUsuario,
-         u.UserName AS userName,
-         u.Nombre AS nombre,
-         u.ApellidoPaterno AS apellidoPaterno,
-         u.ApellidoMaterno AS apellidoMaterno,
-         u.Telefono AS telefono,
-         u.UltimoLogin AS ultimoLogin,
-         u.FechaCreacion AS fechaCreacion,
-         u.FotoPerfil AS fotoPerfil,
-         u.DeviceId AS deviceId,
- 
-         -- CLIENTE
-         c.Id AS idCliente,
-         c.Nombre AS nombreCliente,
-         c.ApellidoPaterno AS apellidoPaternoCliente,
-         c.ApellidoMaterno AS apellidoMaternoCliente,
-         c.Logotipo AS logotipo,
- 
-         -- OPERADOR
-         o.Id AS idOperador,
-         o.FechaNacimiento AS fechaNacimiento,
-         o.Identificacion AS identificacion,
-         o.Foto AS fotoOperador,
-         o.ComprobanteDomicilio AS comprobanteDomicilioOperador,
-         o.CertificadoMedico AS certificadoMedicoOperador,
-         o.AntecedentesNoPenales AS antecedentesNoPenalesOperador,
-         o.Estatus AS estatusOperador
-     FROM Usuarios u
-     INNER JOIN Clientes c ON c.Id = u.IdCliente
-     LEFT JOIN Operadores o ON o.IdUsuario = u.Id
-     WHERE u.Id = ${user.id}
- ),
- LicenciasJSON AS (
-     SELECT
-         o.IdUsuario,
-         JSON_ARRAYAGG(
-             JSON_OBJECT(
-                 'IdLicencia', l.Id,
-                 'Licencia', l.Licencia,
-                 'NumeroLicencia', l.NumeroLicencia,
-                 'FechaExpedicion', l.FechaExpedicion,
-                 'FechaVencimiento', l.FechaVencimiento,
-                 'IdTipoLicencia', l.IdTipoLicencia,
-                 'IdCategoriaLicencia', l.IdCategoriaLicencia
-             )
-         ) AS Licencias
-     FROM Operadores o
-     LEFT JOIN Licencias l ON l.IdOperador = o.Id
-     GROUP BY o.IdUsuario
- )
- SELECT 
-     du.*,
-     lj.Licencias
- FROM DatosUsuario du
- LEFT JOIN LicenciasJSON lj ON lj.IdUsuario = du.IdUsuario;
-           `)
- 
-       const payload = {
-         id: user.id,
-         email: user.userName,
-         cliente: user.idCliente,
-         rol: user.idRol,
-         idOperador: operador[0].idOperador
-       };
-       return {
-         message: `login exitoso`,
-         id: Number(operador[0].IdUsuario),
-         nombre: operador[0].nombre,
-         apellidoPaterno: operador[0].apellidoPaterno,
-         apellidoMaterno: operador[0].apellidoMaterno,
-         fechaNacimiento: operador[0].fechaNacimiento,
-         identificacion: operador[0].identificacion,
-         comprobanteDomicilioOperador: operador[0].comprobanteDomicilioOperador,
-         certificadoMedicoOperador: operador[0].certificadoMedicoOperador,
-         antecedentesNoPenalesOperador: operador[0].antecedentesNoPenalesOperador,
-         estatusOperador: operador[0].estatusOperador,
-         idCliente: Number(operador[0].idCliente),
-         nombreCliente: operador[0].nombreCliente,
-         apellidoPaternoCliente: operador[0].apellidoPaternoCliente,
-         apellidoMaternoCliente: operador[0].apellidoMaternoCliente,
-         logotipo: operador[0].logotipo,
-         telefono: operador[0].telefono,
-         ultimoLogin: operador[0].ultimoLogin,
-         fechaCreacion: operador[0].fechaCreacion,
-         fotoPerfil: operador[0].fotoOperador,
-         deviceId: operador[0].deviceId,
-         pinExist: pin,
-         userName: user.userName,
-         Licencias: operador[0].Licencias,
-         rol: user.idRol2,
-         token: this.jwtService.sign(payload),
-         permisos: permisos,
-       };
-     } catch (error) {
-       if (error instanceof HttpException) {
-         throw error;
-       }
-       throw new InternalServerErrorException(error);
-     }
-   }
- */
-  // ========================================
-  //login por correo
-  // ========================================
   async signIn(loginAuthDto: LoginAuthDto) {
     try {
-      const user = await this.usuariosRepository.findOne({
-        relations: ['idRol2', 'cliente2'],
-        where: {
-          userName: loginAuthDto.userName,
-          estatus: 1,
-          emailConfirmado: 1,
-          cliente2: { estatus: 1 },
-        },
-      });
+      const user = await this.usuariosRepository
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .leftJoinAndSelect('u.cliente2', 'cliente2')
+        .leftJoinAndSelect('u.idRol2', 'idRol2')
+        .where('u.userName = :userName', { userName: loginAuthDto.userName })
+        .andWhere('u.estatus = 1')
+        .andWhere('u.emailConfirmado = 1')
+        .getOne();
 
       if (!user) {
-        throw new NotFoundException('No se encontró al usuario.');
+        await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      if (!user.passwordHash) {
-        throw new UnauthorizedException('Credenciales invalidas');
+      if (
+        user.cliente2?.estatus !== 1 ||
+        !user.passwordHash ||
+        !(await bcrypt.compare(loginAuthDto.password, user.passwordHash))
+      ) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
-
-      const passwordValid = await bcrypt.compare(
-        loginAuthDto.password,
-        user.passwordHash,
-      );
-      if (!passwordValid) {
-        throw new UnauthorizedException('Credenciales invalidas');
-      }
-
-      const permisos = await this.permisosRepository.find({
-        select: ['idPermiso'],
-        where: { idUsuario: user.id, estatus: 1 },
-      });
 
       const payload = {
         id: user.id,
@@ -415,35 +89,15 @@ export class AuthService {
         rol: user.idRol,
       };
 
-      const { fechaActual } = await horaDesfasada();
       await this.usuariosRepository.update(user.id, {
-        ultimoLogin: fechaActual,
+        ultimoLogin: new Date(),
       });
 
-      return {
-        message: 'login exitoso',
-        id: Number(user.id),
-        nombre: user.nombre ?? '',
-        apellidoPaterno: user.apellidoPaterno ?? '',
-        apellidoMaterno: user.apellidoMaterno ?? '',
-        idCliente: Number(user.idCliente),
-        nombreCliente: user.cliente2?.nombre ?? '',
-        apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
-        apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
-        logotipo: user.cliente2?.logotipo ?? '',
-        telefono: user.telefono ?? '',
-        ultimoLogin: user.ultimoLogin ?? '',
-        fechaCreacion: user.fechaCreacion ?? '',
-        fotoPerfil: user.fotoPerfil ?? '',
-        userName: user.userName ?? '',
-        rol: user.idRol2,
-        token: this.jwtService.sign(payload),
-        permisos,
-      };
+      const accessToken = this.jwtService.sign(payload);
+      const expiresIn = jwtExpiresInSeconds();
+      return { accessToken, expiresIn };
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
         message: 'Ha ocurrido un error durante el proceso de autenticación.',
         error: (error as Error)?.message,
@@ -451,38 +105,30 @@ export class AuthService {
     }
   }
 
-  // ========================================
-  // Login por PIN (userName + código 6 u 8 dígitos)
-  // ========================================
   async signInPin(loginAuthPin: LoginAuthPinDto) {
     try {
-      const user = await this.usuariosRepository.findOne({
-        relations: ['idRol2', 'cliente2'],
-        where: {
-          userName: loginAuthPin.userName,
-          estatus: 1,
-          emailConfirmado: 1,
-          cliente2: { estatus: 1 },
-        },
-      });
+      const user = await this.usuariosRepository
+        .createQueryBuilder('u')
+        .addSelect('u.pinHash')
+        .leftJoinAndSelect('u.cliente2', 'cliente2')
+        .leftJoinAndSelect('u.idRol2', 'idRol2')
+        .where('u.userName = :userName', { userName: loginAuthPin.userName })
+        .andWhere('u.estatus = 1')
+        .andWhere('u.emailConfirmado = 1')
+        .getOne();
 
       if (!user) {
-        throw new NotFoundException('No se encontró al usuario.');
+        await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      if (!user.pinHash) {
-        throw new UnauthorizedException('Credenciales invalidas');
+      if (
+        user.cliente2?.estatus !== 1 ||
+        !user.pinHash ||
+        !(await bcrypt.compare(loginAuthPin.codigo, user.pinHash))
+      ) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
-
-      const pinValid = await bcrypt.compare(loginAuthPin.codigo, user.pinHash);
-      if (!pinValid) {
-        throw new UnauthorizedException('Credenciales invalidas');
-      }
-
-      const permisos = await this.permisosRepository.find({
-        select: ['idPermiso'],
-        where: { idUsuario: user.id, estatus: 1 },
-      });
 
       const payload = {
         id: user.id,
@@ -491,35 +137,15 @@ export class AuthService {
         rol: user.idRol,
       };
 
-      const { fechaActual } = await horaDesfasada();
       await this.usuariosRepository.update(user.id, {
-        ultimoLogin: fechaActual,
+        ultimoLogin: new Date(),
       });
 
-      return {
-        message: 'login exitoso',
-        id: Number(user.id),
-        nombre: user.nombre ?? '',
-        apellidoPaterno: user.apellidoPaterno ?? '',
-        apellidoMaterno: user.apellidoMaterno ?? '',
-        idCliente: Number(user.idCliente),
-        nombreCliente: user.cliente2?.nombre ?? '',
-        apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
-        apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
-        logotipo: user.cliente2?.logotipo ?? '',
-        telefono: user.telefono ?? '',
-        ultimoLogin: user.ultimoLogin ?? '',
-        fechaCreacion: user.fechaCreacion ?? '',
-        fotoPerfil: user.fotoPerfil ?? '',
-        userName: user.userName ?? '',
-        rol: user.idRol2,
-        token: this.jwtService.sign(payload),
-        permisos,
-      };
+      const accessToken = this.jwtService.sign(payload);
+      const expiresIn = jwtExpiresInSeconds();
+      return { accessToken, expiresIn };
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
         message: 'Ha ocurrido un error durante el proceso de autenticación.',
         error: (error as Error)?.message,
@@ -527,60 +153,114 @@ export class AuthService {
     }
   }
 
-  // ========================================
-  // Verificar correo con código de 4 dígitos
-  // ========================================
+  async getProfileByToken(userId: number) {
+    const user = await this.usuariosRepository.findOne({
+      relations: ['idRol2', 'cliente2'],
+      where: { id: userId, estatus: 1 },
+    });
+    if (!user) {
+      throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+    }
+    const permisos = await this.permisosRepository.find({
+      select: ['idPermiso'],
+      where: { idUsuario: user.id, estatus: 1 },
+    });
+    return {
+      message: 'login exitoso',
+      id: Number(user.id),
+      nombre: user.nombre ?? '',
+      apellidoPaterno: user.apellidoPaterno ?? '',
+      apellidoMaterno: user.apellidoMaterno ?? '',
+      idCliente: Number(user.idCliente),
+      nombreCliente: user.cliente2?.nombre ?? '',
+      apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
+      apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
+      logotipo: user.cliente2?.logotipo ?? '',
+      telefono: user.telefono ?? '',
+      ultimoLogin: user.ultimoLogin ?? '',
+      fechaCreacion: user.fechaCreacion ?? '',
+      fotoPerfil: user.fotoPerfil ?? '',
+      userName: user.userName ?? '',
+      rol: user.idRol2,
+      permisos,
+    };
+  }
+
   async verifyUser(codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
     try {
+      const user = await this.usuariosRepository.findOne({
+        where: { userName: codigoPasajeroAutenticacion.userName },
+      });
+      if (!user) {
+        throw new BadRequestException('Código inválido o ya usado');
+      }
+
       const codigoValido = await this.codigoAutenticacioRepository.findOne({
         where: {
+          idUsuario: user.id,
           codigo: codigoPasajeroAutenticacion.codigo,
           tipo: TipoCodigoAutenticacion.CONFIRMACION_CORREO,
-          usado: EstatusEnum.ACTIVO, // 1 = no usado (disponible)
+          usado: EstatusEnum.ACTIVO,
         },
       });
 
       if (!codigoValido) {
+        const anyCode = await this.codigoAutenticacioRepository.findOne({
+          where: {
+            idUsuario: user.id,
+            tipo: TipoCodigoAutenticacion.CONFIRMACION_CORREO,
+            usado: EstatusEnum.ACTIVO,
+          },
+        });
+        if (anyCode) {
+          const intentosFallidos = (anyCode.intentosFallidos ?? 0) + 1;
+          await this.codigoAutenticacioRepository.update(anyCode.id, {
+            intentosFallidos,
+            ...(intentosFallidos >= 3
+              ? {
+                  usado: EstatusEnum.INACTIVO,
+                  estatus: EstatusEnum.INACTIVO,
+                  fechaUso: new Date(),
+                }
+              : {}),
+          });
+        }
         throw new BadRequestException('Código inválido o ya usado');
       }
 
-      const user = await this.usuariosRepository.findOne({
-        where: { id: codigoValido.idUsuario },
-      });
-      if (!user) {
-        throw new BadRequestException('Usuario no encontrado');
+      const ahora = new Date();
+      if (ahora > codigoValido.fechaExpiracion) {
+        await this.codigoAutenticacioRepository.update(codigoValido.id, {
+          usado: EstatusEnum.INACTIVO,
+          estatus: EstatusEnum.INACTIVO,
+          fechaUso: ahora,
+        });
+        throw new BadRequestException('Código inválido o ya usado');
       }
 
-      const { fechaDesfasada, fechaActual } = await horaDesfasada();
-
-      if (fechaDesfasada > codigoValido.fechaExpiracion) {
-        throw new BadRequestException('El código ha expirado');
+      if ((codigoValido.intentosFallidos ?? 0) >= 3) {
+        throw new BadRequestException('Código inválido o ya usado');
       }
 
       await this.usuariosRepository.update(user.id, { emailConfirmado: 1 });
-
-      const querylogger = { id: user.id, emailConfirmado: 1 };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
         `Se verificó un usuario con nombre: ${user.nombre}.`,
         'UPDATE',
-        querylogger,
+        { id: user.id, emailConfirmado: 1 },
         Number(user.id),
         EnumModulos.USUARIOS,
         EstatusEnumBitcora.SUCCESS,
       );
-
       await this.codigoAutenticacioRepository.update(codigoValido.id, {
         usado: EstatusEnum.INACTIVO,
         estatus: EstatusEnum.INACTIVO,
-        fechaUso: fechaDesfasada,
+        fechaUso: ahora,
       });
 
       return `La verificación del usuario ${user.nombre} se ha completado con éxito. Muchas gracias por su preferencia.`;
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al verificar el usuario.',
         error: (error as Error)?.message,
@@ -588,76 +268,72 @@ export class AuthService {
     }
   }
 
-  // ========================================
-  //enviar correo para recuperar contraseña
-  // ========================================
   async recuperarContrasena(
     loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
+    const mensajeGenerico =
+      'Si el correo está registrado, recibirás un enlace de recuperación.';
     try {
-      //Buscamos el usuario por correo
       const user = await this.usuariosRepository.findOne({
         where: { userName: loginAuthConfirmacionDto.userName },
       });
-      if (!user) throw new BadRequestException('Usuario no encontrado');
 
-      //Generamos el codigo
+      if (!user) {
+        return mensajeGenerico;
+      }
+
+      const haceUnaHora = new Date(Date.now() - 60 * 60 * 1000);
+      const recientes = await this.codigoAutenticacioRepository.find({
+        where: {
+          idUsuario: user.id,
+          tipo: TipoCodigoAutenticacion.RECUPERACION_CONTRASENA,
+        },
+        order: { fechaCreacion: 'DESC' },
+        take: 3,
+      });
+      const enUltimaHora = recientes.filter(
+        (r) => r.fechaCreacion && r.fechaCreacion >= haceUnaHora,
+      );
+      if (enUltimaHora.length >= 3) {
+        return mensajeGenerico;
+      }
+
       const codigo = await this.generarCodigo(
         user.id,
         TipoCodigoAutenticacion.RECUPERACION_CONTRASENA,
       );
-
-      //Generamos el payload para el tokenn
-      const payload = {
-        id: user.id,
-        email: user.userName,
-      };
-
-      //Generamos el token
+      const payload = { id: user.id, email: user.userName };
       const token = this.jwtService.sign(payload, {
-        expiresIn: `${process.env.JWT_CONFIRMACION}`,
+        expiresIn: process.env.JWT_CONFIRMACION ?? '15m',
       });
-      const name = `${user.nombre} ${user.apellidoPaterno} ${user.apellidoMaterno}`;
+      const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendResetPasswordEmail(
         user.userName,
         name,
         token,
         codigo,
       );
-      return `Se ha enviado un correo con el codigo.`;
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new InternalServerErrorException({
-        message: 'Ocurrió un error al recuperar contraseña del usuario.',
-        error: (error as Error)?.message,
-      });
+      return mensajeGenerico;
+    } catch {
+      return mensajeGenerico;
     }
   }
 
-  // ========================================
-  //Creacion de codigo de autenticacion
-  // ========================================
   async generarCodigo(idUsuario: number, tipo: number): Promise<string> {
-    // Generar código de 4 dígitos
-    const codigo = Math.floor(1000 + Math.random() * 9000).toString();
-
-    //Generamos la fecha de Expiracion
+    const codigo = (
+      100000 + Math.floor(Math.random() * 900000)
+    ).toString();
     const ahora = new Date();
-    const desfaseMs = -6 * 60 * 60 * 1000; // -6 horas
-    const expiracionMs = 15 * 60 * 1000; // +15 minutos
+    const expiracionMin =
+      tipo === TipoCodigoAutenticacion.CONFIRMACION_CORREO ? 5 : 15;
+    const expiracion = new Date(
+      ahora.getTime() + expiracionMin * 60 * 1000,
+    );
 
-    const expiracion = new Date(ahora.getTime() + expiracionMs + desfaseMs);
-
-    //Buscamos si ya existe un atributo con ese usuario
     const codigoExiste = await this.codigoAutenticacioRepository.findOne({
-      where: {
-        idUsuario: idUsuario,
-      },
+      where: { idUsuario, tipo },
     });
 
-    //si existe actualiza los datos
     if (codigoExiste) {
       await this.codigoAutenticacioRepository.update(codigoExiste.id, {
         codigo,
@@ -666,27 +342,23 @@ export class AuthService {
         usado: EstatusEnum.ACTIVO,
         estatus: EstatusEnum.ACTIVO,
         fechaUso: null,
+        intentosFallidos: 0,
       });
     } else {
-      //si no se crea el atributo
       const codigoCreate = this.codigoAutenticacioRepository.create({
-        idUsuario: idUsuario,
-        codigo: codigo,
-        tipo: tipo,
+        idUsuario,
+        codigo,
+        tipo,
         fechaExpiracion: expiracion,
         usado: EstatusEnum.ACTIVO,
         estatus: EstatusEnum.ACTIVO,
+        intentosFallidos: 0,
       });
       await this.codigoAutenticacioRepository.save(codigoCreate);
     }
-
-    //regresa el codigo
     return codigo;
   }
 
-  // ========================================
-  //recuperar la confirmacion de correo
-  // ========================================
   async recuperarConfirmacion(
     loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
@@ -694,21 +366,18 @@ export class AuthService {
       const user = await this.usuariosRepository.findOne({
         where: { userName: loginAuthConfirmacionDto.userName },
       });
-      if (!user) throw new NotFoundException('Usuario no encontrado.');
-
+      if (!user) {
+        throw new BadRequestException('Usuario no encontrado.');
+      }
       const codigo = await this.generarCodigo(
         user.id,
         TipoCodigoAutenticacion.CONFIRMACION_CORREO,
       );
-
-      const payload = {
-        id: user.id,
-        email: user.userName,
-      };
+      const payload = { id: user.id, email: user.userName };
       const token = this.jwtService.sign(payload, {
-        expiresIn: `${process.env.JWT_CONFIRMACION}`,
+        expiresIn: process.env.JWT_CONFIRMACION ?? '15m',
       });
-      const name = `${user.nombre} ${user.apellidoPaterno} ${user.apellidoMaterno}`;
+      const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendConfirmationEmail(
         user.userName,
         name,
@@ -717,9 +386,7 @@ export class AuthService {
       );
       return `Se ha enviado un correo con el codigo de autenticación.`;
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al confirmar el usuario.',
         error: (error as Error)?.message,
@@ -727,24 +394,22 @@ export class AuthService {
     }
   }
 
-  // ========================================
-  //actualizar contraseña (usuario autenticado por token)
-  // ========================================
   async resetPassword(idUser: number, dto: LoginAuthResetDto) {
     try {
-      const user = await this.usuariosRepository.findOne({
-        where: { id: idUser },
-      });
+      const user = await this.usuariosRepository
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .where('u.id = :id', { id: idUser })
+        .getOne();
+
       if (!user) {
         throw new BadRequestException('Usuario no encontrado');
       }
-
       if (dto.passwordNueva !== dto.passwordConfirmacion) {
         throw new BadRequestException(
           'La contraseña y la confirmación deben coincidir.',
         );
       }
-
       const isSamePassword = await bcrypt.compare(
         dto.passwordNueva,
         user.passwordHash,
@@ -754,28 +419,22 @@ export class AuthService {
           'La nueva contraseña no puede ser igual a la anterior.',
         );
       }
-
       const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
       await this.usuariosRepository.update(user.id, {
         passwordHash: hashedPassword,
       });
-
-      const querylogger = { id: user.id };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
         `Se ha actualizado la contraseña del usuario con ID: ${user.id}.`,
         'UPDATE',
-        querylogger,
+        { id: user.id },
         idUser,
         EnumModulos.USUARIOS,
         EstatusEnumBitcora.SUCCESS,
       );
-
       return `La contraseña del usuario ${user.nombre} ha sido actualizada exitosamente.`;
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al actualizar contraseña del usuario.',
         error: (error as Error)?.message,

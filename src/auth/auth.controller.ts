@@ -4,7 +4,6 @@ import {
   Body,
   HttpCode,
   Get,
-  Query,
   UseGuards,
   Patch,
   Request,
@@ -17,6 +16,7 @@ import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Autenticación')
 @ApiBearerAuth('bearer-token')
@@ -24,11 +24,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // ========================================
-  // 🔹 POST ROUTES - Rutas específicas primero
-  // ========================================
-
   @Post('usuario/solicitud/recuperacion')
+  @Throttle({ default: { limit: 2, ttl: 60000 } })
   async solicitudRecuperacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
@@ -36,6 +33,7 @@ export class AuthController {
   }
 
   @Post('recuperar/confirmacion')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async recuperacionConfirmacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
@@ -46,14 +44,22 @@ export class AuthController {
 
   @Post('operador/accesso/nip')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async loginPin(@Body() loginAuthPinDto: LoginAuthPinDto) {
     return this.authService.signInPin(loginAuthPinDto);
   }
 
   @Post()
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async login(@Body() loginAuthDto: LoginAuthDto) {
     return this.authService.signIn(loginAuthDto);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getProfile(@Request() req: { user: { userId: number } }) {
+    return this.authService.getProfileByToken(req.user.userId);
   }
 
   // ========================================
@@ -72,6 +78,7 @@ export class AuthController {
 
   @Patch('verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   async verifyUser(
     @Body() codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion,
   ) {

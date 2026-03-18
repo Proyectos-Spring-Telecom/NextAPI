@@ -50,6 +50,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 | **Base de datos** | MySQL 8.0 (`Next`) |
 | **ORM** | TypeORM |
 | **Autenticación** | JWT (Passport.js) |
+| **Rate limiting** | `@nestjs/throttler` (global + Auth) |
 | **Tiempo real** | WebSocket Gateway (Socket.IO) — planificado |
 | **Receptor GPS** | TCP/UDP Server — planificado |
 | **Almacenamiento** | AWS S3 / MinIO (implementado) |
@@ -78,7 +79,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 | Módulo | Estado | Responsabilidad |
 |--------|--------|-----------------|
-| AuthModule | ✅ | Login, JWT, 2FA, recuperación de contraseña, verificación de email |
+| AuthModule | ✅ | Login (solo token + `expiresIn`), `GET /login/me` (perfil), PIN operador, recuperación/confirmación, verify (6 dígitos), JWT, throttling |
 | ClientesModule | ✅ | ABM de clientes (tenants), jerarquía padre-hijo, RFC único |
 | UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales, foto de perfil |
 | RolesModule | ✅ | Definición de roles (Admin, Supervisor, Monitorista, etc.) |
@@ -94,7 +95,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 - `src/common/validators/match-password.constraint.ts` — Valida que password y confirmación coincidan
 - `src/common/validators/pin.validator.ts` — Valida NIP de 4 dígitos
-- `src/utils/correccion-hora.ts` — `horaDesfasada()` para ajuste de zona horaria en códigos de autenticación
+- `src/utils/correccion-hora.ts` — `horaDesfasada()` (otros módulos si aplica); **Auth** usa fecha/hora del servidor (`new Date()`) para códigos y expiración
 - `src/common/ApiResponse.ts` — Tipos `ApiResponseCommon`, `ApiCrudResponse` para respuestas consistentes
 
 **Estructura estándar de módulos de catálogo (Cat):**
@@ -182,14 +183,14 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 - **NestJS 11**, TypeScript, MySQL 8
 - **Prefijo global:** `/api` — todas las rutas bajo `http://localhost:3010/api`
 - **Swagger:** `http://localhost:3010/api/docs`
-- **Auth:** Login (userName sin validación de email), login por PIN (`operador/accesso/nip`), recuperación de contraseña, reenvío de confirmación, cambio de contraseña (usuario desde token), verificación de usuario
+- **Auth:** `POST /login` y `POST /login/operador/accesso/nip` devuelven solo `{ accessToken, expiresIn }` (segundos); perfil (usuario, rol, cliente, permisos) en **`GET /login/me`** con Bearer. Errores de login unificados (*Credenciales inválidas*). Recuperación: siempre mensaje genérico (*Si el correo está registrado…*). Verify: `userName` + código **6 dígitos**, intentos limitados. Rate limiting en login, PIN, verify, recuperación y global.
 - **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant
 - **Bitácora:** Auditoría de acciones con paginación
 - **S3:** Subida de archivos (PNG, JPG, JPEG, PDF) hasta 10 MB
 - **Mail:** Confirmación de cuenta y restablecimiento de contraseña (Nodemailer, sin rutas HTTP, servicio inyectable)
 - **JWT + JwtAuthGuard + RolesGuard + @Roles()**
 - **Validadores:** `MatchPasswordConstraint` (password/confirmación), `PinValidator` (NIP 4 dígitos)
-- **Utilidades:** `horaDesfasada()` para corrección de zona horaria en códigos de autenticación
+- **CodigoAutenticacion:** códigos de 6 dígitos; vigencia 5 min (confirmación correo) / 15 min (recuperación); columna `IntentosFallidos` para verify
 - **Catálogos API (20):** CatCategoriaLicencia, CatEstatusDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaDispositivo, CatMarcaVehiculo, CatModeloDispositivo, CatModeloVehiculo, CatReferenciaServicio, CatTelefonia, CatPlanesTelefonia, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones (CRUD estándar, Bitácora, soft delete)
 - **SimsModule:** ABM de tarjetas SIM (multitenancy, ICC único, FKs a CatTelefonia, CatPlanesTelefonia, CatEstatusSim)
 - **DispositivosModule:** ABM de dispositivos GPS (multitenancy, NumeroSerie único, IdSim obligatorio)
@@ -325,7 +326,7 @@ Clientes (IdPadre → Clientes)
 | **Next NO conoce** | No importa módulos de ShiftControl, no llama APIs externas |
 | **Next EXPONE** | API REST, WebSocket de posiciones, Webhooks genéricos |
 | **Next EMITE** | Eventos a URLs suscritas (fire-and-forget con reintentos) |
-| **Next PROTEGE** | JWT, IdCliente, permisos, filtrado por tenant |
+| **Next PROTEGE** | JWT, IdCliente, permisos, filtrado por tenant, rate limiting en Auth |
 
 ### Servicios del ecosistema
 
@@ -346,12 +347,20 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/login` | Login con userName y password |
-| POST | `/login/operador/accesso/nip` | Login por PIN (operador) |
-| POST | `/login/usuario/solicitud/recuperacion` | Solicitar recuperación de contraseña |
-| POST | `/login/recuperar/confirmacion` | Reenviar código de confirmación |
-| POST | `/login/cambiar/accesso` | Cambiar contraseña (usuario desde JWT) |
-| PATCH | `/login/verify` | Verificar usuario con código |
+| POST | `/login` | Login userName + password → `{ accessToken, expiresIn }` (throttle ~5/min) |
+| POST | `/login/operador/accesso/nip` | Login por PIN → mismo formato que `/login` |
+| GET | `/login/me` | Perfil completo (rol, cliente, permisos, etc.); **JWT Bearer obligatorio** |
+| POST | `/login/usuario/solicitud/recuperacion` | Solicitar recuperación; respuesta siempre genérica (throttle ~2/min) |
+| POST | `/login/recuperar/confirmacion` | Reenviar código de confirmación (6 dígitos) |
+| POST | `/login/cambiar/accesso` | Cambiar contraseña (JWT) |
+| PATCH | `/login/verify` | Verificar cuenta: body `{ userName, codigo }` (6 dígitos); throttle ~3/min |
+
+**Contrato para el cliente (Angular / consumidores):**
+
+1. Tras login exitoso, guardar `accessToken` y usar `expiresIn` para renovar sesión o pedir login de nuevo.
+2. Llamar **`GET /api/login/me`** con header `Authorization: Bearer <accessToken>` para obtener el objeto de sesión (antes incluido en la respuesta del login).
+3. Fallos de credenciales en login/PIN: **401** con mensaje genérico; no asumir mensajes distintos por “usuario inexistente” vs “contraseña incorrecta”.
+4. Recuperación: el cuerpo de éxito es siempre el mismo texto; no inferir existencia del correo por la respuesta.
 
 ### Clientes (`/api/clientes`)
 
@@ -483,7 +492,8 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 |----------|-------------|
 | PORT | Puerto (default: 3010) |
 | DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DATABASE | MySQL — **DB_DATABASE debe ser `Next`** |
-| JWT_SECRET, JWT_EXPIRES_IN | JWT |
+| JWT_SECRET, JWT_EXPIRES_IN | JWT (el login devuelve `expiresIn` en segundos, alineado con esta variable) |
+| JWT_CONFIRMACION | Opcional; expiración de JWT en enlaces de correo (default `15m`) |
 | AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET | S3 |
 | UPLOAD_MAX_SIZE | Límite de subida (bytes) |
 | HOST, SMTP, E_MAIL, MAIL_PASSWORD | Nodemailer (obligatorias) |
@@ -492,4 +502,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado con la visión del sistema Next, análisis de la BD Next (ANALISIS-BD-NEXT.md), estado actual de NextAPI (rutas, módulos, validadores, Mail, Auth, Usuarios, 20 catálogos Cat*, Sims, Dispositivos) y flujos de implementación (docs/FLUJO-*.md).*
+*Documento actualizado (marzo 2026): Auth endurecido — login solo token, `GET /login/me`, throttling, verify 6 dígitos, recuperación genérica. Ver `docs/FLUJO-SEGURIDAD-AUTH.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.1.*

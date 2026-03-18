@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.0 |
-| **Fecha de vigencia** | A partir de la firma |
+| **Versión del documento** | 1.1 |
+| **Fecha de vigencia** | Marzo 2026 (actualización Auth / seguridad) |
 
 ---
 
@@ -31,6 +31,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **Base de datos** | MySQL 8.0 — Base de datos `Next` | Implementado |
 | **ORM** | TypeORM | Implementado |
 | **Autenticación** | JWT (Passport.js) | Implementado |
+| **Rate limiting** | `@nestjs/throttler` (global + límites en Auth) | Implementado |
 | **Almacenamiento** | AWS S3 | Implementado |
 | **Correo** | Nodemailer | Implementado |
 | **Documentación API** | Swagger / OpenAPI | Implementado |
@@ -46,7 +47,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 
 | Módulo | Funcionalidad | Rutas base |
 |--------|---------------|------------|
-| **Auth** | Login (userName/password), login por PIN (operador), recuperación de contraseña, reenvío de confirmación, cambio de contraseña, verificación de usuario | `/api/login` |
+| **Auth** | Login (solo `accessToken` + `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN, recuperación (respuesta genérica), confirmación, cambio de contraseña, verificación (código 6 dígitos, intentos limitados), rate limiting en rutas sensibles | `/api/login` |
 | **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar | `/api/clientes` |
 | **Usuarios** | ABM, cambio de contraseña propia, gestión de NIP | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
@@ -107,6 +108,11 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 - Autenticación JWT Bearer
 - Guards: `JwtAuthGuard`, `RolesGuard`
 - Decorador `@Roles()` para control de acceso
+- **Rate limiting:** guard global (`ThrottlerGuard`) y límites adicionales en Auth (p. ej. login, PIN, verify, recuperación por IP)
+- **Login:** respuesta unificada ante fallo (`401` — *Credenciales inválidas*); no enumeración de usuarios; `PasswordHash` / `PinHash` no se exponen en consultas estándar
+- **Flujo cliente post-login:** `POST /login` o `POST /login/operador/accesso/nip` → `{ accessToken, expiresIn }` (segundos según `JWT_EXPIRES_IN`); datos de usuario y permisos vía **`GET /login/me`** con `Authorization: Bearer <token>`
+- **Recuperación de contraseña:** respuesta HTTP siempre la misma (no revela si el correo existe); límite interno por usuario/correo
+- **Verificación de cuenta:** código numérico de **6 dígitos**, vigencia y contador de intentos fallidos (tabla `CodigoAutenticacion`)
 - Roles: ()
 
 ### 6.3 Documentación
@@ -149,7 +155,8 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 |----------|-------------|-------------|
 | PORT | No (default: 3010) | Puerto de la aplicación |
 | DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DATABASE | Sí | MySQL — **DB_DATABASE = `Next`** |
-| JWT_SECRET, JWT_EXPIRES_IN | Sí | Configuración JWT |
+| JWT_SECRET, JWT_EXPIRES_IN | Sí | Configuración JWT (`expiresIn` del access token; el login devuelve el mismo valor en segundos en `expiresIn`) |
+| JWT_CONFIRMACION | No (default `15m`) | Expiración de tokens en enlaces de correo (confirmación / recuperación) |
 | AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET | Sí | S3 |
 | UPLOAD_MAX_SIZE | Sí | Límite de subida (bytes) |
 | HOST, SMTP, E_MAIL, MAIL_PASSWORD | Sí | Nodemailer |
@@ -163,7 +170,7 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 | Aspecto | Especificación |
 |---------|----------------|
 | **Base de datos** | `Next` (MySQL 8.0) |
-| **Tablas core** | Clientes, Usuarios, Roles, Modulos, Permisos, UsuariosPermisos, CodigoAutenticacion, Bitacora |
+| **Tablas core** | Clientes, Usuarios, Roles, Modulos, Permisos, UsuariosPermisos, CodigoAutenticacion (`Codigo` 6 caracteres, `IntentosFallidos`), Bitacora |
 | **Tablas flota** | Vehiculos, Operadores, Licencias |
 | **Tablas GPS** | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones |
 | **Catálogos** | 20 tablas Cat* (marcas, modelos, tipos, estatus) |
@@ -176,7 +183,8 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 
 ### Fase implementada
 
-- [x] Login y autenticación JWT operativos
+- [x] Login y autenticación JWT operativos (token + `expiresIn`; perfil en `GET /login/me`)
+- [x] Endurecimiento Auth: throttling, mensajes genéricos en login/recuperación/verify, códigos 6 dígitos
 - [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos
 - [x] Bitácora de auditoría consultable
 - [x] Subida de archivos a S3
@@ -217,6 +225,7 @@ Quedan **fuera del alcance** de este contrato:
 | Contexto del proyecto | `docs/CONTEXTO-PROYECTO.md` | Visión, estado actual, endpoints, roadmap |
 | Análisis de BD | `docs/ANALISIS-BD-NEXT.md` | Estructura de tablas, relaciones, catálogos |
 | Flujos de implementación | `docs/FLUJO-*.md` | Pasos para crear catálogos (Cat*) y módulos operativos (Sims, Dispositivos) |
+| Seguridad Auth | `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/SEGURIDAD-LOGIN-NEXTAPI.md` | Hardening login, verify, recuperación |
 
 ---
 
@@ -226,4 +235,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Documento generado a partir de `docs/CONTEXTO-PROYECTO.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). Cambios Auth: v1.1.*
