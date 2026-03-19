@@ -43,6 +43,18 @@ function jwtExpiresInSeconds(): number {
   return 900;
 }
 
+function durationToMs(raw: string, fallbackMs: number): number {
+  const match = /^(\d+)([smhd])$/.exec(raw);
+  if (!match) return fallbackMs;
+  const n = parseInt(match[1], 10);
+  const u = match[2];
+  if (u === 's') return n * 1000;
+  if (u === 'm') return n * 60 * 1000;
+  if (u === 'h') return n * 60 * 60 * 1000;
+  if (u === 'd') return n * 24 * 60 * 60 * 1000;
+  return fallbackMs;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -55,7 +67,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly emailService: MailService,
     private readonly bitacoraLogger: BitacoraLoggerService,
-  ) {}
+  ) { }
 
   async signIn(loginAuthDto: LoginAuthDto) {
     try {
@@ -89,13 +101,41 @@ export class AuthService {
         rol: user.idRol,
       };
 
-      await this.usuariosRepository.update(user.id, {
-        ultimoLogin: new Date(),
+      const token = this.jwtService.sign(payload);
+      const expiresIn = jwtExpiresInSeconds();
+
+      const refreshSecret = process.env.JWT_REFRESH_SECRET;
+      const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+      if (!refreshSecret) {
+        throw new InternalServerErrorException({
+          message: 'Falta JWT_REFRESH_SECRET.',
+        });
+      }
+
+      const refreshPayload = { id: user.id, email: user.userName };
+      const refreshToken = this.jwtService.sign(refreshPayload, {
+        secret: refreshSecret,
+        expiresIn: refreshExpiresIn,
       });
 
-      const accessToken = this.jwtService.sign(payload);
-      const expiresIn = jwtExpiresInSeconds();
-      return { accessToken, expiresIn };
+      const tokenExpira = new Date(
+        Date.now() +
+          durationToMs(
+            refreshExpiresIn,
+            7 * 24 * 60 * 60 * 1000,
+          ),
+      );
+
+      const tokenHash = await bcrypt.hash(refreshToken, 10);
+
+      await this.usuariosRepository.update(user.id, {
+        ultimoLogin: new Date(),
+        tokenHash,
+        tokenExpira,
+        tokenRevocado: 0,
+      });
+
+      return { token, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
@@ -137,13 +177,41 @@ export class AuthService {
         rol: user.idRol,
       };
 
-      await this.usuariosRepository.update(user.id, {
-        ultimoLogin: new Date(),
-      });
-
       const accessToken = this.jwtService.sign(payload);
       const expiresIn = jwtExpiresInSeconds();
-      return { accessToken, expiresIn };
+
+      const refreshSecret = process.env.JWT_REFRESH_SECRET;
+      const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+      if (!refreshSecret) {
+        throw new InternalServerErrorException({
+          message: 'Falta JWT_REFRESH_SECRET.',
+        });
+      }
+
+      const refreshPayload = { id: user.id, email: user.userName };
+      const refreshToken = this.jwtService.sign(refreshPayload, {
+        secret: refreshSecret,
+        expiresIn: refreshExpiresIn,
+      });
+
+      const tokenExpira = new Date(
+        Date.now() +
+          durationToMs(
+            refreshExpiresIn,
+            7 * 24 * 60 * 60 * 1000,
+          ),
+      );
+
+      const tokenHash = await bcrypt.hash(refreshToken, 10);
+
+      await this.usuariosRepository.update(user.id, {
+        ultimoLogin: new Date(),
+        tokenHash,
+        tokenExpira,
+        tokenRevocado: 0,
+      });
+
+      return { accessToken, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
@@ -186,6 +254,95 @@ export class AuthService {
     };
   }
 
+  async refreshToken(refreshToken: string) {
+    try {
+      const refreshSecret = process.env.JWT_REFRESH_SECRET;
+      if (!refreshSecret) {
+        throw new InternalServerErrorException({
+          message: 'Falta JWT_REFRESH_SECRET.',
+        });
+      }
+
+      let decoded: any;
+      try {
+        decoded = this.jwtService.verify(refreshToken, { secret: refreshSecret });
+      } catch {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const userId = decoded?.id;
+      if (!userId) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const user = await this.usuariosRepository
+        .createQueryBuilder('u')
+        .select([
+          'u.id',
+          'u.userName',
+          'u.idCliente',
+          'u.idRol',
+          'u.estatus',
+          'u.tokenHash',
+          'u.tokenExpira',
+          'u.tokenRevocado',
+        ])
+        .where('u.id = :id', { id: userId })
+        .getOne();
+
+      const now = new Date();
+      if (
+        !user ||
+        user.estatus !== 1 ||
+        user.tokenRevocado !== 0 ||
+        !user.tokenExpira ||
+        user.tokenExpira <= now ||
+        !user.tokenHash
+      ) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const validHash = await bcrypt.compare(refreshToken, user.tokenHash);
+      if (!validHash) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const accessPayload = {
+        id: user.id,
+        email: user.userName,
+        idCliente: user.idCliente,
+        rol: user.idRol,
+      };
+
+      const token = this.jwtService.sign(accessPayload);
+      const expiresIn = jwtExpiresInSeconds();
+
+      // Para cubrir ambos nombres del contrato actual de login:
+      // - POST /login -> { token, ... }
+      // - POST /login/operador/accesso/nip -> { accessToken, ... }
+      return { token, refreshToken: refreshToken, expiresIn };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al refrescar la sesión.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  async logout(userId: number) {
+    try {
+      await this.usuariosRepository.update(userId, { tokenRevocado: 1 });
+      return 'Sesión cerrada exitosamente.';
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al cerrar sesión.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
   async verifyUser(codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
     try {
       const user = await this.usuariosRepository.findOne({
@@ -218,10 +375,10 @@ export class AuthService {
             intentosFallidos,
             ...(intentosFallidos >= 3
               ? {
-                  usado: EstatusEnum.INACTIVO,
-                  estatus: EstatusEnum.INACTIVO,
-                  fechaUso: new Date(),
-                }
+                usado: EstatusEnum.INACTIVO,
+                estatus: EstatusEnum.INACTIVO,
+                fechaUso: new Date(),
+              }
               : {}),
           });
         }
@@ -422,6 +579,7 @@ export class AuthService {
       const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
       await this.usuariosRepository.update(user.id, {
         passwordHash: hashedPassword,
+        tokenRevocado: 1,
       });
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',

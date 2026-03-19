@@ -89,6 +89,26 @@ export class Usuarios {
   @Column('int', { name: 'NivelAcceso', default: () => "'0'" })
   nivelAcceso: number;
 
+  @Column('varchar', {
+    name: 'TokenHash',
+    nullable: true,
+    length: 100,
+  })
+  tokenHash: string | null;
+
+  @Column('datetime', {
+    name: 'TokenExpira',
+    nullable: true,
+  })
+  tokenExpira: Date | null;
+
+  @Column('tinyint', {
+    name: 'TokenRevocado',
+    nullable: true,
+    default: () => "'0'",
+  })
+  tokenRevocado: number;
+
   @OneToMany(() => Bitacora, (bitacora) => bitacora.idUsuario2)
   bitacoras: Bitacora[];
 

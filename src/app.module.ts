@@ -37,12 +37,48 @@ import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
+import * as jwt from 'jsonwebtoken';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60000, limit: 100 }],
-    }),
+      // Evita rate limiting por IP: genera una clave por usuario.
+      // Orden de prioridad:
+      // 1) JWT access token (Authorization Bearer) -> userId
+      // 2) userName en body (login/verify/recuperación)
+      // 3) JWT refresh token en body -> userId
+      // 4) fallback a IP
+      keyGenerator: (req: any) => {
+        try {
+          const authHeader = req?.headers?.authorization as string | undefined;
+          if (authHeader?.startsWith('Bearer ')) {
+            const token = authHeader.slice('Bearer '.length);
+            const decoded: any = jwt.verify(
+              token,
+              process.env.JWT_SECRET as string,
+            );
+            return `userId:${decoded?.id ?? decoded?.userId ?? 'unknown'}`;
+          }
+        } catch {}
+
+        const userName = req?.body?.userName;
+        if (userName) return `userName:${userName}`;
+
+        const refreshToken = req?.body?.refreshToken;
+        if (refreshToken) {
+          try {
+            const decoded: any = jwt.verify(
+              refreshToken,
+              process.env.JWT_REFRESH_SECRET as string,
+            );
+            return `userId:${decoded?.id ?? decoded?.userId ?? 'unknown'}`;
+          } catch {}
+        }
+
+        return `ip:${req?.ip ?? 'unknown'}`;
+      },
+    } as any),
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
@@ -53,6 +89,23 @@ import Joi from 'joi';
         DB_DATABASE: Joi.string().required(),
         JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().required(),
+        JWT_REFRESH_SECRET: Joi.string().required(),
+        JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+        // Throttling (Auth) - defaults alineados a FLUJO-SEGURIDAD-AUTH.md
+        THROTTLE_LOGIN_LIMIT: Joi.number().required(),
+        THROTTLE_LOGIN_TTL_MS: Joi.number().required(),
+        THROTTLE_PIN_LIMIT: Joi.number().required(),
+        THROTTLE_PIN_TTL_MS: Joi.number().required(),
+        THROTTLE_VERIFY_LIMIT: Joi.number().default(3),
+        THROTTLE_VERIFY_TTL_MS: Joi.number().default(60000),
+        THROTTLE_RECUPERACION_LIMIT: Joi.number().default(2),
+        THROTTLE_RECUPERACION_TTL_MS: Joi.number().default(60000),
+        THROTTLE_RECUPERACION_CONFIRMACION_LIMIT: Joi.number().default(5),
+        THROTTLE_RECUPERACION_CONFIRMACION_TTL_MS: Joi.number().default(60000),
+        THROTTLE_REFRESH_LIMIT: Joi.number().default(5),
+        THROTTLE_REFRESH_TTL_MS: Joi.number().default(60000),
+        THROTTLE_LOGOUT_LIMIT: Joi.number().default(5),
+        THROTTLE_LOGOUT_TTL_MS: Joi.number().default(60000),
         AWS_REGION: Joi.string().required(),
         AWS_ACCESS_KEY_ID: Joi.string().required(),
         AWS_SECRET_ACCESS_KEY: Joi.string().required(),

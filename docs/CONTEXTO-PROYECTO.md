@@ -79,7 +79,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 | Módulo | Estado | Responsabilidad |
 |--------|--------|-----------------|
-| AuthModule | ✅ | Login (solo token + `expiresIn`), `GET /login/me` (perfil), PIN operador, recuperación/confirmación, verify (6 dígitos), JWT, throttling |
+| AuthModule | ✅ | Login (`accessToken`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador, recuperación/confirmación, verify (6 dígitos), `POST /login/refresh`, `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*) |
 | ClientesModule | ✅ | ABM de clientes (tenants), jerarquía padre-hijo, RFC único |
 | UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales, foto de perfil |
 | RolesModule | ✅ | Definición de roles (Admin, Supervisor, Monitorista, etc.) |
@@ -183,7 +183,7 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 - **NestJS 11**, TypeScript, MySQL 8
 - **Prefijo global:** `/api` — todas las rutas bajo `http://localhost:3010/api`
 - **Swagger:** `http://localhost:3010/api/docs`
-- **Auth:** `POST /login` y `POST /login/operador/accesso/nip` devuelven solo `{ accessToken, expiresIn }` (segundos); perfil (usuario, rol, cliente, permisos) en **`GET /login/me`** con Bearer. Errores de login unificados (*Credenciales inválidas*). Recuperación: siempre mensaje genérico (*Si el correo está registrado…*). Verify: `userName` + código **6 dígitos**, intentos limitados. Rate limiting en login, PIN, verify, recuperación y global.
+- **Auth:** `POST /login` y `POST /login/operador/accesso/nip` devuelven `{ accessToken, refreshToken, expiresIn }`; renovación con **`POST /login/refresh`** (body `{ refreshToken }`); cierre de sesión con **`POST /login/logout`** (JWT Bearer). Perfil (usuario, rol, cliente, permisos) en **`GET /login/me`** con Bearer. Errores de login unificados (*Credenciales inválidas*). Recuperación: siempre mensaje genérico. Verify: código **6 dígitos**, intentos limitados. Rate limiting **por usuario** (keyGenerator) en login, PIN, verify, recuperación, refresh, logout (variables `THROTTLE_*`).
 - **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant
 - **Bitácora:** Auditoría de acciones con paginación
 - **S3:** Subida de archivos (PNG, JPG, JPEG, PDF) hasta 10 MB
@@ -326,7 +326,7 @@ Clientes (IdPadre → Clientes)
 | **Next NO conoce** | No importa módulos de ShiftControl, no llama APIs externas |
 | **Next EXPONE** | API REST, WebSocket de posiciones, Webhooks genéricos |
 | **Next EMITE** | Eventos a URLs suscritas (fire-and-forget con reintentos) |
-| **Next PROTEGE** | JWT, IdCliente, permisos, filtrado por tenant, rate limiting en Auth |
+| **Next PROTEGE** | JWT, IdCliente, permisos, filtrado por tenant, rate limiting por usuario en Auth (refresh token y revocación en logout) |
 
 ### Servicios del ecosistema
 
@@ -347,18 +347,24 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/login` | Login userName + password → `{ accessToken, expiresIn }` (throttle ~5/min) |
+| POST | `/login` | Login userName + password → `{ accessToken, refreshToken, expiresIn }` (throttle por usuario) |
 | POST | `/login/operador/accesso/nip` | Login por PIN → mismo formato que `/login` |
 | GET | `/login/me` | Perfil completo (rol, cliente, permisos, etc.); **JWT Bearer obligatorio** |
-| POST | `/login/usuario/solicitud/recuperacion` | Solicitar recuperación; respuesta siempre genérica (throttle ~2/min) |
+| POST | `/login/refresh` | Renovar accessToken: body `{ refreshToken }` → `{ token, accessToken, expiresIn }` (throttle por usuario) |
+| POST | `/login/logout` | Cerrar sesión (revoca refresh token); **JWT Bearer obligatorio** (throttle por usuario) |
+| POST | `/login/usuario/solicitud/recuperacion` | Solicitar recuperación; respuesta siempre genérica (throttle por usuario) |
 | POST | `/login/recuperar/confirmacion` | Reenviar código de confirmación (6 dígitos) |
 | POST | `/login/cambiar/accesso` | Cambiar contraseña (JWT) |
-| PATCH | `/login/verify` | Verificar cuenta: body `{ userName, codigo }` (6 dígitos); throttle ~3/min |
+| PATCH | `/login/verify` | Verificar cuenta: body `{ userName, codigo }` (6 dígitos); throttle por usuario |
 
 **Contrato para el cliente (Angular / consumidores):**
 
-1. Tras login exitoso, guardar `accessToken` y usar `expiresIn` para renovar sesión o pedir login de nuevo.
-2. Llamar **`GET /api/login/me`** con header `Authorization: Bearer <accessToken>` para obtener el objeto de sesión (antes incluido en la respuesta del login).
+1. Tras login exitoso, guardar `accessToken` y `refreshToken`; usar `expiresIn` para renovar sesión.
+2. Antes de que expire el access token, llamar **`POST /api/login/refresh`** con body `{ refreshToken }` para obtener nuevo `accessToken`.
+3. Para cerrar sesión en el dispositivo, llamar **`POST /api/login/logout`** con `Authorization: Bearer <accessToken>`.
+4. Llamar **`GET /api/login/me`** con header `Authorization: Bearer <accessToken>` para obtener el objeto de sesión (usuario, permisos, rol, cliente).
+5. Fallos de credenciales en login/PIN: **401** con mensaje genérico; no asumir mensajes distintos por "usuario inexistente" vs "contraseña incorrecta".
+6. Recuperación: el cuerpo de éxito es siempre el mismo texto; no inferir existencia del correo por la respuesta.
 3. Fallos de credenciales en login/PIN: **401** con mensaje genérico; no asumir mensajes distintos por “usuario inexistente” vs “contraseña incorrecta”.
 4. Recuperación: el cuerpo de éxito es siempre el mismo texto; no inferir existencia del correo por la respuesta.
 
@@ -492,8 +498,10 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 |----------|-------------|
 | PORT | Puerto (default: 3010) |
 | DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DATABASE | MySQL — **DB_DATABASE debe ser `Next`** |
-| JWT_SECRET, JWT_EXPIRES_IN | JWT (el login devuelve `expiresIn` en segundos, alineado con esta variable) |
+| JWT_SECRET, JWT_EXPIRES_IN | JWT access token (el login devuelve `expiresIn` en segundos) |
+| JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN | Refresh token (default `7d`); usado en `POST /login/refresh` |
 | JWT_CONFIRMACION | Opcional; expiración de JWT en enlaces de correo (default `15m`) |
+| THROTTLE_LOGIN_LIMIT, THROTTLE_LOGIN_TTL_MS, THROTTLE_PIN_*, THROTTLE_VERIFY_*, THROTTLE_RECUPERACION_*, THROTTLE_REFRESH_*, THROTTLE_LOGOUT_* | Límites y ventana (ms) para rate limiting por usuario en Auth; ver `FLUJO-SEGURIDAD-AUTH.md` |
 | AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET | S3 |
 | UPLOAD_MAX_SIZE | Límite de subida (bytes) |
 | HOST, SMTP, E_MAIL, MAIL_PASSWORD | Nodemailer (obligatorias) |
@@ -502,4 +510,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado (marzo 2026): Auth endurecido — login solo token, `GET /login/me`, throttling, verify 6 dígitos, recuperación genérica. Ver `docs/FLUJO-SEGURIDAD-AUTH.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.1.*
+*Documento actualizado (marzo 2026): Auth v1.2 — accessToken + refreshToken, `GET /login/me`, `POST /login/refresh`, `POST /login/logout`, rate limiting por usuario, verify 6 dígitos, recuperación genérica. Ver `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/FLUJO-REFRESH-TOKEN.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.2.*
