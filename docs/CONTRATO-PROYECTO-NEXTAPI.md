@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.2 |
-| **Fecha de vigencia** | Marzo 2026 (Auth: refresh token, logout, rate limiting por usuario) |
+| **Versión del documento** | 1.3 |
+| **Fecha de vigencia** | Marzo 2026 (OperadoresModule implementado) |
 
 ---
 
@@ -58,6 +58,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **Catálogos** | CatCategoriaLicencia, CatEstatusDispositivo, CatMarcaDispositivo, CatModeloDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaVehiculo, CatModeloVehiculo, CatReferenciaServicio, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones, CatTelefonia, CatPlanesTelefonia — CRUD estándar, Bitácora, soft delete | `/api/cat-*` |
 | **Sims** | ABM de tarjetas SIM (multitenancy, ICC único) | `/api/sims` |
 | **Dispositivos** | ABM de dispositivos GPS (multitenancy, NumeroSerie único) | `/api/dispositivos` |
+| **Operadores** | ABM de conductores (1:1 con Usuario, CURP/NSS únicos por cliente, documentos) | `/api/operadores` |
 | **Mail** | Servicio inyectable: confirmación de cuenta, restablecimiento de contraseña | (sin rutas HTTP) |
 
 ### 4.2 Fase en desarrollo (Fase 1)
@@ -66,8 +67,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 |------------|-------------|--------------|
 | TenantGuard | Filtrado automático por `IdCliente` | JWT |
 | VehiculosModule | ABM de vehículos | BD lista |
-| OperadoresModule | ABM de conductores | BD lista |
-| LicenciasModule | ABM de licencias por operador | BD lista |
+| LicenciasModule | ABM de licencias por operador | OperadoresModule |
 | InstalacionesModule | Vinculación dispositivo–vehículo | BD lista |
 | PosicionesModule | Almacenamiento de coordenadas GPS | Crear tabla `Posiciones` |
 | Receptor TCP/UDP | Recepción de tramas GPS (GT06, Teltonika, Concox, Queclink) | — |
@@ -195,10 +195,11 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 - [x] Catálogos API (20 catálogos: CatCategoriaLicencia, CatEstatus*, CatMarca*, CatModelo*, CatReferenciaServicio, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones, CatTelefonia, CatPlanesTelefonia) operativos
 - [x] SimsModule operativo (multitenancy, ICC único)
 - [x] DispositivosModule operativo (multitenancy, NumeroSerie único)
+- [x] OperadoresModule operativo (multitenancy, 1:1 Usuario, CURP/NSS únicos por cliente)
 
 ### Fase 1 (en desarrollo)
 
-- [ ] VehiculosModule, OperadoresModule, LicenciasModule operativos
+- [ ] VehiculosModule, LicenciasModule operativos
 - [ ] InstalacionesModule operativo
 - [ ] PosicionesModule con tabla creada
 - [ ] Receptor TCP/UDP recibiendo tramas GPS
@@ -237,4 +238,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). Auth v1.2: refresh token, logout, rate limiting por usuario. Ver `docs/FLUJO-SEGURIDAD-AUTH.md` y `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.3: OperadoresModule. Ver `docs/FLUJO-MODULO-OPERADORES.md`.*

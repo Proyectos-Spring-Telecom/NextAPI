@@ -33,6 +33,7 @@ import { CatTipoVerificacionesModule } from './cat-tipo-verificaciones/cat-tipo-
 import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
+import { OperadoresModule } from './operadores/operadores.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -90,22 +91,22 @@ import * as jwt from 'jsonwebtoken';
         JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().required(),
         JWT_REFRESH_SECRET: Joi.string().required(),
-        JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+        JWT_REFRESH_EXPIRES_IN: Joi.string().required(),
         // Throttling (Auth) - defaults alineados a FLUJO-SEGURIDAD-AUTH.md
         THROTTLE_LOGIN_LIMIT: Joi.number().required(),
         THROTTLE_LOGIN_TTL_MS: Joi.number().required(),
         THROTTLE_PIN_LIMIT: Joi.number().required(),
         THROTTLE_PIN_TTL_MS: Joi.number().required(),
-        THROTTLE_VERIFY_LIMIT: Joi.number().default(3),
-        THROTTLE_VERIFY_TTL_MS: Joi.number().default(60000),
-        THROTTLE_RECUPERACION_LIMIT: Joi.number().default(2),
-        THROTTLE_RECUPERACION_TTL_MS: Joi.number().default(60000),
-        THROTTLE_RECUPERACION_CONFIRMACION_LIMIT: Joi.number().default(5),
-        THROTTLE_RECUPERACION_CONFIRMACION_TTL_MS: Joi.number().default(60000),
-        THROTTLE_REFRESH_LIMIT: Joi.number().default(5),
-        THROTTLE_REFRESH_TTL_MS: Joi.number().default(60000),
-        THROTTLE_LOGOUT_LIMIT: Joi.number().default(5),
-        THROTTLE_LOGOUT_TTL_MS: Joi.number().default(60000),
+        THROTTLE_VERIFY_LIMIT: Joi.number().required(),
+        THROTTLE_VERIFY_TTL_MS: Joi.number().required(),
+        THROTTLE_RECUPERACION_LIMIT: Joi.number().required(),
+        THROTTLE_RECUPERACION_TTL_MS: Joi.number().required(),
+        THROTTLE_RECUPERACION_CONFIRMACION_LIMIT: Joi.number().required(),
+        THROTTLE_RECUPERACION_CONFIRMACION_TTL_MS: Joi.number().required(),
+        THROTTLE_REFRESH_LIMIT: Joi.number().required(),
+        THROTTLE_REFRESH_TTL_MS: Joi.number().required(),
+        THROTTLE_LOGOUT_LIMIT: Joi.number().required(),
+        THROTTLE_LOGOUT_TTL_MS: Joi.number().required(),
         AWS_REGION: Joi.string().required(),
         AWS_ACCESS_KEY_ID: Joi.string().required(),
         AWS_SECRET_ACCESS_KEY: Joi.string().required(),
@@ -204,6 +205,8 @@ import * as jwt from 'jsonwebtoken';
     DispositivosModule,
 
     InstalacionesModule,
+
+    OperadoresModule,
 
     VehiculosModule,
   ],

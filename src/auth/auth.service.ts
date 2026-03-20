@@ -177,7 +177,7 @@ export class AuthService {
         rol: user.idRol,
       };
 
-      const accessToken = this.jwtService.sign(payload);
+      const token = this.jwtService.sign(payload);
       const expiresIn = jwtExpiresInSeconds();
 
       const refreshSecret = process.env.JWT_REFRESH_SECRET;
@@ -211,7 +211,7 @@ export class AuthService {
         tokenRevocado: 0,
       });
 
-      return { accessToken, refreshToken, expiresIn };
+      return { token, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
@@ -320,7 +320,7 @@ export class AuthService {
       // Para cubrir ambos nombres del contrato actual de login:
       // - POST /login -> { token, ... }
       // - POST /login/operador/accesso/nip -> { accessToken, ... }
-      return { token, refreshToken: refreshToken, expiresIn };
+      return { token, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
@@ -524,7 +524,7 @@ export class AuthService {
         where: { userName: loginAuthConfirmacionDto.userName },
       });
       if (!user) {
-        throw new BadRequestException('Usuario no encontrado.');
+        throw new BadRequestException(MSG_CREDENCIALES_INVALIDAS);
       }
       const codigo = await this.generarCodigo(
         user.id,

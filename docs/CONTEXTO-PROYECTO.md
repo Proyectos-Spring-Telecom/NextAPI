@@ -117,12 +117,12 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-### 4.2 Dominio: Gestión de Flota — BD lista, API pendiente
+### 4.2 Dominio: Gestión de Flota — Parcialmente implementado
 
 | Módulo | Estado BD | Estado API | Responsabilidad |
 |--------|-----------|------------|-----------------|
 | VehiculosModule | ✅ Tabla existente | 🔲 | ABM de vehículos: placa, económico, marca/modelo, documentos, fotos, estado |
-| OperadoresModule | ✅ Tabla existente | 🔲 | ABM de conductores vinculados a Usuario, documentos, estatus |
+| OperadoresModule | ✅ Tabla existente | ✅ Implementado | ABM de conductores (1:1 Usuario, CURP/NSS únicos por cliente, documentos, CatEstatusOperador) |
 | LicenciasModule | ✅ Tabla existente | 🔲 | Licencias por operador (tipo A–E, Federal), vencimientos, alertas |
 
 **Catálogos en BD (poblados) con API:** CatMarcaVehiculo (30), CatModeloVehiculo (84), CatTipoVehiculo (10), CatEstatusVehiculo (5), CatTipoCombustible (7), CatTipoLicencia (6), CatCategoriaLicencia (2), CatEstatusOperador (6).
@@ -194,6 +194,7 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 - **Catálogos API (20):** CatCategoriaLicencia, CatEstatusDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaDispositivo, CatMarcaVehiculo, CatModeloDispositivo, CatModeloVehiculo, CatReferenciaServicio, CatTelefonia, CatPlanesTelefonia, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones (CRUD estándar, Bitácora, soft delete)
 - **SimsModule:** ABM de tarjetas SIM (multitenancy, ICC único, FKs a CatTelefonia, CatPlanesTelefonia, CatEstatusSim)
 - **DispositivosModule:** ABM de dispositivos GPS (multitenancy, NumeroSerie único, IdSim obligatorio)
+- **OperadoresModule:** ABM de conductores (multitenancy, 1:1 Usuario, CURP/NSS únicos por cliente, documentos S3, CatEstatusOperador)
 
 ### Roles y permisos
 
@@ -206,13 +207,13 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 ### Pendiente (API)
 
 - TenantGuard para multitenancy automático
-- VehiculosModule, OperadoresModule, LicenciasModule (tablas BD listas)
+- VehiculosModule, LicenciasModule (tablas BD listas)
 - InstalacionesModule (tablas BD listas)
 - PosicionesModule + tabla Posiciones + Receptor TCP/UDP + WebSocket
 - Webhook Emitter
 - Dominios de Alertas, Geocercas, Mantenimiento
 
-**Nota:** SimsModule y DispositivosModule ya están implementados. Los permisos 61–84 para Sims, Dispositivos, Vehiculos, Instalaciones, Operadores y Licencias existen en la BD.
+**Nota:** SimsModule, DispositivosModule y OperadoresModule ya están implementados. Los permisos 61–84 para Sims, Dispositivos, Vehiculos, Instalaciones, Operadores y Licencias existen en la BD.
 
 ---
 
@@ -365,8 +366,6 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 4. Llamar **`GET /api/login/me`** con header `Authorization: Bearer <accessToken>` para obtener el objeto de sesión (usuario, permisos, rol, cliente).
 5. Fallos de credenciales en login/PIN: **401** con mensaje genérico; no asumir mensajes distintos por "usuario inexistente" vs "contraseña incorrecta".
 6. Recuperación: el cuerpo de éxito es siempre el mismo texto; no inferir existencia del correo por la respuesta.
-3. Fallos de credenciales en login/PIN: **401** con mensaje genérico; no asumir mensajes distintos por “usuario inexistente” vs “contraseña incorrecta”.
-4. Recuperación: el cuerpo de éxito es siempre el mismo texto; no inferir existencia del correo por la respuesta.
 
 ### Clientes (`/api/clientes`)
 
@@ -480,6 +479,7 @@ Cada catálogo expone las mismas rutas bajo su prefijo. Todas usan `@Roles()`, J
 |---------|-------------|
 | `/api/sims` | Tarjetas SIM: ICC, plan, estatus. IdCliente desde JWT. ICC único global. |
 | `/api/dispositivos` | Dispositivos GPS: NumeroSerie, modelo, tipo, SIM. IdCliente desde JWT. NumeroSerie único global. |
+| `/api/operadores` | Operadores (conductores): 1:1 con Usuario, CURP/NSS únicos por cliente, documentos. IdCliente desde JWT. |
 
 **Rutas:** `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id`
 
@@ -510,4 +510,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado (marzo 2026): Auth v1.2 — accessToken + refreshToken, `GET /login/me`, `POST /login/refresh`, `POST /login/logout`, rate limiting por usuario, verify 6 dígitos, recuperación genérica. Ver `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/FLUJO-REFRESH-TOKEN.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.2.*
+*Documento actualizado (marzo 2026): OperadoresModule implementado. Ver `docs/FLUJO-MODULO-OPERADORES.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.3.*
