@@ -95,8 +95,8 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 - `src/common/validators/match-password.constraint.ts` — Valida que password y confirmación coincidan
 - `src/common/validators/pin.validator.ts` — Valida NIP de 4 dígitos
-- `src/utils/correccion-hora.ts` — `horaDesfasada()` (otros módulos si aplica); **Auth** usa fecha/hora del servidor (`new Date()`) para códigos y expiración
 - `src/common/ApiResponse.ts` — Tipos `ApiResponseCommon`, `ApiCrudResponse` para respuestas consistentes
+- **Fecha/hora:** Auth y Usuarios usan `new Date()` del servidor para códigos, expiración y auditoría
 
 **Estructura estándar de módulos de catálogo (Cat):**
 
@@ -176,14 +176,42 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-## 5. Estado actual de NextAPI
+## 5. Estructura de carpetas
+
+```
+src/
+  auth/
+  usuarios/
+  vehiculos/
+  dispositivos/
+  sims/
+  instalaciones/
+  operadores/
+  clientes/
+  catalogos/                    ← Patrón Auranet: catálogos agrupados
+    catalogos.module.ts
+    catalogos.controller.ts     ← GET /api/catalogos/:nombre
+    catalogos.service.ts
+    catalogos.registry.ts
+    cat-tipo-combustible/
+    cat-tipo-vehiculo/
+    ... (20 submódulos)
+  entities/
+  common/
+  bitacora/
+  ...
+```
+
+---
+
+## 6. Estado actual de NextAPI
 
 ### Implementado
 
 - **NestJS 11**, TypeScript, MySQL 8
 - **Prefijo global:** `/api` — todas las rutas bajo `http://localhost:3010/api`
 - **Swagger:** `http://localhost:3010/api/docs`
-- **Auth:** `POST /login` y `POST /login/operador/accesso/nip` devuelven `{ accessToken, refreshToken, expiresIn }`; renovación con **`POST /login/refresh`** (body `{ refreshToken }`); cierre de sesión con **`POST /login/logout`** (JWT Bearer). Perfil (usuario, rol, cliente, permisos) en **`GET /login/me`** con Bearer. Errores de login unificados (*Credenciales inválidas*). Recuperación: siempre mensaje genérico. Verify: código **6 dígitos**, intentos limitados. Rate limiting **por usuario** (keyGenerator) en login, PIN, verify, recuperación, refresh, logout (variables `THROTTLE_*`).
+- **Auth:** `POST /login` devuelve `{ token, refreshToken, expiresIn }`; `POST /login/operador/accesso/nip` devuelve `{ accessToken, refreshToken, expiresIn }`. Renovación con **`POST /login/refresh`** (body `{ refreshToken }`) → `{ token, accessToken, expiresIn }`. Cierre de sesión con **`POST /login/logout`** (JWT Bearer, revoca refresh token). Cambio de contraseña (Auth `POST /login/cambiar/accesso` y Usuarios `PATCH /actualizar/contrasena`) revoca el refresh token. Refresh token hasheado con **SHA256** en BD (`TokenHash`). Perfil en **`GET /login/me`**. Errores de login unificados (*Credenciales inválidas*). Recuperación: mensaje genérico. Verify: código **6 dígitos**. Rate limiting **por usuario** (keyGenerator usa `jwt.decode`, no `jwt.verify`, para evitar doble verificación y permitir identificar usuarios con token expirado). Variables `THROTTLE_*`.
 - **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant
 - **Bitácora:** Auditoría de acciones con paginación
 - **S3:** Subida de archivos (PNG, JPG, JPEG, PDF) hasta 10 MB
@@ -191,10 +219,10 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 - **JWT + JwtAuthGuard + RolesGuard + @Roles()**
 - **Validadores:** `MatchPasswordConstraint` (password/confirmación), `PinValidator` (NIP 4 dígitos)
 - **CodigoAutenticacion:** códigos de 6 dígitos; vigencia 5 min (confirmación correo) / 15 min (recuperación); columna `IntentosFallidos` para verify
-- **Catálogos API (20):** CatCategoriaLicencia, CatEstatusDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaDispositivo, CatMarcaVehiculo, CatModeloDispositivo, CatModeloVehiculo, CatReferenciaServicio, CatTelefonia, CatPlanesTelefonia, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones (CRUD estándar, Bitácora, soft delete)
+- **Catálogos API (20):** Agrupados en `CatalogosModule` bajo `src/catalogos/`. Cada catálogo (CatCategoriaLicencia, CatEstatusDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaDispositivo, CatMarcaVehiculo, CatModeloDispositivo, CatModeloVehiculo, CatReferenciaServicio, CatTelefonia, CatPlanesTelefonia, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones) mantiene CRUD estándar, Bitácora, soft delete. **Endpoint dinámico:** `GET /api/catalogos/:nombreCatalogo` para consultar cualquier catálogo por nombre (ej: `cat-tipo-combustible`).
 - **SimsModule:** ABM de tarjetas SIM (multitenancy, ICC único, FKs a CatTelefonia, CatPlanesTelefonia, CatEstatusSim)
 - **DispositivosModule:** ABM de dispositivos GPS (multitenancy, NumeroSerie único, IdSim obligatorio)
-- **OperadoresModule:** ABM de conductores (multitenancy, 1:1 Usuario, CURP/NSS únicos por cliente, documentos S3, CatEstatusOperador)
+- **OperadoresModule:** ABM de conductores (multitenancy, 1:1 Usuario, CURP/NSS únicos por cliente, documentos S3, CatEstatusOperador). **Integración Licencias:** crear operador exige primera licencia; respuestas (`findAllList`, `findAll`, `findOne`) incluyen `licencias` con tipo y categoría. Un operador puede tener varias licencias.
 
 ### Roles y permisos
 
@@ -217,7 +245,7 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-## 6. API como proveedor
+## 7. API como proveedor
 
 Next funciona como **proveedor de datos** para todo el ecosistema. Principios de la API:
 
@@ -245,11 +273,11 @@ Next emitiría eventos a URLs en `WEBHOOK_SUBSCRIBERS`:
 
 ---
 
-## 7. Modelo de datos — Base de datos Next
+## 8. Modelo de datos — Base de datos Next
 
 > Basado en el respaldo `Next20260306.sql`. Ver `docs/ANALISIS-BD-NEXT.md` para detalle completo.
 
-### 7.1 Resumen por categoría
+### 8.1 Resumen por categoría
 
 | Categoría | Tablas | Registros | Estado |
 |-----------|--------|-----------|--------|
@@ -260,7 +288,7 @@ Next emitiría eventos a URLs en `WEBHOOK_SUBSCRIBERS`:
 | **Monitoreo** | Posiciones | — | ❌ Tabla no existe, por crear |
 | **Mantenimiento** | CatEstatusMantenimiento, CatCategoriaMantenimientoMecanico, etc. | Poblados | Catálogos listos |
 
-### 7.2 Relaciones clave
+### 8.2 Relaciones clave
 
 ```
 Clientes (IdPadre → Clientes)
@@ -275,7 +303,7 @@ Clientes (IdPadre → Clientes)
             └── HistoricoInstalaciones
 ```
 
-### 7.3 Módulos y permisos en BD
+### 8.3 Módulos y permisos en BD
 
 | Id | Módulo | Permisos (formato: Listado, Crear, Actualizar, CambiarEstatus) |
 |----|--------|----------------------------------------------------------------|
@@ -293,13 +321,13 @@ Clientes (IdPadre → Clientes)
 
 **Total:** 11 módulos, 84 permisos.
 
-### 7.4 Procedimiento almacenado
+### 8.4 Procedimiento almacenado
 
 | Procedimiento | Descripción |
 |---------------|-------------|
 | **spGetClientes** | CTE recursiva para jerarquía de clientes (padre–hijos). Usado por BitacoraLoggerService. |
 
-### 7.5 Convenciones de BD
+### 8.5 Convenciones de BD
 
 - **Soft delete:** Campo `Estatus` (1=Activo, 0=Inactivo). No DELETE físico.
 - **Auditoría:** FechaCreacion, FechaActualizacion, Bitacora (Query JSON).
@@ -309,7 +337,7 @@ Clientes (IdPadre → Clientes)
 
 ---
 
-## 8. Roadmap
+## 9. Roadmap
 
 | Fase | Alcance | Estado |
 |------|---------|--------|
@@ -320,7 +348,7 @@ Clientes (IdPadre → Clientes)
 
 ---
 
-## 9. Relación con otros servicios
+## 10. Relación con otros servicios
 
 | Regla | Descripción |
 |-------|-------------|
@@ -340,7 +368,7 @@ Clientes (IdPadre → Clientes)
 
 ---
 
-## 10. Endpoints actuales (NextAPI)
+## 11. Endpoints actuales (NextAPI)
 
 Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para detalle. Todas las rutas llevan prefijo `/api`.
 
@@ -442,7 +470,11 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/upload` | Subir archivo (PNG, JPG, JPEG, PDF; máx. 10 MB) |
+| POST | `/upload` | Subir archivo (multipart: `file`, `folder`, `idModule`; JWT) |
+| PATCH | `/update` | Reemplazar archivo (multipart: `file`, `folder`, `idModule`, `oldUrl` opcional; JWT) |
+| DELETE | `/delete` | Eliminar por URL (JSON: `fileUrl`, `idModule`; JWT) |
+
+Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`.
 
 ### Catálogos (CRUD estándar)
 
@@ -473,6 +505,12 @@ Cada catálogo expone las mismas rutas bajo su prefijo. Todas usan `@Roles()`, J
 
 **Rutas por catálogo:** `GET /list?soloActivos=`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id`
 
+**Estructura (Patrón Auranet):** Los 20 catálogos están bajo `src/catalogos/`. `CatalogosModule` importa todos los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece el endpoint dinámico:
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/catalogos/:nombreCatalogo` | Obtiene la lista completa del catálogo por nombre (ej: `cat-tipo-combustible`). Requiere JWT Bearer. |
+
 ### Módulos operativos (multitenancy)
 
 | Prefijo | Descripción |
@@ -492,7 +530,7 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-## 11. Variables de entorno
+## 12. Variables de entorno
 
 | Variable | Descripción |
 |----------|-------------|
@@ -510,4 +548,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado (marzo 2026): OperadoresModule implementado. Ver `docs/FLUJO-MODULO-OPERADORES.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.3.*
+*Documento actualizado (marzo 2026): Patrón Auranet (catálogos en `src/catalogos/`), refresh token SHA256, integración Operadores+Licencias, keyGenerator con jwt.decode. Ver `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.4.*

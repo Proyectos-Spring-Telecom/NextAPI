@@ -3,8 +3,10 @@
 /node_modules
 /build
 
-#docs
-/docs/
+#Documentación
+/docs
+/document
+/docs/*
 
 # Logs
 logs

@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.3 |
-| **Fecha de vigencia** | Marzo 2026 (OperadoresModule implementado) |
+| **Versión del documento** | 1.4 |
+| **Fecha de vigencia** | Marzo 2026 (Patrón Auranet, catálogos unificados) |
 
 ---
 
@@ -47,7 +47,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 
 | Módulo | Funcionalidad | Rutas base |
 |--------|---------------|------------|
-| **Auth** | Login (`accessToken`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN, recuperación (respuesta genérica), confirmación, cambio de contraseña, verificación (código 6 dígitos, intentos limitados), `POST /login/refresh`, `POST /login/logout`, rate limiting por usuario en rutas sensibles (variables `THROTTLE_*`) | `/api/login` |
+| **Auth** | Login (`accessToken`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), verificación (código 6 dígitos, intentos limitados), `POST /login/refresh` (refresh token almacenado con SHA256 en BD), `POST /login/logout`, rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
 | **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar | `/api/clientes` |
 | **Usuarios** | ABM, cambio de contraseña propia, gestión de NIP | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
@@ -55,10 +55,10 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **Modulos** | ABM del catálogo de módulos | `/api/modulos` |
 | **Bitácora** | Consulta de auditoría de acciones | `/api/bitacora` |
 | **S3** | Subida de archivos (PNG, JPG, JPEG, PDF; máx. 10 MB) | `/api/s3` |
-| **Catálogos** | CatCategoriaLicencia, CatEstatusDispositivo, CatMarcaDispositivo, CatModeloDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaVehiculo, CatModeloVehiculo, CatReferenciaServicio, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones, CatTelefonia, CatPlanesTelefonia — CRUD estándar, Bitácora, soft delete | `/api/cat-*` |
+| **Catálogos** | 20 catálogos (CatCategoriaLicencia, CatEstatus*, CatMarca*, CatModelo*, etc.) — Patrón Auranet en `src/catalogos/`, CRUD estándar por prefijo, Bitácora, soft delete; **endpoint unificado** `GET /api/catalogos/:nombreCatalogo` (ej: `cat-tipo-combustible`) | `/api/cat-*`, `/api/catalogos/:nombre` |
 | **Sims** | ABM de tarjetas SIM (multitenancy, ICC único) | `/api/sims` |
 | **Dispositivos** | ABM de dispositivos GPS (multitenancy, NumeroSerie único) | `/api/dispositivos` |
-| **Operadores** | ABM de conductores (1:1 con Usuario, CURP/NSS únicos por cliente, documentos) | `/api/operadores` |
+| **Operadores** | ABM de conductores (1:1 con Usuario, CURP/NSS únicos por cliente, documentos). Primera licencia obligatoria al crear; respuestas incluyen licencias vinculadas. | `/api/operadores` |
 | **Mail** | Servicio inyectable: confirmación de cuenta, restablecimiento de contraseña | (sin rutas HTTP) |
 
 ### 4.2 Fase en desarrollo (Fase 1)
@@ -110,7 +110,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 - Decorador `@Roles()` para control de acceso
 - **Rate limiting:** guard global (`ThrottlerGuard`) y límites por **usuario** en Auth (login, PIN, verify, recuperación, refresh, logout) mediante `keyGenerator` (userId/userName); límites configurables con variables `THROTTLE_*`
 - **Login:** respuesta unificada ante fallo (`401` — *Credenciales inválidas*); no enumeración de usuarios; `PasswordHash` / `PinHash` no se exponen en consultas estándar
-- **Flujo cliente post-login:** `POST /login` o `POST /login/operador/accesso/nip` → `{ accessToken, refreshToken, expiresIn }`; renovar sesión con **`POST /login/refresh`** (body `{ refreshToken }`); cerrar sesión con **`POST /login/logout`** (JWT Bearer); datos de usuario y permisos vía **`GET /login/me`** con `Authorization: Bearer <accessToken>`
+- **Flujo cliente post-login:** `POST /login` o `POST /login/operador/accesso/nip` → `{ accessToken, refreshToken, expiresIn }`; renovar sesión con **`POST /login/refresh`** (body `{ refreshToken }`) — refresh token almacenado con SHA256 en BD; cerrar sesión con **`POST /login/logout`** (JWT Bearer); datos de usuario y permisos vía **`GET /login/me`**; cambio de contraseña revoca el refresh token del usuario.
 - **Recuperación de contraseña:** respuesta HTTP siempre la misma (no revela si el correo existe); límite interno por usuario/correo
 - **Verificación de cuenta:** código numérico de **6 dígitos**, vigencia y contador de intentos fallidos (tabla `CodigoAutenticacion`)
 - Roles: ()
@@ -120,7 +120,17 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 - Swagger disponible en `/api/docs`
 - Servidores: `http://localhost:3010`, `https://springtelecom.mx/nextAPI`
 
-### 6.4 Convenciones para módulos de catálogo (Cat)
+### 6.4 Catálogos — Patrón Auranet
+
+Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` importa los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece:
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/catalogos/:nombreCatalogo` | Lista completa del catálogo por nombre (ej: `cat-tipo-combustible`). Requiere JWT Bearer. |
+
+Además, cada catálogo mantiene sus rutas CRUD bajo `/api/cat-*` (ver sección siguiente).
+
+### 6.5 Convenciones para módulos de catálogo (Cat)
 
 Al crear nuevos módulos de catálogo (tablas `Cat*`), se aplican las siguientes convenciones:
 
@@ -238,4 +248,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.3: OperadoresModule. Ver `docs/FLUJO-MODULO-OPERADORES.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.4: Patrón Auranet (catálogos unificados), Auth (refresh token SHA256, revocación en cambio de contraseña), Operadores + Licencias. Ver `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*

@@ -3,8 +3,10 @@
 Este documento describe el flujo que se seguirá para alinear el proyecto NextAPI con las especificaciones de `CONTRATO-PROYECTO-NEXTAPI.md` y `CONTEXTO-PROYECTO.md`.
 
 **Referencias:**
-- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Secciones 6.2, 6.4
-- `docs/CONTEXTO-PROYECTO.md` — Sección 4.1 (Estructura estándar), 10 (Endpoints)
+- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Secciones 6.2, 6.4, 6.5 (Patrón Auranet)
+- `docs/CONTEXTO-PROYECTO.md` — Sección 4.1 (Estructura estándar), 11 (Endpoints)
+
+**Nota:** Los catálogos están bajo `src/catalogos/` (Patrón Auranet, v1.4).
 
 ---
 
@@ -127,19 +129,19 @@ async updateEstatus(
 
 1. **Permisos** — `src/permisos/permisos.controller.ts`
 2. **Modulos** — `src/modulos/modulos.controller.ts`
-3. **Catálogos** (orden alfabético):
-   - `src/cat-categoria-licencia/cat-categoria-licencia.controller.ts`
-   - `src/cat-estatus-dispositivo/cat-estatus-dispositivo.controller.ts`
-   - `src/cat-estatus-instalacion/cat-estatus-instalacion.controller.ts`
-   - `src/cat-estatus-operador/cat-estatus-operador.controller.ts`
-   - `src/cat-estatus-sim/cat-estatus-sim.controller.ts`
-   - `src/cat-estatus-vehiculo/cat-estatus-vehiculo.controller.ts`
-   - `src/cat-marca-dispositivo/cat-marca-dispositivo.controller.ts`
-   - `src/cat-marca-vehiculo/cat-marca-vehiculo.controller.ts`
-   - `src/cat-modelo-dispositivo/cat-modelo-dispositivo.controller.ts`
-   - `src/cat-modelo-vehiculo/cat-modelo-vehiculo.controller.ts`
-   - `src/cat-planes-telefonia/cat-planes-telefonia.controller.ts`
-   - `src/cat-telefonia/cat-telefonia.controller.ts`
+3. **Catálogos** (orden alfabético, bajo `src/catalogos/`):
+   - `src/catalogos/cat-categoria-licencia/cat-categoria-licencia.controller.ts`
+   - `src/catalogos/cat-estatus-dispositivo/cat-estatus-dispositivo.controller.ts`
+   - `src/catalogos/cat-estatus-instalacion/cat-estatus-instalacion.controller.ts`
+   - `src/catalogos/cat-estatus-operador/cat-estatus-operador.controller.ts`
+   - `src/catalogos/cat-estatus-sim/cat-estatus-sim.controller.ts`
+   - `src/catalogos/cat-estatus-vehiculo/cat-estatus-vehiculo.controller.ts`
+   - `src/catalogos/cat-marca-dispositivo/cat-marca-dispositivo.controller.ts`
+   - `src/catalogos/cat-marca-vehiculo/cat-marca-vehiculo.controller.ts`
+   - `src/catalogos/cat-modelo-dispositivo/cat-modelo-dispositivo.controller.ts`
+   - `src/catalogos/cat-modelo-vehiculo/cat-modelo-vehiculo.controller.ts`
+   - `src/catalogos/cat-planes-telefonia/cat-planes-telefonia.controller.ts`
+   - `src/catalogos/cat-telefonia/cat-telefonia.controller.ts`
 
 ### 3.4 Consideración: orden de rutas en NestJS
 

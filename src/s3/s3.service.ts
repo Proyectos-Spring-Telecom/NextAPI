@@ -8,6 +8,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuid } from 'uuid';
@@ -28,6 +29,18 @@ export class S3Service {
       },
     });
     this.bucket = process.env.AWS_S3_BUCKET!;
+  }
+
+  private extractKeyFromUrl(url: string): string | null {
+    try {
+      const urlObj = new URL(url);
+      const key = urlObj.pathname.startsWith('/')
+        ? urlObj.pathname.substring(1)
+        : urlObj.pathname;
+      return key && key.length > 0 ? key : null;
+    } catch {
+      return null;
+    }
   }
 
   async uploadFile(
@@ -107,6 +120,99 @@ export class S3Service {
       throw new InternalServerErrorException('Error subiendo el archivo a S3');
     }
   }
+
+  async deleteFile(
+    fileUrl: string | null | undefined,
+    idUser: number,
+    idModule: number,
+  ): Promise<{ deleted: boolean; key?: string }> {
+    if (
+      fileUrl === null ||
+      fileUrl === undefined ||
+      String(fileUrl).trim() === ''
+    ) {
+      return { deleted: false };
+    }
+
+    const trimmed = String(fileUrl).trim();
+    const key = this.extractKeyFromUrl(trimmed);
+    if (!key) {
+      return { deleted: false };
+    }
+
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+
+      const modulo = key.split('/')[0] || 's3';
+      const querylogger = {
+        data: `DELETE from bucket ${this.bucket} key: ${key} url: ${trimmed}`,
+      };
+      await this.bitacoraLogger.logToBitacora(
+        modulo,
+        `Se eliminó archivo del bucket: ${this.bucket}`,
+        'DELETE',
+        querylogger,
+        idUser,
+        idModule,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      return { deleted: true, key };
+    } catch (error) {
+      const modulo = key.split('/')[0] || 's3';
+      const querylogger = {
+        data: `DELETE from bucket ${this.bucket} key: ${key}`,
+      };
+      await this.bitacoraLogger.logToBitacora(
+        modulo,
+        `Error al eliminar archivo del bucket: ${this.bucket}`,
+        'DELETE',
+        querylogger,
+        idUser,
+        idModule,
+        EstatusEnumBitcora.ERROR,
+        error.message,
+      );
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Error eliminando el archivo en S3');
+    }
+  }
+
+  async updateFile(
+    oldUrl: string | null | undefined,
+    newFile: Express.Multer.File,
+    folder: string,
+    idUser: number,
+    idModule: number,
+  ): Promise<{ url: string }> {
+    const result = await this.uploadFile(newFile, folder, idUser, idModule);
+
+    if (oldUrl) {
+      this.deleteFile(oldUrl, idUser, idModule).catch((err: Error) => {
+        const errorMessage = err?.message ?? String(err);
+        void this.bitacoraLogger.logToBitacora(
+          folder,
+          `No se pudo eliminar archivo anterior: ${oldUrl}`,
+          'DELETE',
+          { oldUrl, error: errorMessage },
+          idUser,
+          idModule,
+          EstatusEnumBitcora.ERROR,
+          errorMessage,
+        );
+      });
+    }
+
+    return result;
+  }
+  
 
   async getPresignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
     const cmd = new GetObjectCommand({

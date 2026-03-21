@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { JwtService } from '@nestjs/jwt';
@@ -53,6 +54,10 @@ function durationToMs(raw: string, fallbackMs: number): number {
   if (u === 'h') return n * 60 * 60 * 1000;
   if (u === 'd') return n * 24 * 60 * 60 * 1000;
   return fallbackMs;
+}
+
+function hashRefreshToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 @Injectable()
@@ -120,13 +125,13 @@ export class AuthService {
 
       const tokenExpira = new Date(
         Date.now() +
-          durationToMs(
-            refreshExpiresIn,
-            7 * 24 * 60 * 60 * 1000,
-          ),
+        durationToMs(
+          refreshExpiresIn,
+          7 * 24 * 60 * 60 * 1000,
+        ),
       );
 
-      const tokenHash = await bcrypt.hash(refreshToken, 10);
+      const tokenHash = hashRefreshToken(refreshToken);
 
       await this.usuariosRepository.update(user.id, {
         ultimoLogin: new Date(),
@@ -196,13 +201,13 @@ export class AuthService {
 
       const tokenExpira = new Date(
         Date.now() +
-          durationToMs(
-            refreshExpiresIn,
-            7 * 24 * 60 * 60 * 1000,
-          ),
+        durationToMs(
+          refreshExpiresIn,
+          7 * 24 * 60 * 60 * 1000,
+        ),
       );
 
-      const tokenHash = await bcrypt.hash(refreshToken, 10);
+      const tokenHash = hashRefreshToken(refreshToken);
 
       await this.usuariosRepository.update(user.id, {
         ultimoLogin: new Date(),
@@ -211,7 +216,7 @@ export class AuthService {
         tokenRevocado: 0,
       });
 
-      return { token, refreshToken, expiresIn };
+      return { accessToken: token, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({
@@ -253,6 +258,7 @@ export class AuthService {
       permisos,
     };
   }
+
 
   async refreshToken(refreshToken: string) {
     try {
@@ -302,8 +308,8 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const validHash = await bcrypt.compare(refreshToken, user.tokenHash);
-      if (!validHash) {
+      const incomingHash = hashRefreshToken(refreshToken);
+      if (incomingHash !== user.tokenHash) {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -317,10 +323,8 @@ export class AuthService {
       const token = this.jwtService.sign(accessPayload);
       const expiresIn = jwtExpiresInSeconds();
 
-      // Para cubrir ambos nombres del contrato actual de login:
-      // - POST /login -> { token, ... }
-      // - POST /login/operador/accesso/nip -> { accessToken, ... }
-      return { token, expiresIn };
+      // Para cubrir ambos nombres del contrato: token (POST /login) y accessToken (POST /login/operador/accesso/nip)
+      return { token, accessToken: token, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException({

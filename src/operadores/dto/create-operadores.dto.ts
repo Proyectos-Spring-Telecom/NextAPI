@@ -137,4 +137,51 @@ export class CreateOperadoresDto {
   @IsInt()
   @IsIn([0, 1])
   estatus?: number = 1;
+
+  // Campos adicionales para la primera licencia (obligatorios en create)
+  @ApiProperty({
+    description: 'Número oficial de la licencia (único global)',
+    maxLength: 50,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  numeroLicencia: string;
+
+  @ApiProperty({
+    description: 'ID tipo licencia (CatTipoLicencia)',
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idTipoLicencia: number;
+
+  @ApiProperty({
+    description: 'ID categoría (CatCategoriaLicencia)',
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idCategoriaLicencia: number;
+
+  @ApiProperty({
+    description: 'Fecha expedición licencia (YYYY-MM-DD)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  fechaExpedicion: string;
+
+  @ApiProperty({
+    description: 'Fecha vencimiento licencia (YYYY-MM-DD)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  fechaVencimiento: string;
+
+  @ApiProperty({
+    description: 'URL S3 del documento de la licencia',
+    maxLength: 500,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  licencia: string;
 }

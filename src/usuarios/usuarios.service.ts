@@ -23,7 +23,6 @@ import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
 import { MailService } from 'src/mail/mail.service';
-import { horaDesfasada } from 'src/utils/correccion-hora';
 import { JwtService } from '@nestjs/jwt';
 import { Clientes } from 'src/entities/Clientes';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
@@ -620,11 +619,12 @@ ORDER BY u.Id DESC
       }
 
       const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
-      const { fechaActual } = await horaDesfasada();
+      const fechaActual = new Date();
 
       await this.usuarioRepository.update(idUser, {
         passwordHash: hashedPassword,
         actualizacionPassword: fechaActual,
+        tokenRevocado: 1,
       });
 
       const querylogger = { id: idUser };
@@ -686,7 +686,7 @@ ORDER BY u.Id DESC
       }
 
       const hashedPin = await bcrypt.hash(dto.pinHash, 10);
-      const { fechaActual } = await horaDesfasada();
+      const fechaActual = new Date();
 
       await this.usuarioRepository.update(idUser, {
         pinHash: hashedPin,

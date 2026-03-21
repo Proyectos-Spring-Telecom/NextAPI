@@ -5,6 +5,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -12,6 +13,7 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { Usuarios } from './Usuarios';
 import { CatEstatusOperador } from './CatEstatusOperador';
+import { Licencias } from './Licencias';
 
 @applySchema
 @Index('UQ_Operadores_IdUsuario', ['idUsuario'], { unique: true })
@@ -93,4 +95,7 @@ export class Operadores {
   })
   @JoinColumn([{ name: 'IdEstatusOperador', referencedColumnName: 'id' }])
   idEstatusOperador2: CatEstatusOperador;
+
+  @OneToMany(() => Licencias, (l) => l.idOperador2)
+  licencias: Licencias[];
 }
