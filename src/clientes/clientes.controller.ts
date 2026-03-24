@@ -9,6 +9,8 @@ import {
   UseGuards,
   Request,
   ParseIntPipe,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
 import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
@@ -18,12 +20,26 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UpdateClienteEstatusDto } from './dto/update-clientes-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { clientesFileFieldsInterceptor } from './clientes-upload.interceptor';
+import { ClientesMultipartDocumentsPlaceholderInterceptor } from './clientes-multipart-placeholder.interceptor';
+import {
+  clientesCreateMultipartApiBody,
+  clientesUpdateMultipartApiBody,
+} from './clientes-swagger-multipart';
 
 @ApiTags('Clientes')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(1, 2, 3) // Todos los roles pueden acceder por defecto
+@Roles() // Todos los roles pueden acceder por defecto
 @Controller('clientes')
 export class ClientesController {
   constructor(private readonly clientesService: ClientesService) { }
@@ -31,12 +47,18 @@ export class ClientesController {
   // ==================== POST ====================
 
   @Post()
-  @Roles(1) // Solo SuperAdministrador puede crear clientes
+  @Roles() // Solo SuperAdministrador puede crear clientes
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    clientesFileFieldsInterceptor(),
+    ClientesMultipartDocumentsPlaceholderInterceptor,
+  )
   @ApiOperation({
     summary: 'Crear un nuevo cliente',
-    description: 'Crea un nuevo cliente en el sistema.'
+    description:
+      'Crea un cliente con `multipart/form-data`. Acta, comprobante y constancia son **obligatorios** (URL en texto o archivo PDF por campo). Logotipo opcional (PNG/JPEG). MIME por campo en Clientes; ver FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md.',
   })
-  @ApiBody({ type: CreateClienteDto })
+  @ApiBody(clientesCreateMultipartApiBody)
   @ApiResponse({
     status: 201,
     description: 'Cliente creado exitosamente',
@@ -46,10 +68,24 @@ export class ClientesController {
   @ApiResponse({ status: 403, description: 'Acceso denegado - Solo SuperAdministrador puede crear clientes' })
   async createCliente(
     @Body() createClienteDto: CreateClienteDto,
-    @Request() req
+    @UploadedFiles()
+    files: {
+      actaConstitutiva?: Express.Multer.File[];
+      comprobanteDomicilio?: Express.Multer.File[];
+      constanciaSituacionFiscal?: Express.Multer.File[];
+      logotipo?: Express.Multer.File[];
+    },
+    @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.clientesService.createCliente(createClienteDto, idUser);
+    return await this.clientesService.createCliente(
+      createClienteDto,
+      idUser,
+      files?.actaConstitutiva?.[0],
+      files?.comprobanteDomicilio?.[0],
+      files?.constanciaSituacionFiscal?.[0],
+      files?.logotipo?.[0],
+    );
   }
 
   // ==================== GET ====================
@@ -191,9 +227,15 @@ export class ClientesController {
   }
 
   @Patch(':id')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    clientesFileFieldsInterceptor(),
+    ClientesMultipartDocumentsPlaceholderInterceptor,
+  )
   @ApiOperation({
     summary: 'Actualizar datos de un cliente',
-    description: 'Actualiza la información de un cliente existente'
+    description:
+      'Actualización con `multipart/form-data`. Si adjunta un archivo nuevo, se sube a S3 y se elimina el anterior en segundo plano (`updateFile`).',
   })
   @ApiParam({
     name: 'id',
@@ -201,7 +243,7 @@ export class ClientesController {
     description: 'ID del cliente',
     example: 1
   })
-  @ApiBody({ type: UpdateClienteDto })
+  @ApiBody(clientesUpdateMultipartApiBody)
   @ApiResponse({
     status: 200,
     description: 'Cliente actualizado exitosamente',
@@ -212,10 +254,25 @@ export class ClientesController {
   async updateCliente(
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
-    @Body() updateClienteDto: UpdateClienteDto
+    @Body() updateClienteDto: UpdateClienteDto,
+    @UploadedFiles()
+    files: {
+      actaConstitutiva?: Express.Multer.File[];
+      comprobanteDomicilio?: Express.Multer.File[];
+      constanciaSituacionFiscal?: Express.Multer.File[];
+      logotipo?: Express.Multer.File[];
+    },
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.clientesService.updateCliente(id, idUser, updateClienteDto);
+    return await this.clientesService.updateCliente(
+      id,
+      idUser,
+      updateClienteDto,
+      files?.actaConstitutiva?.[0],
+      files?.comprobanteDomicilio?.[0],
+      files?.constanciaSituacionFiscal?.[0],
+      files?.logotipo?.[0],
+    );
   }
 
   // ==================== DELETE ====================

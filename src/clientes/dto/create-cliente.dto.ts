@@ -1,4 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
   IsString,
   IsOptional,
@@ -11,6 +12,7 @@ import {
 
 export class CreateClienteDto {
   @IsOptional()
+  @Type(() => Number)
   @IsInt({ message: "IdPadre debe ser un número entero" })
   @ApiProperty({ description: "Id del cliente padre", example: 1, required: false })
   idPadre?: number;
@@ -21,6 +23,7 @@ export class CreateClienteDto {
   @ApiProperty({ description: "RFC del cliente", example: "XAXX010101000" })
   rfc: string;
 
+  @Type(() => Number)
   @IsInt({ message: "TipoPersona debe ser un número entero (1=Física, 2=Moral)" })
   @IsIn([1, 2], { message: "TipoPersona debe ser 1 (Física) o 2 (Moral)" })
   @ApiProperty({ description: "Tipo de persona (1=Física, 2=Moral)", example: 1 })
@@ -117,29 +120,61 @@ export class CreateClienteDto {
   @IsEmail({}, { message: "Debe ser un correo válido" })
   correoEncargado?: string;
 
-  // ⚡ Documentos
-  @IsOptional()
+  // ⚡ Documentos (obligatorios en creación: URL o archivo multipart en el mismo nombre de campo)
   @IsString()
+  @IsNotEmpty({
+    message:
+      "La constancia de situación fiscal es obligatoria (URL o archivo PDF constanciaSituacionFiscal).",
+  })
   @MaxLength(500)
-  constanciaSituacionFiscal?: string;
+  @ApiProperty({
+    description:
+      "Obligatorio: URL o enviar el PDF en el campo de archivo `constanciaSituacionFiscal`.",
+    required: true,
+    maxLength: 500,
+  })
+  constanciaSituacionFiscal: string;
+
+  @IsString()
+  @IsNotEmpty({
+    message:
+      "El comprobante de domicilio es obligatorio (URL o archivo PDF comprobanteDomicilio).",
+  })
+  @MaxLength(500)
+  @ApiProperty({
+    description:
+      "Obligatorio: URL o enviar el PDF en el campo de archivo `comprobanteDomicilio`.",
+    required: true,
+    maxLength: 500,
+  })
+  comprobanteDomicilio: string;
+
+  @IsString()
+  @IsNotEmpty({
+    message: "El acta constitutiva es obligatoria (URL o archivo PDF actaConstitutiva).",
+  })
+  @MaxLength(500)
+  @ApiProperty({
+    description:
+      "Obligatorio: URL o enviar el PDF en el campo de archivo `actaConstitutiva`.",
+    required: true,
+    maxLength: 500,
+  })
+  actaConstitutiva: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  comprobanteDomicilio?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  actaConstitutiva?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
+  @ApiProperty({
+    description: "URL del logotipo (flujo híbrido) o omitir si se envía archivo logotipo",
+    required: false,
+    maxLength: 500,
+  })
   logotipo?: string;
 
   // ⚡ Estatus
   @IsOptional()
+  @Type(() => Number)
   @IsInt({ message: "Estatus debe ser 0 ó 1" })
   @IsIn([0, 1], { message: "Solo puede ser 0 ó 1" })
   @ApiProperty({ description: "Estatus del cliente", example: 1 })

@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.4 |
-| **Fecha de vigencia** | Marzo 2026 (Patrón Auranet, catálogos unificados) |
+| **Versión del documento** | 1.5 |
+| **Fecha de vigencia** | Marzo 2026 (S3: actualizar/eliminar, Swagger; Patrón Auranet) |
 
 ---
 
@@ -54,7 +54,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **Permisos** | ABM, permisos agrupados por usuario | `/api/permisos` |
 | **Modulos** | ABM del catálogo de módulos | `/api/modulos` |
 | **Bitácora** | Consulta de auditoría de acciones | `/api/bitacora` |
-| **S3** | Subida de archivos (PNG, JPG, JPEG, PDF; máx. 10 MB) | `/api/s3` |
+| **S3** | Subida (`POST /upload`), reemplazo (`PATCH /update`: nuevo archivo + borrado opcional de `oldUrl` en segundo plano), eliminación (`DELETE /delete` por URL). PNG, JPG, JPEG, PDF; límite `UPLOAD_MAX_SIZE`. JWT obligatorio; roles 1, 2, 3; `idUsuario` en bitácora desde token. Carpetas: clientes, operadores, usuarios, vehiculos, pasajeros. Swagger documentado. | `/api/s3` |
 | **Catálogos** | 20 catálogos (CatCategoriaLicencia, CatEstatus*, CatMarca*, CatModelo*, etc.) — Patrón Auranet en `src/catalogos/`, CRUD estándar por prefijo, Bitácora, soft delete; **endpoint unificado** `GET /api/catalogos/:nombreCatalogo` (ej: `cat-tipo-combustible`) | `/api/cat-*`, `/api/catalogos/:nombre` |
 | **Sims** | ABM de tarjetas SIM (multitenancy, ICC único) | `/api/sims` |
 | **Dispositivos** | ABM de dispositivos GPS (multitenancy, NumeroSerie único) | `/api/dispositivos` |
@@ -120,7 +120,22 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 - Swagger disponible en `/api/docs`
 - Servidores: `http://localhost:3010`, `https://springtelecom.mx/nextAPI`
 
-### 6.4 Catálogos — Patrón Auranet
+### 6.4 Almacenamiento S3 (API)
+
+| Elemento | Especificación |
+|----------|----------------|
+| **Autenticación** | JWT Bearer en todos los endpoints; `idUsuario` para bitácora solo desde `req.user.userId` (no por body/query) |
+| **Guards** | `JwtAuthGuard`, `RolesGuard`, `@Roles(1, 2, 3)` |
+| **POST /api/s3/upload** | `multipart/form-data`: `file`, `folder`, `idModule`. Respuesta `{ url }` |
+| **PATCH /api/s3/update** | `multipart/form-data`: `file`, `folder`, `idModule`, `oldUrl` opcional. Sube primero; si hay `oldUrl`, elimina el objeto anterior en S3 sin bloquear la respuesta. Respuesta `{ url }` |
+| **DELETE /api/s3/delete** | Body JSON: `fileUrl`, `idModule`. Respuesta `{ deleted, key? }` |
+| **folder** | Valores permitidos: `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros` |
+| **Tipos MIME** | `image/png`, `image/jpeg`, `application/pdf` |
+| **Tamaño** | Máximo según variable `UPLOAD_MAX_SIZE` (bytes) |
+| **Bitácora** | CREATE en subidas; DELETE en borrados exitosos y errores; registro adicional si falla el borrado del archivo anterior en `update` |
+| **Referencia** | `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md` |
+
+### 6.5 Catálogos — Patrón Auranet
 
 Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` importa los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece:
 
@@ -130,7 +145,7 @@ Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` import
 
 Además, cada catálogo mantiene sus rutas CRUD bajo `/api/cat-*` (ver sección siguiente).
 
-### 6.5 Convenciones para módulos de catálogo (Cat)
+### 6.6 Convenciones para módulos de catálogo (Cat)
 
 Al crear nuevos módulos de catálogo (tablas `Cat*`), se aplican las siguientes convenciones:
 
@@ -199,7 +214,7 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 - [x] Endurecimiento Auth: rate limiting por usuario (THROTTLE_*), mensajes genéricos en login/recuperación/verify, códigos 6 dígitos
 - [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos
 - [x] Bitácora de auditoría consultable
-- [x] Subida de archivos a S3
+- [x] Archivos en S3: subida, actualización (reemplazo con borrado opcional del anterior) y eliminación por URL; bitácora; documentación Swagger del módulo S3
 - [x] Correos de confirmación y restablecimiento de contraseña
 - [x] Swagger documentado y accesible
 - [x] Catálogos API (20 catálogos: CatCategoriaLicencia, CatEstatus*, CatMarca*, CatModelo*, CatReferenciaServicio, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones, CatTelefonia, CatPlanesTelefonia) operativos
@@ -237,7 +252,7 @@ Quedan **fuera del alcance** de este contrato:
 |-----------|-----------|-------------|
 | Contexto del proyecto | `docs/CONTEXTO-PROYECTO.md` | Visión, estado actual, endpoints, roadmap |
 | Análisis de BD | `docs/ANALISIS-BD-NEXT.md` | Estructura de tablas, relaciones, catálogos |
-| Flujos de implementación | `docs/FLUJO-*.md` | Pasos para crear catálogos (Cat*) y módulos operativos (Sims, Dispositivos) |
+| Flujos de implementación | `docs/FLUJO-*.md` | Pasos para crear catálogos (Cat*), módulos operativos, S3 update/delete (`FLUJO-MEJORA-S3-UPDATE-DELETE.md`) |
 | Seguridad Auth | `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/SEGURIDAD-LOGIN-NEXTAPI.md` | Hardening login, verify, recuperación |
 
 ---
@@ -248,4 +263,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.4: Patrón Auranet (catálogos unificados), Auth (refresh token SHA256, revocación en cambio de contraseña), Operadores + Licencias. Ver `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.5: S3 (`POST /upload`, `PATCH /update`, `DELETE /delete`, JWT, bitácora, Swagger). v1.4 y anteriores: Patrón Auranet, Auth (refresh SHA256, revocación en cambio de contraseña), Operadores + Licencias. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*

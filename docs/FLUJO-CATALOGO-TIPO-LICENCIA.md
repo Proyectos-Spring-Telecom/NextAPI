@@ -195,7 +195,7 @@ Convenciones NextAPI:
 | PATCH | `/:id` | update(id, dto, req.user.userId) |
 | PATCH | `estatus/:id` | updateEstatus(id, dto, req.user.userId) |
 
-**Importante:** Rutas concretas (`/list`) deben declararse antes que las parametrizadas (`/:id`). Rutas de estatus: `PATCH /estatus/:id` según CONTRATO 6.4 y CONTEXTO 4.1.
+**Importante:** Rutas concretas (`/list`) deben declararse antes que las parametrizadas (`/:id`). Rutas de estatus: `PATCH /estatus/:id` según CONTRATO 6.6 y CONTEXTO 4.1.
 
 ---
 
@@ -284,7 +284,7 @@ Este catálogo almacena tipos de licencia de conducir (Tipo A–E, Federal). Es 
 
 ## 12. Referencias
 
-- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Sección 6 (Especificaciones API), 6.4 (Convenciones catálogos)
+- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Sección 6 (Especificaciones API), 6.6 (Convenciones catálogos)
 - `docs/CONTEXTO-PROYECTO.md` — Sección 4.1 (Estructura estándar módulos de catálogo), 4.2 (LicenciasModule)
 - `docs/RESUMEN-BD-Next20260309.md` — CatTipoLicencia en BD (pendiente API)
 

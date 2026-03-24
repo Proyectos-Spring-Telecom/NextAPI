@@ -20,6 +20,7 @@ import {
 import {
   EnumModulos,
 } from 'src/common/estatus.enum';
+import { S3Service } from 'src/s3/s3.service';
 
 @Injectable()
 export class ClientesService {
@@ -27,6 +28,7 @@ export class ClientesService {
     @InjectRepository(Clientes)
     private readonly clienteRepository: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
+    private readonly s3Service: S3Service,
   ) { }
 
   // ========================================
@@ -35,6 +37,10 @@ export class ClientesService {
   async createCliente(
     createClienteDto: CreateClienteDto,
     idUser: number,
+    fileActa?: Express.Multer.File,
+    fileComprobante?: Express.Multer.File,
+    fileConstanciaSituacionFiscal?: Express.Multer.File,
+    fileLogotipo?: Express.Multer.File,
   ): Promise<ApiCrudResponse> {
     try {
       //Buscamos al cliente y verificamos
@@ -49,8 +55,83 @@ export class ClientesService {
         );
       }
 
+      const {
+        actaConstitutiva: dtoActa,
+        comprobanteDomicilio: dtoComp,
+        constanciaSituacionFiscal: dtoCsf,
+        logotipo: dtoLogo,
+        ...restDto
+      } = createClienteDto;
+
+      const urlFromBody = (v: string | null | undefined) =>
+        v && String(v).trim() ? String(v).trim() : null;
+
+      let actaConstitutiva = urlFromBody(dtoActa);
+      let comprobanteDomicilio = urlFromBody(dtoComp);
+      let constanciaSituacionFiscal = urlFromBody(dtoCsf);
+      let logotipo = urlFromBody(dtoLogo);
+
+      if (fileActa) {
+        const { url } = await this.s3Service.uploadFile(
+          fileActa,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        actaConstitutiva = url;
+      }
+      if (fileComprobante) {
+        const { url } = await this.s3Service.uploadFile(
+          fileComprobante,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        comprobanteDomicilio = url;
+      }
+      if (fileConstanciaSituacionFiscal) {
+        const { url } = await this.s3Service.uploadFile(
+          fileConstanciaSituacionFiscal,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        constanciaSituacionFiscal = url;
+      }
+      if (fileLogotipo) {
+        const { url } = await this.s3Service.uploadFile(
+          fileLogotipo,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        logotipo = url;
+      }
+
+      if (!actaConstitutiva?.trim()) {
+        throw new BadRequestException(
+          'Debe proporcionar el acta constitutiva (URL o archivo PDF).',
+        );
+      }
+      if (!comprobanteDomicilio?.trim()) {
+        throw new BadRequestException(
+          'Debe proporcionar el comprobante de domicilio (URL o archivo PDF).',
+        );
+      }
+      if (!constanciaSituacionFiscal?.trim()) {
+        throw new BadRequestException(
+          'Debe proporcionar la constancia de situación fiscal (URL o archivo PDF).',
+        );
+      }
+
       //Creamos el nuevo cliente
-      const clienteData = await this.clienteRepository.create(createClienteDto);
+      const clienteData = await this.clienteRepository.create({
+        ...restDto,
+        actaConstitutiva,
+        comprobanteDomicilio,
+        constanciaSituacionFiscal,
+        logotipo,
+      });
       const clienteCreado = await this.clienteRepository.save(clienteData);
 
       //-----Registro en la bitacora----- SUCCESS
@@ -434,6 +515,10 @@ ORDER BY Id ASC
     id: number,
     idUser: number,
     updateClienteDto: UpdateClienteDto,
+    fileActa?: Express.Multer.File,
+    fileComprobante?: Express.Multer.File,
+    fileConstanciaSituacionFiscal?: Express.Multer.File,
+    fileLogotipo?: Express.Multer.File,
   ): Promise<ApiCrudResponse> {
     try {
       //Buscamos al cliente y verificamos
@@ -446,8 +531,70 @@ ORDER BY Id ASC
         );
       }
 
+      const {
+        actaConstitutiva: dtoActa,
+        comprobanteDomicilio: dtoComp,
+        constanciaSituacionFiscal: dtoCsf,
+        logotipo: dtoLogo,
+        ...restDto
+      } = updateClienteDto;
+
+      const payload: Record<string, unknown> = { ...restDto };
+
+      if (fileActa) {
+        const { url } = await this.s3Service.updateFile(
+          Cliente.actaConstitutiva,
+          fileActa,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        payload.actaConstitutiva = url;
+      } else if (dtoActa !== undefined) {
+        payload.actaConstitutiva = dtoActa;
+      }
+
+      if (fileComprobante) {
+        const { url } = await this.s3Service.updateFile(
+          Cliente.comprobanteDomicilio,
+          fileComprobante,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        payload.comprobanteDomicilio = url;
+      } else if (dtoComp !== undefined) {
+        payload.comprobanteDomicilio = dtoComp;
+      }
+
+      if (fileConstanciaSituacionFiscal) {
+        const { url } = await this.s3Service.updateFile(
+          Cliente.constanciaSituacionFiscal,
+          fileConstanciaSituacionFiscal,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        payload.constanciaSituacionFiscal = url;
+      } else if (dtoCsf !== undefined) {
+        payload.constanciaSituacionFiscal = dtoCsf;
+      }
+
+      if (fileLogotipo) {
+        const { url } = await this.s3Service.updateFile(
+          Cliente.logotipo,
+          fileLogotipo,
+          'clientes',
+          idUser,
+          EnumModulos.CLIENTES,
+        );
+        payload.logotipo = url;
+      } else if (dtoLogo !== undefined) {
+        payload.logotipo = dtoLogo;
+      }
+
       //Actualizamos datos del cliente
-      await this.clienteRepository.update(id, updateClienteDto);
+      await this.clienteRepository.update(id, payload as Partial<Clientes>);
 
       //-----Registro en la bitacora----- SUCCESS
       const querylogger = { updateClienteDto };

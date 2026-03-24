@@ -87,7 +87,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 | ModulosModule | ✅ | Catálogo de módulos del sistema |
 | Bitacora | ✅ | Auditoría de acciones |
 | MailModule | ✅ | Confirmación de cuenta, recuperación de contraseña (sin rutas HTTP; servicio inyectable) |
-| S3Module | ✅ | Documentos, fotos, evidencias |
+| S3Module | ✅ | AWS S3: `POST /upload`, `PATCH /update` (reemplazo: sube nuevo, borra `oldUrl` en segundo plano), `DELETE /delete` (por URL). JWT obligatorio; `idUsuario` en bitácora desde el token. Carpetas `folder`: clientes, operadores, usuarios, vehiculos, pasajeros. Swagger documentado en `/api/docs`. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`. |
 
 **Multitenancy:** Todo registro tiene `IdCliente`. El TenantGuard (o equivalente) debe extraer `IdCliente` del JWT e inyectarlo en las queries.
 
@@ -214,7 +214,7 @@ src/
 - **Auth:** `POST /login` devuelve `{ token, refreshToken, expiresIn }`; `POST /login/operador/accesso/nip` devuelve `{ accessToken, refreshToken, expiresIn }`. Renovación con **`POST /login/refresh`** (body `{ refreshToken }`) → `{ token, accessToken, expiresIn }`. Cierre de sesión con **`POST /login/logout`** (JWT Bearer, revoca refresh token). Cambio de contraseña (Auth `POST /login/cambiar/accesso` y Usuarios `PATCH /actualizar/contrasena`) revoca el refresh token. Refresh token hasheado con **SHA256** en BD (`TokenHash`). Perfil en **`GET /login/me`**. Errores de login unificados (*Credenciales inválidas*). Recuperación: mensaje genérico. Verify: código **6 dígitos**. Rate limiting **por usuario** (keyGenerator usa `jwt.decode`, no `jwt.verify`, para evitar doble verificación y permitir identificar usuarios con token expirado). Variables `THROTTLE_*`.
 - **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant
 - **Bitácora:** Auditoría de acciones con paginación
-- **S3:** Subida de archivos (PNG, JPG, JPEG, PDF) hasta 10 MB
+- **S3:** `POST /api/s3/upload` (multipart), `PATCH /api/s3/update` (multipart + `oldUrl` opcional), `DELETE /api/s3/delete` (JSON `fileUrl` + `idModule`). Tipos PNG, JPEG, PDF; límite `UPLOAD_MAX_SIZE`. Todos los endpoints con JWT; roles 1, 2, 3. Bitácora en subidas, borrados y errores de reemplazo. `S3Service`: `uploadFile`, `deleteFile`, `updateFile`, `getPresignedUrl`.
 - **Mail:** Confirmación de cuenta y restablecimiento de contraseña (Nodemailer, sin rutas HTTP, servicio inyectable)
 - **JWT + JwtAuthGuard + RolesGuard + @Roles()**
 - **Validadores:** `MatchPasswordConstraint` (password/confirmación), `PinValidator` (NIP 4 dígitos)
@@ -468,13 +468,17 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 ### S3 (`/api/s3`)
 
+Todos los endpoints exigen **Authorization: Bearer** y `@Roles(1, 2, 3)`. El **usuario en bitácora** es `req.user.userId` del JWT (no se envía en body).
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/upload` | Subir archivo (multipart: `file`, `folder`, `idModule`; JWT) |
-| PATCH | `/update` | Reemplazar archivo (multipart: `file`, `folder`, `idModule`, `oldUrl` opcional; JWT) |
-| DELETE | `/delete` | Eliminar por URL (JSON: `fileUrl`, `idModule`; JWT) |
+| POST | `/upload` | Subir archivo. `multipart/form-data`: `file`, `folder`, `idModule`. Respuesta `{ url }`. |
+| PATCH | `/update` | Reemplazar: sube `file` nuevo; si viene `oldUrl`, intenta eliminar el objeto anterior en S3 en segundo plano. Respuesta `{ url }`. |
+| DELETE | `/delete` | Eliminar objeto en bucket. Body JSON: `fileUrl` (URL completa guardada en BD), `idModule`. Respuesta `{ deleted, key? }`. |
 
-Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`.
+**`folder` permitido:** `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros`.
+
+Documentación detallada en Swagger (`/api/docs`, tag **S3 - archivos**). Flujo técnico: `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`. Propuesta multipart en entidades (ej. clientes): `docs/FLUJO-SUBIDA-IMAGENES-CLIENTES-S3.md`.
 
 ### Catálogos (CRUD estándar)
 
@@ -548,4 +552,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado (marzo 2026): Patrón Auranet (catálogos en `src/catalogos/`), refresh token SHA256, integración Operadores+Licencias, keyGenerator con jwt.decode. Ver `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.4.*
+*Documento actualizado (marzo 2026): S3 (`upload` / `update` / `delete`, JWT, bitácora, Swagger), Patrón Auranet, refresh token SHA256, Operadores+Licencias, keyGenerator con jwt.decode. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md` y `docs/CONTRATO-PROYECTO-NEXTAPI.md` v1.5.*

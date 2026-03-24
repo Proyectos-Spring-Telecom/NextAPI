@@ -3,10 +3,10 @@
 Este documento describe el flujo que se seguirá para alinear el proyecto NextAPI con las especificaciones de `CONTRATO-PROYECTO-NEXTAPI.md` y `CONTEXTO-PROYECTO.md`.
 
 **Referencias:**
-- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Secciones 6.2, 6.4, 6.5 (Patrón Auranet)
+- `docs/CONTRATO-PROYECTO-NEXTAPI.md` — Secciones 6.2, 6.4 (S3), 6.5–6.6 (Patrón Auranet y convenciones Cat)
 - `docs/CONTEXTO-PROYECTO.md` — Sección 4.1 (Estructura estándar), 11 (Endpoints)
 
-**Nota:** Los catálogos están bajo `src/catalogos/` (Patrón Auranet, v1.4).
+**Nota:** Los catálogos están bajo `src/catalogos/` (Patrón Auranet). Contrato v1.5+ incluye sección 6.4 S3.
 
 ---
 
@@ -17,12 +17,12 @@ Este documento describe el flujo que se seguirá para alinear el proyecto NextAP
 | Documento | Especificación |
 |-----------|----------------|
 | CONTRATO 6.2 | Decorador `@Roles()` para control de acceso |
-| CONTRATO 6.4 (catálogos) | `JwtAuthGuard` + `RolesGuard` + `@Roles()` |
+| CONTRATO 6.5–6.6 (catálogos) | `JwtAuthGuard` + `RolesGuard` + `@Roles()` |
 | CONTEXTO 4.1 | `Guards`: `JwtAuthGuard` + `RolesGuard` + `@Roles()` |
 
 **Interpretación:** El decorador `@Roles()` se usa para control de acceso. Cuando se invoca sin argumentos, el `RolesGuard` permite el acceso a cualquier usuario autenticado. Cuando se invoca con IDs (`@Roles(1)`, `@Roles(1, 2, 3)`), restringe a esos roles.
 
-**CONTEXTO sección 10 (Endpoints)** especifica restricciones por rol en módulos core:
+**CONTEXTO sección 11 (Endpoints)** especifica restricciones por rol en módulos core:
 - Clientes: Crear (Roles 1), Eliminar (Roles 1)
 - Usuarios: Crear (Roles 1), Eliminar (Roles 1)
 - Roles, Permisos, Modulos: Crear (Roles 1), Eliminar (Roles 1)
@@ -32,9 +32,9 @@ Este documento describe el flujo que se seguirá para alinear el proyecto NextAP
 
 | Documento | Especificación |
 |-----------|----------------|
-| CONTRATO 6.4 | `PATCH /estatus/:id` (explícito) |
+| CONTRATO 6.6 | `PATCH /estatus/:id` (explícito) |
 | CONTEXTO 4.1 | `PATCH /estatus/:id` (explícito) |
-| CONTEXTO 10 | Tablas de endpoints: `PATCH /estatus/:id` |
+| CONTEXTO 11 | Tablas de endpoints: `PATCH /estatus/:id` |
 
 **Convención:** La ruta para cambiar estatus (soft delete) debe ser `PATCH /estatus/:id`, no `PATCH /:id/estatus`.
 
