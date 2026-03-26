@@ -3,7 +3,7 @@
  */
 export const clientesCreateMultipartApiBody = {
   description:
-    '**Creación:** `rfc`, `tipoPersona`, `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` son obligatorios: URL en texto o archivo PDF por cada documento. Logotipo opcional (PNG/JPEG). Si solo adjunta PDF, el body recibe un marcador interno para validación.',
+    '**Creación:** `rfc`, `tipoPersona`, `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` son obligatorios: URL en texto o archivo PDF por cada documento. Logotipo opcional (PNG/JPEG). Si solo adjunta PDF, el body recibe un marcador interno para validación. **No envíe `estatus`** (alta activa por defecto en servidor; cambio de estatus vía `PATCH /clientes/estatus/:id`).',
   schema: {
     type: 'object',
     required: [
@@ -63,19 +63,14 @@ export const clientesCreateMultipartApiBody = {
         format: 'binary',
         description: 'Imagen PNG o JPEG',
       },
-      estatus: {
-        type: 'string',
-        description: '0 o 1 (opcional al crear)',
-        example: '1',
-      },
     },
   },
 } as const;
 
-/** PATCH: todos los campos opcionales */
+/** PATCH: todos los campos opcionales (sin `estatus`; usar `PATCH /clientes/estatus/:id`) */
 export const clientesUpdateMultipartApiBody = {
   description:
-    'Actualización parcial multipart. Solo envíe los campos a modificar. Archivos nuevos reemplazan los existentes en S3 (updateFile).',
+    'Actualización parcial multipart. Solo envíe los campos a modificar. Archivos nuevos reemplazan los existentes en S3 (updateFile). **No incluya `estatus`** — use `PATCH /clientes/estatus/:id`.',
   schema: {
     type: 'object',
     properties: {

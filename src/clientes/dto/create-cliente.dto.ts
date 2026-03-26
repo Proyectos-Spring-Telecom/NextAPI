@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiHideProperty, ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
   IsString,
@@ -172,11 +172,12 @@ export class CreateClienteDto {
   })
   logotipo?: string;
 
-  // ⚡ Estatus
+  // ⚡ Estatus (oculto en Swagger en POST/PATCH cliente; usar PATCH /clientes/estatus/:id)
+  @ApiHideProperty()
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: "Estatus debe ser 0 ó 1" })
   @IsIn([0, 1], { message: "Solo puede ser 0 ó 1" })
-  @ApiProperty({ description: "Estatus del cliente", example: 1 })
   estatus?: number = 1;
+  
 }

@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.5 |
-| **Fecha de vigencia** | Marzo 2026 (S3: actualizar/eliminar, Swagger; Patrón Auranet) |
+| **Versión del documento** | 1.6 |
+| **Fecha de vigencia** | Marzo 2026 (Clientes: multipart + documentos obligatorios; S3 MIME alineado; `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`) |
 
 ---
 
@@ -48,13 +48,13 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | Módulo | Funcionalidad | Rutas base |
 |--------|---------------|------------|
 | **Auth** | Login (`accessToken`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), verificación (código 6 dígitos, intentos limitados), `POST /login/refresh` (refresh token almacenado con SHA256 en BD), `POST /login/logout`, rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
-| **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar | `/api/clientes` |
+| **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar. **`POST /` y `PATCH /:id`** consumen **`multipart/form-data`**: subida vía `S3Service` a carpeta `clientes`, `idModule` Clientes. En **creación**, son **obligatorios** `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` (cada uno como **URL en texto** o **archivo PDF** en el mismo nombre de campo). **Logotipo** opcional (PNG/JPEG). Validación MIME **por campo** en el módulo Clientes (no reglas de negocio en S3). Ver §6.5 y `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. | `/api/clientes` |
 | **Usuarios** | ABM, cambio de contraseña propia, gestión de NIP | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
 | **Permisos** | ABM, permisos agrupados por usuario | `/api/permisos` |
 | **Modulos** | ABM del catálogo de módulos | `/api/modulos` |
 | **Bitácora** | Consulta de auditoría de acciones | `/api/bitacora` |
-| **S3** | Subida (`POST /upload`), reemplazo (`PATCH /update`: nuevo archivo + borrado opcional de `oldUrl` en segundo plano), eliminación (`DELETE /delete` por URL). PNG, JPG, JPEG, PDF; límite `UPLOAD_MAX_SIZE`. JWT obligatorio; roles 1, 2, 3; `idUsuario` en bitácora desde token. Carpetas: clientes, operadores, usuarios, vehiculos, pasajeros. Swagger documentado. | `/api/s3` |
+| **S3** | Subida (`POST /upload`), reemplazo (`PATCH /update`: nuevo archivo + borrado opcional de `oldUrl` en segundo plano), eliminación (`DELETE /delete` por URL). Tipos aceptados en el servicio genérico: `image/png`, `image/jpeg`, `image/jpg`, `application/pdf`; límite `UPLOAD_MAX_SIZE`. JWT obligatorio; roles 1, 2, 3; `idUsuario` en bitácora desde token. Carpetas: clientes, operadores, usuarios, vehiculos, pasajeros. Swagger documentado. | `/api/s3` |
 | **Catálogos** | 20 catálogos (CatCategoriaLicencia, CatEstatus*, CatMarca*, CatModelo*, etc.) — Patrón Auranet en `src/catalogos/`, CRUD estándar por prefijo, Bitácora, soft delete; **endpoint unificado** `GET /api/catalogos/:nombreCatalogo` (ej: `cat-tipo-combustible`) | `/api/cat-*`, `/api/catalogos/:nombre` |
 | **Sims** | ABM de tarjetas SIM (multitenancy, ICC único) | `/api/sims` |
 | **Dispositivos** | ABM de dispositivos GPS (multitenancy, NumeroSerie único) | `/api/dispositivos` |
@@ -130,12 +130,26 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **PATCH /api/s3/update** | `multipart/form-data`: `file`, `folder`, `idModule`, `oldUrl` opcional. Sube primero; si hay `oldUrl`, elimina el objeto anterior en S3 sin bloquear la respuesta. Respuesta `{ url }` |
 | **DELETE /api/s3/delete** | Body JSON: `fileUrl`, `idModule`. Respuesta `{ deleted, key? }` |
 | **folder** | Valores permitidos: `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros` |
-| **Tipos MIME** | `image/png`, `image/jpeg`, `application/pdf` |
+| **Tipos MIME** | `image/png`, `image/jpeg`, `image/jpg`, `application/pdf` (validación genérica del `S3Service`; restricciones por dominio, p. ej. PDF vs imagen en Clientes, en el módulo correspondiente) |
 | **Tamaño** | Máximo según variable `UPLOAD_MAX_SIZE` (bytes) |
 | **Bitácora** | CREATE en subidas; DELETE en borrados exitosos y errores; registro adicional si falla el borrado del archivo anterior en `update` |
 | **Referencia** | `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md` |
 
-### 6.5 Catálogos — Patrón Auranet
+### 6.5 Clientes — creación y actualización con documentos (multipart)
+
+| Elemento | Especificación |
+|----------|----------------|
+| **Autenticación** | JWT Bearer; `JwtAuthGuard`, `RolesGuard` (según `ClientesController`) |
+| **POST /api/clientes** | `Content-Type: multipart/form-data`. Campos de texto según `CreateClienteDto` (`rfc`, `tipoPersona`, etc.). Archivos opcionales de clave: `actaConstitutiva`, `comprobanteDomicilio`, `constanciaSituacionFiscal`, `logotipo`. **Obligatorios en creación** los tres documentos: cada uno debe llegar como **parte de archivo PDF** y/o **campo de texto con URL** (flujo híbrido); el servicio valida que exista URL final tras subida. **Logotipo** solo imagen (PNG/JPEG). Límite de tamaño por archivo: `UPLOAD_MAX_SIZE` (Multer + validación en `S3Service`). |
+| **PATCH /api/clientes/:id** | Mismo `multipart/form-data`; actualización parcial. Si se envía un archivo nuevo para un documento o logo, se usa `S3Service.updateFile` (sube y borra `oldUrl` en segundo plano cuando aplique). |
+| **Carpeta S3** | Prefijo `clientes` (misma convención que `POST /api/s3/upload` con `folder=clientes`). |
+| **Bitácora módulo Clientes** | Operaciones de negocio en Clientes según reglas existentes; subidas registradas también desde `S3Service` con `EnumModulos.CLIENTES`. |
+| **Regla de diseño** | La **Separación MIME por campo** (PDF en acta/comprobante/constancia; imagen en logotipo) se implementa en **Clientes** (`FileFieldsInterceptor` / DTO / servicio), no como política específica dentro del módulo S3. |
+| **Referencia** | `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md` |
+
+**Nota de compatibilidad:** `POST /` y `PATCH /:id` de Clientes **no** aceptan `application/json` para el cuerpo principal del create/update con esta implementación; integraciones que sólo envíen JSON deben usar el flujo alterno (p. ej. `POST /api/s3/upload` y luego persistir URLs) o adaptarse a multipart.
+
+### 6.6 Catálogos — Patrón Auranet
 
 Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` importa los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece:
 
@@ -145,7 +159,7 @@ Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` import
 
 Además, cada catálogo mantiene sus rutas CRUD bajo `/api/cat-*` (ver sección siguiente).
 
-### 6.6 Convenciones para módulos de catálogo (Cat)
+### 6.7 Convenciones para módulos de catálogo (Cat)
 
 Al crear nuevos módulos de catálogo (tablas `Cat*`), se aplican las siguientes convenciones:
 
@@ -212,7 +226,7 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 
 - [x] Login y autenticación JWT operativos (accessToken + refreshToken + `expiresIn`; perfil en `GET /login/me`; `POST /login/refresh`, `POST /login/logout`)
 - [x] Endurecimiento Auth: rate limiting por usuario (THROTTLE_*), mensajes genéricos en login/recuperación/verify, códigos 6 dígitos
-- [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos
+- [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos (Clientes: creación/actualización con `multipart/form-data`, documentos obligatorios en alta, integración S3 carpeta `clientes`)
 - [x] Bitácora de auditoría consultable
 - [x] Archivos en S3: subida, actualización (reemplazo con borrado opcional del anterior) y eliminación por URL; bitácora; documentación Swagger del módulo S3
 - [x] Correos de confirmación y restablecimiento de contraseña
@@ -252,7 +266,7 @@ Quedan **fuera del alcance** de este contrato:
 |-----------|-----------|-------------|
 | Contexto del proyecto | `docs/CONTEXTO-PROYECTO.md` | Visión, estado actual, endpoints, roadmap |
 | Análisis de BD | `docs/ANALISIS-BD-NEXT.md` | Estructura de tablas, relaciones, catálogos |
-| Flujos de implementación | `docs/FLUJO-*.md` | Pasos para crear catálogos (Cat*), módulos operativos, S3 update/delete (`FLUJO-MEJORA-S3-UPDATE-DELETE.md`) |
+| Flujos de implementación | `docs/FLUJO-*.md` | Incluye Clientes multipart (`FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`), S3 update/delete (`FLUJO-MEJORA-S3-UPDATE-DELETE.md`), catálogos (Cat*), módulos operativos |
 | Seguridad Auth | `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/SEGURIDAD-LOGIN-NEXTAPI.md` | Hardening login, verify, recuperación |
 
 ---
@@ -263,4 +277,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). v1.5: S3 (`POST /upload`, `PATCH /update`, `DELETE /delete`, JWT, bitácora, Swagger). v1.4 y anteriores: Patrón Auranet, Auth (refresh SHA256, revocación en cambio de contraseña), Operadores + Licencias. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). **v1.6:** Clientes `POST/PATCH` multipart, documentos obligatorios en creación, reglas MIME por campo en Clientes, MIME S3 con `image/jpg`. **v1.5:** S3 (`POST /upload`, `PATCH /update`, `DELETE /delete`, JWT, bitácora, Swagger). Versiones anteriores: Patrón Auranet, Auth (refresh SHA256), Operadores + Licencias. Ver `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
