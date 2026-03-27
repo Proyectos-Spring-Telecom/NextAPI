@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.7 |
-| **Fecha de vigencia** | Marzo 2026 (Clientes multipart; Usuarios `POST/PATCH` en JSON + foto vía S3 genérico; guías `FLUJO-CLIENTES-*` y `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`) |
+| **Versión del documento** | 1.8 |
+| **Fecha de vigencia** | Marzo 2026 (alineación de contrato con respuestas Auth vigentes; Clientes multipart; Usuarios `POST/PATCH` en JSON + foto vía S3 genérico; guías `FLUJO-CLIENTES-*` y `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`) |
 
 ---
 
@@ -47,7 +47,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 
 | Módulo | Funcionalidad | Rutas base |
 |--------|---------------|------------|
-| **Auth** | Login (`accessToken`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), verificación (código 6 dígitos, intentos limitados), `POST /login/refresh` (refresh token almacenado con SHA256 en BD), `POST /login/logout`, rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
+| **Auth** | Login (`token`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), `POST /login/refresh` (retorna `token` y `accessToken`; refresh almacenado con SHA256 en BD), `POST /login/logout`, verificación (código 6 dígitos, intentos limitados), rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
 | **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar. **`POST /` y `PATCH /:id`** consumen **`multipart/form-data`**: subida vía `S3Service` a carpeta `clientes`, `idModule` Clientes. En **creación**, son **obligatorios** `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` (cada uno como **URL en texto** o **archivo PDF** en el mismo nombre de campo). **Logotipo** opcional (PNG/JPEG). Validación MIME **por campo** en el módulo Clientes (no reglas de negocio en S3). Ver §6.5 y `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. | `/api/clientes` |
 | **Usuarios** | ABM; **`POST /` y `PATCH /:id`** con cuerpo **`application/json`** (`CreateUsuarioDto` / `UpdateUsuarioDto`). Campo **`fotoPerfil`** opcional como **URL**; imagen vía **`POST /api/s3/upload`** (`folder=usuarios`, `idModule=2`). Contraseña propia, NIP. Ver §6.6. *Guía de diseño* (multipart no implementado en API): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
@@ -110,10 +110,10 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 - Decorador `@Roles()` para control de acceso
 - **Rate limiting:** guard global (`ThrottlerGuard`) y límites por **usuario** en Auth (login, PIN, verify, recuperación, refresh, logout) mediante `keyGenerator` (userId/userName); límites configurables con variables `THROTTLE_*`
 - **Login:** respuesta unificada ante fallo (`401` — *Credenciales inválidas*); no enumeración de usuarios; `PasswordHash` / `PinHash` no se exponen en consultas estándar
-- **Flujo cliente post-login:** `POST /login` o `POST /login/operador/accesso/nip` → `{ accessToken, refreshToken, expiresIn }`; renovar sesión con **`POST /login/refresh`** (body `{ refreshToken }`) — refresh token almacenado con SHA256 en BD; cerrar sesión con **`POST /login/logout`** (JWT Bearer); datos de usuario y permisos vía **`GET /login/me`**; cambio de contraseña revoca el refresh token del usuario.
+- **Flujo cliente post-login:** `POST /login` → `{ token, refreshToken, expiresIn }`; `POST /login/operador/accesso/nip` → `{ accessToken, refreshToken, expiresIn }`; renovar sesión con **`POST /login/refresh`** (body `{ refreshToken }`) → `{ token, accessToken, expiresIn }` (compatibilidad). El refresh token se almacena con SHA256 en BD; cerrar sesión con **`POST /login/logout`** (JWT Bearer); datos de usuario y permisos vía **`GET /login/me`**; cambio de contraseña revoca el refresh token del usuario.
 - **Recuperación de contraseña:** respuesta HTTP siempre la misma (no revela si el correo existe); límite interno por usuario/correo
 - **Verificación de cuenta:** código numérico de **6 dígitos**, vigencia y contador de intentos fallidos (tabla `CodigoAutenticacion`)
-- Roles: ()
+- Roles de referencia: `1=SuperAdministrador`, `2=Administrador`, `3=Monitorista` (ver implementación vigente de guards y permisos por módulo)
 
 ### 6.3 Documentación
 
@@ -234,7 +234,7 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 
 ### Fase implementada
 
-- [x] Login y autenticación JWT operativos (accessToken + refreshToken + `expiresIn`; perfil en `GET /login/me`; `POST /login/refresh`, `POST /login/logout`)
+- [x] Login y autenticación JWT operativos (`POST /login` retorna `token`; PIN retorna `accessToken`; refresh retorna `token` y `accessToken`; perfil en `GET /login/me`; `POST /login/refresh`, `POST /login/logout`)
 - [x] Endurecimiento Auth: rate limiting por usuario (THROTTLE_*), mensajes genéricos en login/recuperación/verify, códigos 6 dígitos
 - [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos (Clientes: `multipart/form-data` en alta/edición, documentos obligatorios en alta, S3 `clientes`; Usuarios: JSON en alta/edición, `fotoPerfil` como URL y S3 `usuarios` vía API genérica)
 - [x] Bitácora de auditoría consultable
@@ -287,4 +287,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). **v1.7:** §6.6 Usuarios en JSON + foto por URL/S3 genérico; aclaración de guía `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. **v1.6:** Clientes `POST/PATCH` multipart, documentos obligatorios, MIME por campo en Clientes, S3 con `image/jpg`. **v1.5:** S3 upload/update/delete, JWT, bitácora, Swagger. Ver `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`, `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). **v1.8:** alineación Auth (`token` en login estándar, `accessToken` en PIN y compatibilidad en refresh), ajuste de bloque de roles de referencia, conservación de Clientes multipart y Usuarios JSON. **v1.7:** §6.6 Usuarios en JSON + foto por URL/S3 genérico; aclaración de guía `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. **v1.6:** Clientes `POST/PATCH` multipart, documentos obligatorios, MIME por campo en Clientes, S3 con `image/jpg`. **v1.5:** S3 upload/update/delete, JWT, bitácora, Swagger. Ver `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`, `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*

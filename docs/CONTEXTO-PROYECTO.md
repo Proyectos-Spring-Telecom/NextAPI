@@ -79,7 +79,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 | Módulo | Estado | Responsabilidad |
 |--------|--------|-----------------|
-| AuthModule | ✅ | Login (`accessToken`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador, recuperación/confirmación, verify (6 dígitos), `POST /login/refresh`, `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*) |
+| AuthModule | ✅ | Login (`token`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador (`accessToken`), recuperación/confirmación, verify (6 dígitos), `POST /login/refresh` (`token` y `accessToken`), `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*) |
 | ClientesModule | ✅ | ABM de clientes (tenants), jerarquía padre-hijo, RFC único. **`POST /clientes`** y **`PATCH /clientes/:id`** usan **`multipart/form-data`**: integración `S3Module`, subidas con `folder=clientes` y `EnumModulos.CLIENTES`. En **alta**, obligatorios acta, comprobante y constancia (PDF por archivo o URL en texto); logotipo opcional (PNG/JPEG). Filtro MIME por **nombre de campo** en Clientes (`clientes-upload.interceptor.ts`), no en S3. Detalle: `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. |
 | UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales. **`POST /usuarios`** y **`PATCH /usuarios/:id`** usan **`application/json`**; **`fotoPerfil`** opcional como **URL** (subida previa con **`POST /api/s3/upload`**, `folder=usuarios`, `idModule=2`). Guía de diseño *multipart* (no implementada en estos endpoints): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. |
 | RolesModule | ✅ | Definición de roles (Admin, Supervisor, Monitorista, etc.) |
@@ -376,8 +376,8 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/login` | Login userName + password → `{ accessToken, refreshToken, expiresIn }` (throttle por usuario) |
-| POST | `/login/operador/accesso/nip` | Login por PIN → mismo formato que `/login` |
+| POST | `/login` | Login userName + password → `{ token, refreshToken, expiresIn }` (throttle por usuario) |
+| POST | `/login/operador/accesso/nip` | Login por PIN → `{ accessToken, refreshToken, expiresIn }` |
 | GET | `/login/me` | Perfil completo (rol, cliente, permisos, etc.); **JWT Bearer obligatorio** |
 | POST | `/login/refresh` | Renovar accessToken: body `{ refreshToken }` → `{ token, accessToken, expiresIn }` (throttle por usuario) |
 | POST | `/login/logout` | Cerrar sesión (revoca refresh token); **JWT Bearer obligatorio** (throttle por usuario) |
@@ -388,7 +388,7 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 
 **Contrato para el cliente (Angular / consumidores):**
 
-1. Tras login exitoso, guardar `accessToken` y `refreshToken`; usar `expiresIn` para renovar sesión.
+1. Tras login exitoso, guardar el token de acceso (`token` en login estándar o `accessToken` en login por PIN) y `refreshToken`; usar `expiresIn` para renovar sesión.
 2. Antes de que expire el access token, llamar **`POST /api/login/refresh`** con body `{ refreshToken }` para obtener nuevo `accessToken`.
 3. Para cerrar sesión en el dispositivo, llamar **`POST /api/login/logout`** con `Authorization: Bearer <accessToken>`.
 4. Llamar **`GET /api/login/me`** con header `Authorization: Bearer <accessToken>` para obtener el objeto de sesión (usuario, permisos, rol, cliente).
