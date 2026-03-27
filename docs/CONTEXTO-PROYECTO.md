@@ -81,7 +81,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 |--------|--------|-----------------|
 | AuthModule | ✅ | Login (`accessToken`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador, recuperación/confirmación, verify (6 dígitos), `POST /login/refresh`, `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*) |
 | ClientesModule | ✅ | ABM de clientes (tenants), jerarquía padre-hijo, RFC único. **`POST /clientes`** y **`PATCH /clientes/:id`** usan **`multipart/form-data`**: integración `S3Module`, subidas con `folder=clientes` y `EnumModulos.CLIENTES`. En **alta**, obligatorios acta, comprobante y constancia (PDF por archivo o URL en texto); logotipo opcional (PNG/JPEG). Filtro MIME por **nombre de campo** en Clientes (`clientes-upload.interceptor.ts`), no en S3. Detalle: `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. |
-| UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales, foto de perfil |
+| UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales. **`POST /usuarios`** y **`PATCH /usuarios/:id`** usan **`application/json`**; **`fotoPerfil`** opcional como **URL** (subida previa con **`POST /api/s3/upload`**, `folder=usuarios`, `idModule=2`). Guía de diseño *multipart* (no implementada en estos endpoints): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. |
 | RolesModule | ✅ | Definición de roles (Admin, Supervisor, Monitorista, etc.) |
 | PermisosModule | ✅ | Permisos granulares por módulo, UsuariosPermisos |
 | ModulosModule | ✅ | Catálogo de módulos del sistema |
@@ -212,7 +212,7 @@ src/
 - **Prefijo global:** `/api` — todas las rutas bajo `http://localhost:3010/api`
 - **Swagger:** `http://localhost:3010/api/docs`
 - **Auth:** `POST /login` devuelve `{ token, refreshToken, expiresIn }`; `POST /login/operador/accesso/nip` devuelve `{ accessToken, refreshToken, expiresIn }`. Renovación con **`POST /login/refresh`** (body `{ refreshToken }`) → `{ token, accessToken, expiresIn }`. Cierre de sesión con **`POST /login/logout`** (JWT Bearer, revoca refresh token). Cambio de contraseña (Auth `POST /login/cambiar/accesso` y Usuarios `PATCH /actualizar/contrasena`) revoca el refresh token. Refresh token hasheado con **SHA256** en BD (`TokenHash`). Perfil en **`GET /login/me`**. Errores de login unificados (*Credenciales inválidas*). Recuperación: mensaje genérico. Verify: código **6 dígitos**. Rate limiting **por usuario** (keyGenerator usa `jwt.decode`, no `jwt.verify`, para evitar doble verificación y permitir identificar usuarios con token expirado). Variables `THROTTLE_*`.
-- **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant. **Clientes:** crear y actualizar cliente vía **`multipart/form-data`** (`FileFieldsInterceptor`, Multer memoria); persistencia de URLs S3 en `ActaConstitutiva`, `ComprobanteDomicilio`, `ConstanciaSituacionFiscal`, `Logotipo`; documentos obligatorios en creación (tres PDF o URLs); actualización con `S3Service.updateFile` cuando se reemplaza archivo.
+- **Clientes, Usuarios, Roles, Permisos, Modulos:** CRUD con paginación, listas sin paginar, filtrado por rol y tenant. **Clientes:** crear y actualizar vía **`multipart/form-data`**; URLs S3 en documentos y logotipo; documentos obligatorios en alta. **Usuarios:** crear y actualizar vía **`application/json`**; foto de perfil como URL opcional (típicamente tras `POST /api/s3/upload` con `folder=usuarios`).
 - **Bitácora:** Auditoría de acciones con paginación
 - **S3:** `POST /api/s3/upload` (multipart), `PATCH /api/s3/update` (multipart + `oldUrl` opcional), `DELETE /api/s3/delete` (JSON `fileUrl` + `idModule`). Tipos aceptados en servicio genérico: PNG, JPEG, JPG, PDF; límite `UPLOAD_MAX_SIZE`. Todos los endpoints con JWT; roles 1, 2, 3. Bitácora en subidas, borrados y errores de reemplazo. `S3Service`: `uploadFile`, `deleteFile`, `updateFile`, `getPresignedUrl`. Las reglas “solo PDF en documento X / solo imagen en logo” aplican en **módulos de dominio** (p. ej. Clientes), no como lógica añadida en `S3Service`.
 - **Mail:** Confirmación de cuenta y restablecimiento de contraseña (Nodemailer, sin rutas HTTP, servicio inyectable)
@@ -418,12 +418,14 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/list/cliente/:id` | Lista por cliente |
 | GET | `/:page/:limit` | Paginado |
 | GET | `/:id` | Por ID |
-| POST | `/` | Crear (Roles 1) |
-| PATCH | `/:id` | Actualizar |
+| POST | `/` | Crear (Roles 1) — **`application/json`**, `CreateUsuarioDto`; `fotoPerfil` opcional como URL; `permisosIds` como array numérico |
+| PATCH | `/:id` | Actualizar — **`application/json`**, `UpdateUsuarioDto`; `fotoPerfil` opcional como URL si se cambia imagen |
 | PATCH | `/estatus/:id` | Cambiar estatus |
 | PATCH | `/actualizar/contrasena` | Cambiar mi contraseña (usuario desde JWT) |
 | PATCH | `/mi-nip` | Crear o actualizar NIP (usuario desde JWT) |
 | DELETE | `/:id` | Eliminar (Roles 1) |
+
+**Foto de perfil:** subir imagen con **`POST /api/s3/upload`** (`folder=usuarios`, `idModule=2`) y enviar la URL en **`fotoPerfil`**. Patrón *multipart* directo en `POST/PATCH` usuarios: solo como referencia en `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md` (no es el contrato del API actual).
 
 ### Roles (`/api/roles`)
 
@@ -480,7 +482,7 @@ Todos los endpoints exigen **Authorization: Bearer** y `@Roles(1, 2, 3)`. El **u
 
 **`folder` permitido:** `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros`.
 
-Documentación detallada en Swagger (`/api/docs`, tag **S3 - archivos**). Flujo técnico: `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`. Clientes con multipart y documentos obligatorios: **`docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`**. Documento histórico/propuesta logotipo+foto: `docs/FLUJO-SUBIDA-IMAGENES-CLIENTES-S3.md` (parcialmente superado por el flujo unificado de form-data en Clientes).
+Documentación detallada en Swagger (`/api/docs`, tag **S3 - archivos**). Flujo técnico: `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`. **Clientes** multipart: `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. **Usuarios** (foto URL + guía futura multipart): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. Histórico logotipo Clientes: `docs/FLUJO-SUBIDA-IMAGENES-CLIENTES-S3.md`.
 
 ### Catálogos (CRUD estándar)
 
@@ -554,4 +556,4 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 
 ---
 
-*Documento actualizado (marzo 2026): Clientes `POST/PATCH` con `multipart/form-data`, documentos obligatorios en alta, MIME por campo en Clientes (`docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`); S3 (`upload` / `update` / `delete`, JWT, bitácora, Swagger, MIME incl. `image/jpg`); Patrón Auranet; refresh token SHA256; Operadores+Licencias; keyGenerator con jwt.decode. Contrato: `docs/CONTRATO-PROYECTO-NEXTAPI.md` **v1.6**. Ver también `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Documento actualizado (marzo 2026): Clientes `POST/PATCH` multipart (`docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`); Usuarios `POST/PATCH` en **JSON** y foto vía S3 genérico; guía usuarios `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. S3, Patrón Auranet, refresh SHA256, Operadores+Licencias, `THROTTLE_*`. Contrato: `docs/CONTRATO-PROYECTO-NEXTAPI.md` **v1.7**. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*

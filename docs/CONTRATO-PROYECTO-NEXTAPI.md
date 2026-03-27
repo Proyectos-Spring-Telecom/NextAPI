@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.6 |
-| **Fecha de vigencia** | Marzo 2026 (Clientes: multipart + documentos obligatorios; S3 MIME alineado; `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`) |
+| **Versión del documento** | 1.7 |
+| **Fecha de vigencia** | Marzo 2026 (Clientes multipart; Usuarios `POST/PATCH` en JSON + foto vía S3 genérico; guías `FLUJO-CLIENTES-*` y `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`) |
 
 ---
 
@@ -49,7 +49,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 |--------|---------------|------------|
 | **Auth** | Login (`accessToken`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), verificación (código 6 dígitos, intentos limitados), `POST /login/refresh` (refresh token almacenado con SHA256 en BD), `POST /login/logout`, rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
 | **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar. **`POST /` y `PATCH /:id`** consumen **`multipart/form-data`**: subida vía `S3Service` a carpeta `clientes`, `idModule` Clientes. En **creación**, son **obligatorios** `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` (cada uno como **URL en texto** o **archivo PDF** en el mismo nombre de campo). **Logotipo** opcional (PNG/JPEG). Validación MIME **por campo** en el módulo Clientes (no reglas de negocio en S3). Ver §6.5 y `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. | `/api/clientes` |
-| **Usuarios** | ABM, cambio de contraseña propia, gestión de NIP | `/api/usuarios` |
+| **Usuarios** | ABM; **`POST /` y `PATCH /:id`** con cuerpo **`application/json`** (`CreateUsuarioDto` / `UpdateUsuarioDto`). Campo **`fotoPerfil`** opcional como **URL**; imagen vía **`POST /api/s3/upload`** (`folder=usuarios`, `idModule=2`). Contraseña propia, NIP. Ver §6.6. *Guía de diseño* (multipart no implementado en API): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
 | **Permisos** | ABM, permisos agrupados por usuario | `/api/permisos` |
 | **Modulos** | ABM del catálogo de módulos | `/api/modulos` |
@@ -149,7 +149,17 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 
 **Nota de compatibilidad:** `POST /` y `PATCH /:id` de Clientes **no** aceptan `application/json` para el cuerpo principal del create/update con esta implementación; integraciones que sólo envíen JSON deben usar el flujo alterno (p. ej. `POST /api/s3/upload` y luego persistir URLs) o adaptarse a multipart.
 
-### 6.6 Catálogos — Patrón Auranet
+### 6.6 Usuarios — creación y actualización (JSON)
+
+| Elemento | Especificación |
+|----------|----------------|
+| **Autenticación** | JWT Bearer; `JwtAuthGuard`, `RolesGuard` (según `UsuariosController`) |
+| **POST /api/usuarios** | **`application/json`**. Cuerpo según `CreateUsuarioDto` (incl. `permisosIds`, hash de contraseña en claro para reglas de validación, etc.). **`fotoPerfil`** opcional: string con **URL** ya subida (flujo típico: `POST /api/s3/upload` con `folder=usuarios`, `idModule=2`). |
+| **PATCH /api/usuarios/:id** | **`application/json`** parcial según `UpdateUsuarioDto`; misma convención para **`fotoPerfil`** como URL si se actualiza la imagen. |
+| **Estatus** | Puede incluirse en el JSON del DTO según reglas vigentes; también **`PATCH /api/usuarios/estatus/:id`** para cambio explícito de estatus. |
+| **Referencia de diseño (no normativa de API)** | `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md` describe un patrón *multipart* alineado a Clientes; **la API entregada** para alta/edición de usuario sigue siendo **JSON** salvo addendum. |
+
+### 6.7 Catálogos — Patrón Auranet
 
 Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` importa los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece:
 
@@ -159,7 +169,7 @@ Los 20 catálogos están agrupados en `src/catalogos/`. `CatalogosModule` import
 
 Además, cada catálogo mantiene sus rutas CRUD bajo `/api/cat-*` (ver sección siguiente).
 
-### 6.7 Convenciones para módulos de catálogo (Cat)
+### 6.8 Convenciones para módulos de catálogo (Cat)
 
 Al crear nuevos módulos de catálogo (tablas `Cat*`), se aplican las siguientes convenciones:
 
@@ -226,7 +236,7 @@ El proyecto requiere las siguientes variables de entorno (validadas en arranque)
 
 - [x] Login y autenticación JWT operativos (accessToken + refreshToken + `expiresIn`; perfil en `GET /login/me`; `POST /login/refresh`, `POST /login/logout`)
 - [x] Endurecimiento Auth: rate limiting por usuario (THROTTLE_*), mensajes genéricos en login/recuperación/verify, códigos 6 dígitos
-- [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos (Clientes: creación/actualización con `multipart/form-data`, documentos obligatorios en alta, integración S3 carpeta `clientes`)
+- [x] CRUD de Clientes, Usuarios, Roles, Permisos, Modulos (Clientes: `multipart/form-data` en alta/edición, documentos obligatorios en alta, S3 `clientes`; Usuarios: JSON en alta/edición, `fotoPerfil` como URL y S3 `usuarios` vía API genérica)
 - [x] Bitácora de auditoría consultable
 - [x] Archivos en S3: subida, actualización (reemplazo con borrado opcional del anterior) y eliminación por URL; bitácora; documentación Swagger del módulo S3
 - [x] Correos de confirmación y restablecimiento de contraseña
@@ -266,7 +276,7 @@ Quedan **fuera del alcance** de este contrato:
 |-----------|-----------|-------------|
 | Contexto del proyecto | `docs/CONTEXTO-PROYECTO.md` | Visión, estado actual, endpoints, roadmap |
 | Análisis de BD | `docs/ANALISIS-BD-NEXT.md` | Estructura de tablas, relaciones, catálogos |
-| Flujos de implementación | `docs/FLUJO-*.md` | Incluye Clientes multipart (`FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`), S3 update/delete (`FLUJO-MEJORA-S3-UPDATE-DELETE.md`), catálogos (Cat*), módulos operativos |
+| Flujos de implementación | `docs/FLUJO-*.md` | Clientes multipart (`FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`); Usuarios foto/guía (`FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`); S3 (`FLUJO-MEJORA-S3-UPDATE-DELETE.md`); catálogos (Cat*); módulos operativos |
 | Seguridad Auth | `docs/FLUJO-SEGURIDAD-AUTH.md`, `docs/SEGURIDAD-LOGIN-NEXTAPI.md` | Hardening login, verify, recuperación |
 
 ---
@@ -277,4 +287,4 @@ El presente contrato constituye el acuerdo técnico entre las partes para el pro
 
 ---
 
-*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). **v1.6:** Clientes `POST/PATCH` multipart, documentos obligatorios en creación, reglas MIME por campo en Clientes, MIME S3 con `image/jpg`. **v1.5:** S3 (`POST /upload`, `PATCH /update`, `DELETE /delete`, JWT, bitácora, Swagger). Versiones anteriores: Patrón Auranet, Auth (refresh SHA256), Operadores + Licencias. Ver `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Alineado con `docs/CONTEXTO-PROYECTO.md` (marzo 2026). **v1.7:** §6.6 Usuarios en JSON + foto por URL/S3 genérico; aclaración de guía `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. **v1.6:** Clientes `POST/PATCH` multipart, documentos obligatorios, MIME por campo en Clientes, S3 con `image/jpg`. **v1.5:** S3 upload/update/delete, JWT, bitácora, Swagger. Ver `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`, `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*

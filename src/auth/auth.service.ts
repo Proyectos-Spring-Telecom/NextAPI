@@ -87,6 +87,16 @@ export class AuthService {
         .getOne();
 
       if (!user) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+
+      if (user.nivelAcceso == 0 || user.nivelAcceso == 2) {
+        await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      if (!user) {
         await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
@@ -161,6 +171,16 @@ export class AuthService {
         .andWhere('u.estatus = 1')
         .andWhere('u.emailConfirmado = 1')
         .getOne();
+
+      if (!user) {
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+
+      if (user.nivelAcceso == 0 || user.nivelAcceso == 2) {
+        await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
 
       if (!user) {
         await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);
