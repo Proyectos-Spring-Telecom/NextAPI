@@ -26,8 +26,11 @@ import {
   TipoCodigoAutenticacion,
 } from 'src/common/estatus.enum';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
+import { Soluciones } from 'src/entities/Soluciones';
+import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 
-const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas';
+const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas.';
+const MSG_SOLUCION_INVALIDA = 'Credenciales inválidas.';
 const DUMMY_BCRYPT_HASH =
   '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
@@ -43,6 +46,7 @@ function jwtExpiresInSeconds(): number {
   if (u === 'd') return n * 86400;
   return 900;
 }
+
 
 function durationToMs(raw: string, fallbackMs: number): number {
   const match = /^(\d+)([smhd])$/.exec(raw);
@@ -69,13 +73,33 @@ export class AuthService {
     private permisosRepository: Repository<UsuariosPermisos>,
     @InjectRepository(CodigoAutenticacion)
     private codigoAutenticacioRepository: Repository<CodigoAutenticacion>,
+    @InjectRepository(Soluciones)
+    private readonly solucionesRepository: Repository<Soluciones>,
+    @InjectRepository(AsignacionSoluciones)
+    private readonly asignacionSolucionesRepository: Repository<AsignacionSoluciones>,
     private readonly jwtService: JwtService,
     private readonly emailService: MailService,
     private readonly bitacoraLogger: BitacoraLoggerService,
   ) { }
 
-  async signIn(loginAuthDto: LoginAuthDto) {
+  private async assertSolucionCodigoSiViene(nombres?: string) {
+    const trimmed = nombres?.trim();
+    if (!trimmed) throw new BadRequestException(MSG_SOLUCION_INVALIDA);
+
+    const solucion = await this.solucionesRepository.findOne({
+      where: { codigo: trimmed, estatus: 1 },
+    });
+    if (!solucion) {
+      throw new BadRequestException(MSG_SOLUCION_INVALIDA);
+    }
+
+    return solucion.id;
+  }
+
+  async signIn(loginAuthDto: LoginAuthDto, nombres?: string) {
     try {
+      const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
+
       const user = await this.usuariosRepository
         .createQueryBuilder('u')
         .addSelect('u.passwordHash')
@@ -90,11 +114,14 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
+      const permisos = await this.asignacionSolucionesRepository.findOne({
+        where: { idUsuario: user.id, idSolucion: idSolucion, estatus: EstatusEnum.ACTIVO },
+      });
 
-      if (user.nivelAcceso == 0 || user.nivelAcceso == 2) {
-        await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
+      if (!permisos) {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
+
 
       if (!user) {
         await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
@@ -160,8 +187,10 @@ export class AuthService {
     }
   }
 
-  async signInPin(loginAuthPin: LoginAuthPinDto) {
+  async signInPin(loginAuthPin: LoginAuthPinDto, nombres?: string) {
     try {
+      const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
+
       const user = await this.usuariosRepository
         .createQueryBuilder('u')
         .addSelect('u.pinHash')
@@ -172,15 +201,13 @@ export class AuthService {
         .andWhere('u.emailConfirmado = 1')
         .getOne();
 
-      if (!user) {
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
-      }
-
-
-      if (user.nivelAcceso == 0 || user.nivelAcceso == 2) {
-        await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
-      }
+        if (!user) {
+          throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+        }
+  
+        const permisos = await this.asignacionSolucionesRepository.findOne({
+          where: { idUsuario: user.id, idSolucion: idSolucion, estatus: EstatusEnum.ACTIVO },
+        });
 
       if (!user) {
         await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);

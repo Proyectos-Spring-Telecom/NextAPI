@@ -6,34 +6,30 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
+import { Instalaciones } from './Instalaciones';
 import { Dispositivos } from './Dispositivos';
 import { Vehiculos } from './Vehiculos';
 import { CatEstatusInstalacion } from './CatEstatusInstalacion';
 
 @applySchema
-@Index('UQ_Instalaciones_IdCliente_Id', ['idCliente', 'id'], { unique: true })
-@Index('UQ_Instalaciones_IdCliente_IdVehiculo', ['idCliente', 'idVehiculo'], {
-  unique: true,
-})
-@Index('UQ_Instalaciones_IdCliente_IdDispositivo', [
+@Index('IX_HistInstalaciones_IdCliente_IdInstalacion', [
   'idCliente',
-  'idDispositivo',
-], { unique: true })
-@Index('IX_Instalaciones_IdCliente_IdEstatusInstalacion', [
-  'idCliente',
-  'idEstatusInstalacion',
+  'idInstalacion',
 ])
-@Entity('Instalaciones')
-export class Instalaciones {
+@Index('IX_HistInstalaciones_FechaRegistro', ['fechaRegistro'])
+@Entity('HistoricoInstalaciones')
+export class HistoricoInstalaciones {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
+
+  @Column('bigint', { name: 'IdInstalacion', nullable: true })
+  idInstalacion: number | null;
 
   @Column('bigint', { name: 'IdDispositivo', nullable: true })
   idDispositivo: number | null;
@@ -47,44 +43,48 @@ export class Instalaciones {
   @Column('bigint', { name: 'IdPortatiles', nullable: true })
   idPortatiles: number | null;
 
-  @Column('bigint', { name: 'IdEstatusInstalacion', default: 1 })
+  @Column('bigint', { name: 'IdEstatusInstalacion' })
   idEstatusInstalacion: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
-  fechaCreacion: Date;
+  @Column('varchar', { name: 'Accion', length: 50 })
+  accion: string;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
-  fechaActualizacion: Date;
+  @Column('text', { name: 'Comentario', nullable: true })
+  comentario: string | null;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
-  estatus: number;
+  @CreateDateColumn({ name: 'FechaRegistro' })
+  fechaRegistro: Date;
 
   @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
-  @ManyToOne(() => Dispositivos, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+  @ManyToOne(() => Instalaciones, {
     nullable: true,
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdDispositivo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdInstalacion', referencedColumnName: 'id' }])
+  idInstalacion2: Instalaciones | null;
+
+  @ManyToOne(() => Dispositivos, {
+    nullable: true,
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
+  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos | null;
 
   @ManyToOne(() => Vehiculos, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdVehiculo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdVehiculo', referencedColumnName: 'id' }])
   idVehiculo2: Vehiculos;
 
   @ManyToOne(() => CatEstatusInstalacion, {
     onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
-  @JoinColumn([{ name: 'IdEstatusInstalacion', referencedColumnName: 'id' }])
+  @JoinColumn([
+    { name: 'IdEstatusInstalacion', referencedColumnName: 'id' },
+  ])
   idEstatusInstalacion2: CatEstatusInstalacion;
 }

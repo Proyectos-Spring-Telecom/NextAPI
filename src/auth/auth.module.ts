@@ -11,6 +11,8 @@ import { UsuariosModule } from 'src/usuarios/usuarios.module';
 import { MailModule } from 'src/mail/mail.module';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
+import { Soluciones } from 'src/entities/Soluciones';
+import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 
 @Module({
   imports: [
@@ -25,7 +27,13 @@ import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
         signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') },
       }),
     }),
-    TypeOrmModule.forFeature([Usuarios, UsuariosPermisos, CodigoAutenticacion]),
+    TypeOrmModule.forFeature([
+      Usuarios,
+      UsuariosPermisos,
+      CodigoAutenticacion,
+      Soluciones,
+      AsignacionSoluciones,
+    ]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

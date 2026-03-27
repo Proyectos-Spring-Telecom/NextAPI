@@ -7,6 +7,7 @@ import {
   UseGuards,
   Patch,
   Request,
+  Query,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
@@ -15,7 +16,7 @@ import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
 import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LoginRefreshTokenDto } from './dto/login-refresh-token.dto';
 
@@ -82,15 +83,33 @@ export class AuthController {
   @Post('operador/accesso/nip')
   @HttpCode(200)
   @Throttle({ default: { limit: THROTTLE_PIN_LIMIT, ttl: THROTTLE_PIN_TTL_MS } })
-  async loginPin(@Body() loginAuthPinDto: LoginAuthPinDto) {
-    return this.authService.signInPin(loginAuthPinDto);
+  @ApiQuery({
+    name: 'Nombres',
+    required: false,
+    description:
+      'Código de la solución (debe existir en Soluciones.Codigo con Estatus activo). Ej.: NXT, SIT',
+  })
+  async loginPin(
+    @Body() loginAuthPinDto: LoginAuthPinDto,
+    @Query('Nombres') nombres?: string,
+  ) {
+    return this.authService.signInPin(loginAuthPinDto, nombres);
   }
 
   @Post()
   @HttpCode(200)
   @Throttle({ default: { limit: THROTTLE_LOGIN_LIMIT, ttl: THROTTLE_LOGIN_TTL_MS } })
-  async login(@Body() loginAuthDto: LoginAuthDto) {
-    return this.authService.signIn(loginAuthDto);
+  @ApiQuery({
+    name: 'Nombres',
+    required: false,
+    description:
+      'Código de la solución (debe existir en Soluciones.Codigo con Estatus activo). Ej.: NXT, SIT',
+  })
+  async login(
+    @Body() loginAuthDto: LoginAuthDto,
+    @Query('Nombres') nombres?: string,
+  ) {
+    return this.authService.signIn(loginAuthDto, nombres);
   }
 
   @Get('me')

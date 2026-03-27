@@ -16,6 +16,7 @@ import { CatEstatusDispositivo } from './CatEstatusDispositivo';
 import { Sims } from './Sims';
 
 @applySchema
+@Index('UQ_Dispositivos_IdCliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Dispositivos_NumeroSerie', ['numeroSerie'], { unique: true })
 @Index('UQ_Dispositivos_IdSim', ['idSim'], { unique: true })
 @Index('IX_Dispositivos_IdCliente_IdEstatusDispositivo', [

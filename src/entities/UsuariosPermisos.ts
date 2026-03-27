@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Permisos } from "./Permisos";
-import { Usuarios } from "./Usuarios";
+import { Soluciones } from "./Soluciones";
 import { applySchema } from "src/common/apply-schema.decorator";
 
 @applySchema
@@ -16,6 +16,10 @@ import { applySchema } from "src/common/apply-schema.decorator";
 })
 @Index("FK_UsuariosPermisos_Usuarios", ["idUsuario"], {})
 @Index("FK_UsuariosPermisos_Permisos", ["idPermiso"], {})
+@Index("IX_UsuariosPermisos_IdUsuario_IdSolucion", [
+  "idUsuario",
+  "idSolucion",
+])
 @Entity("UsuariosPermisos")
 export class UsuariosPermisos {
   @PrimaryGeneratedColumn({ type: "bigint", name: "Id" })
@@ -30,6 +34,7 @@ export class UsuariosPermisos {
   @Column("datetime", {
     name: "FechaActualizacion",
     default: () => "CURRENT_TIMESTAMP",
+    onUpdate: "CURRENT_TIMESTAMP",
   })
   fechaActualizacion: Date;
 
@@ -42,6 +47,9 @@ export class UsuariosPermisos {
   @Column("bigint", { name: "IdPermiso" })
   idPermiso: number;
 
+  @Column("bigint", { name: "IdSolucion", nullable: true })
+  idSolucion: number | null;
+
   @ManyToOne(() => Permisos, (permisos) => permisos.usuariosPermisos, {
     onDelete: "NO ACTION",
     onUpdate: "NO ACTION",
@@ -49,4 +57,10 @@ export class UsuariosPermisos {
   @JoinColumn([{ name: "IdPermiso", referencedColumnName: "id" }])
   idPermiso2: Permisos;
 
+  @ManyToOne(() => Soluciones, {
+    onDelete: "NO ACTION",
+    onUpdate: "NO ACTION",
+  })
+  @JoinColumn([{ name: "IdSolucion", referencedColumnName: "id" }])
+  idSolucion2: Soluciones | null;
 }

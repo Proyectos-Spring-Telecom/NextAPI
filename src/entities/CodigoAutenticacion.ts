@@ -1,15 +1,14 @@
-// src/usuarios/entities/codigo-autenticacion.entity.ts
-
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
-  JoinColumn,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
-import { Usuarios } from './Usuarios'; 
+import { applySchema } from 'src/common/apply-schema.decorator';
 
+@applySchema
+@Index('IDX_CodigoAutenticacion_IdUsuario', ['idUsuario'])
 @Entity('CodigoAutenticacion')
 export class CodigoAutenticacion {
   @PrimaryGeneratedColumn({ name: 'Id', type: 'bigint' })
@@ -21,13 +20,14 @@ export class CodigoAutenticacion {
   @Column({ name: 'Codigo', type: 'varchar', length: 6 })
   codigo: string;
 
-  @Column({ name: 'IntentosFallidos', type: 'int', default: 0 })
-  intentosFallidos: number;
-
-  @Column({ name: 'Tipo', type: 'tinyint', })
+  @Column({ name: 'Tipo', type: 'tinyint', unsigned: true })
   tipo: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({
+    name: 'FechaCreacion',
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaCreacion: Date;
 
   @Column({ name: 'FechaExpiracion', type: 'datetime' })
@@ -42,4 +42,6 @@ export class CodigoAutenticacion {
   @Column({ name: 'Estatus', type: 'tinyint', default: () => 1 })
   estatus: number;
 
+  @Column({ name: 'IntentosFallidos', type: 'int', default: 0 })
+  intentosFallidos: number;
 }

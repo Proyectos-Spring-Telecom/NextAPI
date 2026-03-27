@@ -105,9 +105,7 @@ export class Clientes {
   fechaCreacion: Date;
 
   @Column("datetime", {
-    name: "FechaActualizacion",
-    default: () => "CURRENT_TIMESTAMP",
-  })
+    name: "FechaActualizacion", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP", })
   fechaActualizacion: Date;
 
   @Column("tinyint", { name: "Estatus", default: () => "'1'" })
