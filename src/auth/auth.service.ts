@@ -3,6 +3,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -66,6 +67,8 @@ function hashRefreshToken(token: string): string {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(Usuarios)
     private readonly usuariosRepository: Repository<Usuarios>,
@@ -84,12 +87,20 @@ export class AuthService {
 
   private async assertSolucionCodigoSiViene(nombres?: string) {
     const trimmed = nombres?.trim();
-    if (!trimmed) throw new BadRequestException(MSG_SOLUCION_INVALIDA);
+    if (!trimmed) {
+      this.logger.warn(
+        'Auth: rechazado — falta el query Nombres (código de solución)',
+      );
+      throw new BadRequestException(MSG_SOLUCION_INVALIDA);
+    }
 
     const solucion = await this.solucionesRepository.findOne({
       where: { codigo: trimmed, estatus: 1 },
     });
     if (!solucion) {
+      this.logger.warn(
+        `Auth: solución no encontrada o inactiva (código=${trimmed})`,
+      );
       throw new BadRequestException(MSG_SOLUCION_INVALIDA);
     }
 
@@ -98,6 +109,9 @@ export class AuthService {
 
   async signIn(loginAuthDto: LoginAuthDto, nombres?: string) {
     try {
+      this.logger.log(
+        `Auth: intento de login (userName=${loginAuthDto.userName})`,
+      );
       const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
 
       const user = await this.usuariosRepository
@@ -111,6 +125,9 @@ export class AuthService {
         .getOne();
 
       if (!user) {
+        this.logger.warn(
+          `Auth: login fallido — usuario no encontrado o no elegible (userName=${loginAuthDto.userName})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -119,6 +136,9 @@ export class AuthService {
       });
 
       if (!permisos) {
+        this.logger.warn(
+          `Auth: login fallido — sin asignación a la solución (userId=${user.id}, idSolucion=${idSolucion})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -133,6 +153,9 @@ export class AuthService {
         !user.passwordHash ||
         !(await bcrypt.compare(loginAuthDto.password, user.passwordHash))
       ) {
+        this.logger.warn(
+          `Auth: login fallido — cliente inactivo o contraseña incorrecta (userId=${user.id})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -149,6 +172,9 @@ export class AuthService {
       const refreshSecret = process.env.JWT_REFRESH_SECRET;
       const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
       if (!refreshSecret) {
+        this.logger.error(
+          'Auth: login abortado — falta variable JWT_REFRESH_SECRET',
+        );
         throw new InternalServerErrorException({
           message: 'Falta JWT_REFRESH_SECRET.',
         });
@@ -177,9 +203,16 @@ export class AuthService {
         tokenRevocado: 0,
       });
 
+      this.logger.log(
+        `Auth: login correcto (userId=${user.id}, idCliente=${user.idCliente})`,
+      );
       return { token, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en login — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ha ocurrido un error durante el proceso de autenticación.',
         error: (error as Error)?.message,
@@ -189,6 +222,9 @@ export class AuthService {
 
   async signInPin(loginAuthPin: LoginAuthPinDto, nombres?: string) {
     try {
+      this.logger.log(
+        `Auth: intento de login PIN (userName=${loginAuthPin.userName})`,
+      );
       const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
 
       const user = await this.usuariosRepository
@@ -202,12 +238,22 @@ export class AuthService {
         .getOne();
 
         if (!user) {
+          this.logger.warn(
+            `Auth: PIN fallido — usuario no encontrado o no elegible (userName=${loginAuthPin.userName})`,
+          );
           throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
         }
   
         const permisos = await this.asignacionSolucionesRepository.findOne({
           where: { idUsuario: user.id, idSolucion: idSolucion, estatus: EstatusEnum.ACTIVO },
         });
+
+      if (!permisos) {
+        this.logger.warn(
+          `Auth: PIN fallido — sin asignación a la solución (userId=${user.id}, idSolucion=${idSolucion})`,
+        );
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
 
       if (!user) {
         await bcrypt.compare(loginAuthPin.codigo, DUMMY_BCRYPT_HASH);
@@ -219,6 +265,9 @@ export class AuthService {
         !user.pinHash ||
         !(await bcrypt.compare(loginAuthPin.codigo, user.pinHash))
       ) {
+        this.logger.warn(
+          `Auth: PIN fallido — cliente inactivo o NIP incorrecto (userId=${user.id})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -235,6 +284,9 @@ export class AuthService {
       const refreshSecret = process.env.JWT_REFRESH_SECRET;
       const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
       if (!refreshSecret) {
+        this.logger.error(
+          'Auth: PIN abortado — falta variable JWT_REFRESH_SECRET',
+        );
         throw new InternalServerErrorException({
           message: 'Falta JWT_REFRESH_SECRET.',
         });
@@ -263,9 +315,16 @@ export class AuthService {
         tokenRevocado: 0,
       });
 
+      this.logger.log(
+        `Auth: login PIN correcto (userId=${user.id}, idCliente=${user.idCliente})`,
+      );
       return { accessToken: token, refreshToken, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en login PIN — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ha ocurrido un error durante el proceso de autenticación.',
         error: (error as Error)?.message,
@@ -279,6 +338,9 @@ export class AuthService {
       where: { id: userId, estatus: 1 },
     });
     if (!user) {
+      this.logger.warn(
+        `Auth: /me rechazado — usuario no encontrado o inactivo (userId=${userId})`,
+      );
       throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
     }
     const permisos = await this.permisosRepository.find({
@@ -304,8 +366,12 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     try {
+      this.logger.log('Auth: solicitud de refresh token');
       const refreshSecret = process.env.JWT_REFRESH_SECRET;
       if (!refreshSecret) {
+        this.logger.error(
+          'Auth: refresh abortado — falta variable JWT_REFRESH_SECRET',
+        );
         throw new InternalServerErrorException({
           message: 'Falta JWT_REFRESH_SECRET.',
         });
@@ -315,11 +381,13 @@ export class AuthService {
       try {
         decoded = this.jwtService.verify(refreshToken, { secret: refreshSecret });
       } catch {
+        this.logger.warn('Auth: refresh rechazado — JWT refresh inválido o expirado');
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
       const userId = decoded?.id;
       if (!userId) {
+        this.logger.warn('Auth: refresh rechazado — payload sin id de usuario');
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -347,11 +415,17 @@ export class AuthService {
         user.tokenExpira <= now ||
         !user.tokenHash
       ) {
+        this.logger.warn(
+          `Auth: refresh rechazado — sesión inválida o revocada (userId=${userId})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
       const incomingHash = hashRefreshToken(refreshToken);
       if (incomingHash !== user.tokenHash) {
+        this.logger.warn(
+          `Auth: refresh rechazado — hash de token no coincide (userId=${userId})`,
+        );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -366,9 +440,14 @@ export class AuthService {
       const expiresIn = jwtExpiresInSeconds();
 
       // Para cubrir ambos nombres del contrato: token (POST /login) y accessToken (POST /login/operador/accesso/nip)
+      this.logger.log(`Auth: refresh correcto (userId=${user.id})`);
       return { token, accessToken: token, expiresIn };
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en refresh — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al refrescar la sesión.',
         error: (error as Error)?.message,
@@ -379,9 +458,14 @@ export class AuthService {
   async logout(userId: number) {
     try {
       await this.usuariosRepository.update(userId, { tokenRevocado: 1 });
+      this.logger.log(`Auth: logout correcto (userId=${userId})`);
       return 'Sesión cerrada exitosamente.';
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error en logout (userId=${userId}) — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al cerrar sesión.',
         error: (error as Error)?.message,
@@ -391,10 +475,16 @@ export class AuthService {
 
   async verifyUser(codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
     try {
+      this.logger.log(
+        `Auth: verificación de correo (userName=${codigoPasajeroAutenticacion.userName})`,
+      );
       const user = await this.usuariosRepository.findOne({
         where: { userName: codigoPasajeroAutenticacion.userName },
       });
       if (!user) {
+        this.logger.warn(
+          `Auth: verificación fallida — usuario no encontrado (userName=${codigoPasajeroAutenticacion.userName})`,
+        );
         throw new BadRequestException('Código inválido o ya usado');
       }
 
@@ -428,6 +518,9 @@ export class AuthService {
               : {}),
           });
         }
+        this.logger.warn(
+          `Auth: verificación fallida — código incorrecto (userId=${user.id})`,
+        );
         throw new BadRequestException('Código inválido o ya usado');
       }
 
@@ -438,10 +531,16 @@ export class AuthService {
           estatus: EstatusEnum.INACTIVO,
           fechaUso: ahora,
         });
+        this.logger.warn(
+          `Auth: verificación fallida — código expirado (userId=${user.id})`,
+        );
         throw new BadRequestException('Código inválido o ya usado');
       }
 
       if ((codigoValido.intentosFallidos ?? 0) >= 3) {
+        this.logger.warn(
+          `Auth: verificación fallida — demasiados intentos (userId=${user.id})`,
+        );
         throw new BadRequestException('Código inválido o ya usado');
       }
 
@@ -461,9 +560,16 @@ export class AuthService {
         fechaUso: ahora,
       });
 
+      this.logger.log(
+        `Auth: verificación de correo correcta (userId=${user.id})`,
+      );
       return `La verificación del usuario ${user.nombre} se ha completado con éxito. Muchas gracias por su preferencia.`;
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en verificación — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al verificar el usuario.',
         error: (error as Error)?.message,
@@ -477,11 +583,17 @@ export class AuthService {
     const mensajeGenerico =
       'Si el correo está registrado, recibirás un enlace de recuperación.';
     try {
+      this.logger.log(
+        `Auth: solicitud recuperación contraseña (userName=${loginAuthConfirmacionDto.userName})`,
+      );
       const user = await this.usuariosRepository.findOne({
         where: { userName: loginAuthConfirmacionDto.userName },
       });
 
       if (!user) {
+        this.logger.warn(
+          `Auth: recuperación — correo no registrado (userName=${loginAuthConfirmacionDto.userName})`,
+        );
         return mensajeGenerico;
       }
 
@@ -498,6 +610,9 @@ export class AuthService {
         (r) => r.fechaCreacion && r.fechaCreacion >= haceUnaHora,
       );
       if (enUltimaHora.length >= 3) {
+        this.logger.warn(
+          `Auth: recuperación — límite de solicitudes por hora (userId=${user.id})`,
+        );
         return mensajeGenerico;
       }
 
@@ -516,8 +631,14 @@ export class AuthService {
         token,
         codigo,
       );
+      this.logger.log(
+        `Auth: correo de recuperación enviado (userId=${user.id})`,
+      );
       return mensajeGenerico;
     } catch {
+      this.logger.error(
+        'Auth: error no controlado en recuperarContraseña (respuesta genérica al cliente)',
+      );
       return mensajeGenerico;
     }
   }
@@ -566,10 +687,16 @@ export class AuthService {
     loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
     try {
+      this.logger.log(
+        `Auth: reenvío confirmación correo (userName=${loginAuthConfirmacionDto.userName})`,
+      );
       const user = await this.usuariosRepository.findOne({
         where: { userName: loginAuthConfirmacionDto.userName },
       });
       if (!user) {
+        this.logger.warn(
+          `Auth: reenvío confirmación — usuario no encontrado (userName=${loginAuthConfirmacionDto.userName})`,
+        );
         throw new BadRequestException(MSG_CREDENCIALES_INVALIDAS);
       }
       const codigo = await this.generarCodigo(
@@ -587,9 +714,16 @@ export class AuthService {
         token,
         codigo,
       );
+      this.logger.log(
+        `Auth: correo de confirmación enviado (userId=${user.id})`,
+      );
       return `Se ha enviado un correo con el codigo de autenticación.`;
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en recuperarConfirmacion — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al confirmar el usuario.',
         error: (error as Error)?.message,
@@ -599,6 +733,7 @@ export class AuthService {
 
   async resetPassword(idUser: number, dto: LoginAuthResetDto) {
     try {
+      this.logger.log(`Auth: cambio de contraseña autenticado (userId=${idUser})`);
       const user = await this.usuariosRepository
         .createQueryBuilder('u')
         .addSelect('u.passwordHash')
@@ -606,9 +741,15 @@ export class AuthService {
         .getOne();
 
       if (!user) {
+        this.logger.warn(
+          `Auth: cambio contraseña — usuario no encontrado (userId=${idUser})`,
+        );
         throw new BadRequestException('Usuario no encontrado');
       }
       if (dto.passwordNueva !== dto.passwordConfirmacion) {
+        this.logger.warn(
+          `Auth: cambio contraseña — confirmación no coincide (userId=${idUser})`,
+        );
         throw new BadRequestException(
           'La contraseña y la confirmación deben coincidir.',
         );
@@ -618,6 +759,9 @@ export class AuthService {
         user.passwordHash,
       );
       if (isSamePassword) {
+        this.logger.warn(
+          `Auth: cambio contraseña — misma que la anterior (userId=${idUser})`,
+        );
         throw new BadRequestException(
           'La nueva contraseña no puede ser igual a la anterior.',
         );
@@ -636,9 +780,16 @@ export class AuthService {
         EnumModulos.USUARIOS,
         EstatusEnumBitcora.SUCCESS,
       );
+      this.logger.log(
+        `Auth: contraseña actualizada y sesiones refresh invalidadas (userId=${user.id})`,
+      );
       return `La contraseña del usuario ${user.nombre} ha sido actualizada exitosamente.`;
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en resetPassword — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al actualizar contraseña del usuario.',
         error: (error as Error)?.message,

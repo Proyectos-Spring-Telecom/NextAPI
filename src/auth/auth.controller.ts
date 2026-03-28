@@ -8,6 +8,7 @@ import {
   Patch,
   Request,
   Query,
+  Logger,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
@@ -55,6 +56,8 @@ const THROTTLE_LOGOUT_TTL_MS = Number(
 @ApiBearerAuth('bearer-token')
 @Controller('login')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly authService: AuthService) {}
 
   @Post('usuario/solicitud/recuperacion')
@@ -62,6 +65,9 @@ export class AuthController {
   async solicitudRecuperacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
+    this.logger.log(
+      `HTTP POST login/usuario/solicitud/recuperacion (userName=${loginAuthConfirmacionDto.userName})`,
+    );
     return await this.authService.recuperarContrasena(loginAuthConfirmacionDto);
   }
 
@@ -75,6 +81,9 @@ export class AuthController {
   async recuperacionConfirmacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
+    this.logger.log(
+      `HTTP POST login/recuperar/confirmacion (userName=${loginAuthConfirmacionDto.userName})`,
+    );
     return await this.authService.recuperarConfirmacion(
       loginAuthConfirmacionDto,
     );
@@ -87,12 +96,15 @@ export class AuthController {
     name: 'Nombres',
     required: false,
     description:
-      'Código de la solución (debe existir en Soluciones.Codigo con Estatus activo). Ej.: NXT, SIT',
+      'Nombre de la solución (debe existir en Soluciones y debe estar activo). Ej.: AM, PM',
   })
   async loginPin(
     @Body() loginAuthPinDto: LoginAuthPinDto,
     @Query('Nombres') nombres?: string,
   ) {
+    this.logger.log(
+      `HTTP POST login/operador/accesso/nip (userName=${loginAuthPinDto.userName}, nombres=${nombres ? 'sí' : 'no'})`,
+    );
     return this.authService.signInPin(loginAuthPinDto, nombres);
   }
 
@@ -103,18 +115,22 @@ export class AuthController {
     name: 'Nombres',
     required: false,
     description:
-      'Código de la solución (debe existir en Soluciones.Codigo con Estatus activo). Ej.: NXT, SIT',
+      'Nombre de la solución (debe existir en Soluciones y debe estar activo). Ej.: AM, PM',
   })
   async login(
     @Body() loginAuthDto: LoginAuthDto,
     @Query('Nombres') nombres?: string,
   ) {
+    this.logger.log(
+      `HTTP POST login (userName=${loginAuthDto.userName}, nombres=${nombres ? 'sí' : 'no'})`,
+    );
     return this.authService.signIn(loginAuthDto, nombres);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req: { user: { userId: number } }) {
+    this.logger.log(`HTTP GET login/me (userId=${req.user.userId})`);
     return this.authService.getProfileByToken(req.user.userId);
   }
 
@@ -129,6 +145,7 @@ export class AuthController {
     @Request() req: { user: { userId: number } },
   ) {
     const idUser = req.user.userId;
+    this.logger.log(`HTTP POST login/cambiar/accesso (userId=${idUser})`);
     return await this.authService.resetPassword(+idUser, loginAuthResetDto);
   }
 
@@ -140,6 +157,9 @@ export class AuthController {
   async verifyUser(
     @Body() codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion,
   ) {
+    this.logger.log(
+      `HTTP PATCH login/verify (userName=${codigoPasajeroAutenticacion.userName})`,
+    );
     return await this.authService.verifyUser(codigoPasajeroAutenticacion);
   }
 
@@ -149,6 +169,7 @@ export class AuthController {
     default: { limit: THROTTLE_REFRESH_LIMIT, ttl: THROTTLE_REFRESH_TTL_MS },
   })
   async refreshToken(@Body() dto: LoginRefreshTokenDto) {
+    this.logger.log('HTTP POST login/refresh');
     return await this.authService.refreshToken(dto.refreshToken);
   }
 
@@ -159,6 +180,7 @@ export class AuthController {
     default: { limit: THROTTLE_LOGOUT_LIMIT, ttl: THROTTLE_LOGOUT_TTL_MS },
   })
   async logout(@Request() req: { user: { userId: number } }) {
+    this.logger.log(`HTTP POST login/logout (userId=${req.user.userId})`);
     return await this.authService.logout(req.user.userId);
   }
 }

@@ -70,6 +70,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 | **API-first** | Toda la funcionalidad vía REST API (`/api`, sin versionado) |
 | **Event Emitter** | Webhooks cuando cambia una entidad clave. Next no conoce a los consumidores |
 | **Desconocimiento** | Next NO sabe que ShiftControl (ni otros servicios) existen. Es agnóstico |
+| **Observabilidad (logs)** | Cada módulo Nest debe registrar en **partes cruciales** del flujo (entrada a operaciones sensibles, éxitos relevantes, rechazos de negocio, errores no controlados). Usar el `Logger` de `@nestjs/common` con contexto = nombre de la clase (`AuthService`, `ClientesController`, etc.). **No** registrar secretos: contraseñas, PIN, tokens completos, códigos de verificación en claro. Referencia implementada: `AuthModule` (`AuthService`, `AuthController`, `JwtStrategy`). |
 
 ---
 
@@ -79,7 +80,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 
 | Módulo | Estado | Responsabilidad |
 |--------|--------|-----------------|
-| AuthModule | ✅ | Login (`token`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador (`accessToken`), recuperación/confirmación, verify (6 dígitos), `POST /login/refresh` (`token` y `accessToken`), `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*) |
+| AuthModule | ✅ | Login (`token`, `refreshToken`, `expiresIn`), `GET /login/me` (perfil), PIN operador (`accessToken`), recuperación/confirmación, verify (6 dígitos), `POST /login/refresh` (`token` y `accessToken`), `POST /login/logout`, JWT, rate limiting por usuario (THROTTLE_*). Incluye **logs** en flujos críticos (`AuthService`, `AuthController`, `JwtStrategy`) como referencia del estándar por módulo. |
 | ClientesModule | ✅ | ABM de clientes (tenants), jerarquía padre-hijo, RFC único. **`POST /clientes`** y **`PATCH /clientes/:id`** usan **`multipart/form-data`**: integración `S3Module`, subidas con `folder=clientes` y `EnumModulos.CLIENTES`. En **alta**, obligatorios acta, comprobante y constancia (PDF por archivo o URL en texto); logotipo opcional (PNG/JPEG). Filtro MIME por **nombre de campo** en Clientes (`clientes-upload.interceptor.ts`), no en S3. Detalle: `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. |
 | UsuariosModule | ✅ | ABM de usuarios por cliente, IdRol, credenciales. **`POST /usuarios`** y **`PATCH /usuarios/:id`** usan **`application/json`**; **`fotoPerfil`** opcional como **URL** (subida previa con **`POST /api/s3/upload`**, `folder=usuarios`, `idModule=2`). Guía de diseño *multipart* (no implementada en estos endpoints): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. |
 | RolesModule | ✅ | Definición de roles (Admin, Supervisor, Monitorista, etc.) |
@@ -97,6 +98,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 - `src/common/validators/pin.validator.ts` — Valida NIP de 4 dígitos
 - `src/common/ApiResponse.ts` — Tipos `ApiResponseCommon`, `ApiCrudResponse` para respuestas consistentes
 - **Fecha/hora:** Auth y Usuarios usan `new Date()` del servidor para códigos, expiración y auditoría
+- **Logs por módulo:** además de la bitácora de negocio donde aplique, cada módulo debe incluir `Logger` en **servicios** (y opcionalmente en **controladores** para correlación HTTP) en puntos críticos: inicio de operación, validaciones que rechazan, finalización exitosa y `catch` con `error` + stack cuando corresponda. Ver acuerdo en `docs/CONTRATO-PROYECTO-NEXTAPI.md` §5.
 
 **Estructura estándar de módulos de catálogo (Cat):**
 
@@ -110,6 +112,7 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 | **Rutas de estatus** | `PATCH /estatus/:id` (explícito) |
 | **DELETE** | Soft delete vía PATCH (cambiar Estatus a 0); no DELETE físico |
 | **Bitácora** | `BitacoraLoggerService` en create, update y delete |
+| **Logs** | `Logger` en servicio (y opcionalmente controlador) en puntos críticos — ver §3 y `CONTRATO-PROYECTO-NEXTAPI.md` §5 |
 | **Respuestas** | `ApiCrudResponse`, `ApiResponseCommon` |
 | **Paginación** | `GET /list` (lista completa) + `GET /:page/:limit` (paginado) |
 

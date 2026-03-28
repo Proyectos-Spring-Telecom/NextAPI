@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.8 |
-| **Fecha de vigencia** | Marzo 2026 (alineación de contrato con respuestas Auth vigentes; Clientes multipart; Usuarios `POST/PATCH` en JSON + foto vía S3 genérico; guías `FLUJO-CLIENTES-*` y `FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`) |
+| **Versión del documento** | 1.9 |
+| **Fecha de vigencia** | Marzo 2026 (logs obligatorios en partes cruciales por módulo — Nest `Logger`; sin secretos en log; referencia Auth) |
 
 ---
 
@@ -47,7 +47,7 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 
 | Módulo | Funcionalidad | Rutas base |
 |--------|---------------|------------|
-| **Auth** | Login (`token`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), `POST /login/refresh` (retorna `token` y `accessToken`; refresh almacenado con SHA256 en BD), `POST /login/logout`, verificación (código 6 dígitos, intentos limitados), rate limiting por usuario (variables `THROTTLE_*`) | `/api/login` |
+| **Auth** | Login (`token`, `refreshToken`, `expiresIn`), perfil vía `GET /login/me` (JWT), login por PIN (`POST /login/operador/accesso/nip` → `accessToken`), recuperación (respuesta genérica), confirmación, cambio de contraseña (revoca refresh token), `POST /login/refresh` (retorna `token` y `accessToken`; refresh almacenado con SHA256 en BD), `POST /login/logout`, verificación (código 6 dígitos, intentos limitados), rate limiting por usuario (variables `THROTTLE_*`). **Logs** en puntos críticos (`Logger` en servicio, controlador y estrategia JWT; ver §5). | `/api/login` |
 | **Clientes** | ABM, jerarquía padre-hijo, listas paginadas y sin paginar. **`POST /` y `PATCH /:id`** consumen **`multipart/form-data`**: subida vía `S3Service` a carpeta `clientes`, `idModule` Clientes. En **creación**, son **obligatorios** `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` (cada uno como **URL en texto** o **archivo PDF** en el mismo nombre de campo). **Logotipo** opcional (PNG/JPEG). Validación MIME **por campo** en el módulo Clientes (no reglas de negocio en S3). Ver §6.5 y `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. | `/api/clientes` |
 | **Usuarios** | ABM; **`POST /` y `PATCH /:id`** con cuerpo **`application/json`** (`CreateUsuarioDto` / `UpdateUsuarioDto`). Campo **`fotoPerfil`** opcional como **URL**; imagen vía **`POST /api/s3/upload`** (`folder=usuarios`, `idModule=2`). Contraseña propia, NIP. Ver §6.6. *Guía de diseño* (multipart no implementado en API): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. | `/api/usuarios` |
 | **Roles** | ABM de roles del sistema | `/api/roles` |
@@ -92,6 +92,12 @@ NextAPI es el único lugar donde se crean, modifican y eliminan los datos fundam
 | **Multitenancy** | Toda entidad tiene `IdCliente`; cada query filtra por tenant |
 | **API-first** | Toda la funcionalidad vía REST API (`/api`, sin versionado); formato consistente `{ data, paginated }` |
 | **Desconocimiento** | Next NO importa módulos de ShiftControl ni llama APIs externas; es agnóstico a los consumidores |
+| **Observabilidad** | Cada módulo Nest debe incorporar **registro de logs** (`Logger` de `@nestjs/common`) en las **partes cruciales** de su flujo: entradas a operaciones relevantes, rechazos de reglas de negocio, finalizaciones exitosas y errores no controlados (mensaje y stack cuando aplique). El contexto del logger debe ser el **nombre de la clase** (p. ej. `AuthService`, `VehiculosService`). **Queda explícitamente prohibido** escribir en logs: contraseñas, PIN, refresh/access tokens completos, secretos de correo o códigos de verificación en claro. Los controladores pueden registrar solo metadatos HTTP seguros (ruta, `userId`, presencia de query params) sin duplicar datos sensibles del body. **Referencia:** módulo `Auth` (`auth.service.ts`, `auth.controller.ts`, `jwt.strategy.ts`). |
+
+### 5.1 Bitácora vs logs de aplicación
+
+- **Bitácora (`BitacoraLoggerService`):** auditoría de negocio persistida en BD para acciones acordadas (altas, bajas lógicas, cambios relevantes).
+- **Logs (`Logger`):** trazabilidad operativa en consola/archivo según despliegue; complementan la bitácora y facilitan diagnóstico en tiempo real. Ambos son obligatorios donde el contrato ya exige bitácora; los logs por módulo se exigen **además** en los puntos críticos descritos en la tabla anterior.
 
 ---
 
@@ -183,6 +189,7 @@ Al crear nuevos módulos de catálogo (tablas `Cat*`), se aplican las siguientes
 | **Rutas de estatus** | `PATCH /estatus/:id` (explícito) |
 | **DELETE** | Soft delete vía PATCH (cambiar Estatus a 0); no DELETE físico |
 | **Bitácora** | `BitacoraLoggerService` en create, update y delete |
+| **Logs** | `Logger` de Nest en el **servicio** (y si aplica en el controlador) en operaciones críticas, alineado a §5 |
 | **Respuestas** | `ApiCrudResponse`, `ApiResponseCommon` |
 | **Paginación** | `GET /list` (lista completa) + `GET /:page/:limit` (paginado) |
 
