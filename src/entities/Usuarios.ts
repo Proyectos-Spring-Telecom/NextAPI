@@ -74,6 +74,7 @@ export class Usuarios {
   @Column('datetime', {
     name: 'FechaActualizacion',
     default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
   })
   fechaActualizacion: Date;
 
@@ -108,6 +109,13 @@ export class Usuarios {
     default: () => "'0'",
   })
   tokenRevocado: number;
+
+  @Column('varchar', {
+    name: 'TokenHashAdmin',
+    nullable: true,
+    length: 45,
+  })
+  tokenHashAdmin: string | null;
 
   @OneToMany(() => Bitacora, (bitacora) => bitacora.idUsuario2)
   bitacoras: Bitacora[];
