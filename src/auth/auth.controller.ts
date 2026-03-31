@@ -124,7 +124,7 @@ export class AuthController {
     this.logger.log(
       `HTTP POST login (userName=${loginAuthDto.userName}, nombres=${nombres ? 'sí' : 'no'})`,
     );
-    return this.authService.signIn(loginAuthDto, nombres);
+    return this.authService.signIn(loginAuthDto, nombres ?? 'SIT');
   }
 
   @Get('me')
