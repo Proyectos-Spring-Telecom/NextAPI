@@ -33,9 +33,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 @Roles()
 @Controller('vehiculos')
 export class VehiculosController {
-  constructor(
-    private readonly vehiculosService: VehiculosService,
-  ) {}
+  constructor(private readonly vehiculosService: VehiculosService) {}
 
   @Post()
   @ApiOperation({ summary: 'Crear vehículo' })
@@ -69,6 +67,23 @@ export class VehiculosController {
     return this.vehiculosService.findAllList(idCliente, soloActivosBool);
   }
 
+  @Get('placa/:placa')
+  @ApiOperation({
+    summary: 'Obtener vehículo por placa',
+    description:
+      'Solo vehículos activos (Estatus=1). Respuesta plana con cliente, modelo/marca, tipo y combustible. Roles 1–3: filtro solo por placa. Otros roles: placa + IdCliente del token.',
+  })
+  @ApiParam({ name: 'placa', description: 'Placa del vehículo' })
+  @ApiResponse({ status: 200, description: 'Vehículo encontrado' })
+  @ApiResponse({ status: 400, description: 'Placa inválida' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async findOneByPlaca(@Param('placa') placa: string, @Request() req) {
+    const idCliente = req.user.idCliente;
+    const rol = req.user.rol;
+    return this.vehiculosService.findOneByPlaca(placa, idCliente, rol);
+  }
+
   @Get(':page/:limit')
   @ApiOperation({ summary: 'Lista paginada de vehículos' })
   @ApiParam({ name: 'page', description: 'Número de página' })
@@ -88,12 +103,7 @@ export class VehiculosController {
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
     const soloActivosBool = soloActivos === 'true';
-    return this.vehiculosService.findAll(
-      idCliente,
-      page,
-      limit,
-      soloActivosBool,
-    );
+    return this.vehiculosService.findAll(idCliente, page, limit, soloActivosBool);
   }
 
   @Get(':id')
@@ -102,10 +112,7 @@ export class VehiculosController {
   @ApiResponse({ status: 200, description: 'Vehículo encontrado' })
   @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findOne(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-  ) {
+  async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
     const idCliente = req.user.idCliente;
     return this.vehiculosService.findOne(id, idCliente);
   }

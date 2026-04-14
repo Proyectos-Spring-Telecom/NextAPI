@@ -25,6 +25,33 @@ import {
 
 const ID_MODULO_VEHICULOS = 16;
 
+/** Roles 1–3: búsqueda solo por placa (sin filtrar por IdCliente del token). */
+const ROLES_BUSQUEDA_PLACA_GLOBAL = new Set([1, 2, 3]);
+
+/** Fila devuelta por la query base de vehículo por placa (activos). */
+export interface VehiculoPorPlacaData {
+  id: number;
+  placa: string;
+  numeroEconomico: string;
+  anio: number;
+  color: string | null;
+  fotoFrente: string | null;
+  km: number | null;
+  capacidadLitros: number | null;
+  estatus: number;
+  fechaCreacion: Date;
+  idCliente: number;
+  nombreCompleto: string | null;
+  modeloId: number;
+  modeloNombre: string;
+  marcaId: number;
+  marcaNombre: string;
+  tipoVehiculoId: number;
+  tipoVehiculoNombre: string;
+  combustibleId: number | null;
+  combustibleNombre: string | null;
+}
+
 @Injectable()
 export class VehiculosService {
   constructor(
@@ -174,7 +201,6 @@ export class VehiculosService {
         where.estatus = 1;
       }
       const data = await this.repository.find({
-        where,
         order: { id: 'ASC' },
       });
       const dataNormalizada = data.map((item) => ({
@@ -240,6 +266,126 @@ export class VehiculosService {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         { message: 'Error al buscar el vehículo' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /** SELECT + JOINs comunes; el WHERE y LIMIT se arman en `findOneByPlaca`. */
+  private static readonly SQL_VEHICULO_POR_PLACA_BASE = `
+SELECT
+    v.Id AS id,
+    v.Placa AS placa,
+    v.NumeroEconomico AS numeroEconomico,
+    v.Anio AS anio,
+    v.Color AS color,
+    v.FotoFrente AS fotoFrente,
+    v.KM AS km,
+    v.CapacidadLitros AS capacidadLitros,
+    v.Estatus AS estatus,
+    v.FechaCreacion AS fechaCreacion,
+    c.Id AS idCliente,
+    CONCAT_WS(' ', c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno) AS nombreCompleto,
+    mv.Id AS modeloId,
+    mv.Nombre AS modeloNombre,
+    mar.Id AS marcaId,
+    mar.Nombre AS marcaNombre,
+    tv.Id AS tipoVehiculoId,
+    tv.Nombre AS tipoVehiculoNombre,
+    tc.Id AS combustibleId,
+    tc.Nombre AS combustibleNombre
+FROM Vehiculos v
+INNER JOIN Clientes c ON v.IdCliente = c.Id
+INNER JOIN CatModeloVehiculo mv ON v.IdModeloVehiculo = mv.Id
+INNER JOIN CatMarcaVehiculo mar ON mv.IdMarcaVehiculo = mar.Id
+INNER JOIN CatTipoVehiculo tv ON v.IdTipoVehiculo = tv.Id
+LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
+`;
+
+  private mapRowAVehiculoPorPlaca(row: Record<string, unknown>): VehiculoPorPlacaData {
+    const g = (k: string) => row[k];
+    const num = (k: string): number => Number(g(k));
+    const numOrNull = (k: string): number | null =>
+      g(k) == null || g(k) === '' ? null : Number(g(k));
+    const strOrNull = (k: string): string | null =>
+      g(k) == null ? null : String(g(k));
+    const nombreCompletoRaw = g('nombreCompleto');
+    const nombreCompleto =
+      nombreCompletoRaw == null || String(nombreCompletoRaw).trim() === ''
+        ? null
+        : String(nombreCompletoRaw).trim();
+
+    return {
+      id: num('id'),
+      placa: String(g('placa')),
+      numeroEconomico: String(g('numeroEconomico')),
+      anio: num('anio'),
+      color: strOrNull('color'),
+      fotoFrente: strOrNull('fotoFrente'),
+      km: numOrNull('km'),
+      capacidadLitros: numOrNull('capacidadLitros'),
+      estatus: num('estatus'),
+      fechaCreacion: g('fechaCreacion') as Date,
+      idCliente: num('idCliente'),
+      nombreCompleto,
+      modeloId: num('modeloId'),
+      modeloNombre: String(g('modeloNombre')),
+      marcaId: num('marcaId'),
+      marcaNombre: String(g('marcaNombre')),
+      tipoVehiculoId: num('tipoVehiculoId'),
+      tipoVehiculoNombre: String(g('tipoVehiculoNombre')),
+      combustibleId: numOrNull('combustibleId'),
+      combustibleNombre: strOrNull('combustibleNombre'),
+    };
+  }
+
+  async findOneByPlaca(
+    placa: string,
+    idCliente: number,
+    rol: number,
+  ): Promise<{ data: VehiculoPorPlacaData }> {
+    try {
+      const placaNorm = placa.trim();
+      if (!placaNorm) {
+        throw new BadRequestException('La placa es requerida');
+      }
+      const rolNum = Number(rol);
+      const busquedaGlobal = ROLES_BUSQUEDA_PLACA_GLOBAL.has(rolNum);
+
+      const condiciones: string[] = ['v.Estatus = 1', 'v.Placa = ?'];
+      const parametros: unknown[] = [placaNorm];
+      if (!busquedaGlobal) {
+        condiciones.push('v.IdCliente = ?');
+        parametros.push(idCliente);
+      }
+      const whereClause = `WHERE ${condiciones.join(' AND ')}`;
+      const limit = busquedaGlobal ? 2 : 1;
+
+      const query = `${VehiculosService.SQL_VEHICULO_POR_PLACA_BASE}
+${whereClause}
+LIMIT ${limit}
+`;
+
+      const filas = await this.repository.query(query, parametros);
+
+      if (!filas?.length) {
+        throw new NotFoundException('Vehículo no encontrado');
+      }
+      if (busquedaGlobal && filas.length > 1) {
+        throw new BadRequestException(
+          'Hay más de un vehículo con esta placa en distintos clientes; acote la búsqueda.',
+        );
+      }
+
+      return {
+        data: this.mapRowAVehiculoPorPlaca(
+          filas[0] as Record<string, unknown>,
+        ),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { message: 'Error al buscar el vehículo por placa' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

@@ -110,6 +110,8 @@ import * as jwt from 'jsonwebtoken';
         synchronize: false, //Nunca poner en true
         dateStrings: false,
         timezone: '-06:00',
+        bigNumberStrings: false,
+        logging: true,
         extra: {
           // Evita que bigint se devuelvan como string
           decimalNumbers: true,
