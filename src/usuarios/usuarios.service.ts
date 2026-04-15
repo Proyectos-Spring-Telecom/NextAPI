@@ -24,8 +24,8 @@ import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
 import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
-import { Clientes } from 'src/entities/Clientes';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 @Injectable()
 export class UsuariosService {
@@ -37,31 +37,10 @@ export class UsuariosService {
     private readonly clientesService: ClientesService,
     @InjectRepository(UsuariosPermisos)
     private usuariosPermisosRepository: Repository<UsuariosPermisos>,
-    @InjectRepository(Clientes)
-    private readonly clienteRepository: Repository<Clientes>,
     private readonly emailService: MailService,
     private readonly jwtService: JwtService,
+    private readonly tenantFilter: TenantFilterService,
   ) {}
-
-  //funcion para obtener los clientes hijos
-  private async clienteHijos(cliente: number) {
-    const clientesFiltrado = await this.clienteRepository.query(
-      `CALL spGetClientes(?);`,
-      [cliente],
-    );
-
-    const idsFiltrados = clientesFiltrado[0]; // El primer índice contiene los resultados
-    const ids = idsFiltrados
-      .map((clientesFiltrado: any) => Number(clientesFiltrado.Id))
-      .filter(Boolean);
-    if (ids.length === 0) {
-      return { data: [] }; // No hay clientes que consultar
-    }
-
-    // 3. Construir el query dinámico con los IDs
-    const placeholders = ids.map(() => '?').join(', ');
-    return { ids, placeholders };
-  }
 
   // ========================================
   // 🔹 OBTENER USUARIOS POR PAGINACIÓN
@@ -74,115 +53,75 @@ export class UsuariosService {
     limit: number,
   ): Promise<ApiResponseCommon> {
     try {
-      let usuarios;
       const offset = (page - 1) * limit;
-      let totalResult;
-
-      switch (rol) {
-        case 1:
-          // Consulta de datos paginados Usuario SuperAdministrador
-          usuarios = await this.usuarioRepository.query(
-            `
-SELECT
-  -- Datos del Usuario
-  u.Id AS Id,
-  u.UserName AS UserName,
-  u.Nombre AS Nombre,
-  u.ApellidoPaterno AS ApellidoPaterno,
-  u.ApellidoMaterno AS ApellidoMaterno,
-  u.Telefono AS Telefono,
-  u.UltimoLogin AS UltimoLogin,
-  u.FotoPerfil AS FotoPerfil,
-  u.FechaCreacion AS FechaCreacion,
-  u.FechaActualizacion AS FechaActualizacion,
-  u.Estatus AS estatus,
-  u.IdRol AS IdRol,
-  -- Datos del Rol
-  r.Nombre AS RolNombre,
-  r.Descripcion AS RolDescripcion,
-  u.IdCliente AS IdCliente,
-  -- Datos del Cliente
-  c.Nombre AS clienteNombre,
-  c.ApellidoPaterno AS ApellidoPaternoCliente,
-  c.ApellidoMaterno AS ApellidoMaternoCliente,
-  c.Estatus AS EstatusCliente
-
-FROM Usuarios u
-INNER JOIN Roles r ON u.IdRol = r.Id
-LEFT JOIN Clientes c ON u.IdCliente = c.Id
-
-ORDER BY u.Id DESC
-LIMIT ? OFFSET ?;
-        `,
-            [limit, offset],
-          );
-
-          // Query para total (sin paginación)
-          totalResult = await this.usuarioRepository.query(
-            `
-  SELECT COUNT(*) AS total
-  FROM Usuarios u
-  INNER JOIN Clientes c ON u.IdCliente = c.Id
-
-  `,
-          );
-          break;
-
-        default:
-          const { ids, placeholders } = await this.clienteHijos(cliente);
-          // Consulta de datos paginados resto Usuario
-          usuarios = await this.usuarioRepository.query(
-            `
-SELECT
-  -- Datos del Usuario
-  u.Id AS Id,
-  u.UserName AS UserName,
-  u.Nombre AS Nombre,
-  u.ApellidoPaterno AS ApellidoPaterno,
-  u.ApellidoMaterno AS ApellidoMaterno,
-  u.Telefono AS Telefono,
-  u.UltimoLogin AS UltimoLogin,
-  u.FotoPerfil AS FotoPerfil,
-  u.FechaCreacion AS FechaCreacion,
-  u.FechaActualizacion AS FechaActualizacion,
-  u.Estatus AS estatus,
-  u.IdRol AS IdRol,
-  -- Datos del Rol
-  r.Nombre AS RolNombre,
-  r.Descripcion AS RolDescripcion,
-  u.IdCliente AS IdCliente,
-  -- Datos del Cliente
-  c.Nombre AS clienteNombre,
-  c.ApellidoPaterno AS ApellidoPaternoCliente,
-  c.ApellidoMaterno AS ApellidoMaternoCliente,
-  c.Estatus AS EstatusCliente
-
-FROM Usuarios u
-INNER JOIN Roles r ON u.IdRol = r.Id
-LEFT JOIN Clientes c ON u.IdCliente = c.Id
-WHERE c.Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
-AND u.Estatus = 1
-AND u.Id != ?
-ORDER BY u.Id DESC
-LIMIT ? OFFSET ?;
-        `,
-            [...ids, idUser, limit, offset],
-          );
-
-          // Query para total (sin paginación)
-          totalResult = await this.usuarioRepository.query(
-            `
-  SELECT COUNT(*) AS total
-  FROM Usuarios u
-  INNER JOIN Clientes c ON u.IdCliente = c.Id
-	WHERE c.Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
-AND u.Estatus = 1
-AND u.Id != ? 
-  `,
-            [...ids, idUser],
-          );
-          break;
+      const rolNum = Number(rol);
+      const tenant = await this.tenantFilter.build(rol, cliente, 'u', 'IdCliente');
+      if (tenant.sinAcceso) {
+        return {
+          data: [],
+          paginated: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
       }
+      const excludeSelf =
+        rolNum === 1 || rolNum === 2 ? '' : ' AND u.Id != ? ';
+      const usuariosSql = `
+SELECT
+  u.Id AS Id,
+  u.UserName AS UserName,
+  u.Nombre AS Nombre,
+  u.ApellidoPaterno AS ApellidoPaterno,
+  u.ApellidoMaterno AS ApellidoMaterno,
+  u.Telefono AS Telefono,
+  u.UltimoLogin AS UltimoLogin,
+  u.FotoPerfil AS FotoPerfil,
+  u.FechaCreacion AS FechaCreacion,
+  u.FechaActualizacion AS FechaActualizacion,
+  u.Estatus AS estatus,
+  u.IdRol AS IdRol,
+  r.Nombre AS RolNombre,
+  r.Descripcion AS RolDescripcion,
+  u.IdCliente AS IdCliente,
+  c.Nombre AS clienteNombre,
+  c.ApellidoPaterno AS ApellidoPaternoCliente,
+  c.ApellidoMaterno AS ApellidoMaternoCliente,
+  c.Estatus AS EstatusCliente
+FROM Usuarios u
+INNER JOIN Roles r ON u.IdRol = r.Id
+LEFT JOIN Clientes c ON u.IdCliente = c.Id
+WHERE 1 = 1
+${tenant.sql}
+${excludeSelf}
+ORDER BY u.Id DESC
+LIMIT ? OFFSET ?`;
+
+      const usuariosParams = [
+        ...tenant.params,
+        ...(excludeSelf ? [idUser] : []),
+        limit,
+        offset,
+      ];
+      const usuarios = await this.usuarioRepository.query(
+        usuariosSql,
+        usuariosParams,
+      );
+
+      const totalSql = `
+SELECT COUNT(*) AS total
+FROM Usuarios u
+INNER JOIN Clientes c ON u.IdCliente = c.Id
+WHERE 1 = 1
+${tenant.sql}
+${excludeSelf}`;
+      const totalParams = [...tenant.params, ...(excludeSelf ? [idUser] : [])];
+      const totalResult = await this.usuarioRepository.query(
+        totalSql,
+        totalParams,
+      );
 
       const total = Number(totalResult[0]?.total || 0);
 
@@ -224,15 +163,14 @@ AND u.Id != ?
     rol: number,
   ): Promise<ApiResponseCommon> {
     try {
-      let usuarios;
+      const tenant = await this.tenantFilter.build(rol, cliente, 'u', 'IdCliente');
+      if (tenant.sinAcceso) {
+        return { data: [] };
+      }
 
-      switch (rol) {
-        case 1:
-          // Consulta de datos listado Usuario SuperAdministrador
-          usuarios = await this.usuarioRepository.query(
-            `
+      const usuarios = await this.usuarioRepository.query(
+        `
 SELECT
-  -- Datos del Usuario
   u.Id AS Id,
   u.UserName AS UserName,
   u.Nombre AS Nombre,
@@ -245,66 +183,22 @@ SELECT
   u.FechaActualizacion AS FechaActualizacion,
   u.Estatus AS estatus,
   u.IdRol AS IdRol,
-  -- Datos del Rol
   r.Nombre AS RolNombre,
   r.Descripcion AS RolDescripcion,
   u.IdCliente AS IdCliente,
-  -- Datos del Cliente
   c.Nombre AS clienteNombre,
   c.ApellidoPaterno AS ApellidoPaternoCliente,
   c.ApellidoMaterno AS ApellidoMaternoCliente,
   c.Estatus AS EstatusCliente
-
 FROM Usuarios u
 INNER JOIN Roles r ON u.IdRol = r.Id
 LEFT JOIN Clientes c ON u.IdCliente = c.Id
 WHERE u.Estatus = 1
-ORDER BY u.Id DESC;
-        `,
-          );
-          break;
-
-        default:
-          // Consulta de datos listado resto Usuario
-          const { ids, placeholders } = await this.clienteHijos(cliente);
-          usuarios = await this.usuarioRepository.query(
-            `
-SELECT
-  -- Datos del Usuario
-  u.Id AS Id,
-  u.UserName AS UserName,
-  u.Nombre AS Nombre,
-  u.ApellidoPaterno AS ApellidoPaterno,
-  u.ApellidoMaterno AS ApellidoMaterno,
-  u.Telefono AS Telefono,
-  u.UltimoLogin AS UltimoLogin,
-  u.FotoPerfil AS FotoPerfil,
-  u.FechaCreacion AS FechaCreacion,
-  u.FechaActualizacion AS FechaActualizacion,
-  u.Estatus AS estatus,
-  u.IdRol AS IdRol,
-  -- Datos del Rol
-  r.Nombre AS RolNombre,
-  r.Descripcion AS RolDescripcion,
-  u.IdCliente AS IdCliente,
-  -- Datos del Cliente
-  c.Nombre AS clienteNombre,
-  c.ApellidoPaterno AS ApellidoPaternoCliente,
-  c.ApellidoMaterno AS ApellidoMaternoCliente,
-  c.Estatus AS EstatusCliente
-
-FROM Usuarios u
-INNER JOIN Roles r ON u.IdRol = r.Id
-LEFT JOIN Clientes c ON u.IdCliente = c.Id
-WHERE c.Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
-AND u.Estatus = 1
-ORDER BY u.Id DESC;
-        `,
-            [...ids],
-          );
-
-          break;
-      }
+${tenant.sql}
+ORDER BY u.Id DESC
+`,
+        [...tenant.params],
+      );
 
       const data = usuarios.map((item) => ({
         ...item,
@@ -368,14 +262,9 @@ ORDER BY u.Id DESC;
   async getUsuarioByID(id: number, cliente: number, rol: number) {
     try {
       let usuarioData;
-
-      switch (rol) {
-        case 1:
-          // Consulta de datos listado Usuario SuperAdministrador
-          usuarioData = await this.usuarioRepository.query(
-            `
+      const rolNum = Number(rol);
+      const selectUsuario = `
 SELECT
-  -- Datos del Usuario
   u.Id AS id,
   u.UserName AS userName,
   u.Nombre AS nombre,
@@ -388,66 +277,38 @@ SELECT
   u.FechaActualizacion AS fechaActualizacion,
   u.Estatus AS estatus,
   u.IdRol AS idRol,
-  -- Datos del rol
   r.Nombre AS rolNombre,
   r.Descripcion AS rolDescripcion,
   u.IdCliente AS idCliente,
-  -- Datos del Cliente
   c.Nombre AS clienteNombre,
   c.ApellidoPaterno AS apellidoPaternoCliente,
   c.ApellidoMaterno AS apellidoMaternoCliente,
   c.Estatus AS estatusCliente
-
 FROM Usuarios u
 INNER JOIN Roles r ON u.IdRol = r.Id
-LEFT JOIN Clientes c ON u.IdCliente = c.Id
-WHERE u.Id = ?
-ORDER BY u.Id DESC
-        `,
-            [id],
-          );
-          break;
+LEFT JOIN Clientes c ON u.IdCliente = c.Id`;
 
-        default:
-          // Consulta de datos paginados resto Usuario
-          const { ids, placeholders } = await this.clienteHijos(cliente);
+      if (rolNum === 1 || rolNum === 2) {
+        usuarioData = await this.usuarioRepository.query(
+          `${selectUsuario}
+WHERE u.Id = ?
+ORDER BY u.Id DESC`,
+          [id],
+        );
+      } else {
+        const tenant = await this.tenantFilter.build(rol, cliente, 'u', 'IdCliente');
+        if (tenant.sinAcceso) {
+          usuarioData = [];
+        } else {
           usuarioData = await this.usuarioRepository.query(
-            `
-SELECT
-  -- Datos del Usuario
-  u.Id AS id,
-  u.UserName AS userName,
-  u.Nombre AS nombre,
-  u.ApellidoPaterno AS apellidoPaterno,
-  u.ApellidoMaterno AS apellidoMaterno,
-  u.Telefono AS telefono,
-  u.UltimoLogin AS ultimoLogin,
-  u.FotoPerfil AS fotoPerfil,
-  u.FechaCreacion AS fechaCreacion,
-  u.FechaActualizacion AS fechaActualizacion,
-  u.Estatus AS estatus,
-  u.IdRol AS idRol,
-  -- Datos del rol
-  r.Nombre AS rolNombre,
-  r.Descripcion AS rolDescripcion,
-  u.IdCliente AS idCliente,
-  -- Datos del Cliente
-  c.Nombre AS clienteNombre,
-  c.ApellidoPaterno AS apellidoPaternoCliente,
-  c.ApellidoMaterno AS apellidoMaternoCliente,
-  c.Estatus AS estatusCliente
-
-FROM Usuarios u
-INNER JOIN Roles r ON u.IdRol = r.Id
-LEFT JOIN Clientes c ON u.IdCliente = c.Id
+            `${selectUsuario}
 WHERE u.Id = ?
-AND c.Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
+${tenant.sql}
 AND u.Estatus = 1
-ORDER BY u.Id DESC
-        `,
-            [id, ...ids],
+ORDER BY u.Id DESC`,
+            [id, ...tenant.params],
           );
-          break;
+        }
       }
 
       if (usuarioData.length === 0) {

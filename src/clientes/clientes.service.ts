@@ -21,6 +21,7 @@ import {
   EnumModulos,
 } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 @Injectable()
 export class ClientesService {
@@ -29,7 +30,8 @@ export class ClientesService {
     private readonly clienteRepository: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly s3Service: S3Service,
-  ) { }
+    private readonly tenantFilter: TenantFilterService,
+  ) {}
 
   // ========================================
   // 🔹 CREAR UN CLIENTE
@@ -181,48 +183,6 @@ export class ClientesService {
     }
   }
 
-  //funcion para obtener los clientes padre e hijos
-  private async clienteHijos(cliente: number) {
-    const clientesFiltrado = await this.clienteRepository.query(
-      `CALL spGetClientes(?);`,
-      [cliente],
-    );
-
-    const idsFiltrados = clientesFiltrado[0]; // El primer índice contiene los resultados
-    const ids = idsFiltrados
-      .map((clientesFiltrado: any) => Number(clientesFiltrado.Id))
-      .filter(Boolean);
-    if (ids.length === 0) {
-      return { data: [] }; // No hay clientes que consultar
-    }
-
-    // 3. Construir el query dinámico con los IDs
-    const placeholders = ids.map(() => '?').join(', ');
-    return { ids, placeholders };
-  }
-
-  private async clienteHijosPag(cliente: number) {
-    const result = await this.clienteRepository.query(
-      'CALL spGetClientes(?);',
-      [cliente],
-    );
-
-    let rows = result?.[0] ?? [];
-
-    // Construir ids y quitar el cliente padre
-    const ids = rows
-      .map((row: any) => Number(row.Id))
-      .filter(id => !isNaN(id) && id !== cliente); // 👈 QUITAR EL CLIENTE PADRE
-
-    if (ids.length === 0) {
-      return { ids: [], placeholders: '' };
-    }
-
-    const placeholders = ids.map(() => '?').join(', ');
-
-    return { ids, placeholders };
-  }
-
   // ========================================
   // 🔹 OBTENER PAGINADO DE CLIENTES
   // ========================================
@@ -235,109 +195,61 @@ export class ClientesService {
   ): Promise<ApiResponseCommon> {
     try {
       const offset = (page - 1) * limit;
-      let totalResult;
-      let clientes;
-      switch (rol) {
-        case 1:
-          // Usuario SuperAdministrador - obtiene todas las regiones
-          clientes = await this.clienteRepository.query(
-            `
-SELECT
-  Id AS id,
-  RFC AS rfc,
-  TipoPersona AS tipoPersona,
-  Nombre AS nombre,
-  ApellidoPaterno AS apellidoPaterno,
-  ApellidoMaterno AS apellidoMaterno,
-  Telefono AS telefono,
-  Correo AS correo,
-  Estado AS estado,
-  Municipio AS municipio,
-  Colonia AS colonia,
-  Calle AS calle,
-  EntreCalles AS entreCalles,
-  NumeroExterior AS numeroExterior,
-  NumeroInterior AS numeroInterior,
-  CP AS cp,
-  NombreEncargado AS nombreEncargado,
-  TelefonoEncargado AS telefonoEncargado,
-  CorreoEncargado AS correoEncargado,
-  ConstanciaSituacionFiscal AS constanciaSituacionFiscal,
-  ComprobanteDomicilio AS comprobanteDomicilio,
-  ActaConstitutiva AS actaConstitutiva,
-  Logotipo AS logotipo,
-  Estatus AS estatus
-  
-FROM Clientes
-ORDER BY Id ASC
-  LIMIT ? OFFSET ?;
-            `,
-            [limit, offset],
-          );
-
-          // Query para total (sin paginación)
-          totalResult = await this.clienteRepository.query(
-            `
-  SELECT COUNT(*) AS total
-FROM Clientes
-
-  `,
-          );
-          break;
-
-        default:
-          const { ids, placeholders } = await this.clienteHijosPag(cliente);
-          clientes = await this.clienteRepository.query(
-            `
-SELECT
-  Id AS id,
-  RFC AS rfc,
-  TipoPersona AS tipoPersona,
-  Nombre AS nombre,
-  ApellidoPaterno AS apellidoPaterno,
-  ApellidoMaterno AS apellidoMaterno,
-  Telefono AS telefono,
-  Correo AS correo,
-  Estado AS estado,
-  Municipio AS municipio,
-  Colonia AS colonia,
-  Calle AS calle,
-  EntreCalles AS entreCalles,
-  NumeroExterior AS numeroExterior,
-  NumeroInterior AS numeroInterior,
-  CP AS cp,
-  NombreEncargado AS nombreEncargado,
-  TelefonoEncargado AS telefonoEncargado,
-  CorreoEncargado AS correoEncargado,
-  ConstanciaSituacionFiscal AS constanciaSituacionFiscal,
-  ComprobanteDomicilio AS comprobanteDomicilio,
-  ActaConstitutiva AS actaConstitutiva,
-  Logotipo AS logotipo,
-  Estatus AS estatus
-  
-FROM Clientes
-WHERE Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
-ORDER BY Id ASC
-  LIMIT ? OFFSET ?;
-            `,
-            [...ids, limit, offset],
-          );
-
-          // Query para total (sin paginación)
-          totalResult = await this.clienteRepository.query(
-            `
-  SELECT COUNT(*) AS total
-FROM Clientes
-WHERE Id IN (${placeholders})    -- 🔹 aquí colocas el ID del cliente que quieres consultar
-ORDER BY Id ASC
-
-  `,
-            [...ids],
-          );
-          break;
+      const tenant = await this.tenantFilter.build(rol, cliente, 'c', 'Id');
+      if (tenant.sinAcceso) {
+        return {
+          data: [],
+          paginated: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
       }
 
-      // 🔥 Forzamos ids a number y agregamos nombreCompleto
+      const selectFrom = `
+SELECT
+  c.Id AS id,
+  c.RFC AS rfc,
+  c.TipoPersona AS tipoPersona,
+  c.Nombre AS nombre,
+  c.ApellidoPaterno AS apellidoPaterno,
+  c.ApellidoMaterno AS apellidoMaterno,
+  c.Telefono AS telefono,
+  c.Correo AS correo,
+  c.Estado AS estado,
+  c.Municipio AS municipio,
+  c.Colonia AS colonia,
+  c.Calle AS calle,
+  c.EntreCalles AS entreCalles,
+  c.NumeroExterior AS numeroExterior,
+  c.NumeroInterior AS numeroInterior,
+  c.CP AS cp,
+  c.NombreEncargado AS nombreEncargado,
+  c.TelefonoEncargado AS telefonoEncargado,
+  c.CorreoEncargado AS correoEncargado,
+  c.ConstanciaSituacionFiscal AS constanciaSituacionFiscal,
+  c.ComprobanteDomicilio AS comprobanteDomicilio,
+  c.ActaConstitutiva AS actaConstitutiva,
+  c.Logotipo AS logotipo,
+  c.Estatus AS estatus
+FROM Clientes c
+WHERE 1 = 1
+${tenant.sql}
+ORDER BY c.Id ASC`;
+
+      const clientes = await this.clienteRepository.query(
+        `${selectFrom}
+LIMIT ? OFFSET ?`,
+        [...tenant.params, limit, offset],
+      );
+
+      const totalResult = await this.clienteRepository.query(
+        `SELECT COUNT(*) AS total FROM Clientes c WHERE 1 = 1 ${tenant.sql}`,
+        [...tenant.params],
+      );
+
       const data = clientes.map((item) => ({
         ...item,
         id: Number(item.id),
@@ -374,48 +286,27 @@ ORDER BY Id ASC
     rol: number,
   ): Promise<ApiResponseCommon> {
     try {
-      let clientes;
-      switch (rol) {
-        case 1:
-          // Usuario SuperAdministrador - obtiene todas las regiones
-          clientes = await this.clienteRepository.query(
-            `
-SELECT
-  Id AS id,
-  Nombre AS nombre,
-  ApellidoPaterno AS apellidoPaterno,
-  ApellidoMaterno AS apellidoMaterno,
-  Logotipo AS logotipo
-FROM Clientes
-WHERE Estatus = 1
-ORDER BY Id ASC;
-            `,
-          );
-          break;
-
-        default:
-          // Usuarios normales - solo sus regiones asignadas
-          const { ids, placeholders } = await this.clienteHijos(cliente);
-          clientes = await this.clienteRepository.query(
-            `
-SELECT
-  Id AS id,
-  Nombre AS nombre,
-  ApellidoPaterno AS apellidoPaterno,
-  ApellidoMaterno AS apellidoMaterno,
-  Logotipo AS logotipo
-FROM Clientes
-WHERE Id IN (${placeholders})  -- 🔹 aquí colocas el ID del cliente que quieres consultar
-  AND Estatus = 1
-ORDER BY Id ASC;
-
-            `,
-            [...ids],
-          );
-          break;
+      const tenant = await this.tenantFilter.build(rol, cliente, 'c', 'Id');
+      if (tenant.sinAcceso) {
+        return { data: [] };
       }
 
-      // 🔥 Forzamos ids a number y agregamos nombreCompleto
+      const clientes = await this.clienteRepository.query(
+        `
+SELECT
+  c.Id AS id,
+  c.Nombre AS nombre,
+  c.ApellidoPaterno AS apellidoPaterno,
+  c.ApellidoMaterno AS apellidoMaterno,
+  c.Logotipo AS logotipo
+FROM Clientes c
+WHERE c.Estatus = 1
+${tenant.sql}
+ORDER BY c.Id ASC
+`,
+        [...tenant.params],
+      );
+
       const data = clientes.map((item) => ({
         ...item,
         id: Number(item.id),
@@ -444,10 +335,12 @@ ORDER BY Id ASC;
     rol: number,
   ): Promise<ApiResponseCommon> {
     try {
-      let clientes;
-      // Usuarios normales - solo sus regiones asignadas
-      const { ids, placeholders } = await this.clienteHijos(cliente);
-      clientes = await this.clienteRepository.query(
+      const ids = await this.tenantFilter.getClienteHijosIds(cliente);
+      if (ids.length === 0) {
+        return { data: [] };
+      }
+      const placeholders = ids.map(() => '?').join(', ');
+      const clientes = await this.clienteRepository.query(
         `
 SELECT
   Id AS id,
@@ -455,11 +348,9 @@ SELECT
   ApellidoPaterno AS apellidoPaterno,
   ApellidoMaterno AS apellidoMaterno
 FROM Clientes
-WHERE Id IN (${placeholders})  -- 🔹 aquí colocas el ID del cliente que quieres consultar
-  
+WHERE Id IN (${placeholders})
 ORDER BY Id ASC
-
-            `,
+`,
         [...ids],
       );
 
@@ -657,16 +548,16 @@ ORDER BY Id ASC
     updateClienteEstatusDto: UpdateClienteEstatusDto,
   ): Promise<ApiCrudResponse> {
     try {
-      //Buscamos al cliente y verificamos
-      const cliente = await this.clienteRepository.findOne({
+      const clienteEntidad = await this.clienteRepository.findOne({
         where: { id: id },
       });
-      if (!cliente) {
+      if (!clienteEntidad) {
         throw new NotFoundException(`Cliente con ID: ${id} no encontrado`);
       }
 
-      //Obtenemos los clientes hijos
-      const { ids, placeholders } = await this.clienteHijos(id);
+      const idsJerarquia = await this.tenantFilter.getClienteHijosIds(id);
+      const idsUpdate = idsJerarquia.length > 0 ? idsJerarquia : [id];
+      const placeholders = idsUpdate.map(() => '?').join(', ');
 
       //Obtenemos el valor de estatus
       const estatus = updateClienteEstatusDto.estatus;
@@ -676,9 +567,9 @@ ORDER BY Id ASC
         `
         UPDATE Clientes
         SET Estatus = ${estatus}
-        WHERE Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
+        WHERE Id IN (${placeholders})
         `,
-        [...ids],
+        [...idsUpdate],
       );
 
       //-----Registro en la bitacora----- SUCCESS
@@ -700,7 +591,9 @@ ORDER BY Id ASC
         estatus: { estatus: estatus },
         data: {
           id: id,
-          nombre: `${cliente.nombre} ${cliente.apellidoPaterno} ` || '',
+          nombre:
+            `${clienteEntidad.nombre ?? ''} ${clienteEntidad.apellidoPaterno ?? ''}`.trim() ||
+            '',
         },
       };
       return result;
@@ -747,17 +640,18 @@ ORDER BY Id ASC
         );
       }
 
-      //Obtenemos los clientes hijos
-      const { ids, placeholders } = await this.clienteHijos(id);
+      const idsCascadeRaw = await this.tenantFilter.getClienteHijosIds(id);
+      const idsCascade =
+        idsCascadeRaw.length > 0 ? idsCascadeRaw : [id];
+      const placeholdersCascade = idsCascade.map(() => '?').join(', ');
 
-      //Hacemos eliminado logico al cliente padre e hijos
       await this.clienteRepository.query(
         `
         UPDATE Clientes
         SET Estatus = 0
-        WHERE Id IN (${placeholders})   -- 🔹 aquí colocas el ID del cliente que quieres consultar
+        WHERE Id IN (${placeholdersCascade})
         `,
-        [...ids],
+        [...idsCascade],
       );
 
       //-----Registro en la bitacora----- SUCCESS

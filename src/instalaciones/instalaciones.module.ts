@@ -5,6 +5,7 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { InstalacionesController } from './instalaciones.controller';
 import { InstalacionesService } from './instalaciones.service';
 
@@ -17,6 +18,7 @@ import { InstalacionesService } from './instalaciones.service';
       CatEstatusInstalacion,
     ]),
     BitacoraModule,
+    TenantFilterModule,
   ],
   controllers: [InstalacionesController],
   providers: [InstalacionesService],

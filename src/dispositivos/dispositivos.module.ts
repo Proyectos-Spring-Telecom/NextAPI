@@ -6,6 +6,7 @@ import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { CatEstatusDispositivo } from 'src/entities/CatEstatusDispositivo';
 import { Sims } from 'src/entities/Sims';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { DispositivosController } from './dispositivos.controller';
 import { DispositivosService } from './dispositivos.service';
 
@@ -19,6 +20,7 @@ import { DispositivosService } from './dispositivos.service';
       Sims,
     ]),
     BitacoraModule,
+    TenantFilterModule,
   ],
   controllers: [DispositivosController],
   providers: [DispositivosService],

@@ -6,7 +6,6 @@ import {
   Patch,
   Param,
   Request,
-  Query,
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +14,6 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
-  ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
 import { VehiculosService } from './vehiculos.service';
@@ -50,28 +48,23 @@ export class VehiculosController {
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'Lista completa de vehículos' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos (estatus=1)',
+  @ApiOperation({
+    summary: 'Lista completa de vehículos',
+    description: 'Solo registros activos (Estatus=1). Alcance según rol del token.',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findAllList(
-    @Request() req,
-    @Query('soloActivos') soloActivos?: string,
-  ): Promise<ApiResponseCommon> {
+  async findAllList(@Request() req): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
-    const soloActivosBool = soloActivos !== 'false';
-    return this.vehiculosService.findAllList(idCliente, soloActivosBool);
+    const rol = req.user.rol;
+    return this.vehiculosService.findAllList(idCliente, rol);
   }
 
   @Get('placa/:placa')
   @ApiOperation({
     summary: 'Obtener vehículo por placa',
     description:
-      'Solo vehículos activos (Estatus=1). Respuesta plana con cliente, modelo/marca, tipo y combustible. Roles 1–3: filtro solo por placa. Otros roles: placa + IdCliente del token.',
+      'Solo vehículos activos (Estatus=1). Misma regla de tenant que el resto de listados: roles 1–2 sin filtro IdCliente; 3–4 IdCliente en jerarquía (spGetClientes); 5–6 solo token. Si en el ámbito hay más de un registro con la misma placa, responde 400.',
   })
   @ApiParam({ name: 'placa', description: 'Placa del vehículo' })
   @ApiResponse({ status: 200, description: 'Vehículo encontrado' })
@@ -85,25 +78,23 @@ export class VehiculosController {
   }
 
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de vehículos' })
+  @ApiOperation({
+    summary: 'Lista paginada de vehículos',
+    description:
+      'Incluye activos e inactivos. Alcance según rol del token (multitenancy).',
+  })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos',
-  })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
-    @Query('soloActivos') soloActivos?: string,
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
-    const soloActivosBool = soloActivos === 'true';
-    return this.vehiculosService.findAll(idCliente, page, limit, soloActivosBool);
+    const rol = req.user.rol;
+    return this.vehiculosService.findAll(idCliente, rol, page, limit);
   }
 
   @Get(':id')

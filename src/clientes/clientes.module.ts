@@ -6,12 +6,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Clientes } from 'src/entities/Clientes';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { S3Module } from 'src/s3/s3.module';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Clientes]),
     BitacoraModule,
     S3Module,
+    TenantFilterModule,
   ],
   controllers: [ClientesController],
   providers: [

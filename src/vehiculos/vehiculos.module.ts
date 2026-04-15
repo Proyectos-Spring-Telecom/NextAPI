@@ -6,6 +6,7 @@ import { CatTipoVehiculo } from 'src/entities/CatTipoVehiculo';
 import { CatEstatusVehiculo } from 'src/entities/CatEstatusVehiculo';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { VehiculosController } from './vehiculos.controller';
 import { VehiculosService } from './vehiculos.service';
 
@@ -19,6 +20,7 @@ import { VehiculosService } from './vehiculos.service';
       CatTipoCombustible,
     ]),
     BitacoraModule,
+    TenantFilterModule,
   ],
   controllers: [VehiculosController],
   providers: [VehiculosService],

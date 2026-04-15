@@ -10,13 +10,14 @@ import { PermisosModule } from 'src/permisos/permisos.module';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { MailModule } from 'src/mail/mail.module';
 import { AuthModule } from 'src/auth/auth.module';
-import { Clientes } from 'src/entities/Clientes';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuarios, UsuariosPermisos, Clientes]),
+    TypeOrmModule.forFeature([Usuarios, UsuariosPermisos]),
     BitacoraModule,
     ClientesModule,
+    TenantFilterModule,
     PermisosModule,
     MailModule,
     AuthModule

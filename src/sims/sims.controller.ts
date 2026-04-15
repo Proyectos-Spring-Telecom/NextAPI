@@ -6,7 +6,6 @@ import {
   Patch,
   Param,
   Request,
-  Query,
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +14,6 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
-  ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
 import { SimsService } from './sims.service';
@@ -50,43 +48,35 @@ export class SimsController {
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'Lista completa de SIMs' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos (estatus=1)',
+  @ApiOperation({
+    summary: 'Lista completa de SIMs',
+    description: 'Solo activos (Estatus=1). Alcance según rol.',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findAllList(
-    @Request() req,
-    @Query('soloActivos') soloActivos?: string,
-  ): Promise<ApiResponseCommon> {
+  async findAllList(@Request() req): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
-    const soloActivosBool = soloActivos !== 'false';
-    return this.simsService.findAllList(idCliente, soloActivosBool);
+    const rol = req.user.rol;
+    return this.simsService.findAllList(idCliente, rol);
   }
 
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de SIMs' })
+  @ApiOperation({
+    summary: 'Lista paginada de SIMs',
+    description: 'Activos e inactivos. Alcance según rol.',
+  })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos',
-  })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
-    @Query('soloActivos') soloActivos?: string,
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
-    const soloActivosBool = soloActivos === 'true';
-    return this.simsService.findAll(idCliente, page, limit, soloActivosBool);
+    const rol = req.user.rol;
+    return this.simsService.findAll(idCliente, rol, page, limit);
   }
 
   @Get(':id')

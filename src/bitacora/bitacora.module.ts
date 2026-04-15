@@ -3,10 +3,10 @@ import { BitacoraLoggerService } from './bitacora.service';
 import { BitacoraController } from './bitacora.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Bitacora } from 'src/entities/Bitacora';
-import { Clientes } from 'src/entities/Clientes';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Bitacora, Clientes])],
+  imports: [TypeOrmModule.forFeature([Bitacora]), TenantFilterModule],
   controllers: [BitacoraController],
   providers: [BitacoraLoggerService],
   exports: [BitacoraLoggerService],

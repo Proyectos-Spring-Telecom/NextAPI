@@ -5,6 +5,7 @@ import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { CatEstatusSim } from 'src/entities/CatEstatusSim';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { SimsController } from './sims.controller';
 import { SimsService } from './sims.service';
 
@@ -17,6 +18,7 @@ import { SimsService } from './sims.service';
       CatEstatusSim,
     ]),
     BitacoraModule,
+    TenantFilterModule,
   ],
   controllers: [SimsController],
   providers: [SimsService],

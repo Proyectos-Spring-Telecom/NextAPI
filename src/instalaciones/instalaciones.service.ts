@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Vehiculos } from 'src/entities/Vehiculos';
@@ -21,6 +21,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 const ID_MODULO_INSTALACIONES = 17;
 
@@ -36,6 +37,7 @@ export class InstalacionesService {
     @InjectRepository(CatEstatusInstalacion)
     private readonly catEstatusInstalacionRepo: Repository<CatEstatusInstalacion>,
     private readonly bitacoraLogger: BitacoraLoggerService,
+    private readonly tenantFilter: TenantFilterService,
   ) {}
 
   private async validarDispositivoPerteneceCliente(
@@ -188,13 +190,22 @@ export class InstalacionesService {
 
   async findAllList(
     idCliente: number,
-    soloActivos = true,
+    rol: number,
   ): Promise<ApiResponseCommon> {
     try {
-      const where: Record<string, unknown> = { idCliente };
-      if (soloActivos) {
-        where.estatus = 1;
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+        rol,
+        idCliente,
+      );
+      if (tenant.sinAcceso) {
+        return { data: [] };
       }
+      const where: FindOptionsWhere<Instalaciones> = {
+        estatus: 1,
+        ...(tenant.idCliente !== undefined
+          ? { idCliente: tenant.idCliente }
+          : {}),
+      };
       const data = await this.repository.find({
         where,
         order: { id: 'ASC' },
@@ -211,15 +222,31 @@ export class InstalacionesService {
 
   async findAll(
     idCliente: number,
+    rol: number,
     page: number,
     limit: number,
-    soloActivos = false,
   ): Promise<ApiResponseCommon> {
     try {
-      const where: Record<string, unknown> = { idCliente };
-      if (soloActivos) {
-        where.estatus = 1;
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+        rol,
+        idCliente,
+      );
+      if (tenant.sinAcceso) {
+        return {
+          data: [],
+          paginated: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
       }
+      const where: FindOptionsWhere<Instalaciones> = {
+        ...(tenant.idCliente !== undefined
+          ? { idCliente: tenant.idCliente }
+          : {}),
+      };
       const [data, total] = await this.repository.findAndCount({
         where,
         skip: (page - 1) * limit,

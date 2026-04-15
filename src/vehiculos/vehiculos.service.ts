@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatModeloVehiculo } from 'src/entities/CatModeloVehiculo';
 import { CatTipoVehiculo } from 'src/entities/CatTipoVehiculo';
@@ -22,11 +22,9 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 const ID_MODULO_VEHICULOS = 16;
-
-/** Roles 1–3: búsqueda solo por placa (sin filtrar por IdCliente del token). */
-const ROLES_BUSQUEDA_PLACA_GLOBAL = new Set([1, 2, 3]);
 
 /** Fila devuelta por la query base de vehículo por placa (activos). */
 export interface VehiculoPorPlacaData {
@@ -66,6 +64,7 @@ export class VehiculosService {
     @InjectRepository(CatTipoCombustible)
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
     private readonly bitacoraLogger: BitacoraLoggerService,
+    private readonly tenantFilter: TenantFilterService,
   ) {}
 
   private async validarFks(dto: {
@@ -118,9 +117,7 @@ export class VehiculosService {
         where: { placa: dto.placa, idCliente },
       });
       if (existePlaca) {
-        throw new BadRequestException(
-          'La placa ya existe para este cliente',
-        );
+        throw new BadRequestException('La placa ya existe para este cliente');
       }
 
       await this.validarFks({
@@ -191,16 +188,18 @@ export class VehiculosService {
     }
   }
 
-  async findAllList(
-    idCliente: number,
-    soloActivos = true,
-  ): Promise<ApiResponseCommon> {
+  async findAllList(idCliente: number, rol: number): Promise<ApiResponseCommon> {
     try {
-      const where: Record<string, unknown> = { idCliente };
-      if (soloActivos) {
-        where.estatus = 1;
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(rol, idCliente);
+      if (tenant.sinAcceso) {
+        return { data: [] };
       }
+      const where: FindOptionsWhere<Vehiculos> = {
+        estatus: 1,
+        ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+      };
       const data = await this.repository.find({
+        where,
         order: { id: 'ASC' },
       });
       const dataNormalizada = data.map((item) => ({
@@ -215,15 +214,27 @@ export class VehiculosService {
 
   async findAll(
     idCliente: number,
+    rol: number,
     page: number,
     limit: number,
-    soloActivos = false,
   ): Promise<ApiResponseCommon> {
     try {
-      const where: Record<string, unknown> = { idCliente };
-      if (soloActivos) {
-        where.estatus = 1;
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(rol, idCliente);
+      if (tenant.sinAcceso) {
+        return {
+          data: [],
+          paginated: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
       }
+
+      const where: FindOptionsWhere<Vehiculos> = {
+        ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+      };
       const [data, total] = await this.repository.findAndCount({
         where,
         skip: (page - 1) * limit,
@@ -248,10 +259,7 @@ export class VehiculosService {
     }
   }
 
-  async findOne(
-    id: number,
-    idCliente: number,
-  ): Promise<{ data: Vehiculos }> {
+  async findOne(id: number, idCliente: number): Promise<{ data: Vehiculos }> {
     try {
       const entity = await this.repository.findOne({
         where: { id, idCliente },
@@ -307,8 +315,7 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
     const num = (k: string): number => Number(g(k));
     const numOrNull = (k: string): number | null =>
       g(k) == null || g(k) === '' ? null : Number(g(k));
-    const strOrNull = (k: string): string | null =>
-      g(k) == null ? null : String(g(k));
+    const strOrNull = (k: string): string | null => (g(k) == null ? null : String(g(k)));
     const nombreCompletoRaw = g('nombreCompleto');
     const nombreCompleto =
       nombreCompletoRaw == null || String(nombreCompletoRaw).trim() === ''
@@ -349,17 +356,17 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       if (!placaNorm) {
         throw new BadRequestException('La placa es requerida');
       }
-      const rolNum = Number(rol);
-      const busquedaGlobal = ROLES_BUSQUEDA_PLACA_GLOBAL.has(rolNum);
-
-      const condiciones: string[] = ['v.Estatus = 1', 'v.Placa = ?'];
-      const parametros: unknown[] = [placaNorm];
-      if (!busquedaGlobal) {
-        condiciones.push('v.IdCliente = ?');
-        parametros.push(idCliente);
+      const tenant = await this.tenantFilter.build(rol, idCliente, 'v', 'IdCliente');
+      if (tenant.sinAcceso) {
+        throw new NotFoundException('Vehículo no encontrado');
       }
-      const whereClause = `WHERE ${condiciones.join(' AND ')}`;
-      const limit = busquedaGlobal ? 2 : 1;
+
+      const sinAcotarCliente = tenant.sql === '' && tenant.params.length === 0;
+      const filtroPorVariosClientes = tenant.sql.includes('IN');
+      const limit = sinAcotarCliente || filtroPorVariosClientes ? 2 : 1;
+
+      const whereClause = `WHERE v.Estatus = 1 AND v.Placa = ?${tenant.sql}`;
+      const parametros: unknown[] = [placaNorm, ...tenant.params];
 
       const query = `${VehiculosService.SQL_VEHICULO_POR_PLACA_BASE}
 ${whereClause}
@@ -371,16 +378,14 @@ LIMIT ${limit}
       if (!filas?.length) {
         throw new NotFoundException('Vehículo no encontrado');
       }
-      if (busquedaGlobal && filas.length > 1) {
+      if (filas.length > 1) {
         throw new BadRequestException(
-          'Hay más de un vehículo con esta placa en distintos clientes; acote la búsqueda.',
+          'Hay más de un vehículo con esta placa en el ámbito permitido para su rol; acote la búsqueda.',
         );
       }
 
       return {
-        data: this.mapRowAVehiculoPorPlaca(
-          filas[0] as Record<string, unknown>,
-        ),
+        data: this.mapRowAVehiculoPorPlaca(filas[0] as Record<string, unknown>),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -410,9 +415,7 @@ LIMIT ${limit}
           where: { placa: dto.placa, idCliente },
         });
         if (existePlaca) {
-          throw new BadRequestException(
-            'La placa ya existe para este cliente',
-          );
+          throw new BadRequestException('La placa ya existe para este cliente');
         }
       }
 
@@ -433,21 +436,16 @@ LIMIT ${limit}
         updateData.idTipoVehiculo = dto.idTipoVehiculo;
       if (dto.anio !== undefined) updateData.anio = dto.anio;
       if (dto.color !== undefined) updateData.color = dto.color;
-      if (dto.numeroSerie !== undefined)
-        updateData.numeroSerie = dto.numeroSerie;
+      if (dto.numeroSerie !== undefined) updateData.numeroSerie = dto.numeroSerie;
       if (dto.foto !== undefined) updateData.foto = dto.foto;
       if (dto.fotoFrente !== undefined) updateData.fotoFrente = dto.fotoFrente;
-      if (dto.fotoTrasera !== undefined)
-        updateData.fotoTrasera = dto.fotoTrasera;
-      if (dto.fotoDerecha !== undefined)
-        updateData.fotoDerecha = dto.fotoDerecha;
-      if (dto.fotoIzquierda !== undefined)
-        updateData.fotoIzquierda = dto.fotoIzquierda;
+      if (dto.fotoTrasera !== undefined) updateData.fotoTrasera = dto.fotoTrasera;
+      if (dto.fotoDerecha !== undefined) updateData.fotoDerecha = dto.fotoDerecha;
+      if (dto.fotoIzquierda !== undefined) updateData.fotoIzquierda = dto.fotoIzquierda;
       if (dto.fotoExtra !== undefined) updateData.fotoExtra = dto.fotoExtra;
       if (dto.tarjetaCirculacion !== undefined)
         updateData.tarjetaCirculacion = dto.tarjetaCirculacion;
-      if (dto.polizaSeguro !== undefined)
-        updateData.polizaSeguro = dto.polizaSeguro;
+      if (dto.polizaSeguro !== undefined) updateData.polizaSeguro = dto.polizaSeguro;
       if (dto.permisoConcesion !== undefined)
         updateData.permisoConcesion = dto.permisoConcesion;
       if (dto.inspeccionMecanica !== undefined)
@@ -456,8 +454,7 @@ LIMIT ${limit}
         updateData.pasajerosSentados = dto.pasajerosSentados;
       if (dto.pasajerosParados !== undefined)
         updateData.pasajerosParados = dto.pasajerosParados;
-      if (dto.idCombustible !== undefined)
-        updateData.idCombustible = dto.idCombustible;
+      if (dto.idCombustible !== undefined) updateData.idCombustible = dto.idCombustible;
       if (dto.km !== undefined) updateData.km = dto.km;
       if (dto.capacidadLitros !== undefined)
         updateData.capacidadLitros = dto.capacidadLitros;
@@ -546,9 +543,7 @@ LIMIT ${limit}
         (error as Error)?.message,
       );
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException(
-        'Error al cambiar estatus del vehículo',
-      );
+      throw new InternalServerErrorException('Error al cambiar estatus del vehículo');
     }
   }
 }

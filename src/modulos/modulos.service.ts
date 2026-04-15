@@ -101,7 +101,7 @@ export class ModulosService {
         }))
       }));
       const result: ApiResponseCommon = {
-        data: modulos,
+        data,
       };
       return result;
     } catch (error) {
@@ -128,7 +128,7 @@ export class ModulosService {
       }));
 
       const result: ApiResponseCommon = {
-        data,
+        data: modulos,
         paginated: {
           total: total,
           page,
