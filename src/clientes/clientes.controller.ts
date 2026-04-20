@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
   Body,
   Patch,
   Param,
+  Query,
   Delete,
   UseGuards,
   Request,
@@ -26,6 +28,7 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -105,6 +108,49 @@ export class ClientesController {
     const idUser = req.user.userId;
     const rol = req.user.rol;
     return this.clientesService.getAllListClientes(+idUser, +idCliente, +rol);
+  }
+
+  @Get('jerarquia')
+  @ApiOperation({
+    summary: 'Jerarquía de clientes (spGetClientes)',
+    description:
+      'Ejecuta el procedimiento almacenado `spGetClientes` con la raíz indicada. Por defecto usa `IdCliente` del JWT. Roles 1 y 2 pueden enviar `idClienteRaiz` para otra raíz.',
+  })
+  @ApiQuery({
+    name: 'idClienteRaiz',
+    required: false,
+    type: Number,
+    description:
+      'Opcional. ID cliente raíz del árbol. Solo permitido para roles 1 y 2.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista jerárquica (raíz + hijos recursivos)',
+  })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({
+    status: 403,
+    description: 'idClienteRaiz no permitido para este rol',
+  })
+  async getJerarquiaClientesSp(
+    @Request() req,
+    @Query('idClienteRaiz') idClienteRaizRaw?: string,
+  ): Promise<ApiResponseCommon> {
+    const idClienteToken = Number(req.user.idCliente);
+    const rol = Number(req.user.rol);
+    let idClienteRaizOpcional: number | undefined;
+    if (idClienteRaizRaw !== undefined && idClienteRaizRaw !== '') {
+      const parsed = Number(idClienteRaizRaw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new BadRequestException('idClienteRaiz inválido');
+      }
+      idClienteRaizOpcional = parsed;
+    }
+    return this.clientesService.getJerarquiaClientesSp(
+      idClienteToken,
+      rol,
+      idClienteRaizOpcional,
+    );
   }
 
   @Get('list/:cliente')

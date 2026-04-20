@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -32,6 +33,63 @@ export class ClientesService {
     private readonly s3Service: S3Service,
     private readonly tenantFilter: TenantFilterService,
   ) {}
+
+  /**
+   * Resultado de `spGetClientes` (árbol: raíz + descendientes).
+   * Nombres en camelCase para consumo JSON (p. ej. Shift).
+   */
+  async getJerarquiaClientesSp(
+    idClienteToken: number,
+    rol: number,
+    idClienteRaizOpcional?: number,
+  ): Promise<ApiResponseCommon> {
+    try {
+      const rolNum = Number(rol);
+      const puedeElegirRaiz = rolNum === 1 || rolNum === 2;
+      if (idClienteRaizOpcional !== undefined && !puedeElegirRaiz) {
+        throw new ForbiddenException(
+          'Solo roles autorizados pueden indicar idClienteRaiz',
+        );
+      }
+      const idRaiz =
+        puedeElegirRaiz && idClienteRaizOpcional != null
+          ? idClienteRaizOpcional
+          : idClienteToken;
+
+      const result = await this.clienteRepository.query(
+        'CALL spGetClientes(?);',
+        [idRaiz],
+      );
+      const rows = (result?.[0] ?? []) as Record<string, unknown>[];
+
+      const data = rows.map((row) => ({
+        id: Number(row.Id ?? row.id),
+        idPadre:
+          row.IdPadre == null && row.idPadre == null
+            ? null
+            : Number(row.IdPadre ?? row.idPadre),
+        rfc: String(row.RFC ?? row.rfc ?? ''),
+        tipoPersona: Number(row.TipoPersona ?? row.tipoPersona ?? 0),
+        estatus: Number(row.Estatus ?? row.estatus ?? 0),
+        logo: row.Logo ?? row.logo ?? null,
+        nombre: row.Nombre != null ? String(row.Nombre) : null,
+        apellidoPaterno:
+          row.ApellidoPaterno != null ? String(row.ApellidoPaterno) : null,
+        apellidoMaterno:
+          row.ApellidoMaterno != null ? String(row.ApellidoMaterno) : null,
+        telefono: row.Telefono != null ? String(row.Telefono) : null,
+        correo: row.Correo != null ? String(row.Correo) : null,
+        nombrePadre: row.Padre != null ? String(row.Padre) : null,
+      }));
+
+      return { data };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException(
+        (error as Error)?.message ?? 'Error al obtener jerarquía de clientes',
+      );
+    }
+  }
 
   // ========================================
   // 🔹 CREAR UN CLIENTE
