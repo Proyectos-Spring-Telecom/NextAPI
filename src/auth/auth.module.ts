@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { AuthFaceController } from './auth-face.controller';
+import { BehaviorIqAuthService } from './behavior-iq-auth.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -35,8 +37,8 @@ import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
       AsignacionSoluciones,
     ]),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  controllers: [AuthController, AuthFaceController],
+  providers: [AuthService, JwtStrategy, BehaviorIqAuthService],
   exports: [JwtModule],
 })
 export class AuthModule {}

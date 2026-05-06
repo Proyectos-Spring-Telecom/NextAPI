@@ -117,6 +117,9 @@ export class Usuarios {
   })
   tokenHashAdmin: string | null;
 
+  @Column('bigint', { name: 'IdFaceAuth', nullable: true })
+  idFaceAuth: number | null;
+
   @OneToMany(() => Bitacora, (bitacora) => bitacora.idUsuario2)
   bitacoras: Bitacora[];
 

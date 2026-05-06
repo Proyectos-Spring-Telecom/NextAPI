@@ -18,6 +18,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     this.logger.debug(
       `JWT access aceptado (userId=${payload?.id ?? 'desconocido'})`,
     );
-    return { userId: payload.id, email: payload.email, idCliente: payload.idCliente, rol: payload.rol, idOperador: payload.idOperador };
+    return {
+      userId: payload.id,
+      email: payload.email,
+      idCliente: payload.idCliente,
+      rol: payload.rol,
+      idOperador: payload.idOperador,
+      ...(typeof payload.face === 'number' ? { face: payload.face } : {}),
+    };
   }
 }

@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -29,8 +30,12 @@ import {
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { Soluciones } from 'src/entities/Soluciones';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
+import { BehaviorIqAuthService } from './behavior-iq-auth.service';
+import { ValidateFaceDto } from './dto/validate-face.dto';
 
 const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas.';
+/** Solución fija para login facial (validateFace); misma lógica que query Nombres en login. */
+const VALIDATE_FACE_ID_SOLUCION = 2;
 const MSG_SOLUCION_INVALIDA = 'Credenciales inválidas.';
 const DUMMY_BCRYPT_HASH =
   '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
@@ -83,7 +88,75 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly emailService: MailService,
     private readonly bitacoraLogger: BitacoraLoggerService,
+    private readonly behaviorIqAuthService: BehaviorIqAuthService,
   ) { }
+
+  /** Valor para JWT `face`: mismo sentido que `Usuarios.IdFaceAuth` (BehaviorIQ idRostro). */
+  private optionalFaceClaim(user: Usuarios): number | undefined {
+    if (user.idFaceAuth == null) return undefined;
+    const n = Number(user.idFaceAuth);
+    if (!Number.isFinite(n) || n < 1) return undefined;
+    return n;
+  }
+
+  private async createSessionForUser(
+    user: Usuarios,
+    /** Claim JWT `face` (= IdFaceAuth del usuario cuando existe). */
+    faceClaim?: number,
+  ): Promise<{
+    token: string;
+    refreshToken: string;
+    expiresIn: number;
+  }> {
+    const payload: { id: number; idCliente: number; rol: number; face?: number } =
+      {
+        id: user.id,
+        idCliente: user.idCliente,
+        rol: user.idRol,
+      };
+    if (faceClaim != null && Number.isFinite(faceClaim)) {
+      payload.face = faceClaim;
+    }
+
+    const token = this.jwtService.sign(payload);
+    const expiresIn = jwtExpiresInSeconds();
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+    if (!refreshSecret) {
+      this.logger.error(
+        'Auth: sesión abortada — falta variable JWT_REFRESH_SECRET',
+      );
+      throw new InternalServerErrorException({
+        message: 'Falta JWT_REFRESH_SECRET.',
+      });
+    }
+
+    const refreshPayload = { id: user.id, email: user.userName };
+    const refreshToken = this.jwtService.sign(refreshPayload, {
+      secret: refreshSecret,
+      expiresIn: refreshExpiresIn,
+    });
+
+    const tokenExpira = new Date(
+      Date.now() +
+        durationToMs(
+          refreshExpiresIn,
+          7 * 24 * 60 * 60 * 1000,
+        ),
+    );
+
+    const tokenHash = hashRefreshToken(refreshToken);
+
+    await this.usuariosRepository.update(user.id, {
+      ultimoLogin: new Date(),
+      tokenHash,
+      tokenExpira,
+      tokenRevocado: 0,
+    });
+
+    return { token, refreshToken, expiresIn };
+  }
 
   private async assertSolucionCodigoSiViene(nombres?: string) {
     const trimmed = nombres?.trim();
@@ -159,53 +232,19 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const payload = {
-        id: user.id,
-        idCliente: user.idCliente,
-        rol: user.idRol,
-      };
-
-      const token = this.jwtService.sign(payload);
-      const expiresIn = jwtExpiresInSeconds();
-
-      const refreshSecret = process.env.JWT_REFRESH_SECRET;
-      const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
-      if (!refreshSecret) {
-        this.logger.error(
-          'Auth: login abortado — falta variable JWT_REFRESH_SECRET',
-        );
-        throw new InternalServerErrorException({
-          message: 'Falta JWT_REFRESH_SECRET.',
-        });
-      }
-
-      const refreshPayload = { id: user.id, email: user.userName };
-      const refreshToken = this.jwtService.sign(refreshPayload, {
-        secret: refreshSecret,
-        expiresIn: refreshExpiresIn,
-      });
-
-      const tokenExpira = new Date(
-        Date.now() +
-        durationToMs(
-          refreshExpiresIn,
-          7 * 24 * 60 * 60 * 1000,
-        ),
+      const session = await this.createSessionForUser(
+        user,
+        this.optionalFaceClaim(user),
       );
-
-      const tokenHash = hashRefreshToken(refreshToken);
-
-      await this.usuariosRepository.update(user.id, {
-        ultimoLogin: new Date(),
-        tokenHash,
-        tokenExpira,
-        tokenRevocado: 0,
-      });
 
       this.logger.log(
         `Auth: login correcto (userId=${user.id}, idCliente=${user.idCliente})`,
       );
-      return { token, refreshToken, expiresIn };
+      return {
+        token: session.token,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
+      };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(
@@ -270,53 +309,19 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const payload = {
-        id: user.id,
-        idCliente: user.idCliente,
-        rol: user.idRol,
-      };
-
-      const token = this.jwtService.sign(payload);
-      const expiresIn = jwtExpiresInSeconds();
-
-      const refreshSecret = process.env.JWT_REFRESH_SECRET;
-      const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
-      if (!refreshSecret) {
-        this.logger.error(
-          'Auth: PIN abortado — falta variable JWT_REFRESH_SECRET',
-        );
-        throw new InternalServerErrorException({
-          message: 'Falta JWT_REFRESH_SECRET.',
-        });
-      }
-
-      const refreshPayload = { id: user.id, email: user.userName };
-      const refreshToken = this.jwtService.sign(refreshPayload, {
-        secret: refreshSecret,
-        expiresIn: refreshExpiresIn,
-      });
-
-      const tokenExpira = new Date(
-        Date.now() +
-        durationToMs(
-          refreshExpiresIn,
-          7 * 24 * 60 * 60 * 1000,
-        ),
+      const session = await this.createSessionForUser(
+        user,
+        this.optionalFaceClaim(user),
       );
-
-      const tokenHash = hashRefreshToken(refreshToken);
-
-      await this.usuariosRepository.update(user.id, {
-        ultimoLogin: new Date(),
-        tokenHash,
-        tokenExpira,
-        tokenRevocado: 0,
-      });
 
       this.logger.log(
         `Auth: login PIN correcto (userId=${user.id}, idCliente=${user.idCliente})`,
       );
-      return { accessToken: token, refreshToken, expiresIn };
+      return {
+        accessToken: session.token,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
+      };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(
@@ -325,6 +330,110 @@ export class AuthService {
       );
       throw new InternalServerErrorException({
         message: 'Ha ocurrido un error durante el proceso de autenticación.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  async validateFaceLogin(idCliente: number, dto: ValidateFaceDto) {
+    try {
+      this.logger.log(
+        `Auth: intento login facial (idCliente=${idCliente})`,
+      );
+
+      const { status, data } =
+        await this.behaviorIqAuthService.validateFace(idCliente, dto);
+
+      if (status === 401 || status === 403) {
+        throw new UnauthorizedException('No autorizado ante BehaviorIQ.');
+      }
+      if (status === 404) {
+        throw new UnauthorizedException('No se encontró coincidencia facial.');
+      }
+      if (status >= 500) {
+        throw new InternalServerErrorException({
+          message: 'BehaviorIQ no disponible temporalmente.',
+        });
+      }
+      if (status < 200 || status >= 300) {
+        const msg =
+          data &&
+          typeof data === 'object' &&
+          'message' in data &&
+          typeof (data as { message: unknown }).message === 'string'
+            ? (data as { message: string }).message
+            : 'Respuesta inválida de BehaviorIQ.';
+        throw new BadRequestException(msg);
+      }
+
+      const body = data as Record<string, unknown>;
+      if (body.success !== true) {
+        throw new UnauthorizedException('Validación facial no exitosa.');
+      }
+
+      const idRostro = Number(body.idRostro);
+      if (!Number.isFinite(idRostro) || idRostro < 1) {
+        throw new InternalServerErrorException({
+          message: 'Respuesta inconsistente de BehaviorIQ (idRostro).',
+        });
+      }
+
+      const user = await this.usuariosRepository
+        .createQueryBuilder('u')
+        .leftJoinAndSelect('u.cliente2', 'cliente2')
+        .leftJoinAndSelect('u.idRol2', 'idRol2')
+        .where('u.idFaceAuth = :idFaceAuth', { idFaceAuth: idRostro })
+        .andWhere('u.estatus = 1')
+        .andWhere('u.emailConfirmado = 1')
+        .getOne();
+
+      if (!user) {
+        throw new NotFoundException('No hay vínculo local con ese rostro.');
+      }
+
+      if (user.cliente2?.estatus !== 1) {
+        this.logger.warn(
+          `Auth: facial rechazado — cliente inactivo (userId=${user.id})`,
+        );
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const permisos = await this.asignacionSolucionesRepository.findOne({
+        where: {
+          idUsuario: user.id,
+          idSolucion: VALIDATE_FACE_ID_SOLUCION,
+          estatus: EstatusEnum.ACTIVO,
+        },
+      });
+      if (!permisos) {
+        this.logger.warn(
+          `Auth: facial rechazado — sin asignación a la solución (userId=${user.id}, idSolucion=${VALIDATE_FACE_ID_SOLUCION})`,
+        );
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const session = await this.createSessionForUser(
+        user,
+        this.optionalFaceClaim(user),
+      );
+
+      this.logger.log(
+        `Auth: login facial correcto (userId=${user.id}, idCliente=${user.idCliente})`,
+      );
+
+      return {
+        token: session.token,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Auth: error no controlado en login facial — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
+      throw new InternalServerErrorException({
+        message: 'Ha ocurrido un error durante la validación facial.',
         error: (error as Error)?.message,
       });
     }

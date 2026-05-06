@@ -24,6 +24,7 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { UpdateUsuarioEstatusDto } from './dto/update-usuario-estatus.dto';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
+import { SetFaceAuthDto } from './dto/set-face-auth.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -68,6 +69,37 @@ export class UsuariosController {
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
     return await this.usuariosService.createUsuario(createUsuarioDto, idUser);
+  }
+
+  @Post('face-auth')
+  @ApiOperation({
+    summary: 'Registrar IdFaceAuth',
+    description:
+      'Actualiza únicamente IdFaceAuth del usuario autenticado (ID desde token).',
+  })
+  @ApiBody({ type: SetFaceAuthDto })
+  @ApiResponse({
+    status: 201,
+    description: 'IdFaceAuth registrado exitosamente',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El usuario ya tiene IdFaceAuth registrado (rostro afiliado)',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autorizado',
+  })
+  async setFaceAuth(
+    @Body() dto: SetFaceAuthDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    const idUser = req.user.userId;
+    return await this.usuariosService.setIdFaceAuth(+idUser, dto);
   }
 
   // ==================== GET ====================

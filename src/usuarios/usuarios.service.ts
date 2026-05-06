@@ -22,6 +22,7 @@ import { ClientesService } from 'src/clientes/clientes.service';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
+import { SetFaceAuthDto } from './dto/set-face-auth.dto';
 import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
@@ -579,6 +580,63 @@ ORDER BY u.Id DESC`,
       }
       throw new InternalServerErrorException({
         message: 'Error al actualizar el NIP.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  // ========================================
+  // 🔹 REGISTRAR IdFaceAuth (solo columna; usuario del token)
+  // ========================================
+  async setIdFaceAuth(
+    idUser: number,
+    dto: SetFaceAuthDto,
+  ): Promise<ApiCrudResponse> {
+    try {
+      const usuario = await this.usuarioRepository.findOne({
+        where: { id: idUser, estatus: 1 },
+      });
+      if (!usuario) {
+        throw new NotFoundException(
+          `No se encontró un usuario con ID: ${idUser}.`,
+        );
+      }
+
+      if (usuario.idFaceAuth != null) {
+        throw new BadRequestException(
+          'El usuario ya tiene un rostro afiliado.',
+        );
+      }
+
+      await this.usuarioRepository.update(idUser, {
+        idFaceAuth: dto.idFaceAuth,
+      });
+
+      const querylogger = { id: idUser, idFaceAuth: dto.idFaceAuth };
+      await this.bitacoraLogger.logToBitacora(
+        'Usuarios',
+        `Se ha registrado IdFaceAuth para el usuario con ID: ${idUser}.`,
+        'UPDATE',
+        querylogger,
+        idUser,
+        EnumModulos.USUARIOS,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      return {
+        status: 'success',
+        message: 'Face Auth ha sido registrado correctamente.',
+        data: {
+          id: idUser,
+          nombre: `${usuario.nombre} ${usuario.apellidoPaterno}`.trim() || '',
+        },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Error al registrar Face Auth.',
         error: (error as Error)?.message,
       });
     }
