@@ -48,6 +48,8 @@ async function bootstrap() {
       'Almacenamiento en AWS S3: subir (POST /upload), reemplazar (PATCH /update) y eliminar (DELETE /delete). Requiere JWT; el usuario en bitácora sale del token. Tipos: PNG, JPEG, PDF. Ver carpeta permitida (folder) en cada endpoint.',
     )
     .addTag('Usuarios', 'Gestión de usuarios')
+    .addTag('Inmuebles', 'Inmuebles / sitios físicos para paneles de alarma')
+    .addTag('Panel Alarma', 'Paneles AX PRO (cuenta SIA, cifrado, heartbeat)')
     .addTag('Catálogo Marca Vehículo', 'Marcas de vehículos (Ford, Chevrolet, etc.)')
     .addTag('Catálogo Modelo Vehículo', 'Modelos de vehículos por marca')
     .addTag('Catálogo Modelo Dispositivo', 'Modelos de dispositivos GPS por marca')

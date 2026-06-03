@@ -40,6 +40,8 @@ export enum EnumModulos {
   VIAJESTRANSACCIONES = 29,
   HISTORICOTRANSACCIONES = 30,
   CATALOGOPASAJERO = 31,
+  INMUEBLES = 20,
+  PANELALARMA = 21,
 }
 
 export enum EnumSolicitudPasajero {

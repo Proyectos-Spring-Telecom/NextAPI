@@ -16,6 +16,8 @@ import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
+import { InmueblesModule } from './inmuebles/inmuebles.module';
+import { PanelAlarmaModule } from './panel-alarma/panel-alarma.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
@@ -148,6 +150,10 @@ import * as jwt from 'jsonwebtoken';
     OperadoresModule,
 
     VehiculosModule,
+
+    InmueblesModule,
+
+    PanelAlarmaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
