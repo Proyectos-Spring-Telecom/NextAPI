@@ -41,7 +41,7 @@ export class UsuariosService {
     private readonly emailService: MailService,
     private readonly jwtService: JwtService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   // ========================================
   // 🔹 OBTENER USUARIOS POR PAGINACIÓN
@@ -156,7 +156,7 @@ ${excludeSelf}`;
   }
 
   //Obtener todos los usuarios
-    // ========================================
+  // ========================================
   // 🔹 OBTENER LISTADO DE USUARIOS
   // ========================================
   async getAllListUsuarios(
@@ -237,11 +237,24 @@ ORDER BY u.Id DESC
       if (usuarios.length === 0) {
         throw new NotFoundException('No se encontraron usuarios.');
       }
-      const usuariosSinPassword = usuarios.map(
-        ({ passwordHash, ...rest }) => rest,
+      const usuariosSanitizados = usuarios.map(
+        ({
+          passwordHash,
+          pinHash,
+          tokenHash,
+          tokenExpira,
+          tokenHashAdmin,
+          nivelAcceso,
+          ...rest
+        }) => ({
+          ...rest,
+          id: Number(rest.id),
+          idRol: Number(rest.idRol),
+          idCliente: Number(rest.idCliente),
+        }),
       );
       const result: ApiResponseCommon = {
-        data: usuariosSinPassword,
+        data: usuariosSanitizados,
       };
       return result;
     } catch (error) {
@@ -453,10 +466,10 @@ ORDER BY u.Id DESC`,
   // ========================================
   async updateContrasena(
     idUser: number,
-    idUserStr: string,
     dto: UpdateUsuarioContrasena,
   ): Promise<ApiCrudResponse> {
     try {
+      console.log('idUser', idUser);
       const usuario = await this.usuarioRepository.findOne({
         where: { id: idUser },
       });
@@ -495,7 +508,7 @@ ORDER BY u.Id DESC`,
         `Se ha actualizado la contraseña del usuario con ID: ${idUser}.`,
         'UPDATE',
         querylogger,
-        Number(idUserStr),
+        idUser,
         EnumModulos.USUARIOS,
         EstatusEnumBitcora.SUCCESS,
       );
@@ -515,7 +528,7 @@ ORDER BY u.Id DESC`,
         `Error al actualizar la contraseña del usuario con ID: ${idUser}.`,
         'UPDATE',
         querylogger,
-        Number(idUserStr),
+        idUser,
         EnumModulos.USUARIOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,

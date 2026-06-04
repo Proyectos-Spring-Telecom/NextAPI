@@ -27,14 +27,14 @@ export class Usuarios {
   @Column('varchar', { name: 'UserName', length: 100 })
   userName: string;
 
-  @Column('varchar', { name: 'PasswordHash', length: 255, select: false })
+  @Column('varchar', { name: 'PasswordHash', length: 255, select: true })
   passwordHash: string;
 
   @Column('varchar', {
     name: 'PinHash',
     nullable: true,
     length: 255,
-    select: false,
+    select: true,
   })
   pinHash: string | null;
 
