@@ -15,6 +15,7 @@ import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
 import { Soluciones } from 'src/entities/Soluciones';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
+import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
 
 @Module({
   imports: [
@@ -26,7 +27,9 @@ import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') },
+        signOptions: {
+          expiresIn: toJwtExpiresIn(config.get<string>('JWT_EXPIRES_IN'), '15m'),
+        },
       }),
     }),
     TypeOrmModule.forFeature([

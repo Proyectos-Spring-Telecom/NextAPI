@@ -32,6 +32,7 @@ import { Soluciones } from 'src/entities/Soluciones';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { BehaviorIqAuthService } from './behavior-iq-auth.service';
 import { ValidateFaceDto } from './dto/validate-face.dto';
+import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
 
 const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas.';
 /** Solución fija para login facial (validateFace); misma lógica que query Nombres en login. */
@@ -135,7 +136,7 @@ export class AuthService {
     const refreshPayload = { id: user.id, email: user.userName };
     const refreshToken = this.jwtService.sign(refreshPayload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn,
+      expiresIn: toJwtExpiresIn(refreshExpiresIn, '7d'),
     });
 
     const tokenExpira = new Date(
@@ -729,7 +730,7 @@ export class AuthService {
       );
       const payload = { id: user.id, email: user.userName };
       const token = this.jwtService.sign(payload, {
-        expiresIn: process.env.JWT_CONFIRMACION ?? '15m',
+        expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
       });
       const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendResetPasswordEmail(
@@ -812,7 +813,7 @@ export class AuthService {
       );
       const payload = { id: user.id, email: user.userName };
       const token = this.jwtService.sign(payload, {
-        expiresIn: process.env.JWT_CONFIRMACION ?? '15m',
+        expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
       });
       const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendConfirmationEmail(
