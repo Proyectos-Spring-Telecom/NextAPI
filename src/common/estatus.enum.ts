@@ -57,3 +57,31 @@ export enum EnumFiltros {
   MES = 3,
 }
 
+/** Valores de CatTipoVerificaciones (catálogo eliminado; referencia de dominio). */
+export enum EnumTipoVerificacion {
+  VERIFICACION_MECANICA = 1,
+  VERIFICACION_AMBIENTAL = 2,
+}
+
+/** Valores de EstatusSim en tabla Sims (antes CatEstatusSim). */
+export enum EnumEstatusSim {
+  DISPONIBLE = 1, // SIM adquirido pero sin asignar a ningún dispositivo
+  ASIGNADO = 2, // SIM operativo con servicio activo
+  BAJA = 3, // SIM dado de baja 
+  BAJA_CAMBIO = 4, // SIM dado de baja por cambio de sim
+}
+
+/** Valores de EstatusDispositivo en tabla Dispositivos (antes CatEstatusDispositivo). */
+export enum EnumEstatusDispositivo {
+  DISPONIBLE = 1, // Dispositivo en inventario sin asignar a ningún vehículo
+  ASIGNADO = 2, // Dispositivo instalado y transmitiendo correctamente
+  BAJA = 3,
+  MANTENIMIENTO = 4, // Dispositivo retirado temporalmente para revisión o reparación
+}
+
+/** Valores de CatReferenciaServicio (catálogo eliminado; referencia de dominio). */
+export enum EnumReferenciaServicio {
+  POR_KILOMETRAJE = 1,
+  POR_TIEMPO = 2,
+}
+
