@@ -30,13 +30,13 @@ export class CreateDispositivosDto {
   idTipoDispositivo: number;
 
   @ApiProperty({
-    description: 'ID estatus (CatEstatusDispositivo)',
+    description: 'Estatus operativo del dispositivo (bigint, default 1)',
     default: 1,
     required: false,
   })
   @IsOptional()
   @IsInt()
-  idEstatusDispositivo?: number = 1;
+  estatusDispositivo?: number = 1;
 
   @ApiProperty({
     description: 'ID SIM asignado',

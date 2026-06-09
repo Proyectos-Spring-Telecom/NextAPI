@@ -12,7 +12,6 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatModeloDispositivo } from './CatModeloDispositivo';
 import { CatTipoDispositivo } from './CatTipoDispositivo';
-import { CatEstatusDispositivo } from './CatEstatusDispositivo';
 import { Sims } from './Sims';
 
 @applySchema
@@ -21,11 +20,10 @@ import { Sims } from './Sims';
 @Index('UQ_Dispositivos_IdSim', ['idSim'], { unique: true })
 @Index('IX_Dispositivos_IdCliente_IdEstatusDispositivo', [
   'idCliente',
-  'idEstatusDispositivo',
+  'estatusDispositivo',
 ])
-@Index('IX_Dispositivos_IdModeloDispositivo', ['idModeloDispositivo'])
-@Index('IX_Dispositivos_IdTipoDispositivo', ['idTipoDispositivo'])
-@Index('IX_Dispositivos_Estatus', ['estatus'])
+@Index('FK_Dispositivos_ModeloDispositivo', ['idModeloDispositivo'])
+@Index('FK_Dispositivos_TipoDispositivo', ['idTipoDispositivo'])
 @Entity('Dispositivos')
 export class Dispositivos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -40,8 +38,8 @@ export class Dispositivos {
   @Column('bigint', { name: 'IdTipoDispositivo' })
   idTipoDispositivo: number;
 
-  @Column('bigint', { name: 'IdEstatusDispositivo', default: 1 })
-  idEstatusDispositivo: number;
+  @Column('bigint', { name: 'EstatusDispositivo', default: 1 })
+  estatusDispositivo: number;
 
   @Column('bigint', { name: 'IdSim' })
   idSim: number;
@@ -75,13 +73,6 @@ export class Dispositivos {
   })
   @JoinColumn([{ name: 'IdTipoDispositivo', referencedColumnName: 'id' }])
   idTipoDispositivo2: CatTipoDispositivo;
-
-  @ManyToOne(() => CatEstatusDispositivo, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdEstatusDispositivo', referencedColumnName: 'id' }])
-  idEstatusDispositivo2: CatEstatusDispositivo;
 
   @ManyToOne(() => Sims, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
   @JoinColumn([{ name: 'IdSim', referencedColumnName: 'id' }])

@@ -12,16 +12,14 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatTelefonia } from './CatTelefonia';
 import { CatPlanesTelefonia } from './CatPlanesTelefonia';
-import { CatEstatusSim } from './CatEstatusSim';
 
 @applySchema
 @Index('UQ_Sims_ICC', ['icc'], { unique: true })
-@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente', 'idEstatusSim'])
+@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente', 'estatusSim'])
 @Index('IX_Sims_IdTelefonia', ['idTelefonia'])
 @Index('IX_Sims_IdPlanTelefonia', ['idPlanTelefonia'])
 @Index('IX_Sims_IMEI', ['imei'])
 @Index('IX_Sims_IPEstatica', ['ipEstatica'])
-@Index('IX_Sims_Estatus', ['estatus'])
 @Entity('Sims')
 export class Sims {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -48,8 +46,8 @@ export class Sims {
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
-  @Column('bigint', { name: 'IdEstatusSim', default: 1 })
-  idEstatusSim: number;
+  @Column('tinyint', { name: 'EstatusSim', default: 1 })
+  estatusSim: number;
 
   @Column('date', { name: 'FechaActivacion', nullable: true })
   fechaActivacion: Date | null;
@@ -83,8 +81,4 @@ export class Sims {
   })
   @JoinColumn([{ name: 'IdPlanTelefonia', referencedColumnName: 'id' }])
   idPlanTelefonia2: CatPlanesTelefonia;
-
-  @ManyToOne(() => CatEstatusSim, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdEstatusSim', referencedColumnName: 'id' }])
-  idEstatusSim2: CatEstatusSim;
 }

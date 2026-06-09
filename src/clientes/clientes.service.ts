@@ -184,9 +184,12 @@ export class ClientesService {
         );
       }
 
+      const idPadre = restDto.idPadre == null ? 1 : restDto.idPadre;
+
       //Creamos el nuevo cliente
       const clienteData = await this.clienteRepository.create({
         ...restDto,
+        idPadre,
         actaConstitutiva,
         comprobanteDomicilio,
         constanciaSituacionFiscal,

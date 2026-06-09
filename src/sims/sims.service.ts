@@ -11,7 +11,6 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 import { Sims } from 'src/entities/Sims';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
-import { CatEstatusSim } from 'src/entities/CatEstatusSim';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
 import { UpdateSimsDto } from './dto/update-sims.dto';
@@ -34,8 +33,6 @@ export class SimsService {
     private readonly catTelefoniaRepo: Repository<CatTelefonia>,
     @InjectRepository(CatPlanesTelefonia)
     private readonly catPlanesTelefoniaRepo: Repository<CatPlanesTelefonia>,
-    @InjectRepository(CatEstatusSim)
-    private readonly catEstatusSimRepo: Repository<CatEstatusSim>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
@@ -43,7 +40,6 @@ export class SimsService {
   private async validarFks(dto: {
     idTelefonia?: number;
     idPlanTelefonia?: number;
-    idEstatusSim?: number;
   }): Promise<void> {
     if (dto.idTelefonia !== undefined) {
       const tel = await this.catTelefoniaRepo.findOne({
@@ -59,14 +55,6 @@ export class SimsService {
       });
       if (!plan) {
         throw new BadRequestException('IdPlanTelefonia no existe');
-      }
-    }
-    if (dto.idEstatusSim !== undefined) {
-      const est = await this.catEstatusSimRepo.findOne({
-        where: { id: dto.idEstatusSim },
-      });
-      if (!est) {
-        throw new BadRequestException('IdEstatusSim no existe');
       }
     }
   }
@@ -87,7 +75,6 @@ export class SimsService {
       await this.validarFks({
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
-        idEstatusSim: dto.idEstatusSim ?? 1,
       });
 
       const entity = this.repository.create({
@@ -98,7 +85,7 @@ export class SimsService {
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
         idCliente,
-        idEstatusSim: dto.idEstatusSim ?? 1,
+        estatusSim: dto.estatusSim ?? 1,
         fechaActivacion: dto.fechaActivacion
           ? new Date(dto.fechaActivacion)
           : null,
@@ -271,7 +258,6 @@ export class SimsService {
       await this.validarFks({
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
-        idEstatusSim: dto.idEstatusSim,
       });
 
       const updateData: Partial<Sims> = {};
@@ -283,8 +269,7 @@ export class SimsService {
       if (dto.idTelefonia !== undefined) updateData.idTelefonia = dto.idTelefonia;
       if (dto.idPlanTelefonia !== undefined)
         updateData.idPlanTelefonia = dto.idPlanTelefonia;
-      if (dto.idEstatusSim !== undefined)
-        updateData.idEstatusSim = dto.idEstatusSim;
+      if (dto.estatusSim !== undefined) updateData.estatusSim = dto.estatusSim;
       if (dto.fechaActivacion !== undefined)
         updateData.fechaActivacion = dto.fechaActivacion
           ? new Date(dto.fechaActivacion)

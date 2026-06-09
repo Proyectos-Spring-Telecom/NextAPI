@@ -11,7 +11,6 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { CatModeloDispositivo } from 'src/entities/CatModeloDispositivo';
 import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
-import { CatEstatusDispositivo } from 'src/entities/CatEstatusDispositivo';
 import { Sims } from 'src/entities/Sims';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
@@ -35,8 +34,6 @@ export class DispositivosService {
     private readonly catModeloDispositivoRepo: Repository<CatModeloDispositivo>,
     @InjectRepository(CatTipoDispositivo)
     private readonly catTipoDispositivoRepo: Repository<CatTipoDispositivo>,
-    @InjectRepository(CatEstatusDispositivo)
-    private readonly catEstatusDispositivoRepo: Repository<CatEstatusDispositivo>,
     @InjectRepository(Sims)
     private readonly simsRepo: Repository<Sims>,
     private readonly bitacoraLogger: BitacoraLoggerService,
@@ -46,7 +43,6 @@ export class DispositivosService {
   private async validarFks(dto: {
     idModeloDispositivo?: number;
     idTipoDispositivo?: number;
-    idEstatusDispositivo?: number;
     idSim?: number;
   }): Promise<void> {
     if (dto.idModeloDispositivo !== undefined) {
@@ -63,14 +59,6 @@ export class DispositivosService {
       });
       if (!tipo) {
         throw new BadRequestException('IdTipoDispositivo no existe');
-      }
-    }
-    if (dto.idEstatusDispositivo !== undefined) {
-      const est = await this.catEstatusDispositivoRepo.findOne({
-        where: { id: dto.idEstatusDispositivo },
-      });
-      if (!est) {
-        throw new BadRequestException('IdEstatusDispositivo no existe');
       }
     }
     if (dto.idSim !== undefined) {
@@ -120,14 +108,13 @@ export class DispositivosService {
       await this.validarFks({
         idModeloDispositivo: dto.idModeloDispositivo,
         idTipoDispositivo: dto.idTipoDispositivo,
-        idEstatusDispositivo: dto.idEstatusDispositivo ?? 1,
       });
 
       const entity = this.repository.create({
         numeroSerie: dto.numeroSerie,
         idModeloDispositivo: dto.idModeloDispositivo,
         idTipoDispositivo: dto.idTipoDispositivo,
-        idEstatusDispositivo: dto.idEstatusDispositivo ?? 1,
+        estatusDispositivo: dto.estatusDispositivo ?? 1,
         idSim: dto.idSim,
         idCliente,
         estatus: dto.estatus ?? 1,
@@ -320,7 +307,7 @@ export class DispositivosService {
       await this.validarFks({
         idModeloDispositivo: dto.idModeloDispositivo,
         idTipoDispositivo: dto.idTipoDispositivo,
-        idEstatusDispositivo: dto.idEstatusDispositivo,
+        idSim: dto.idSim,
       });
 
       const updateData: Partial<Dispositivos> = {};
@@ -330,8 +317,8 @@ export class DispositivosService {
         updateData.idModeloDispositivo = dto.idModeloDispositivo;
       if (dto.idTipoDispositivo !== undefined)
         updateData.idTipoDispositivo = dto.idTipoDispositivo;
-      if (dto.idEstatusDispositivo !== undefined)
-        updateData.idEstatusDispositivo = dto.idEstatusDispositivo;
+      if (dto.estatusDispositivo !== undefined)
+        updateData.estatusDispositivo = dto.estatusDispositivo;
       if (dto.idSim !== undefined) updateData.idSim = dto.idSim;
       if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 

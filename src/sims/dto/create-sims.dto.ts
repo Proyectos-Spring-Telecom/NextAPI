@@ -61,13 +61,13 @@ export class CreateSimsDto {
   idPlanTelefonia: number;
 
   @ApiProperty({
-    description: 'ID estatus del SIM (CatEstatusSim)',
+    description: 'Estatus operativo del SIM (tinyint, default 1)',
     default: 1,
     required: false,
   })
   @IsOptional()
   @IsInt()
-  idEstatusSim?: number = 1;
+  estatusSim?: number = 1;
 
   @ApiProperty({
     description: 'Fecha de activación (YYYY-MM-DD)',
