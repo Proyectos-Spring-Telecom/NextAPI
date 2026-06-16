@@ -12,14 +12,24 @@ import { Clientes } from './Clientes';
 import { Instalaciones } from './Instalaciones';
 import { Dispositivos } from './Dispositivos';
 import { Vehiculos } from './Vehiculos';
-import { CatEstatusInstalacion } from './CatEstatusInstalacion';
 
 @applySchema
 @Index('IX_HistInstalaciones_IdCliente_IdInstalacion', [
   'idCliente',
   'idInstalacion',
 ])
+@Index('IX_HistInstalaciones_IdCliente_IdDispositivo', [
+  'idCliente',
+  'idDispositivo',
+])
+@Index('IX_HistInstalaciones_IdCliente_IdVehiculo', [
+  'idCliente',
+  'idVehiculo',
+])
 @Index('IX_HistInstalaciones_FechaRegistro', ['fechaRegistro'])
+@Index('FK_HistInstalaciones_Vehiculos', ['idVehiculo'])
+@Index('FK_HistInstalaciones_Dispositivos', ['idDispositivo'])
+@Index('FK_HistInstalaciones_Instalaciones', ['idInstalacion'])
 @Entity('HistoricoInstalaciones')
 export class HistoricoInstalaciones {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -43,8 +53,8 @@ export class HistoricoInstalaciones {
   @Column('bigint', { name: 'IdPortatiles', nullable: true })
   idPortatiles: number | null;
 
-  @Column('bigint', { name: 'IdEstatusInstalacion' })
-  idEstatusInstalacion: number;
+  @Column('bigint', { name: 'EstatusInstalacion' })
+  estatusInstalacion: number;
 
   @Column('varchar', { name: 'Accion', length: 50 })
   accion: string;
@@ -61,16 +71,16 @@ export class HistoricoInstalaciones {
 
   @ManyToOne(() => Instalaciones, {
     nullable: true,
-    onDelete: 'NO ACTION',
-    onUpdate: 'NO ACTION',
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdInstalacion', referencedColumnName: 'id' }])
   idInstalacion2: Instalaciones | null;
 
   @ManyToOne(() => Dispositivos, {
     nullable: true,
-    onDelete: 'NO ACTION',
-    onUpdate: 'NO ACTION',
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos | null;
@@ -78,13 +88,4 @@ export class HistoricoInstalaciones {
   @ManyToOne(() => Vehiculos, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
   @JoinColumn([{ name: 'IdVehiculo', referencedColumnName: 'id' }])
   idVehiculo2: Vehiculos;
-
-  @ManyToOne(() => CatEstatusInstalacion, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([
-    { name: 'IdEstatusInstalacion', referencedColumnName: 'id' },
-  ])
-  idEstatusInstalacion2: CatEstatusInstalacion;
 }

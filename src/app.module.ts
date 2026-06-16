@@ -14,6 +14,7 @@ import { CatalogosModule } from './catalogos/catalogos.module';
 import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
+import { HistoricoInstalacionesModule } from './historico-instalaciones/historico-instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { InmueblesModule } from './inmuebles/inmuebles.module';
@@ -146,6 +147,8 @@ import * as jwt from 'jsonwebtoken';
     DispositivosModule,
 
     InstalacionesModule,
+
+    HistoricoInstalacionesModule,
 
     OperadoresModule,
 

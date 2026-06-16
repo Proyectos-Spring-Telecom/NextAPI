@@ -10,8 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatModeloVehiculo } from 'src/entities/CatModeloVehiculo';
-import { CatTipoVehiculo } from 'src/entities/CatTipoVehiculo';
-import { CatEstatusVehiculo } from 'src/entities/CatEstatusVehiculo';
+import { CatMarcaVehiculo } from 'src/entities/CatMarcaVehiculo';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
@@ -44,8 +43,6 @@ export interface VehiculoPorPlacaData {
   modeloNombre: string;
   marcaId: number;
   marcaNombre: string;
-  tipoVehiculoId: number;
-  tipoVehiculoNombre: string;
   combustibleId: number | null;
   combustibleNombre: string | null;
 }
@@ -57,10 +54,8 @@ export class VehiculosService {
     private readonly repository: Repository<Vehiculos>,
     @InjectRepository(CatModeloVehiculo)
     private readonly catModeloVehiculoRepo: Repository<CatModeloVehiculo>,
-    @InjectRepository(CatTipoVehiculo)
-    private readonly catTipoVehiculoRepo: Repository<CatTipoVehiculo>,
-    @InjectRepository(CatEstatusVehiculo)
-    private readonly catEstatusVehiculoRepo: Repository<CatEstatusVehiculo>,
+    @InjectRepository(CatMarcaVehiculo)
+    private readonly catMarcaVehiculoRepo: Repository<CatMarcaVehiculo>,
     @InjectRepository(CatTipoCombustible)
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
     private readonly bitacoraLogger: BitacoraLoggerService,
@@ -68,11 +63,18 @@ export class VehiculosService {
   ) {}
 
   private async validarFks(dto: {
+    idMarcaVehiculo?: number;
     idModeloVehiculo?: number;
-    idTipoVehiculo?: number;
-    idEstatusVehiculo?: number;
     idCombustible?: number;
   }): Promise<void> {
+    if (dto.idMarcaVehiculo !== undefined) {
+      const marca = await this.catMarcaVehiculoRepo.findOne({
+        where: { id: dto.idMarcaVehiculo },
+      });
+      if (!marca) {
+        throw new BadRequestException('IdMarcaVehiculo no existe');
+      }
+    }
     if (dto.idModeloVehiculo !== undefined) {
       const model = await this.catModeloVehiculoRepo.findOne({
         where: { id: dto.idModeloVehiculo },
@@ -80,21 +82,13 @@ export class VehiculosService {
       if (!model) {
         throw new BadRequestException('IdModeloVehiculo no existe');
       }
-    }
-    if (dto.idTipoVehiculo !== undefined) {
-      const tipo = await this.catTipoVehiculoRepo.findOne({
-        where: { id: dto.idTipoVehiculo },
-      });
-      if (!tipo) {
-        throw new BadRequestException('IdTipoVehiculo no existe');
-      }
-    }
-    if (dto.idEstatusVehiculo !== undefined) {
-      const est = await this.catEstatusVehiculoRepo.findOne({
-        where: { id: dto.idEstatusVehiculo },
-      });
-      if (!est) {
-        throw new BadRequestException('IdEstatusVehiculo no existe');
+      if (
+        dto.idMarcaVehiculo !== undefined &&
+        Number(model.idMarcaVehiculo) !== Number(dto.idMarcaVehiculo)
+      ) {
+        throw new BadRequestException(
+          'El modelo no pertenece a la marca indicada',
+        );
       }
     }
     if (dto.idCombustible !== undefined) {
@@ -121,17 +115,16 @@ export class VehiculosService {
       }
 
       await this.validarFks({
+        idMarcaVehiculo: dto.idMarcaVehiculo,
         idModeloVehiculo: dto.idModeloVehiculo,
-        idTipoVehiculo: dto.idTipoVehiculo,
-        idEstatusVehiculo: dto.idEstatusVehiculo ?? 1,
         idCombustible: dto.idCombustible,
       });
 
       const entity = this.repository.create({
         placa: dto.placa,
         numeroEconomico: dto.numeroEconomico,
+        idMarcaVehiculo: dto.idMarcaVehiculo,
         idModeloVehiculo: dto.idModeloVehiculo,
-        idTipoVehiculo: dto.idTipoVehiculo,
         anio: dto.anio,
         color: dto.color ?? null,
         numeroSerie: dto.numeroSerie ?? null,
@@ -150,7 +143,6 @@ export class VehiculosService {
         idCombustible: dto.idCombustible ?? null,
         km: dto.km ?? null,
         capacidadLitros: dto.capacidadLitros ?? null,
-        idEstatusVehiculo: dto.idEstatusVehiculo ?? 1,
         idCliente,
         estatus: dto.estatus ?? 1,
       });
@@ -200,12 +192,15 @@ export class VehiculosService {
       };
       const data = await this.repository.find({
         where,
+        relations: {
+          idMarcaVehiculo2: true,
+          idModeloVehiculo2: true,
+        },
         order: { id: 'ASC' },
       });
-      const dataNormalizada = data.map((item) => ({
-        ...item,
-        id: Number(item.id),
-      }));
+      const dataNormalizada = data.map((item) =>
+        this.mapVehiculoConRelaciones(item),
+      );
       return { data: dataNormalizada };
     } catch (error) {
       throw new BadRequestException((error as Error)?.message);
@@ -298,17 +293,40 @@ SELECT
     mv.Nombre AS modeloNombre,
     mar.Id AS marcaId,
     mar.Nombre AS marcaNombre,
-    tv.Id AS tipoVehiculoId,
-    tv.Nombre AS tipoVehiculoNombre,
     tc.Id AS combustibleId,
     tc.Nombre AS combustibleNombre
 FROM Vehiculos v
 INNER JOIN Clientes c ON v.IdCliente = c.Id
 INNER JOIN CatModeloVehiculo mv ON v.IdModeloVehiculo = mv.Id
-INNER JOIN CatMarcaVehiculo mar ON mv.IdMarcaVehiculo = mar.Id
-INNER JOIN CatTipoVehiculo tv ON v.IdTipoVehiculo = tv.Id
+INNER JOIN CatMarcaVehiculo mar ON v.IdMarcaVehiculo = mar.Id
 LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
 `;
+
+  private mapVehiculoConRelaciones(item: Vehiculos) {
+    const marca = item.idMarcaVehiculo2;
+    const modelo = item.idModeloVehiculo2;
+    const { idMarcaVehiculo2, idModeloVehiculo2, ...vehiculo } = item;
+
+    return {
+      ...vehiculo,
+      id: Number(item.id),
+      idMarcaVehiculo: Number(item.idMarcaVehiculo),
+      idModeloVehiculo: Number(item.idModeloVehiculo),
+      marca: marca
+        ? {
+            id: Number(marca.id),
+            nombre: marca.nombre,
+          }
+        : null,
+      modelo: modelo
+        ? {
+            id: Number(modelo.id),
+            nombre: modelo.nombre,
+            idMarcaVehiculo: Number(modelo.idMarcaVehiculo),
+          }
+        : null,
+    };
+  }
 
   private mapRowAVehiculoPorPlaca(row: Record<string, unknown>): VehiculoPorPlacaData {
     const g = (k: string) => row[k];
@@ -339,8 +357,6 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       modeloNombre: String(g('modeloNombre')),
       marcaId: num('marcaId'),
       marcaNombre: String(g('marcaNombre')),
-      tipoVehiculoId: num('tipoVehiculoId'),
-      tipoVehiculoNombre: String(g('tipoVehiculoNombre')),
       combustibleId: numOrNull('combustibleId'),
       combustibleNombre: strOrNull('combustibleNombre'),
     };
@@ -420,9 +436,14 @@ LIMIT ${limit}
       }
 
       await this.validarFks({
-        idModeloVehiculo: dto.idModeloVehiculo,
-        idTipoVehiculo: dto.idTipoVehiculo,
-        idEstatusVehiculo: dto.idEstatusVehiculo,
+        idMarcaVehiculo:
+          dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
+            ? (dto.idMarcaVehiculo ?? entity.idMarcaVehiculo)
+            : undefined,
+        idModeloVehiculo:
+          dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
+            ? (dto.idModeloVehiculo ?? entity.idModeloVehiculo)
+            : dto.idModeloVehiculo,
         idCombustible: dto.idCombustible,
       });
 
@@ -430,10 +451,10 @@ LIMIT ${limit}
       if (dto.placa !== undefined) updateData.placa = dto.placa;
       if (dto.numeroEconomico !== undefined)
         updateData.numeroEconomico = dto.numeroEconomico;
+      if (dto.idMarcaVehiculo !== undefined)
+        updateData.idMarcaVehiculo = dto.idMarcaVehiculo;
       if (dto.idModeloVehiculo !== undefined)
         updateData.idModeloVehiculo = dto.idModeloVehiculo;
-      if (dto.idTipoVehiculo !== undefined)
-        updateData.idTipoVehiculo = dto.idTipoVehiculo;
       if (dto.anio !== undefined) updateData.anio = dto.anio;
       if (dto.color !== undefined) updateData.color = dto.color;
       if (dto.numeroSerie !== undefined) updateData.numeroSerie = dto.numeroSerie;
@@ -458,8 +479,6 @@ LIMIT ${limit}
       if (dto.km !== undefined) updateData.km = dto.km;
       if (dto.capacidadLitros !== undefined)
         updateData.capacidadLitros = dto.capacidadLitros;
-      if (dto.idEstatusVehiculo !== undefined)
-        updateData.idEstatusVehiculo = dto.idEstatusVehiculo;
       if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       await this.repository.update(id, updateData);

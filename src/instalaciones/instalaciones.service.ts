@@ -11,7 +11,6 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Vehiculos } from 'src/entities/Vehiculos';
-import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
@@ -34,8 +33,6 @@ export class InstalacionesService {
     private readonly dispositivosRepo: Repository<Dispositivos>,
     @InjectRepository(Vehiculos)
     private readonly vehiculosRepo: Repository<Vehiculos>,
-    @InjectRepository(CatEstatusInstalacion)
-    private readonly catEstatusInstalacionRepo: Repository<CatEstatusInstalacion>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
@@ -68,15 +65,6 @@ export class InstalacionesService {
       );
     }
     return vehiculo;
-  }
-
-  private async validarEstatusInstalacion(idEstatusInstalacion: number) {
-    const estatus = await this.catEstatusInstalacionRepo.findOne({
-      where: { id: idEstatusInstalacion },
-    });
-    if (!estatus) {
-      throw new BadRequestException('IdEstatusInstalacion no existe');
-    }
   }
 
   private async validarDispositivoSinInstalacionActiva(
@@ -127,36 +115,40 @@ export class InstalacionesService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
-      await this.validarDispositivoPerteneceCliente(
-        dto.idDispositivo,
-        idCliente,
-      );
+      if (dto.idDispositivo != null) {
+        await this.validarDispositivoPerteneceCliente(
+          dto.idDispositivo,
+          idCliente,
+        );
+        await this.validarDispositivoSinInstalacionActiva(
+          dto.idDispositivo,
+          idCliente,
+        );
+      }
       await this.validarVehiculoPerteneceCliente(dto.idVehiculo, idCliente);
-      await this.validarDispositivoSinInstalacionActiva(
-        dto.idDispositivo,
-        idCliente,
-      );
       await this.validarVehiculoSinInstalacionActiva(
         dto.idVehiculo,
         idCliente,
       );
-      if (dto.idEstatusInstalacion !== undefined) {
-        await this.validarEstatusInstalacion(dto.idEstatusInstalacion);
-      }
 
       const entity = this.repository.create({
-        idDispositivo: dto.idDispositivo,
+        idDispositivo: dto.idDispositivo ?? null,
         idVehiculo: dto.idVehiculo,
+        idActivos: dto.idActivos ?? null,
+        idPortatiles: dto.idPortatiles ?? null,
         idCliente,
-        idEstatusInstalacion: dto.idEstatusInstalacion ?? 1,
+        estatusInstalacion: dto.estatusInstalacion ?? 1,
         estatus: dto.estatus ?? 1,
       });
 
       const saved = await this.repository.save(entity);
 
+      const dispositivoLabel =
+        dto.idDispositivo != null ? `Dispositivo ${dto.idDispositivo}` : 'sin dispositivo';
+
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
-        `Se creó la instalación ID: ${saved.id} (Dispositivo ${dto.idDispositivo} - Vehículo ${dto.idVehiculo})`,
+        `Se creó la instalación ID: ${saved.id} (${dispositivoLabel} - Vehículo ${dto.idVehiculo})`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -175,7 +167,7 @@ export class InstalacionesService {
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
-        `Error al crear instalación (Dispositivo ${dto.idDispositivo} - Vehículo ${dto.idVehiculo})`,
+        `Error al crear instalación (Vehículo ${dto.idVehiculo})`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -308,16 +300,21 @@ export class InstalacionesService {
         throw new NotFoundException('Instalación no encontrada');
       }
 
-      if (dto.idDispositivo !== undefined && dto.idDispositivo !== entity.idDispositivo) {
-        await this.validarDispositivoPerteneceCliente(
-          dto.idDispositivo,
-          idCliente,
-        );
-        await this.validarDispositivoSinInstalacionActiva(
-          dto.idDispositivo,
-          idCliente,
-          id,
-        );
+      if (
+        dto.idDispositivo !== undefined &&
+        dto.idDispositivo !== entity.idDispositivo
+      ) {
+        if (dto.idDispositivo != null) {
+          await this.validarDispositivoPerteneceCliente(
+            dto.idDispositivo,
+            idCliente,
+          );
+          await this.validarDispositivoSinInstalacionActiva(
+            dto.idDispositivo,
+            idCliente,
+            id,
+          );
+        }
       }
 
       if (dto.idVehiculo !== undefined && dto.idVehiculo !== entity.idVehiculo) {
@@ -329,17 +326,16 @@ export class InstalacionesService {
         );
       }
 
-      if (dto.idEstatusInstalacion !== undefined) {
-        await this.validarEstatusInstalacion(dto.idEstatusInstalacion);
-      }
-
       const updateData: Partial<Instalaciones> = {};
       if (dto.idDispositivo !== undefined)
         updateData.idDispositivo = dto.idDispositivo;
       if (dto.idVehiculo !== undefined)
         updateData.idVehiculo = dto.idVehiculo;
-      if (dto.idEstatusInstalacion !== undefined)
-        updateData.idEstatusInstalacion = dto.idEstatusInstalacion;
+      if (dto.idActivos !== undefined) updateData.idActivos = dto.idActivos;
+      if (dto.idPortatiles !== undefined)
+        updateData.idPortatiles = dto.idPortatiles;
+      if (dto.estatusInstalacion !== undefined)
+        updateData.estatusInstalacion = dto.estatusInstalacion;
       if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       await this.repository.update(id, updateData);

@@ -4,13 +4,19 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateInstalacionesDto {
-  @ApiProperty({ description: 'ID dispositivo (debe pertenecer al mismo cliente)' })
+  @ApiProperty({
+    description: 'ID dispositivo (debe pertenecer al mismo cliente)',
+    required: false,
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value != null)
   @IsInt()
-  @IsNotEmpty()
-  idDispositivo: number;
+  idDispositivo?: number | null;
 
   @ApiProperty({ description: 'ID vehículo (debe pertenecer al mismo cliente)' })
   @IsInt()
@@ -18,13 +24,29 @@ export class CreateInstalacionesDto {
   idVehiculo: number;
 
   @ApiProperty({
-    description: 'ID estatus (CatEstatusInstalacion)',
+    description: 'ID activo (pendiente — sin FK en BD)',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  idActivos?: number;
+
+  @ApiProperty({
+    description: 'ID portátil (pendiente — sin FK en BD)',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  idPortatiles?: number;
+
+  @ApiProperty({
+    description: 'Estatus de instalación (valor numérico)',
     default: 1,
     required: false,
   })
   @IsOptional()
   @IsInt()
-  idEstatusInstalacion?: number = 1;
+  estatusInstalacion?: number = 1;
 
   @ApiProperty({
     description: 'Estatus (1 activo, 0 inactivo)',

@@ -50,7 +50,8 @@ export class VehiculosController {
   @Get('list')
   @ApiOperation({
     summary: 'Lista completa de vehículos',
-    description: 'Solo registros activos (Estatus=1). Alcance según rol del token.',
+    description:
+      'Solo registros activos (Estatus=1). Incluye modelo y marca. Alcance según rol del token.',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })

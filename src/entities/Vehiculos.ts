@@ -11,18 +11,16 @@ import {
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatModeloVehiculo } from './CatModeloVehiculo';
-import { CatTipoVehiculo } from './CatTipoVehiculo';
-import { CatEstatusVehiculo } from './CatEstatusVehiculo';
+import { CatMarcaVehiculo } from './CatMarcaVehiculo';
 import { CatTipoCombustible } from './CatTipoCombustible';
 
 @applySchema
 @Index('UQ_Vehiculos_IdCliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Vehiculos_Placa', ['placa', 'idCliente'], { unique: true })
-@Index('IX_Vehiculos_IdCliente_IdEstatusVehiculo', [
-  'idCliente',
-  'idEstatusVehiculo',
-])
-@Index('IX_Vehiculos_Estatus', ['estatus'])
+@Index('FK_Vehiculos_CatModeloVehiculo', ['idModeloVehiculo'])
+@Index('FK_Vehiculos_CatTipoCombustible', ['idCombustible'])
+@Index('FK_Vehiculos_Placa', ['placa'])
+@Index('FK_Vehiculos_CatMarcaVehiculo_idx', ['idMarcaVehiculo'])
 @Entity('Vehiculos')
 export class Vehiculos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -37,11 +35,11 @@ export class Vehiculos {
   @Column('varchar', { name: 'NumeroEconomico', length: 50 })
   numeroEconomico: string;
 
+  @Column('bigint', { name: 'IdMarcaVehiculo' })
+  idMarcaVehiculo: number;
+
   @Column('bigint', { name: 'IdModeloVehiculo' })
   idModeloVehiculo: number;
-
-  @Column('bigint', { name: 'IdTipoVehiculo' })
-  idTipoVehiculo: number;
 
   @Column('int', { name: 'Anio' })
   anio: number;
@@ -97,11 +95,11 @@ export class Vehiculos {
   @Column('float', { name: 'CapacidadLitros', nullable: true })
   capacidadLitros: number | null;
 
-  @Column('bigint', { name: 'IdEstatusVehiculo', default: 1 })
-  idEstatusVehiculo: number;
-
   @Column('int', { name: 'CantidadAccesos', nullable: true })
   cantidadAccesos: number | null;
+
+  @Column('tinyint', { name: 'Estatus', default: 1 })
+  estatus: number;
 
   @CreateDateColumn({ name: 'FechaCreacion' })
   fechaCreacion: Date;
@@ -109,12 +107,16 @@ export class Vehiculos {
   @UpdateDateColumn({ name: 'FechaActualizacion' })
   fechaActualizacion: Date;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
-  estatus: number;
-
   @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
+
+  @ManyToOne(() => CatMarcaVehiculo, {
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn([{ name: 'IdMarcaVehiculo', referencedColumnName: 'id' }])
+  idMarcaVehiculo2: CatMarcaVehiculo;
 
   @ManyToOne(() => CatModeloVehiculo, {
     onDelete: 'RESTRICT',
@@ -123,22 +125,8 @@ export class Vehiculos {
   @JoinColumn([{ name: 'IdModeloVehiculo', referencedColumnName: 'id' }])
   idModeloVehiculo2: CatModeloVehiculo;
 
-  @ManyToOne(() => CatTipoVehiculo, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdTipoVehiculo', referencedColumnName: 'id' }])
-  idTipoVehiculo2: CatTipoVehiculo;
-
-  @ManyToOne(() => CatEstatusVehiculo, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdEstatusVehiculo', referencedColumnName: 'id' }])
-  idEstatusVehiculo2: CatEstatusVehiculo;
-
   @ManyToOne(() => CatTipoCombustible, {
-    onDelete: 'SET NULL',
+    onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdCombustible', referencedColumnName: 'id' }])

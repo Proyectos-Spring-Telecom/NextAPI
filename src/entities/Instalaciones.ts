@@ -12,20 +12,19 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { Dispositivos } from './Dispositivos';
 import { Vehiculos } from './Vehiculos';
-import { CatEstatusInstalacion } from './CatEstatusInstalacion';
 
 @applySchema
-@Index('UQ_Instalaciones_IdCliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Instalaciones_IdCliente_IdVehiculo', ['idCliente', 'idVehiculo'], {
   unique: true,
 })
+@Index('UQ_Instalaciones_IdCliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Instalaciones_IdCliente_IdDispositivo', [
   'idCliente',
   'idDispositivo',
 ], { unique: true })
 @Index('IX_Instalaciones_IdCliente_IdEstatusInstalacion', [
   'idCliente',
-  'idEstatusInstalacion',
+  'estatusInstalacion',
 ])
 @Entity('Instalaciones')
 export class Instalaciones {
@@ -47,8 +46,8 @@ export class Instalaciones {
   @Column('bigint', { name: 'IdPortatiles', nullable: true })
   idPortatiles: number | null;
 
-  @Column('bigint', { name: 'IdEstatusInstalacion', default: 1 })
-  idEstatusInstalacion: number;
+  @Column('bigint', { name: 'EstatusInstalacion', default: 1 })
+  estatusInstalacion: number;
 
   @CreateDateColumn({ name: 'FechaCreacion' })
   fechaCreacion: Date;
@@ -80,11 +79,4 @@ export class Instalaciones {
     { name: 'IdVehiculo', referencedColumnName: 'id' },
   ])
   idVehiculo2: Vehiculos;
-
-  @ManyToOne(() => CatEstatusInstalacion, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdEstatusInstalacion', referencedColumnName: 'id' }])
-  idEstatusInstalacion2: CatEstatusInstalacion;
 }

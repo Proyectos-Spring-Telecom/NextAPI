@@ -31,15 +31,15 @@ export class CreateVehiculosDto {
   @MaxLength(50)
   numeroEconomico: string;
 
+  @ApiProperty({ description: 'ID marca (CatMarcaVehiculo)' })
+  @IsInt()
+  @IsNotEmpty()
+  idMarcaVehiculo: number;
+
   @ApiProperty({ description: 'ID modelo (CatModeloVehiculo)' })
   @IsInt()
   @IsNotEmpty()
   idModeloVehiculo: number;
-
-  @ApiProperty({ description: 'ID tipo (CatTipoVehiculo)' })
-  @IsInt()
-  @IsNotEmpty()
-  idTipoVehiculo: number;
 
   @ApiProperty({ description: 'Año modelo', example: 2024 })
   @IsInt()
@@ -152,15 +152,6 @@ export class CreateVehiculosDto {
   @IsOptional()
   @IsNumber()
   capacidadLitros?: number;
-
-  @ApiProperty({
-    description: 'ID estatus (CatEstatusVehiculo)',
-    default: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  idEstatusVehiculo?: number = 1;
 
   @ApiProperty({
     description: 'Estatus (1 activo, 0 inactivo)',
