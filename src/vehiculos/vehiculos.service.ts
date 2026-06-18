@@ -138,8 +138,6 @@ export class VehiculosService {
         polizaSeguro: dto.polizaSeguro ?? null,
         permisoConcesion: dto.permisoConcesion ?? null,
         inspeccionMecanica: dto.inspeccionMecanica ?? null,
-        pasajerosSentados: dto.pasajerosSentados ?? null,
-        pasajerosParados: dto.pasajerosParados ?? null,
         idCombustible: dto.idCombustible ?? null,
         km: dto.km ?? null,
         capacidadLitros: dto.capacidadLitros ?? null,
@@ -471,10 +469,6 @@ LIMIT ${limit}
         updateData.permisoConcesion = dto.permisoConcesion;
       if (dto.inspeccionMecanica !== undefined)
         updateData.inspeccionMecanica = dto.inspeccionMecanica;
-      if (dto.pasajerosSentados !== undefined)
-        updateData.pasajerosSentados = dto.pasajerosSentados;
-      if (dto.pasajerosParados !== undefined)
-        updateData.pasajerosParados = dto.pasajerosParados;
       if (dto.idCombustible !== undefined) updateData.idCombustible = dto.idCombustible;
       if (dto.km !== undefined) updateData.km = dto.km;
       if (dto.capacidadLitros !== undefined)

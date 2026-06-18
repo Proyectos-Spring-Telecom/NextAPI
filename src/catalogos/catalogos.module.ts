@@ -4,7 +4,6 @@ import { CatMarcaVehiculoModule } from './cat-marca-vehiculo/cat-marca-vehiculo.
 import { CatModeloVehiculoModule } from './cat-modelo-vehiculo/cat-modelo-vehiculo.module';
 import { CatTipoLicenciaModule } from './cat-tipo-licencia/cat-tipo-licencia.module';
 import { CatCategoriaLicenciaModule } from './cat-categoria-licencia/cat-categoria-licencia.module';
-import { CatTipoAlertaModule } from './cat-tipo-alerta/cat-tipo-alerta.module';
 import { CatEstatusOperadorModule } from './cat-estatus-operador/cat-estatus-operador.module';
 import { CatTipoDispositivoModule } from './cat-tipo-dispositivo/cat-tipo-dispositivo.module';
 import { CatMarcaDispositivoModule } from './cat-marca-dispositivo/cat-marca-dispositivo.module';
@@ -22,7 +21,6 @@ import { CatalogosRegistry } from './catalogos.registry';
     CatModeloVehiculoModule,
     CatTipoLicenciaModule,
     CatCategoriaLicenciaModule,
-    CatTipoAlertaModule,
     CatEstatusOperadorModule,
     CatTipoDispositivoModule,
     CatMarcaDispositivoModule,

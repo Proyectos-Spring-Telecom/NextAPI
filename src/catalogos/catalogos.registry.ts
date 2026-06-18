@@ -4,7 +4,6 @@ import { CatMarcaVehiculoService } from './cat-marca-vehiculo/cat-marca-vehiculo
 import { CatModeloVehiculoService } from './cat-modelo-vehiculo/cat-modelo-vehiculo.service';
 import { CatTipoLicenciaService } from './cat-tipo-licencia/cat-tipo-licencia.service';
 import { CatCategoriaLicenciaService } from './cat-categoria-licencia/cat-categoria-licencia.service';
-import { CatTipoAlertaService } from './cat-tipo-alerta/cat-tipo-alerta.service';
 import { CatEstatusOperadorService } from './cat-estatus-operador/cat-estatus-operador.service';
 import { CatTipoDispositivoService } from './cat-tipo-dispositivo/cat-tipo-dispositivo.service';
 import { CatMarcaDispositivoService } from './cat-marca-dispositivo/cat-marca-dispositivo.service';
@@ -22,7 +21,6 @@ export class CatalogosRegistry {
     private readonly catModeloVehiculoService: CatModeloVehiculoService,
     private readonly catTipoLicenciaService: CatTipoLicenciaService,
     private readonly catCategoriaLicenciaService: CatCategoriaLicenciaService,
-    private readonly catTipoAlertaService: CatTipoAlertaService,
     private readonly catEstatusOperadorService: CatEstatusOperadorService,
     private readonly catTipoDispositivoService: CatTipoDispositivoService,
     private readonly catMarcaDispositivoService: CatMarcaDispositivoService,
@@ -35,7 +33,6 @@ export class CatalogosRegistry {
     this.services['cat-modelo-vehiculo'] = catModeloVehiculoService;
     this.services['cat-tipo-licencia'] = catTipoLicenciaService;
     this.services['cat-categoria-licencia'] = catCategoriaLicenciaService;
-    this.services['cat-tipo-alerta'] = catTipoAlertaService;
     this.services['cat-estatus-operador'] = catEstatusOperadorService;
     this.services['cat-tipo-dispositivo'] = catTipoDispositivoService;
     this.services['cat-marca-dispositivo'] = catMarcaDispositivoService;

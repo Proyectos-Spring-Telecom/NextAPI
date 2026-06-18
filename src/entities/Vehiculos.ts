@@ -80,12 +80,6 @@ export class Vehiculos {
   @Column('varchar', { name: 'InspeccionMecanica', length: 500, nullable: true })
   inspeccionMecanica: string | null;
 
-  @Column('int', { name: 'PasajerosSentados', unsigned: true, nullable: true })
-  pasajerosSentados: number | null;
-
-  @Column('int', { name: 'PasajerosParados', unsigned: true, nullable: true })
-  pasajerosParados: number | null;
-
   @Column('bigint', { name: 'IdCombustible', nullable: true })
   idCombustible: number | null;
 
@@ -94,9 +88,6 @@ export class Vehiculos {
 
   @Column('float', { name: 'CapacidadLitros', nullable: true })
   capacidadLitros: number | null;
-
-  @Column('int', { name: 'CantidadAccesos', nullable: true })
-  cantidadAccesos: number | null;
 
   @Column('tinyint', { name: 'Estatus', default: 1 })
   estatus: number;

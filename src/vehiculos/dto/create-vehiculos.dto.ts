@@ -123,18 +123,6 @@ export class CreateVehiculosDto {
   @MaxLength(500)
   inspeccionMecanica?: string;
 
-  @ApiProperty({ description: 'Pasajeros sentados', required: false })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  pasajerosSentados?: number;
-
-  @ApiProperty({ description: 'Pasajeros parados', required: false })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  pasajerosParados?: number;
-
   @ApiProperty({
     description: 'ID combustible (CatTipoCombustible)',
     required: false,
