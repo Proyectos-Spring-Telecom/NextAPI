@@ -465,6 +465,7 @@ export class AuthService {
       logotipo: user.cliente2?.logotipo ?? '',
       ultimoLogin: user.ultimoLogin ?? '',
       fotoPerfil: user.fotoPerfil ?? '',
+      telefono: user.telefono ?? '',
       userName: user.userName ?? '',
       rol: user.idRol2,
       permisos,
