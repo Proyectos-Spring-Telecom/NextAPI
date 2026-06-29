@@ -19,6 +19,7 @@ import { OperadoresModule } from './operadores/operadores.module';
 import { VehiculosModule } from './vehiculos/vehiculos.module';
 import { InmueblesModule } from './inmuebles/inmuebles.module';
 import { PanelAlarmaModule } from './panel-alarma/panel-alarma.module';
+import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
@@ -95,6 +96,8 @@ import * as jwt from 'jsonwebtoken';
         E_MAIL: Joi.string().required(),
         MAIL_PASSWORD: Joi.string().required(),
         MAIL_FRONTEND_URL: Joi.string().optional(),
+        WEBHOOK_SUBSCRIBERS: Joi.string().allow('').default(''),
+        WEBHOOK_SECRET: Joi.string().allow('').default(''),
       }),
     }),
 
@@ -157,6 +160,8 @@ import * as jwt from 'jsonwebtoken';
     InmueblesModule,
 
     PanelAlarmaModule,
+
+    WebhookEmitterModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

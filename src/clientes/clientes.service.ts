@@ -23,6 +23,8 @@ import {
 } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
 @Injectable()
 export class ClientesService {
@@ -32,6 +34,7 @@ export class ClientesService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly s3Service: S3Service,
     private readonly tenantFilter: TenantFilterService,
+    private readonly webhookEmitter: WebhookEmitterService,
   ) {}
 
   /**
@@ -209,6 +212,12 @@ export class ClientesService {
         EstatusEnumBitcora.SUCCESS,
       );
 
+      this.webhookEmitter.emit(
+        WebhookEvent.CLIENTE_CREATED,
+        Number(clienteCreado.id),
+        Number(clienteCreado.id),
+        { idPadre: clienteCreado.idPadre },
+      );
 
       //Api response
       const result: ApiCrudResponse = {
@@ -564,6 +573,14 @@ ORDER BY Id ASC
       const clientefind = await this.clienteRepository.findOne({
         where: { id: id },
       });
+
+      this.webhookEmitter.emit(
+        WebhookEvent.CLIENTE_UPDATED,
+        id,
+        id,
+        { idPadre: clientefind?.idPadre },
+      );
+
       //Api response
       const result: ApiCrudResponse = {
         status: 'success',

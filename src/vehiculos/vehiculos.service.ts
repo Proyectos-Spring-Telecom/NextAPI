@@ -22,6 +22,8 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
 const ID_MODULO_VEHICULOS = 16;
 
@@ -60,7 +62,8 @@ export class VehiculosService {
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+    private readonly webhookEmitter: WebhookEmitterService,
+  ) { }
 
   private async validarFks(dto: {
     idMarcaVehiculo?: number;
@@ -99,6 +102,23 @@ export class VehiculosService {
         throw new BadRequestException('IdCombustible no existe');
       }
     }
+  }
+
+  private buildVehiculoWebhookData(
+    placa: string,
+    marcaNombre?: string | null,
+  ): Record<string, unknown> {
+    return {
+      placa,
+      marcaNombre: marcaNombre ?? '',
+    };
+  }
+
+  private async resolveMarcaNombre(idMarcaVehiculo: number): Promise<string> {
+    const marca = await this.catMarcaVehiculoRepo.findOne({
+      where: { id: idMarcaVehiculo },
+    });
+    return marca?.nombre ?? '';
   }
 
   async create(
@@ -155,6 +175,16 @@ export class VehiculosService {
         idUser,
         ID_MODULO_VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
+      );
+
+      this.webhookEmitter.emit(
+        WebhookEvent.VEHICULO_CREATED,
+        idCliente,
+        Number(saved.id),
+        this.buildVehiculoWebhookData(
+          saved.placa,
+          await this.resolveMarcaNombre(saved.idMarcaVehiculo),
+        ),
       );
 
       return {
@@ -312,16 +342,16 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       idModeloVehiculo: Number(item.idModeloVehiculo),
       marca: marca
         ? {
-            id: Number(marca.id),
-            nombre: marca.nombre,
-          }
+          id: Number(marca.id),
+          nombre: marca.nombre,
+        }
         : null,
       modelo: modelo
         ? {
-            id: Number(modelo.id),
-            nombre: modelo.nombre,
-            idMarcaVehiculo: Number(modelo.idMarcaVehiculo),
-          }
+          id: Number(modelo.id),
+          nombre: modelo.nombre,
+          idMarcaVehiculo: Number(modelo.idMarcaVehiculo),
+        }
         : null,
     };
   }
@@ -418,7 +448,7 @@ LIMIT ${limit}
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
@@ -487,7 +517,24 @@ LIMIT ${limit}
         EstatusEnumBitcora.SUCCESS,
       );
 
-      const updated = await this.repository.findOne({ where: { id } });
+      const updated = await this.repository.findOne({
+        where: { id },
+        relations: { idMarcaVehiculo2: true },
+      });
+
+      this.webhookEmitter.emit(
+        WebhookEvent.VEHICULO_UPDATED,
+        idCliente,
+        id,
+        this.buildVehiculoWebhookData(
+          updated?.placa ?? entity.placa,
+          updated?.idMarcaVehiculo2?.nombre ??
+            (await this.resolveMarcaNombre(
+              updated?.idMarcaVehiculo ?? entity.idMarcaVehiculo,
+            )),
+        ),
+      );
+
       return {
         status: 'success',
         message: 'Vehículo actualizado correctamente',
@@ -537,6 +584,18 @@ LIMIT ${limit}
         ID_MODULO_VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
       );
+
+      if (dto.estatus === 0) {
+        this.webhookEmitter.emit(
+          WebhookEvent.VEHICULO_DELETED,
+          idCliente,
+          id,
+          this.buildVehiculoWebhookData(
+            entity.placa,
+            await this.resolveMarcaNombre(entity.idMarcaVehiculo),
+          ),
+        );
+      }
 
       return {
         status: 'success',
