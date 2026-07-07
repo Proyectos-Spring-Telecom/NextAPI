@@ -10,17 +10,17 @@ import {
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
-import { CatModeloVehiculo } from './CatModeloVehiculo';
-import { CatMarcaVehiculo } from './CatMarcaVehiculo';
+import { CatMarcas } from './CatMarcas';
+import { CatModelos } from './CatModelos';
 import { CatTipoCombustible } from './CatTipoCombustible';
 
 @applySchema
 @Index('UQ_Vehiculos_IdCliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Vehiculos_Placa', ['placa', 'idCliente'], { unique: true })
-@Index('FK_Vehiculos_CatModeloVehiculo', ['idModeloVehiculo'])
 @Index('FK_Vehiculos_CatTipoCombustible', ['idCombustible'])
 @Index('FK_Vehiculos_Placa', ['placa'])
 @Index('FK_Vehiculos_CatMarcaVehiculo_idx', ['idMarcaVehiculo'])
+@Index('FK_Vehiculos_CatModeloVehiculo_idx', ['idModeloVehiculo'])
 @Entity('Vehiculos')
 export class Vehiculos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -35,11 +35,11 @@ export class Vehiculos {
   @Column('varchar', { name: 'NumeroEconomico', length: 50 })
   numeroEconomico: string;
 
-  @Column('bigint', { name: 'IdMarcaVehiculo' })
-  idMarcaVehiculo: number;
+  @Column('bigint', { name: 'IdMarcaVehiculo', nullable: true })
+  idMarcaVehiculo: number | null;
 
-  @Column('bigint', { name: 'IdModeloVehiculo' })
-  idModeloVehiculo: number;
+  @Column('bigint', { name: 'IdModeloVehiculo', nullable: true })
+  idModeloVehiculo: number | null;
 
   @Column('int', { name: 'Anio' })
   anio: number;
@@ -102,19 +102,19 @@ export class Vehiculos {
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
-  @ManyToOne(() => CatMarcaVehiculo, {
+  @ManyToOne(() => CatMarcas, {
     onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdMarcaVehiculo', referencedColumnName: 'id' }])
-  idMarcaVehiculo2: CatMarcaVehiculo;
+  idMarcaVehiculo2: CatMarcas | null;
 
-  @ManyToOne(() => CatModeloVehiculo, {
+  @ManyToOne(() => CatModelos, {
     onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdModeloVehiculo', referencedColumnName: 'id' }])
-  idModeloVehiculo2: CatModeloVehiculo;
+  idModeloVehiculo2: CatModelos | null;
 
   @ManyToOne(() => CatTipoCombustible, {
     onDelete: 'RESTRICT',

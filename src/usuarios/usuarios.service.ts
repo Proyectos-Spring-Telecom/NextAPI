@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -20,6 +20,13 @@ import {
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { ClientesService } from 'src/clientes/clientes.service';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
+import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
+import { PanelAlarma } from 'src/entities/PanelAlarma';
+import { Soluciones } from 'src/entities/Soluciones';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { Clientes } from 'src/entities/Clientes';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
 import { SetFaceAuthDto } from './dto/set-face-auth.dto';
@@ -371,6 +378,12 @@ ORDER BY u.Id DESC`,
 
     const usuarioRepo = queryRunner.manager.getRepository(Usuarios);
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
+    const usuariosInstalacionesRepo =
+      queryRunner.manager.getRepository(UsuariosInstalaciones);
+    const usuarioPanelAlarmaRepo =
+      queryRunner.manager.getRepository(UsuarioPanelAlarma);
+    const asignacionSolucionesRepo =
+      queryRunner.manager.getRepository(AsignacionSoluciones);
 
     try {
       const existUsuario = await usuarioRepo.findOne({
@@ -380,12 +393,32 @@ ORDER BY u.Id DESC`,
         throw new BadRequestException('El usuario ya se encuentra registrado.');
       }
 
+      const clientesRepo = queryRunner.manager.getRepository(Clientes);
+      const cliente = await clientesRepo.findOne({
+        where: { id: createUsuarioDto.idCliente },
+      });
+      if (!cliente) {
+        throw new BadRequestException('El cliente proporcionado no existe.');
+      }
+
+      const {
+        permisosIds,
+        instalacionesIds = [],
+        panelesAlarmaIds = [],
+        solucionesIds = [],
+        ...usuarioData
+      } = createUsuarioDto;
+
+      const permisosIdsUnicos = [...new Set(permisosIds ?? [])];
+      const instalacionesIdsUnicos = [...new Set(instalacionesIds ?? [])];
+      const panelesAlarmaIdsUnicos = [...new Set(panelesAlarmaIds ?? [])];
+      const solucionesIdsUnicos = [...new Set(solucionesIds ?? [])];
+
       const hashedPassword = await bcrypt.hash(
         createUsuarioDto.passwordHash,
         10,
       );
 
-      const { permisosIds, ...usuarioData } = createUsuarioDto;
       const newUser = usuarioRepo.create({
         ...usuarioData,
         passwordHash: hashedPassword,
@@ -395,9 +428,8 @@ ORDER BY u.Id DESC`,
 
       const userSave = await usuarioRepo.save(newUser);
 
-      const permisosIdsList = permisosIds ?? [];
-      if (permisosIdsList.length > 0) {
-        const usuariosPermisos = permisosIdsList.map((permisoId) =>
+      if (permisosIdsUnicos.length > 0) {
+        const usuariosPermisos = permisosIdsUnicos.map((permisoId) =>
           permisosRepo.create({
             idUsuario: userSave.id,
             idPermiso: permisoId,
@@ -406,13 +438,83 @@ ORDER BY u.Id DESC`,
         await permisosRepo.save(usuariosPermisos);
       }
 
+      if (instalacionesIdsUnicos.length > 0) {
+        const instalacionesRepo =
+          queryRunner.manager.getRepository(Instalaciones);
+        const instalaciones = await instalacionesRepo.find({
+          where: { id: In(instalacionesIdsUnicos) },
+        });
+
+        if (instalaciones.length !== instalacionesIdsUnicos.length) {
+          throw new BadRequestException(
+            'Una o más instalaciones proporcionadas no existen.',
+          );
+        }
+
+        const usuariosInstalaciones = instalacionesIdsUnicos.map(
+          (idInstalacion) =>
+            usuariosInstalacionesRepo.create({
+              idUsuario: userSave.id,
+              idInstalacion,
+            }),
+        );
+        await usuariosInstalacionesRepo.save(usuariosInstalaciones);
+      }
+
+      if (panelesAlarmaIdsUnicos.length > 0) {
+        const panelRepo = queryRunner.manager.getRepository(PanelAlarma);
+        const paneles = await panelRepo.find({
+          where: { id: In(panelesAlarmaIdsUnicos) },
+        });
+
+        if (paneles.length !== panelesAlarmaIdsUnicos.length) {
+          throw new BadRequestException(
+            'Uno o más paneles de alarma proporcionados no existen.',
+          );
+        }
+
+        const usuariosPanelesAlarma = panelesAlarmaIdsUnicos.map(
+          (idPanelAlarma) =>
+            usuarioPanelAlarmaRepo.create({
+              idUsuario: userSave.id,
+              idPanelAlarma,
+            }),
+        );
+        await usuarioPanelAlarmaRepo.save(usuariosPanelesAlarma);
+      }
+
+      if (solucionesIdsUnicos.length > 0) {
+        const solucionesRepo = queryRunner.manager.getRepository(Soluciones);
+        const soluciones = await solucionesRepo.find({
+          where: { id: In(solucionesIdsUnicos), estatus: 1 },
+        });
+
+        if (soluciones.length !== solucionesIdsUnicos.length) {
+          throw new BadRequestException(
+            'Una o más soluciones proporcionadas no existen.',
+          );
+        }
+
+        const asignacionesSoluciones = solucionesIdsUnicos.map((idSolucion) =>
+          asignacionSolucionesRepo.create({
+            idUsuario: userSave.id,
+            idSolucion,
+          }),
+        );
+        await asignacionSolucionesRepo.save(asignacionesSoluciones);
+      }
+
+
       await queryRunner.commitTransaction();
 
+      const { passwordHash: _passwordHash, ...payloadBitacora } =
+        createUsuarioDto;
       const querylogger = {
-        userName: createUsuarioDto.userName,
-        nombre: createUsuarioDto.nombre,
-        idRol: createUsuarioDto.idRol,
-        idCliente: createUsuarioDto.idCliente,
+        ...payloadBitacora,
+        permisosIds: permisosIdsUnicos,
+        instalacionesIds: instalacionesIdsUnicos,
+        panelesAlarmaIds: panelesAlarmaIdsUnicos,
+        solucionesIds: solucionesIdsUnicos,
       };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
@@ -656,6 +758,66 @@ ORDER BY u.Id DESC`,
   }
 
   // ========================================
+  // 🔹 SINCRONIZAR RELACIONES POR ESTATUS
+  // ========================================
+  private async sincronizarRelacionesEstatus(
+    repo: Repository<{
+      id: number;
+      estatus: number;
+      idUsuario: number;
+    }>,
+    idUsuario: number,
+    idsRecibidos: number[],
+    obtenerIdRelacion: (relacion: {
+      id: number;
+      estatus: number;
+      idUsuario: number;
+    }) => number,
+    crearRelacion: (idRelacion: number) => {
+      idUsuario: number;
+      estatus: number;
+      [key: string]: number;
+    },
+  ): Promise<void> {
+    const nuevaLista = [...new Set(idsRecibidos.map(Number))];
+    const nuevaSet = new Set(nuevaLista);
+
+    const relacionesExistentes = await repo.find({
+      where: { idUsuario },
+    });
+
+    const existentesMap = new Map(
+      relacionesExistentes.map((relacion) => [
+        obtenerIdRelacion(relacion),
+        relacion,
+      ]),
+    );
+
+    const todosIds = new Set([...nuevaLista, ...existentesMap.keys()]);
+
+    for (const idRelacion of todosIds) {
+      const debeEstarActivo = nuevaSet.has(idRelacion);
+      const relacionExistente = existentesMap.get(idRelacion);
+
+      if (debeEstarActivo && relacionExistente) {
+        if (relacionExistente.estatus === 0) {
+          await repo.update(relacionExistente.id, { estatus: 1 });
+        }
+        continue;
+      }
+
+      if (debeEstarActivo && !relacionExistente) {
+        await repo.save(repo.create(crearRelacion(idRelacion)));
+        continue;
+      }
+
+      if (!debeEstarActivo && relacionExistente?.estatus === 1) {
+        await repo.update(relacionExistente.id, { estatus: 0 });
+      }
+    }
+  }
+
+  // ========================================
   // 🔹 ACTUALIZAR DATOS DEL USUARIO (transacción)
   // ========================================
   async updateUsuario(
@@ -669,6 +831,12 @@ ORDER BY u.Id DESC`,
 
     const usuarioRepo = queryRunner.manager.getRepository(Usuarios);
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
+    const usuariosInstalacionesRepo =
+      queryRunner.manager.getRepository(UsuariosInstalaciones);
+    const usuarioPanelAlarmaRepo =
+      queryRunner.manager.getRepository(UsuarioPanelAlarma);
+    const asignacionSolucionesRepo =
+      queryRunner.manager.getRepository(AsignacionSoluciones);
 
     try {
       const usuario = await usuarioRepo.findOne({ where: { id } });
@@ -688,49 +856,83 @@ ORDER BY u.Id DESC`,
         }
       }
 
-      const { permisosIds, ...usuarioUpdate } = updateUsuarioDto;
+      const {
+        permisosIds,
+        instalacionesIds,
+        panelesAlarmaIds,
+        solucionesIds,
+        ...usuarioUpdate
+      } = updateUsuarioDto;
+
       const usuarioData = {
         ...usuarioUpdate,
         emailConfirmado: EstatusEnum.ACTIVO,
+      } as UpdateUsuarioDto & {
+        passwordHash?: string;
+        actualizacionPassword?: string;
       };
+
+      delete usuarioData.passwordHash;
+      delete usuarioData.actualizacionPassword;
 
       await usuarioRepo.update(id, usuarioData);
 
-      if (permisosIds && Array.isArray(permisosIds)) {
-        const nuevaLista = permisosIds.map(Number);
-        const creadaLista = await permisosRepo.find({
-          where: { idUsuario: id },
-        });
-
-        const nuevaSet = new Set(nuevaLista);
-        const creadaMap = new Map(
-          creadaLista.map((p) => [Number(p.idPermiso), p] as const),
+      if (Array.isArray(permisosIds)) {
+        await this.sincronizarRelacionesEstatus(
+          permisosRepo as Repository<{
+            id: number;
+            estatus: number;
+            idUsuario: number;
+          }>,
+          id,
+          permisosIds,
+          (relacion) => Number((relacion as UsuariosPermisos).idPermiso),
+          (idPermiso) => ({ idUsuario: id, idPermiso, estatus: 1 }),
         );
-        const todosIds = new Set([
-          ...nuevaSet,
-          ...creadaLista.map((p) => Number(p.idPermiso)),
-        ]);
+      }
 
-        for (const permisoId of todosIds) {
-          const enNueva = nuevaSet.has(permisoId);
-          const creado = creadaMap.get(permisoId);
-          if (enNueva && creado && creado.estatus === 0) {
-            await permisosRepo.update(creado.id, { estatus: 1 });
-          } else if (enNueva && !creado) {
-            const existe = await permisosRepo.findOne({
-              where: { idUsuario: id, idPermiso: permisoId },
-            });
-            if (!existe) {
-              await permisosRepo.save({
-                idUsuario: id,
-                idPermiso: permisoId,
-                estatus: 1,
-              });
-            }
-          } else if (!enNueva && creado && creado.estatus === 1) {
-            await permisosRepo.update(creado.id, { estatus: 0 });
-          }
-        }
+      if (Array.isArray(instalacionesIds)) {
+        await this.sincronizarRelacionesEstatus(
+          usuariosInstalacionesRepo as Repository<{
+            id: number;
+            estatus: number;
+            idUsuario: number;
+          }>,
+          id,
+          instalacionesIds,
+          (relacion) =>
+            Number((relacion as UsuariosInstalaciones).idInstalacion),
+          (idInstalacion) => ({ idUsuario: id, idInstalacion, estatus: 1 }),
+        );
+      }
+
+      if (Array.isArray(panelesAlarmaIds)) {
+        await this.sincronizarRelacionesEstatus(
+          usuarioPanelAlarmaRepo as Repository<{
+            id: number;
+            estatus: number;
+            idUsuario: number;
+          }>,
+          id,
+          panelesAlarmaIds,
+          (relacion) =>
+            Number((relacion as UsuarioPanelAlarma).idPanelAlarma),
+          (idPanelAlarma) => ({ idUsuario: id, idPanelAlarma, estatus: 1 }),
+        );
+      }
+
+      if (Array.isArray(solucionesIds)) {
+        await this.sincronizarRelacionesEstatus(
+          asignacionSolucionesRepo as Repository<{
+            id: number;
+            estatus: number;
+            idUsuario: number;
+          }>,
+          id,
+          solucionesIds,
+          (relacion) => Number((relacion as AsignacionSoluciones).idSolucion),
+          (idSolucion) => ({ idUsuario: id, idSolucion, estatus: 1 }),
+        );
       }
 
       await queryRunner.commitTransaction();

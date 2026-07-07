@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
-import { CatModeloDispositivo } from 'src/entities/CatModeloDispositivo';
-import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
+import { CatModelos } from 'src/entities/CatModelos';
+import { CatMarcas } from 'src/entities/CatMarcas';
 import { Sims } from 'src/entities/Sims';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
@@ -13,8 +13,8 @@ import { DispositivosService } from './dispositivos.service';
   imports: [
     TypeOrmModule.forFeature([
       Dispositivos,
-      CatModeloDispositivo,
-      CatTipoDispositivo,
+      CatMarcas,
+      CatModelos,
       Sims,
     ]),
     BitacoraModule,

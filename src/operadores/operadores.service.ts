@@ -12,8 +12,6 @@ import { Operadores } from 'src/entities/Operadores';
 import { Usuarios } from 'src/entities/Usuarios';
 import { CatEstatusOperador } from 'src/entities/CatEstatusOperador';
 import { Licencias } from 'src/entities/Licencias';
-import { CatTipoLicencia } from 'src/entities/CatTipoLicencia';
-import { CatCategoriaLicencia } from 'src/entities/CatCategoriaLicencia';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateOperadoresDto } from './dto/create-operadores.dto';
 import { UpdateOperadoresDto } from './dto/update-operadores.dto';
@@ -38,10 +36,6 @@ export class OperadoresService {
     private readonly catEstatusOperadorRepo: Repository<CatEstatusOperador>,
     @InjectRepository(Licencias)
     private readonly licenciasRepo: Repository<Licencias>,
-    @InjectRepository(CatTipoLicencia)
-    private readonly catTipoLicenciaRepo: Repository<CatTipoLicencia>,
-    @InjectRepository(CatCategoriaLicencia)
-    private readonly catCategoriaLicenciaRepo: Repository<CatCategoriaLicencia>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
@@ -56,24 +50,6 @@ export class OperadoresService {
       if (!est) {
         throw new BadRequestException('IdEstatusOperador no existe');
       }
-    }
-  }
-
-  private async validarFksLicencia(dto: {
-    idTipoLicencia: number;
-    idCategoriaLicencia: number;
-  }): Promise<void> {
-    const tipo = await this.catTipoLicenciaRepo.findOne({
-      where: { id: dto.idTipoLicencia },
-    });
-    if (!tipo) {
-      throw new BadRequestException('IdTipoLicencia no existe');
-    }
-    const categoria = await this.catCategoriaLicenciaRepo.findOne({
-      where: { id: dto.idCategoriaLicencia },
-    });
-    if (!categoria) {
-      throw new BadRequestException('IdCategoriaLicencia no existe');
     }
   }
 
@@ -125,10 +101,6 @@ export class OperadoresService {
         throw new BadRequestException('El número de licencia ya está registrado');
       }
 
-      await this.validarFksLicencia({
-        idTipoLicencia: dto.idTipoLicencia,
-        idCategoriaLicencia: dto.idCategoriaLicencia,
-      });
       await this.validarFks({ idEstatusOperador: dto.idEstatusOperador ?? 1 });
 
       const entity = this.repository.create({
@@ -217,8 +189,6 @@ export class OperadoresService {
           'idUsuario2',
           'idEstatusOperador2',
           'licencias',
-          'licencias.idTipoLicencia2',
-          'licencias.idCategoriaLicencia2',
         ],
         order: { id: 'ASC' },
       });
@@ -265,8 +235,6 @@ export class OperadoresService {
           'idUsuario2',
           'idEstatusOperador2',
           'licencias',
-          'licencias.idTipoLicencia2',
-          'licencias.idCategoriaLicencia2',
         ],
         skip: (page - 1) * limit,
         take: limit,
@@ -301,8 +269,6 @@ export class OperadoresService {
           'idUsuario2',
           'idEstatusOperador2',
           'licencias',
-          'licencias.idTipoLicencia2',
-          'licencias.idCategoriaLicencia2',
         ],
       });
       if (!entity) {

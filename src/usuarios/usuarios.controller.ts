@@ -17,9 +17,11 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service';
-import { CreateUsuarioDto } from './dto/create-usuario.dto';
+import { CreateUsuarioDto, CREATE_USUARIO_SWAGGER_EXAMPLE } from './dto/create-usuario.dto';
+import { CreateUsuarioResponseDto } from './dto/create-usuario-response.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { UpdateUsuarioEstatusDto } from './dto/update-usuario-estatus.dto';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
@@ -44,24 +46,81 @@ export class UsuariosController {
   @Roles(1)
   @ApiOperation({
     summary: 'Crear un nuevo usuario',
-    description: 'Registra un nuevo usuario en el sistema asociado al usuario autenticado'
+    description: [
+      'Registra un nuevo usuario y asigna en una sola transacción:',
+      '- **UsuariosPermisos** desde `permisosIds` (obligatorio, puede ser `[]`)',
+      '- **UsuariosInstalaciones** desde `instalacionesIds` (opcional)',
+      '- **UsuarioPanelAlarma** desde `panelesAlarmaIds` (opcional)',
+      '- **AsignacionSoluciones** desde `solucionesIds` (opcional)',
+      '',
+      'Si un arreglo opcional se omite, se interpreta como `[]`. Los IDs duplicados se eliminan antes de insertar. Ante cualquier error en las asignaciones se ejecuta rollback completo.',
+    ].join('\n'),
   })
-  @ApiBody({ type: CreateUsuarioDto })
-  @ApiResponse({
-    status: 201,
+  @ApiBody({
+    type: CreateUsuarioDto,
+    description:
+      'Datos del usuario y arreglos de IDs para asignar permisos, instalaciones, paneles y soluciones. `emailConfirmado` y `estatus` se asignan automáticamente con valor 1 en el servidor.',
+    examples: {
+      ejemploCompleto: {
+        summary: 'Todos los atributos del DTO',
+        description:
+          'Incluye: userName, passwordHash, nombre, apellidoPaterno, apellidoMaterno, telefono, fotoPerfil, idRol, idCliente, permisosIds, instalacionesIds, panelesAlarmaIds, solucionesIds.',
+        value: { ...CREATE_USUARIO_SWAGGER_EXAMPLE },
+      },
+      soloPermisos: {
+        summary: 'Solo campos obligatorios + permisos',
+        description:
+          'Compatibilidad sin instalacionesIds, panelesAlarmaIds ni solucionesIds.',
+        value: {
+          userName: 'usuario@empresa.com',
+          passwordHash: 'P@ssword123',
+          nombre: 'Juan',
+          apellidoPaterno: 'Pérez',
+          idRol: 3,
+          idCliente: 6,
+          permisosIds: [3, 7],
+        },
+      },
+      sinAsignaciones: {
+        summary: 'Sin relaciones',
+        value: {
+          userName: 'basico@empresa.com',
+          passwordHash: 'P@ssword123',
+          nombre: 'Ana',
+          apellidoPaterno: 'Ruiz',
+          idRol: 3,
+          idCliente: 6,
+          permisosIds: [],
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({
     description: 'Usuario creado exitosamente',
+    type: CreateUsuarioResponseDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'Datos inválidos'
+    description: [
+      'Solicitud inválida. Posibles causas:',
+      '- Validación del DTO (contraseña, campos obligatorios, etc.)',
+      '- El usuario ya se encuentra registrado',
+      '- Una o más instalaciones proporcionadas no existen',
+      '- Uno o más paneles de alarma proporcionados no existen',
+      '- Una o más soluciones proporcionadas no existen',
+    ].join('\n'),
   })
   @ApiResponse({
     status: 401,
-    description: 'No autorizado'
+    description: 'Token JWT ausente o inválido',
   })
   @ApiResponse({
     status: 403,
-    description: 'Acceso denegado - Solo SuperAdministrador o Administrador pueden crear usuarios'
+    description: 'Acceso denegado — solo SuperAdministrador (rol 1) puede crear usuarios',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error interno al crear el usuario',
   })
   async createUsuario(
     @Body() createUsuarioDto: CreateUsuarioDto,
@@ -329,7 +388,8 @@ export class UsuariosController {
   @Patch(':id')
   @ApiOperation({
     summary: 'Actualizar datos del usuario',
-    description: 'Actualiza la información completa de un usuario existente'
+    description:
+      'Actualiza la información de un usuario existente. No permite modificar la contraseña; use PATCH /usuarios/actualizar/contrasena.',
   })
   @ApiParam({
     name: 'id',

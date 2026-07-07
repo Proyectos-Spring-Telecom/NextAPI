@@ -13,6 +13,9 @@ import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { UpdatePermisoEstatusDto } from './dto/update-permiso-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon, EstatusEnumBitcora } from 'src/common/ApiResponse';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
+import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 
 @Injectable()
 export class PermisosService {
@@ -21,6 +24,12 @@ export class PermisosService {
     private readonly permisoRepository: Repository<Permisos>,
     @InjectRepository(UsuariosPermisos)
     private readonly usuarioPermiso: Repository<UsuariosPermisos>,
+    @InjectRepository(UsuariosInstalaciones)
+    private readonly usuariosInstalacionesRepository: Repository<UsuariosInstalaciones>,
+    @InjectRepository(UsuarioPanelAlarma)
+    private readonly usuarioPanelAlarmaRepository: Repository<UsuarioPanelAlarma>,
+    @InjectRepository(AsignacionSoluciones)
+    private readonly asignacionSolucionesRepository: Repository<AsignacionSoluciones>,
     private readonly bitacoraLogger: BitacoraLoggerService,
   ) {}
 
@@ -311,9 +320,10 @@ export class PermisosService {
       throw new InternalServerErrorException(`Error al eliminar permisos`);
     }
   }
-  async obtenerPermisosAgrupados(idUsuario): Promise<any[]> {
+  async obtenerPermisosAgrupados(idUsuario): Promise<any> {
     try {
-      // Consulta SQL cruda
+      const idUsuarioNum = Number(idUsuario);
+
       const query = `
             SELECT 
             DISTINCT UsuariosPermisos.IdPermiso,
@@ -331,14 +341,31 @@ export class PermisosService {
             WHERE 
               UsuariosPermisos.IdUsuario = '${idUsuario}'`;
 
-      // Ejecutar la consulta
-      const results = await this.permisoRepository.query(query);
+      const [
+        results,
+        usuariosInstalacionesRaw,
+        usuarioPanelAlarmaRaw,
+        asignacionSolucionesRaw,
+      ] = await Promise.all([
+        this.permisoRepository.query(query),
+        this.usuariosInstalacionesRepository.find({
+          where: { idUsuario: idUsuarioNum },
+          relations: ['idInstalacion2'],
+        }),
+        this.usuarioPanelAlarmaRepository.find({
+          where: { idUsuario: idUsuarioNum },
+          relations: ['idPanelAlarma2'],
+        }),
+        this.asignacionSolucionesRepository.find({
+          where: { idUsuario: idUsuarioNum },
+          relations: ['idSolucion2'],
+        }),
+      ]);
 
       if (!Array.isArray(results)) {
         throw new Error('El resultado de la consulta no es un array');
       }
 
-      // Agrupar resultados
       const permisosAgrupados = results.reduce((result, item) => {
         let moduloExistente = result.find(
           (mod) => mod.IdModulo === item.IdModulo,
@@ -362,7 +389,71 @@ export class PermisosService {
         return result;
       }, []);
 
-      return permisosAgrupados;
+      const UsuariosInstalaciones = usuariosInstalacionesRaw.map((item) => ({
+        Id: Number(item.id),
+        IdUsuario: Number(item.idUsuario),
+        IdInstalacion: Number(item.idInstalacion),
+        Estatus: item.estatus,
+        FechaCreacion: item.fechaCreacion,
+        FechaActualizacion: item.fechaActualizacion,
+        ...(item.idInstalacion2 && {
+          Instalacion: {
+            Id: Number(item.idInstalacion2.id),
+            IdCliente: Number(item.idInstalacion2.idCliente),
+            IdVehiculo: Number(item.idInstalacion2.idVehiculo),
+            IdDispositivo:
+              item.idInstalacion2.idDispositivo != null
+                ? Number(item.idInstalacion2.idDispositivo)
+                : null,
+            EstatusInstalacion: Number(item.idInstalacion2.estatusInstalacion),
+            Estatus: item.idInstalacion2.estatus,
+          },
+        }),
+      }));
+
+      const UsuarioPanelAlarma = usuarioPanelAlarmaRaw.map((item) => ({
+        Id: Number(item.id),
+        IdUsuario: Number(item.idUsuario),
+        IdPanelAlarma: Number(item.idPanelAlarma),
+        Estatus: item.estatus,
+        FechaCreacion: item.fechaCreacion,
+        FechaActualizacion: item.fechaActualizacion,
+        ...(item.idPanelAlarma2 && {
+          PanelAlarma: {
+            Id: Number(item.idPanelAlarma2.id),
+            CuentaSia: item.idPanelAlarma2.cuentaSia,
+            Nombre: item.idPanelAlarma2.nombre,
+            IdCliente: Number(item.idPanelAlarma2.idCliente),
+            IdInmueble: Number(item.idPanelAlarma2.idInmueble),
+            Estatus: item.idPanelAlarma2.estatus,
+          },
+        }),
+      }));
+
+      const AsignacionSoluciones = asignacionSolucionesRaw.map((item) => ({
+        Id: Number(item.id),
+        IdUsuario: Number(item.idUsuario),
+        IdSolucion: Number(item.idSolucion),
+        Estatus: item.estatus,
+        FechaCreacion: item.fechaCreacion,
+        FechaActualizacion: item.fechaActualizacion,
+        ...(item.idSolucion2 && {
+          Solucion: {
+            Id: Number(item.idSolucion2.id),
+            Codigo: item.idSolucion2.codigo,
+            Nombre: item.idSolucion2.nombre,
+            Descripcion: item.idSolucion2.descripcion,
+            Estatus: item.idSolucion2.estatus,
+          },
+        }),
+      }));
+
+      return {
+        UsuariosPermisos: permisosAgrupados,
+        UsuariosInstalaciones,
+        UsuarioPanelAlarma,
+        AsignacionSoluciones,
+      };
     } catch (error) {
       console.error('Error al obtener permisos agrupados:', error);
       throw error; // Lanzar el error para manejarlo en la capa superior si es necesario

@@ -10,8 +10,8 @@ import {
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
-import { CatModeloDispositivo } from './CatModeloDispositivo';
-import { CatTipoDispositivo } from './CatTipoDispositivo';
+import { CatMarcas } from './CatMarcas';
+import { CatModelos } from './CatModelos';
 import { Sims } from './Sims';
 
 @applySchema
@@ -22,8 +22,8 @@ import { Sims } from './Sims';
   'idCliente',
   'estatusDispositivo',
 ])
-@Index('FK_Dispositivos_ModeloDispositivo', ['idModeloDispositivo'])
-@Index('FK_Dispositivos_TipoDispositivo', ['idTipoDispositivo'])
+@Index('FK_Dispositivos_ModeloDispositivo_idx', ['idModeloDispositivo'])
+@Index('FK_Dispositivos_MarcaDispositivo_idx', ['idMarcaDispositivo'])
 @Entity('Dispositivos')
 export class Dispositivos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -32,11 +32,11 @@ export class Dispositivos {
   @Column('varchar', { name: 'NumeroSerie', length: 100 })
   numeroSerie: string;
 
-  @Column('bigint', { name: 'IdModeloDispositivo' })
-  idModeloDispositivo: number;
+  @Column('bigint', { name: 'IdMarcaDispositivo', nullable: true })
+  idMarcaDispositivo: number | null;
 
-  @Column('bigint', { name: 'IdTipoDispositivo' })
-  idTipoDispositivo: number;
+  @Column('bigint', { name: 'IdModeloDispositivo', nullable: true })
+  idModeloDispositivo: number | null;
 
   @Column('bigint', { name: 'EstatusDispositivo', default: 1 })
   estatusDispositivo: number;
@@ -60,19 +60,19 @@ export class Dispositivos {
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
-  @ManyToOne(() => CatModeloDispositivo, {
+  @ManyToOne(() => CatMarcas, {
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn([{ name: 'IdMarcaDispositivo', referencedColumnName: 'id' }])
+  idMarcaDispositivo2: CatMarcas | null;
+
+  @ManyToOne(() => CatModelos, {
     onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
   @JoinColumn([{ name: 'IdModeloDispositivo', referencedColumnName: 'id' }])
-  idModeloDispositivo2: CatModeloDispositivo;
-
-  @ManyToOne(() => CatTipoDispositivo, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdTipoDispositivo', referencedColumnName: 'id' }])
-  idTipoDispositivo2: CatTipoDispositivo;
+  idModeloDispositivo2: CatModelos | null;
 
   @ManyToOne(() => Sims, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
   @JoinColumn([{ name: 'IdSim', referencedColumnName: 'id' }])

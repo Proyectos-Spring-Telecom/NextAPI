@@ -9,8 +9,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Vehiculos } from 'src/entities/Vehiculos';
-import { CatModeloVehiculo } from 'src/entities/CatModeloVehiculo';
-import { CatMarcaVehiculo } from 'src/entities/CatMarcaVehiculo';
+import { CatModelos } from 'src/entities/CatModelos';
+import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
@@ -41,10 +41,10 @@ export interface VehiculoPorPlacaData {
   fechaCreacion: Date;
   idCliente: number;
   nombreCompleto: string | null;
-  modeloId: number;
-  modeloNombre: string;
-  marcaId: number;
-  marcaNombre: string;
+  modeloId: number | null;
+  modeloNombre: string | null;
+  marcaId: number | null;
+  marcaNombre: string | null;
   combustibleId: number | null;
   combustibleNombre: string | null;
 }
@@ -54,10 +54,10 @@ export class VehiculosService {
   constructor(
     @InjectRepository(Vehiculos)
     private readonly repository: Repository<Vehiculos>,
-    @InjectRepository(CatModeloVehiculo)
-    private readonly catModeloVehiculoRepo: Repository<CatModeloVehiculo>,
-    @InjectRepository(CatMarcaVehiculo)
-    private readonly catMarcaVehiculoRepo: Repository<CatMarcaVehiculo>,
+    @InjectRepository(CatModelos)
+    private readonly catModelosRepo: Repository<CatModelos>,
+    @InjectRepository(CatMarcas)
+    private readonly catMarcasRepo: Repository<CatMarcas>,
     @InjectRepository(CatTipoCombustible)
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
     private readonly bitacoraLogger: BitacoraLoggerService,
@@ -66,28 +66,28 @@ export class VehiculosService {
   ) { }
 
   private async validarFks(dto: {
-    idMarcaVehiculo?: number;
-    idModeloVehiculo?: number;
+    idMarcaVehiculo?: number | null;
+    idModeloVehiculo?: number | null;
     idCombustible?: number;
   }): Promise<void> {
-    if (dto.idMarcaVehiculo !== undefined) {
-      const marca = await this.catMarcaVehiculoRepo.findOne({
+    if (dto.idMarcaVehiculo != null) {
+      const marca = await this.catMarcasRepo.findOne({
         where: { id: dto.idMarcaVehiculo },
       });
       if (!marca) {
-        throw new BadRequestException('IdMarcaVehiculo no existe');
+        throw new BadRequestException('IdMarcaVehiculo no existe en CatMarcas');
       }
     }
-    if (dto.idModeloVehiculo !== undefined) {
-      const model = await this.catModeloVehiculoRepo.findOne({
+    if (dto.idModeloVehiculo != null) {
+      const model = await this.catModelosRepo.findOne({
         where: { id: dto.idModeloVehiculo },
       });
       if (!model) {
-        throw new BadRequestException('IdModeloVehiculo no existe');
+        throw new BadRequestException('IdModeloVehiculo no existe en CatModelos');
       }
       if (
-        dto.idMarcaVehiculo !== undefined &&
-        Number(model.idMarcaVehiculo) !== Number(dto.idMarcaVehiculo)
+        dto.idMarcaVehiculo != null &&
+        Number(model.idCatMarcas) !== Number(dto.idMarcaVehiculo)
       ) {
         throw new BadRequestException(
           'El modelo no pertenece a la marca indicada',
@@ -114,8 +114,13 @@ export class VehiculosService {
     };
   }
 
-  private async resolveMarcaNombre(idMarcaVehiculo: number): Promise<string> {
-    const marca = await this.catMarcaVehiculoRepo.findOne({
+  private async resolveMarcaNombre(
+    idMarcaVehiculo: number | null,
+  ): Promise<string> {
+    if (idMarcaVehiculo == null) {
+      return '';
+    }
+    const marca = await this.catMarcasRepo.findOne({
       where: { id: idMarcaVehiculo },
     });
     return marca?.nombre ?? '';
@@ -143,8 +148,8 @@ export class VehiculosService {
       const entity = this.repository.create({
         placa: dto.placa,
         numeroEconomico: dto.numeroEconomico,
-        idMarcaVehiculo: dto.idMarcaVehiculo,
-        idModeloVehiculo: dto.idModeloVehiculo,
+        idMarcaVehiculo: dto.idMarcaVehiculo ?? null,
+        idModeloVehiculo: dto.idModeloVehiculo ?? null,
         anio: dto.anio,
         color: dto.color ?? null,
         numeroSerie: dto.numeroSerie ?? null,
@@ -325,8 +330,8 @@ SELECT
     tc.Nombre AS combustibleNombre
 FROM Vehiculos v
 INNER JOIN Clientes c ON v.IdCliente = c.Id
-INNER JOIN CatModeloVehiculo mv ON v.IdModeloVehiculo = mv.Id
-INNER JOIN CatMarcaVehiculo mar ON v.IdMarcaVehiculo = mar.Id
+LEFT JOIN CatModelos mv ON v.IdModeloVehiculo = mv.Id
+LEFT JOIN CatMarcas mar ON v.IdMarcaVehiculo = mar.Id
 LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
 `;
 
@@ -338,8 +343,10 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
     return {
       ...vehiculo,
       id: Number(item.id),
-      idMarcaVehiculo: Number(item.idMarcaVehiculo),
-      idModeloVehiculo: Number(item.idModeloVehiculo),
+      idMarcaVehiculo:
+        item.idMarcaVehiculo != null ? Number(item.idMarcaVehiculo) : null,
+      idModeloVehiculo:
+        item.idModeloVehiculo != null ? Number(item.idModeloVehiculo) : null,
       marca: marca
         ? {
           id: Number(marca.id),
@@ -350,7 +357,7 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
         ? {
           id: Number(modelo.id),
           nombre: modelo.nombre,
-          idMarcaVehiculo: Number(modelo.idMarcaVehiculo),
+          idMarcaVehiculo: Number(modelo.idCatMarcas),
         }
         : null,
     };
@@ -381,10 +388,10 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       fechaCreacion: g('fechaCreacion') as Date,
       idCliente: num('idCliente'),
       nombreCompleto,
-      modeloId: num('modeloId'),
-      modeloNombre: String(g('modeloNombre')),
-      marcaId: num('marcaId'),
-      marcaNombre: String(g('marcaNombre')),
+      modeloId: numOrNull('modeloId'),
+      modeloNombre: strOrNull('modeloNombre'),
+      marcaId: numOrNull('marcaId'),
+      marcaNombre: strOrNull('marcaNombre'),
       combustibleId: numOrNull('combustibleId'),
       combustibleNombre: strOrNull('combustibleNombre'),
     };
@@ -466,11 +473,15 @@ LIMIT ${limit}
       await this.validarFks({
         idMarcaVehiculo:
           dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
-            ? (dto.idMarcaVehiculo ?? entity.idMarcaVehiculo)
+            ? (dto.idMarcaVehiculo !== undefined
+                ? dto.idMarcaVehiculo
+                : entity.idMarcaVehiculo)
             : undefined,
         idModeloVehiculo:
           dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
-            ? (dto.idModeloVehiculo ?? entity.idModeloVehiculo)
+            ? (dto.idModeloVehiculo !== undefined
+                ? dto.idModeloVehiculo
+                : entity.idModeloVehiculo)
             : dto.idModeloVehiculo,
         idCombustible: dto.idCombustible,
       });

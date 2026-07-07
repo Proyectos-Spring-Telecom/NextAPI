@@ -8,13 +8,22 @@ import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { ClientesModule } from 'src/clientes/clientes.module';
 import { PermisosModule } from 'src/permisos/permisos.module';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
+import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { MailModule } from 'src/mail/mail.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuarios, UsuariosPermisos]),
+    TypeOrmModule.forFeature([
+      Usuarios,
+      UsuariosPermisos,
+      UsuariosInstalaciones,
+      UsuarioPanelAlarma,
+      AsignacionSoluciones,
+    ]),
     BitacoraModule,
     ClientesModule,
     TenantFilterModule,

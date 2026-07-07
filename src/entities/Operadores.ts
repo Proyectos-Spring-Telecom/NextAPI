@@ -23,7 +23,7 @@ import { Licencias } from './Licencias';
   'idCliente',
   'idEstatusOperador',
 ])
-@Index('IX_Operadores_Estatus', ['estatus'])
+@Index('FK_Operadores_CatEstatusOperador', ['idEstatusOperador'])
 @Entity('Operadores')
 export class Operadores {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -96,6 +96,6 @@ export class Operadores {
   @JoinColumn([{ name: 'IdEstatusOperador', referencedColumnName: 'id' }])
   idEstatusOperador2: CatEstatusOperador;
 
-  @OneToMany(() => Licencias, (l) => l.idOperador2)
+  @OneToMany(() => Licencias, (licencia) => licencia.idOperador2)
   licencias: Licencias[];
 }

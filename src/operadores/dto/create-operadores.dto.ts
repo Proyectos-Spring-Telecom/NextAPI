@@ -149,14 +149,14 @@ export class CreateOperadoresDto {
   numeroLicencia: string;
 
   @ApiProperty({
-    description: 'ID tipo licencia (CatTipoLicencia)',
+    description: 'ID tipo licencia (CatTipoLicencia en BD)',
   })
   @IsInt()
   @IsNotEmpty()
   idTipoLicencia: number;
 
   @ApiProperty({
-    description: 'ID categoría (CatCategoriaLicencia)',
+    description: 'ID categoría licencia (CatCategoriaLicencia en BD)',
   })
   @IsInt()
   @IsNotEmpty()

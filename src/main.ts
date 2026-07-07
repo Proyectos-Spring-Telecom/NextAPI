@@ -50,9 +50,6 @@ async function bootstrap() {
     .addTag('Usuarios', 'Gestión de usuarios')
     .addTag('Inmuebles', 'Inmuebles / sitios físicos para paneles de alarma')
     .addTag('Panel Alarma', 'Paneles AX PRO (cuenta SIA, cifrado, heartbeat)')
-    .addTag('Catálogo Marca Vehículo', 'Marcas de vehículos (Ford, Chevrolet, etc.)')
-    .addTag('Catálogo Modelo Vehículo', 'Modelos de vehículos por marca')
-    .addTag('Catálogo Modelo Dispositivo', 'Modelos de dispositivos GPS por marca')
     .addTag('Catálogo Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
     .addTag('Catálogo Planes Telefonía', 'Planes de datos/telefonía por operador')
     .addTag('Catálogos', 'Endpoint dinámico GET /catalogos/:nombre para consultar cualquier catálogo')
@@ -62,7 +59,9 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
-      defaultModelsExpandDepth: -1,
+      defaultModelsExpandDepth: 2,
+      defaultModelExpandDepth: 2,
+      docExpansion: 'list',
     },
   });
 

@@ -10,8 +10,6 @@ import {
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Operadores } from './Operadores';
-import { CatTipoLicencia } from './CatTipoLicencia';
-import { CatCategoriaLicencia } from './CatCategoriaLicencia';
 
 @applySchema
 @Index('UQ_Licencias_IdOperador_IdTipoLicencia', ['idOperador', 'idTipoLicencia'], {
@@ -19,7 +17,6 @@ import { CatCategoriaLicencia } from './CatCategoriaLicencia';
 })
 @Index('UQ_Licencias_NumeroLicencia', ['numeroLicencia'], { unique: true })
 @Index('IX_Licencias_IdOperador', ['idOperador'])
-@Index('IX_Licencias_Estatus', ['estatus'])
 @Entity('Licencias')
 export class Licencias {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -55,21 +52,10 @@ export class Licencias {
   @Column('tinyint', { name: 'Estatus', default: 1 })
   estatus: number;
 
-  @ManyToOne(() => Operadores, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
+  @ManyToOne(() => Operadores, (operador) => operador.licencias, {
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
   @JoinColumn([{ name: 'IdOperador', referencedColumnName: 'id' }])
   idOperador2: Operadores;
-
-  @ManyToOne(() => CatTipoLicencia, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdTipoLicencia', referencedColumnName: 'id' }])
-  idTipoLicencia2: CatTipoLicencia;
-
-  @ManyToOne(() => CatCategoriaLicencia, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdCategoriaLicencia', referencedColumnName: 'id' }])
-  idCategoriaLicencia2: CatCategoriaLicencia;
 }

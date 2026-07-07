@@ -54,7 +54,7 @@ export class PermisosController {
   }
 
   @Get('permisosAgrupados')
-  async findAllAgrupado(@Req() req): Promise<any[]> {
+  async findAllAgrupado(@Req() req): Promise<any> {
     const idUsuario = req.user.userId;
     const permiso =
       await this.permisosService.obtenerPermisosAgrupados(idUsuario);

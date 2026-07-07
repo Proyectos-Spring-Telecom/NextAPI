@@ -9,8 +9,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
-import { CatModeloDispositivo } from 'src/entities/CatModeloDispositivo';
-import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
+import { CatModelos } from 'src/entities/CatModelos';
+import { CatMarcas } from 'src/entities/CatMarcas';
 import { Sims } from 'src/entities/Sims';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
@@ -30,10 +30,10 @@ export class DispositivosService {
   constructor(
     @InjectRepository(Dispositivos)
     private readonly repository: Repository<Dispositivos>,
-    @InjectRepository(CatModeloDispositivo)
-    private readonly catModeloDispositivoRepo: Repository<CatModeloDispositivo>,
-    @InjectRepository(CatTipoDispositivo)
-    private readonly catTipoDispositivoRepo: Repository<CatTipoDispositivo>,
+    @InjectRepository(CatModelos)
+    private readonly catModelosRepo: Repository<CatModelos>,
+    @InjectRepository(CatMarcas)
+    private readonly catMarcasRepo: Repository<CatMarcas>,
     @InjectRepository(Sims)
     private readonly simsRepo: Repository<Sims>,
     private readonly bitacoraLogger: BitacoraLoggerService,
@@ -41,24 +41,36 @@ export class DispositivosService {
   ) {}
 
   private async validarFks(dto: {
-    idModeloDispositivo?: number;
-    idTipoDispositivo?: number;
+    idMarcaDispositivo?: number | null;
+    idModeloDispositivo?: number | null;
     idSim?: number;
   }): Promise<void> {
-    if (dto.idModeloDispositivo !== undefined) {
-      const model = await this.catModeloDispositivoRepo.findOne({
+    if (dto.idMarcaDispositivo != null) {
+      const marca = await this.catMarcasRepo.findOne({
+        where: { id: dto.idMarcaDispositivo },
+      });
+      if (!marca) {
+        throw new BadRequestException(
+          'IdMarcaDispositivo no existe en CatMarcas',
+        );
+      }
+    }
+    if (dto.idModeloDispositivo != null) {
+      const model = await this.catModelosRepo.findOne({
         where: { id: dto.idModeloDispositivo },
       });
       if (!model) {
-        throw new BadRequestException('IdModeloDispositivo no existe');
+        throw new BadRequestException(
+          'IdModeloDispositivo no existe en CatModelos',
+        );
       }
-    }
-    if (dto.idTipoDispositivo !== undefined) {
-      const tipo = await this.catTipoDispositivoRepo.findOne({
-        where: { id: dto.idTipoDispositivo },
-      });
-      if (!tipo) {
-        throw new BadRequestException('IdTipoDispositivo no existe');
+      if (
+        dto.idMarcaDispositivo != null &&
+        Number(model.idCatMarcas) !== Number(dto.idMarcaDispositivo)
+      ) {
+        throw new BadRequestException(
+          'El modelo no pertenece a la marca indicada',
+        );
       }
     }
     if (dto.idSim !== undefined) {
@@ -106,14 +118,14 @@ export class DispositivosService {
       }
 
       await this.validarFks({
+        idMarcaDispositivo: dto.idMarcaDispositivo,
         idModeloDispositivo: dto.idModeloDispositivo,
-        idTipoDispositivo: dto.idTipoDispositivo,
       });
 
       const entity = this.repository.create({
         numeroSerie: dto.numeroSerie,
-        idModeloDispositivo: dto.idModeloDispositivo,
-        idTipoDispositivo: dto.idTipoDispositivo,
+        idMarcaDispositivo: dto.idMarcaDispositivo ?? null,
+        idModeloDispositivo: dto.idModeloDispositivo ?? null,
         estatusDispositivo: dto.estatusDispositivo ?? 1,
         idSim: dto.idSim,
         idCliente,
@@ -305,18 +317,30 @@ export class DispositivosService {
       }
 
       await this.validarFks({
-        idModeloDispositivo: dto.idModeloDispositivo,
-        idTipoDispositivo: dto.idTipoDispositivo,
+        idMarcaDispositivo:
+          dto.idMarcaDispositivo !== undefined ||
+          dto.idModeloDispositivo !== undefined
+            ? (dto.idMarcaDispositivo !== undefined
+                ? dto.idMarcaDispositivo
+                : entity.idMarcaDispositivo)
+            : undefined,
+        idModeloDispositivo:
+          dto.idMarcaDispositivo !== undefined ||
+          dto.idModeloDispositivo !== undefined
+            ? (dto.idModeloDispositivo !== undefined
+                ? dto.idModeloDispositivo
+                : entity.idModeloDispositivo)
+            : dto.idModeloDispositivo,
         idSim: dto.idSim,
       });
 
       const updateData: Partial<Dispositivos> = {};
       if (dto.numeroSerie !== undefined)
         updateData.numeroSerie = dto.numeroSerie;
+      if (dto.idMarcaDispositivo !== undefined)
+        updateData.idMarcaDispositivo = dto.idMarcaDispositivo;
       if (dto.idModeloDispositivo !== undefined)
         updateData.idModeloDispositivo = dto.idModeloDispositivo;
-      if (dto.idTipoDispositivo !== undefined)
-        updateData.idTipoDispositivo = dto.idTipoDispositivo;
       if (dto.estatusDispositivo !== undefined)
         updateData.estatusDispositivo = dto.estatusDispositivo;
       if (dto.idSim !== undefined) updateData.idSim = dto.idSim;

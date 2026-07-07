@@ -19,15 +19,21 @@ export class CreateDispositivosDto {
   @MaxLength(100)
   numeroSerie: string;
 
-  @ApiProperty({ description: 'ID modelo (CatModeloDispositivo)' })
+  @ApiProperty({
+    description: 'ID marca (CatMarcas)',
+    required: false,
+  })
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  idModeloDispositivo: number;
+  idMarcaDispositivo?: number | null;
 
-  @ApiProperty({ description: 'ID tipo (CatTipoDispositivo)' })
+  @ApiProperty({
+    description: 'ID modelo (CatModelos)',
+    required: false,
+  })
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  idTipoDispositivo: number;
+  idModeloDispositivo?: number | null;
 
   @ApiProperty({
     description: 'Estatus operativo del dispositivo (bigint, default 1)',

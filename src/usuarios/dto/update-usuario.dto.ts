@@ -1,26 +1,15 @@
 
 import {
   IsArray,
-  IsDateString,
-  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateUsuarioDto {
-  @IsInt()
-  @IsOptional()
-  @IsIn([0, 1], { message: 'Solo se permite 0 o 1' })
-  @ApiProperty({
-    description: 'Confirmación de email (0=No, 1=Sí)',
-    example: 0,
-  })
-  emailConfirmado?: number;
-
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -62,23 +51,9 @@ export class UpdateUsuarioDto {
   telefono?: string;
 
   @IsOptional()
-  @IsDateString()
-  @ApiProperty({ description: 'Actualización de contraseña', required: false })
-  actualizacionPassword?: string;
-
-  @IsOptional()
   @IsString()
   @ApiProperty({ description: 'Foto de perfil', required: false })
   fotoPerfil?: string;
-
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1], { message: 'Solo se permite 0 o 1' })
-  @ApiProperty({
-    description: 'Estatus del usuario (1=Activo, 0=Inactivo)',
-    example: 1,
-  })
-  estatus?: number = 1;
 
   @IsOptional()
   @IsInt()
@@ -93,5 +68,44 @@ export class UpdateUsuarioDto {
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description: 'Lista definitiva de permisos activos del usuario',
+    example: [3, 7, 15],
+  })
   permisosIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description: 'Lista definitiva de instalaciones activas del usuario',
+    example: [1, 4],
+  })
+  instalacionesIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description: 'Lista definitiva de paneles de alarma activos del usuario',
+    example: [2, 5],
+  })
+  panelesAlarmaIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description: 'Lista definitiva de soluciones activas del usuario',
+    example: [1, 3],
+  })
+  solucionesIds?: number[];
 }

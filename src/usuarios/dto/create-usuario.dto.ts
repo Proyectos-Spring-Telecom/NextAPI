@@ -1,27 +1,36 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
   IsNotEmpty,
   IsOptional,
   IsInt,
-  IsDateString,
   MaxLength,
   MinLength,
-  IsIn,
   IsArray,
   IsNumber,
   Matches,
 } from 'class-validator';
 
 export class CreateUsuarioDto {
+  @ApiProperty({
+    description: 'Nombre de usuario único (correo o identificador de acceso)',
+    example: 'operador@empresa.com',
+    maxLength: 100,
+  })
   @IsString()
   @IsNotEmpty({ message: 'El UserName es obligatorio' })
   @MaxLength(100, {
     message: 'El UserName no puede exceder los 100 caracteres',
   })
-  @ApiProperty({ description: 'Nombre de usuario', example: 'usuario01' })
   userName: string;
 
+  @ApiProperty({
+    description:
+      'Contraseña en texto plano. Debe tener al menos 6 caracteres, una letra, un número y un símbolo (@$!%*?&.)',
+    example: 'P@ssword123',
+    minLength: 6,
+    format: 'password',
+  })
   @IsString()
   @IsNotEmpty({ message: 'El Password es obligatorio' })
   @MinLength(6, { message: 'El Password debe tener al menos 6 caracteres' })
@@ -29,90 +38,138 @@ export class CreateUsuarioDto {
     message:
       'El Password debe contener al menos una letra (UTF-8), un número y un símbolo común (@$!%*?&.)',
   })
-  @ApiProperty({
-    description: 'Contraseña del usuario',
-    example: 'P@ssword123',
-  })
   passwordHash: string;
 
-  @IsInt()
-  @IsIn([0, 1], { message: 'Solo se permite 0 o 1' })
   @ApiProperty({
-    description: 'Confirmación de email (0=No, 1=Sí)',
-    example: 0,
+    description: 'Nombre(s) del usuario',
+    example: 'María',
+    maxLength: 100,
   })
-  emailConfirmado: number;
-
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
-  @ApiProperty({
-    description: 'Nombre del usuario',
-    example: 'Juan',
-    required: false,
-  })
   nombre: string;
 
+  @ApiProperty({
+    description: 'Apellido paterno del usuario',
+    example: 'García',
+    maxLength: 100,
+  })
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
-  @ApiProperty({
-    description: 'Apellido paterno',
-    example: 'Pérez',
-    required: true,
-  })
   apellidoPaterno: string;
 
+  @ApiPropertyOptional({
+    description: 'Apellido materno del usuario',
+    example: 'López',
+    maxLength: 100,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  @ApiProperty({
-    description: 'Apellido materno',
-    example: 'López',
-    required: false,
-  })
   apellidoMaterno?: string;
 
+  @ApiPropertyOptional({
+    description: 'Teléfono de contacto (máximo 14 caracteres)',
+    example: '5512345678',
+    maxLength: 14,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(14)
-  @ApiProperty({
-    description: 'Teléfono',
-    example: '5512345678',
-    required: false,
-  })
   telefono?: string;
 
-  @IsOptional()
-  @IsDateString()
-  @ApiProperty({ description: 'Actualización de contraseña', required: false })
-  actualizacionPassword?: string;
-
+  @ApiPropertyOptional({
+    description: 'URL o ruta de la foto de perfil',
+    example: 'https://cdn.ejemplo.com/perfiles/usuario01.jpg',
+  })
   @IsOptional()
   @IsString()
-  @ApiProperty({ description: 'Foto de perfil', required: false })
   fotoPerfil?: string;
 
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1], { message: 'Solo se permite 0 o 1' })
   @ApiProperty({
-    description: 'Estatus del usuario (1=Activo, 0=Inactivo)',
-    example: 1,
+    description: 'ID del rol asignado al usuario',
+    example: 3,
+    type: 'integer',
   })
-  estatus?: number = 1;
-
   @IsInt()
-  @ApiProperty({ description: 'Rol asignado', example: 2 })
   idRol: number;
 
+  @ApiProperty({
+    description: 'ID del cliente al que pertenece el usuario',
+    example: 6,
+    type: 'integer',
+  })
   @IsInt()
-  @ApiProperty({ description: 'Cliente asignado', example: 5 })
   @IsNotEmpty()
   idCliente: number;
 
+  @ApiProperty({
+    description:
+      'IDs de permisos a asignar en UsuariosPermisos. Puede enviarse vacío [].',
+    example: [3, 7, 15],
+    type: Number,
+    isArray: true,
+  })
   @IsNotEmpty()
   @IsArray()
   @IsNumber({}, { each: true })
   permisosIds: number[];
+
+  @ApiPropertyOptional({
+    description:
+      'IDs de instalaciones a asignar en UsuariosInstalaciones. Si se omite, no se crean relaciones.',
+    example: [1, 4, 6],
+    type: Number,
+    isArray: true,
+    default: [],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  instalacionesIds?: number[];
+
+  @ApiPropertyOptional({
+    description:
+      'IDs de paneles de alarma a asignar en UsuarioPanelAlarma. Si se omite, no se crean relaciones.',
+    example: [2, 5],
+    type: Number,
+    isArray: true,
+    default: [],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  panelesAlarmaIds?: number[];
+
+  @ApiPropertyOptional({
+    description:
+      'IDs de soluciones a asignar en AsignacionSoluciones. Si se omite, no se crean relaciones.',
+    example: [1, 4],
+    type: Number,
+    isArray: true,
+    default: [],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  solucionesIds?: number[];
 }
+
+/** Ejemplo con todos los atributos públicos del DTO para Swagger (Try it out). */
+export const CREATE_USUARIO_SWAGGER_EXAMPLE = {
+  userName: 'operador@empresa.com',
+  passwordHash: 'P@ssword123',
+  nombre: 'María',
+  apellidoPaterno: 'García',
+  apellidoMaterno: 'López',
+  telefono: '5512345678',
+  fotoPerfil: 'https://cdn.ejemplo.com/perfiles/usuario01.jpg',
+  idRol: 3,
+  idCliente: 6,
+  permisosIds: [3, 7, 15],
+  instalacionesIds: [1, 4, 6],
+  panelesAlarmaIds: [2, 5],
+  solucionesIds: [1, 4],
+} as const;
