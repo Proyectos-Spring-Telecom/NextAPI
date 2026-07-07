@@ -9,6 +9,8 @@ import {
   UseGuards,
   ParseIntPipe,
   Request,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -18,9 +20,10 @@ import {
   ApiParam,
   ApiBody,
   ApiCreatedResponse,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service';
-import { CreateUsuarioDto, CREATE_USUARIO_SWAGGER_EXAMPLE } from './dto/create-usuario.dto';
+import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { CreateUsuarioResponseDto } from './dto/create-usuario-response.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { UpdateUsuarioEstatusDto } from './dto/update-usuario-estatus.dto';
@@ -31,6 +34,11 @@ import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { ApiResponseCommon, ApiCrudResponse } from 'src/common/ApiResponse';
+import { usuariosFileFieldsInterceptor } from './usuarios-upload.interceptor';
+import {
+  usuariosCreateMultipartApiBody,
+  usuariosUpdateMultipartApiBody,
+} from './usuarios-swagger-multipart';
 
 @ApiTags('Usuarios')
 @ApiBearerAuth('bearer-token')
@@ -44,57 +52,22 @@ export class UsuariosController {
 
   @Post()
   @Roles(1)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(usuariosFileFieldsInterceptor())
   @ApiOperation({
     summary: 'Crear un nuevo usuario',
     description: [
-      'Registra un nuevo usuario y asigna en una sola transacción:',
+      'Registra un nuevo usuario con `multipart/form-data` y asigna en una sola transacción:',
       '- **UsuariosPermisos** desde `permisosIds` (obligatorio, puede ser `[]`)',
       '- **UsuariosInstalaciones** desde `instalacionesIds` (opcional)',
       '- **UsuarioPanelAlarma** desde `panelesAlarmaIds` (opcional)',
       '- **AsignacionSoluciones** desde `solucionesIds` (opcional)',
       '',
-      'Si un arreglo opcional se omite, se interpreta como `[]`. Los IDs duplicados se eliminan antes de insertar. Ante cualquier error en las asignaciones se ejecuta rollback completo.',
+      'Los arreglos se envían como JSON en texto (`"[1,2,3]"`). `fotoPerfil` opcional: URL en texto o archivo PNG/JPEG.',
+      'Si un arreglo opcional se omite, se interpreta como `[]`. Los IDs duplicados se eliminan antes de insertar.',
     ].join('\n'),
   })
-  @ApiBody({
-    type: CreateUsuarioDto,
-    description:
-      'Datos del usuario y arreglos de IDs para asignar permisos, instalaciones, paneles y soluciones. `emailConfirmado` y `estatus` se asignan automáticamente con valor 1 en el servidor.',
-    examples: {
-      ejemploCompleto: {
-        summary: 'Todos los atributos del DTO',
-        description:
-          'Incluye: userName, passwordHash, nombre, apellidoPaterno, apellidoMaterno, telefono, fotoPerfil, idRol, idCliente, permisosIds, instalacionesIds, panelesAlarmaIds, solucionesIds.',
-        value: { ...CREATE_USUARIO_SWAGGER_EXAMPLE },
-      },
-      soloPermisos: {
-        summary: 'Solo campos obligatorios + permisos',
-        description:
-          'Compatibilidad sin instalacionesIds, panelesAlarmaIds ni solucionesIds.',
-        value: {
-          userName: 'usuario@empresa.com',
-          passwordHash: 'P@ssword123',
-          nombre: 'Juan',
-          apellidoPaterno: 'Pérez',
-          idRol: 3,
-          idCliente: 6,
-          permisosIds: [3, 7],
-        },
-      },
-      sinAsignaciones: {
-        summary: 'Sin relaciones',
-        value: {
-          userName: 'basico@empresa.com',
-          passwordHash: 'P@ssword123',
-          nombre: 'Ana',
-          apellidoPaterno: 'Ruiz',
-          idRol: 3,
-          idCliente: 6,
-          permisosIds: [],
-        },
-      },
-    },
-  })
+  @ApiBody(usuariosCreateMultipartApiBody)
   @ApiCreatedResponse({
     description: 'Usuario creado exitosamente',
     type: CreateUsuarioResponseDto,
@@ -124,10 +97,16 @@ export class UsuariosController {
   })
   async createUsuario(
     @Body() createUsuarioDto: CreateUsuarioDto,
+    @UploadedFiles()
+    files: { fotoPerfil?: Express.Multer.File[] },
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.usuariosService.createUsuario(createUsuarioDto, idUser);
+    return await this.usuariosService.createUsuario(
+      createUsuarioDto,
+      idUser,
+      files?.fotoPerfil?.[0],
+    );
   }
 
   @Post('face-auth')
@@ -386,10 +365,12 @@ export class UsuariosController {
   }
 
   @Patch(':id')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(usuariosFileFieldsInterceptor())
   @ApiOperation({
     summary: 'Actualizar datos del usuario',
     description:
-      'Actualiza la información de un usuario existente. No permite modificar la contraseña; use PATCH /usuarios/actualizar/contrasena.',
+      'Actualiza la información con `multipart/form-data`. No permite modificar la contraseña; use PATCH /usuarios/actualizar/contrasena. Arreglos como JSON; campo omitido = no modificar relaciones; `[]` = desactivar todas. Si adjunta `fotoPerfil`, reemplaza la imagen en S3.',
   })
   @ApiParam({
     name: 'id',
@@ -397,7 +378,7 @@ export class UsuariosController {
     description: 'ID del usuario',
     example: 1
   })
-  @ApiBody({ type: UpdateUsuarioDto })
+  @ApiBody(usuariosUpdateMultipartApiBody)
   @ApiResponse({
     status: 200,
     description: 'Usuario actualizado exitosamente',
@@ -417,6 +398,8 @@ export class UsuariosController {
   async updateUsuario(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUsuarioDto: UpdateUsuarioDto,
+    @UploadedFiles()
+    files: { fotoPerfil?: Express.Multer.File[] },
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
@@ -424,6 +407,7 @@ export class UsuariosController {
       id,
       updateUsuarioDto,
       idUser,
+      files?.fotoPerfil?.[0],
     );
   }
 

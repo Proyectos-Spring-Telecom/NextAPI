@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsString,
   IsNotEmpty,
@@ -10,6 +11,7 @@ import {
   IsNumber,
   Matches,
 } from 'class-validator';
+import { transformNumberArray } from 'src/common/transforms/form-data.transforms';
 
 export class CreateUsuarioDto {
   @ApiProperty({
@@ -93,6 +95,7 @@ export class CreateUsuarioDto {
     example: 3,
     type: 'integer',
   })
+  @Type(() => Number)
   @IsInt()
   idRol: number;
 
@@ -101,6 +104,7 @@ export class CreateUsuarioDto {
     example: 6,
     type: 'integer',
   })
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   idCliente: number;
@@ -112,6 +116,7 @@ export class CreateUsuarioDto {
     type: Number,
     isArray: true,
   })
+  @Transform(transformNumberArray)
   @IsNotEmpty()
   @IsArray()
   @IsNumber({}, { each: true })
@@ -125,6 +130,7 @@ export class CreateUsuarioDto {
     isArray: true,
     default: [],
   })
+  @Transform(transformNumberArray)
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })
@@ -138,6 +144,7 @@ export class CreateUsuarioDto {
     isArray: true,
     default: [],
   })
+  @Transform(transformNumberArray)
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })
@@ -151,6 +158,7 @@ export class CreateUsuarioDto {
     isArray: true,
     default: [],
   })
+  @Transform(transformNumberArray)
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })

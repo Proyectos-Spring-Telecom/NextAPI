@@ -1,4 +1,3 @@
-
 import {
   IsArray,
   IsInt,
@@ -8,103 +7,137 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  transformOptionalNumber,
+  transformOptionalNumberArray,
+  transformOptionalString,
+} from 'src/common/transforms/form-data.transforms';
 
 export class UpdateUsuarioDto {
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
   @MaxLength(100)
   @ApiProperty({
-    description: 'Nombre del usuario',
+    description:
+      'Nombre del usuario. Omitir o enviar vacío para no modificar.',
     example: 'Juan',
     required: false,
   })
   nombre?: string;
 
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
   @MaxLength(100)
   @ApiProperty({
-    description: 'Apellido paterno',
+    description:
+      'Apellido paterno. Omitir o enviar vacío para no modificar.',
     example: 'Pérez',
-    required: true,
+    required: false,
   })
   apellidoPaterno?: string;
 
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
   @MaxLength(100)
   @ApiProperty({
-    description: 'Apellido materno',
+    description:
+      'Apellido materno. Omitir o enviar vacío para no modificar.',
     example: 'López',
     required: false,
   })
   apellidoMaterno?: string;
 
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
   @MaxLength(14)
   @ApiProperty({
-    description: 'Teléfono',
+    description: 'Teléfono. Omitir o enviar vacío para no modificar.',
     example: '5512345678',
     required: false,
   })
   telefono?: string;
 
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
-  @ApiProperty({ description: 'Foto de perfil', required: false })
+  @ApiProperty({
+    description:
+      'URL de foto de perfil. Omitir o enviar vacío para no modificar (use archivo para reemplazar).',
+    required: false,
+  })
   fotoPerfil?: string;
 
   @IsOptional()
+  @Transform(transformOptionalNumber)
   @IsInt()
-  @ApiProperty({ description: 'Rol asignado', example: 2 })
+  @ApiProperty({
+    description: 'Rol asignado. Omitir o enviar vacío para no modificar.',
+    example: 2,
+  })
   idRol?: number;
 
   @IsOptional()
+  @Transform(transformOptionalNumber)
   @IsInt()
-  @ApiProperty({ description: 'Cliente asignado', example: 5 })
+  @ApiProperty({
+    description: 'Cliente asignado. Omitir o enviar vacío para no modificar.',
+    example: 5,
+  })
   idCliente?: number;
 
   @IsOptional()
+  @Transform(transformOptionalNumberArray)
   @IsArray()
   @IsNumber({}, { each: true })
   @ApiPropertyOptional({
     type: Number,
     isArray: true,
-    description: 'Lista definitiva de permisos activos del usuario',
+    description:
+      'Lista definitiva de permisos activos. Omitir o vacío = no modificar. Enviar [] para desactivar todos.',
     example: [3, 7, 15],
   })
   permisosIds?: number[];
 
   @IsOptional()
+  @Transform(transformOptionalNumberArray)
   @IsArray()
   @IsNumber({}, { each: true })
   @ApiPropertyOptional({
     type: Number,
     isArray: true,
-    description: 'Lista definitiva de instalaciones activas del usuario',
+    description:
+      'Lista definitiva de instalaciones activas. Omitir o vacío = no modificar. Enviar [] para desactivar todas.',
     example: [1, 4],
   })
   instalacionesIds?: number[];
 
   @IsOptional()
+  @Transform(transformOptionalNumberArray)
   @IsArray()
   @IsNumber({}, { each: true })
   @ApiPropertyOptional({
     type: Number,
     isArray: true,
-    description: 'Lista definitiva de paneles de alarma activos del usuario',
+    description:
+      'Lista definitiva de paneles activos. Omitir o vacío = no modificar. Enviar [] para desactivar todos.',
     example: [2, 5],
   })
   panelesAlarmaIds?: number[];
 
   @IsOptional()
+  @Transform(transformOptionalNumberArray)
   @IsArray()
   @IsNumber({}, { each: true })
   @ApiPropertyOptional({
     type: Number,
     isArray: true,
-    description: 'Lista definitiva de soluciones activas del usuario',
+    description:
+      'Lista definitiva de soluciones activas. Omitir o vacío = no modificar. Enviar [] para desactivar todas.',
     example: [1, 3],
   })
   solucionesIds?: number[];

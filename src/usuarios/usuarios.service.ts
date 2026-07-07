@@ -34,6 +34,7 @@ import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { S3Service } from 'src/s3/s3.service';
 
 @Injectable()
 export class UsuariosService {
@@ -48,6 +49,7 @@ export class UsuariosService {
     private readonly emailService: MailService,
     private readonly jwtService: JwtService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly s3Service: S3Service,
   ) { }
 
   // ========================================
@@ -371,6 +373,7 @@ ORDER BY u.Id DESC`,
   async createUsuario(
     createUsuarioDto: CreateUsuarioDto,
     idUser: string,
+    fileFotoPerfil?: Express.Multer.File,
   ): Promise<ApiCrudResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -406,6 +409,7 @@ ORDER BY u.Id DESC`,
         instalacionesIds = [],
         panelesAlarmaIds = [],
         solucionesIds = [],
+        fotoPerfil: dtoFotoPerfil,
         ...usuarioData
       } = createUsuarioDto;
 
@@ -414,6 +418,21 @@ ORDER BY u.Id DESC`,
       const panelesAlarmaIdsUnicos = [...new Set(panelesAlarmaIds ?? [])];
       const solucionesIdsUnicos = [...new Set(solucionesIds ?? [])];
 
+      const urlFromBody = (v: string | null | undefined) =>
+        v && String(v).trim() ? String(v).trim() : null;
+
+      let fotoPerfil = urlFromBody(dtoFotoPerfil);
+
+      if (fileFotoPerfil) {
+        const { url } = await this.s3Service.uploadFile(
+          fileFotoPerfil,
+          'usuarios',
+          Number(idUser),
+          EnumModulos.USUARIOS,
+        );
+        fotoPerfil = url;
+      }
+
       const hashedPassword = await bcrypt.hash(
         createUsuarioDto.passwordHash,
         10,
@@ -421,6 +440,7 @@ ORDER BY u.Id DESC`,
 
       const newUser = usuarioRepo.create({
         ...usuarioData,
+        ...(fotoPerfil != null ? { fotoPerfil } : {}),
         passwordHash: hashedPassword,
         emailConfirmado: 1,
         estatus: 1,
@@ -824,6 +844,7 @@ ORDER BY u.Id DESC`,
     id: number,
     updateUsuarioDto: UpdateUsuarioDto,
     idUser: string,
+    fileFotoPerfil?: Express.Multer.File,
   ): Promise<ApiCrudResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -861,21 +882,36 @@ ORDER BY u.Id DESC`,
         instalacionesIds,
         panelesAlarmaIds,
         solucionesIds,
-        ...usuarioUpdate
+        fotoPerfil: dtoFotoPerfil,
+        ...restUpdate
       } = updateUsuarioDto;
 
-      const usuarioData = {
-        ...usuarioUpdate,
+      const usuarioData: Record<string, unknown> = {
+        ...restUpdate,
         emailConfirmado: EstatusEnum.ACTIVO,
-      } as UpdateUsuarioDto & {
-        passwordHash?: string;
-        actualizacionPassword?: string;
       };
 
       delete usuarioData.passwordHash;
       delete usuarioData.actualizacionPassword;
 
-      await usuarioRepo.update(id, usuarioData);
+      if (fileFotoPerfil) {
+        const { url } = await this.s3Service.updateFile(
+          usuario.fotoPerfil,
+          fileFotoPerfil,
+          'usuarios',
+          Number(idUser),
+          EnumModulos.USUARIOS,
+        );
+        usuarioData.fotoPerfil = url;
+      } else if (dtoFotoPerfil !== undefined) {
+        usuarioData.fotoPerfil = dtoFotoPerfil;
+      }
+
+      const usuarioDataLimpio = Object.fromEntries(
+        Object.entries(usuarioData).filter(([, v]) => v !== undefined),
+      );
+
+      await usuarioRepo.update(id, usuarioDataLimpio);
 
       if (Array.isArray(permisosIds)) {
         await this.sincronizarRelacionesEstatus(

@@ -14,6 +14,7 @@ import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { MailModule } from 'src/mail/mail.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
+import { S3Module } from 'src/s3/s3.module';
 
 @Module({
   imports: [
@@ -29,7 +30,8 @@ import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.modul
     TenantFilterModule,
     PermisosModule,
     MailModule,
-    AuthModule
+    AuthModule,
+    S3Module,
   ],
   controllers: [UsuariosController],
   providers: [UsuariosService],
