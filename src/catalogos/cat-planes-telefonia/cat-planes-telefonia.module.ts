@@ -7,10 +7,7 @@ import { CatPlanesTelefoniaController } from './cat-planes-telefonia.controller'
 import { CatPlanesTelefoniaService } from './cat-planes-telefonia.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([CatPlanesTelefonia, CatTelefonia]),
-    BitacoraModule,
-  ],
+  imports: [TypeOrmModule.forFeature([CatPlanesTelefonia, CatTelefonia]), BitacoraModule],
   controllers: [CatPlanesTelefoniaController],
   providers: [CatPlanesTelefoniaService],
   exports: [CatPlanesTelefoniaService],

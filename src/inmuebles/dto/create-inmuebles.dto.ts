@@ -1,18 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsEmail,
-  IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
 
 export class CreateInmueblesDto {
+  @ApiProperty({ description: 'ID del producto asociado' })
+  @IsInt()
+  @IsNotEmpty()
+  idProducto: number;
+
   @ApiProperty({ description: 'Nombre del inmueble', maxLength: 400, required: false })
   @IsOptional()
   @IsString()
@@ -23,22 +26,6 @@ export class CreateInmueblesDto {
   @IsOptional()
   @IsString()
   direccionFiscal?: string;
-
-  @ApiProperty({ description: 'Vigencia en años', maxLength: 45, required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(45)
-  vigenciaAnios?: string;
-
-  @ApiProperty({ description: 'Fecha inicio vigencia', required: false })
-  @IsOptional()
-  @IsDateString()
-  fechaInicio?: string;
-
-  @ApiProperty({ description: 'Fecha fin vigencia', required: false })
-  @IsOptional()
-  @IsDateString()
-  fechaFin?: string;
 
   @ApiProperty({ description: 'Nombre del representante', maxLength: 250, required: false })
   @IsOptional()
@@ -70,14 +57,4 @@ export class CreateInmueblesDto {
   @Type(() => Number)
   lng?: number;
 
-  @ApiProperty({ description: 'Datos del mapa (JSON)', required: false })
-  @IsOptional()
-  @IsObject()
-  mapaInmueble?: Record<string, unknown>;
-
-  @ApiProperty({ description: 'Estatus (1 activo, 0 inactivo)', example: 1, required: false })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
 }

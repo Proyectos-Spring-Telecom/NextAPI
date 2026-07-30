@@ -10,7 +10,14 @@ import {
 
 export class CreateDispositivosDto {
   @ApiProperty({
-    description: 'Número de serie / IMEI del dispositivo GPS',
+    description: 'ID del tipo de dispositivo (CatTipoDispositivo)',
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idTipoDispositivo: number;
+
+  @ApiProperty({
+    description: 'Número de serie del dispositivo',
     example: '353456789012345',
     maxLength: 100,
   })
@@ -20,37 +27,40 @@ export class CreateDispositivosDto {
   numeroSerie: string;
 
   @ApiProperty({
-    description: 'ID marca (CatMarcas)',
+    description: 'IMEI del dispositivo',
+    maxLength: 20,
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  imei?: string;
+
+  @ApiProperty({
+    description: 'Número económico',
+    maxLength: 50,
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  eco?: string;
+
+  @ApiProperty({
+    description: 'ID de marca (CatMarcas)',
     required: false,
   })
   @IsOptional()
   @IsInt()
-  idMarcaDispositivo?: number | null;
+  idMarca?: number | null;
 
   @ApiProperty({
-    description: 'ID modelo (CatModelos)',
+    description: 'ID de modelo (CatModelos)',
     required: false,
   })
   @IsOptional()
   @IsInt()
-  idModeloDispositivo?: number | null;
-
-  @ApiProperty({
-    description: 'Estatus operativo del dispositivo (bigint, default 1)',
-    default: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  estatusDispositivo?: number = 1;
-
-  @ApiProperty({
-    description: 'ID SIM asignado',
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsInt()
-  idSim: number;
+  idModelo?: number | null;
 
   @ApiProperty({
     description: 'Estatus (1 activo, 0 inactivo)',

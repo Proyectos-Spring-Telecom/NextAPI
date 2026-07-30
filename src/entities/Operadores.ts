@@ -1,13 +1,11 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
@@ -29,19 +27,33 @@ export class Operadores {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @Column('bigint', { name: 'IdCliente' })
+  @Column('bigint', {
+    name: 'IdCliente',
+    comment: 'FK → Clientes.Id (multitenancy, directo para evitar JOINs)',
+  })
   idCliente: number;
 
-  @Column('bigint', { name: 'IdUsuario' })
+  @Column('bigint', {
+    name: 'IdUsuario',
+    comment: 'FK → Usuarios.Id (el operador es un usuario)',
+  })
   idUsuario: number;
 
   @Column('date', { name: 'FechaNacimiento' })
   fechaNacimiento: Date;
 
-  @Column('varchar', { name: 'CURP', length: 18 })
+  @Column('varchar', {
+    name: 'CURP',
+    length: 18,
+    comment: 'Clave Única de Registro de Población',
+  })
   curp: string;
 
-  @Column('varchar', { name: 'NSS', length: 11 })
+  @Column('varchar', {
+    name: 'NSS',
+    length: 11,
+    comment: 'Número de Seguro Social',
+  })
   nss: string;
 
   @Column('varchar', { name: 'ContactoEmergenciaNombre', length: 200 })
@@ -50,10 +62,19 @@ export class Operadores {
   @Column('varchar', { name: 'ContactoEmergenciaTelefono', length: 14 })
   contactoEmergenciaTelefono: string;
 
-  @Column('varchar', { name: 'Identificacion', length: 500 })
+  @Column('varchar', {
+    name: 'Identificacion',
+    length: 500,
+    comment: 'INE / Pasaporte',
+  })
   identificacion: string;
 
-  @Column('varchar', { name: 'Foto', length: 500, nullable: true })
+  @Column('varchar', {
+    name: 'Foto',
+    length: 500,
+    nullable: true,
+    comment: 'Fotografía del operador',
+  })
   foto: string | null;
 
   @Column('varchar', {
@@ -69,29 +90,46 @@ export class Operadores {
   @Column('varchar', { name: 'AntecedentesNoPenales', length: 500, nullable: true })
   antecedentesNoPenales: string | null;
 
-  @Column('bigint', { name: 'IdEstatusOperador', default: 1 })
+  @Column('bigint', {
+    name: 'IdEstatusOperador',
+    default: () => "'1'",
+    comment: 'FK → CatEstatusOperador.Id',
+  })
   idEstatusOperador: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaCreacion: Date;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
   fechaActualizacion: Date;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
+  @ManyToOne(() => Clientes, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
-  @ManyToOne(() => Usuarios, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
+  @ManyToOne(() => Usuarios, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
   @JoinColumn([{ name: 'IdUsuario', referencedColumnName: 'id' }])
   idUsuario2: Usuarios;
 
   @ManyToOne(() => CatEstatusOperador, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
   @JoinColumn([{ name: 'IdEstatusOperador', referencedColumnName: 'id' }])
   idEstatusOperador2: CatEstatusOperador;

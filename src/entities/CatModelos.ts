@@ -25,7 +25,7 @@ export class CatModelos {
   @Column('bigint', { name: 'IdCatMarcas' })
   idCatMarcas: number;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
   @ManyToOne(() => CatMarcas, {

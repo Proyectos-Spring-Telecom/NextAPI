@@ -8,8 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash } from 'crypto';
-import { Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -33,43 +32,15 @@ import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { BehaviorIqAuthService } from './behavior-iq-auth.service';
 import { ValidateFaceDto } from './dto/validate-face.dto';
 import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
+import { RefreshSessions } from 'src/entities/RefreshSessions';
+import { AuthTokensService, jwtExpiresInSeconds } from './auth-tokens.service';
 
 const MSG_CREDENCIALES_INVALIDAS = 'Credenciales inválidas.';
 /** Solución fija para login facial (validateFace); misma lógica que query Nombres en login. */
 const VALIDATE_FACE_ID_SOLUCION = 2;
 const MSG_SOLUCION_INVALIDA = 'Credenciales inválidas.';
-const DUMMY_BCRYPT_HASH =
-  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
-
-function jwtExpiresInSeconds(): number {
-  const raw = process.env.JWT_EXPIRES_IN ?? '15m';
-  const match = /^(\d+)([smhd])$/.exec(raw);
-  if (!match) return 900;
-  const n = parseInt(match[1], 10);
-  const u = match[2];
-  if (u === 's') return n;
-  if (u === 'm') return n * 60;
-  if (u === 'h') return n * 3600;
-  if (u === 'd') return n * 86400;
-  return 900;
-}
-
-
-function durationToMs(raw: string, fallbackMs: number): number {
-  const match = /^(\d+)([smhd])$/.exec(raw);
-  if (!match) return fallbackMs;
-  const n = parseInt(match[1], 10);
-  const u = match[2];
-  if (u === 's') return n * 1000;
-  if (u === 'm') return n * 60 * 1000;
-  if (u === 'h') return n * 60 * 60 * 1000;
-  if (u === 'd') return n * 24 * 60 * 60 * 1000;
-  return fallbackMs;
-}
-
-function hashRefreshToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
+const MSG_LOGOUT_OK = 'Sesión cerrada';
+const DUMMY_BCRYPT_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 @Injectable()
 export class AuthService {
@@ -86,11 +57,15 @@ export class AuthService {
     private readonly solucionesRepository: Repository<Soluciones>,
     @InjectRepository(AsignacionSoluciones)
     private readonly asignacionSolucionesRepository: Repository<AsignacionSoluciones>,
+    @InjectRepository(RefreshSessions)
+    private readonly refreshSessionsRepository: Repository<RefreshSessions>,
+    private readonly dataSource: DataSource,
     private readonly jwtService: JwtService,
+    private readonly authTokensService: AuthTokensService,
     private readonly emailService: MailService,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly behaviorIqAuthService: BehaviorIqAuthService,
-  ) { }
+  ) {}
 
   /** Valor para JWT `face`: mismo sentido que `Usuarios.IdFaceAuth` (BehaviorIQ idRostro). */
   private optionalFaceClaim(user: Usuarios): number | undefined {
@@ -98,6 +73,13 @@ export class AuthService {
     const n = Number(user.idFaceAuth);
     if (!Number.isFinite(n) || n < 1) return undefined;
     return n;
+  }
+
+  async revokeAllRefreshSessionsForUser(userId: number): Promise<void> {
+    await this.refreshSessionsRepository.update(
+      { idUsuario: userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
   }
 
   private async createSessionForUser(
@@ -109,51 +91,26 @@ export class AuthService {
     refreshToken: string;
     expiresIn: number;
   }> {
-    const payload: { id: number; idCliente: number; rol: number; face?: number } =
-      {
-        id: user.id,
-        idCliente: user.idCliente,
-        rol: user.idRol,
-      };
-    if (faceClaim != null && Number.isFinite(faceClaim)) {
-      payload.face = faceClaim;
-    }
-
-    const token = this.jwtService.sign(payload);
+    const token = this.authTokensService.signAccessToken(user, faceClaim);
     const expiresIn = jwtExpiresInSeconds();
+    const {
+      token: refreshToken,
+      jti,
+      expiresAt,
+    } = this.authTokensService.signRefreshToken(user.id);
 
-    const refreshSecret = process.env.JWT_REFRESH_SECRET;
-    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
-    if (!refreshSecret) {
-      this.logger.error(
-        'Auth: sesión abortada — falta variable JWT_REFRESH_SECRET',
-      );
-      throw new InternalServerErrorException({
-        message: 'Falta JWT_REFRESH_SECRET.',
-      });
-    }
-
-    const refreshPayload = { id: user.id, email: user.userName };
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      secret: refreshSecret,
-      expiresIn: toJwtExpiresIn(refreshExpiresIn, '7d'),
+    const session = this.refreshSessionsRepository.create({
+      idUsuario: user.id,
+      jti,
+      tokenHash: this.authTokensService.hashRefreshToken(refreshToken),
+      expiresAt,
+      revokedAt: null,
+      replacedById: null,
     });
-
-    const tokenExpira = new Date(
-      Date.now() +
-        durationToMs(
-          refreshExpiresIn,
-          7 * 24 * 60 * 60 * 1000,
-        ),
-    );
-
-    const tokenHash = hashRefreshToken(refreshToken);
+    await this.refreshSessionsRepository.save(session);
 
     await this.usuariosRepository.update(user.id, {
       ultimoLogin: new Date(),
-      tokenHash,
-      tokenExpira,
-      tokenRevocado: 0,
     });
 
     return { token, refreshToken, expiresIn };
@@ -162,9 +119,7 @@ export class AuthService {
   private async assertSolucionCodigoSiViene(nombres?: string) {
     const trimmed = nombres?.trim();
     if (!trimmed) {
-      this.logger.warn(
-        'Auth: rechazado — falta el query Nombres (código de solución)',
-      );
+      this.logger.warn('Auth: rechazado — falta el query Nombres (código de solución)');
       throw new BadRequestException(MSG_SOLUCION_INVALIDA);
     }
 
@@ -172,9 +127,7 @@ export class AuthService {
       where: { codigo: trimmed, estatus: 1 },
     });
     if (!solucion) {
-      this.logger.warn(
-        `Auth: solución no encontrada o inactiva (código=${trimmed})`,
-      );
+      this.logger.warn(`Auth: solución no encontrada o inactiva (código=${trimmed})`);
       throw new BadRequestException(MSG_SOLUCION_INVALIDA);
     }
 
@@ -183,9 +136,7 @@ export class AuthService {
 
   async signIn(loginAuthDto: LoginAuthDto, nombres?: string) {
     try {
-      this.logger.log(
-        `Auth: intento de login (userName=${loginAuthDto.userName})`,
-      );
+      this.logger.log(`Auth: intento de login (userName=${loginAuthDto.userName})`);
       const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
 
       const user = await this.usuariosRepository
@@ -206,7 +157,11 @@ export class AuthService {
       }
 
       const permisos = await this.asignacionSolucionesRepository.findOne({
-        where: { idUsuario: user.id, idSolucion: idSolucion, estatus: EstatusEnum.ACTIVO },
+        where: {
+          idUsuario: user.id,
+          idSolucion: idSolucion,
+          estatus: EstatusEnum.ACTIVO,
+        },
       });
 
       if (!permisos) {
@@ -215,7 +170,6 @@ export class AuthService {
         );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
-
 
       if (!user) {
         await bcrypt.compare(loginAuthDto.password, DUMMY_BCRYPT_HASH);
@@ -233,10 +187,7 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const session = await this.createSessionForUser(
-        user,
-        this.optionalFaceClaim(user),
-      );
+      const session = await this.createSessionForUser(user, this.optionalFaceClaim(user));
 
       this.logger.log(
         `Auth: login correcto (userId=${user.id}, idCliente=${user.idCliente})`,
@@ -244,7 +195,6 @@ export class AuthService {
       return {
         token: session.token,
         refreshToken: session.refreshToken,
-        expiresIn: session.expiresIn,
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -261,9 +211,7 @@ export class AuthService {
 
   async signInPin(loginAuthPin: LoginAuthPinDto, nombres?: string) {
     try {
-      this.logger.log(
-        `Auth: intento de login PIN (userName=${loginAuthPin.userName})`,
-      );
+      this.logger.log(`Auth: intento de login PIN (userName=${loginAuthPin.userName})`);
       const idSolucion = await this.assertSolucionCodigoSiViene(nombres);
 
       const user = await this.usuariosRepository
@@ -276,16 +224,20 @@ export class AuthService {
         .andWhere('u.emailConfirmado = 1')
         .getOne();
 
-        if (!user) {
-          this.logger.warn(
-            `Auth: PIN fallido — usuario no encontrado o no elegible (userName=${loginAuthPin.userName})`,
-          );
-          throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
-        }
-  
-        const permisos = await this.asignacionSolucionesRepository.findOne({
-          where: { idUsuario: user.id, idSolucion: idSolucion, estatus: EstatusEnum.ACTIVO },
-        });
+      if (!user) {
+        this.logger.warn(
+          `Auth: PIN fallido — usuario no encontrado o no elegible (userName=${loginAuthPin.userName})`,
+        );
+        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      }
+
+      const permisos = await this.asignacionSolucionesRepository.findOne({
+        where: {
+          idUsuario: user.id,
+          idSolucion: idSolucion,
+          estatus: EstatusEnum.ACTIVO,
+        },
+      });
 
       if (!permisos) {
         this.logger.warn(
@@ -310,10 +262,7 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const session = await this.createSessionForUser(
-        user,
-        this.optionalFaceClaim(user),
-      );
+      const session = await this.createSessionForUser(user, this.optionalFaceClaim(user));
 
       this.logger.log(
         `Auth: login PIN correcto (userId=${user.id}, idCliente=${user.idCliente})`,
@@ -338,12 +287,12 @@ export class AuthService {
 
   async validateFaceLogin(idCliente: number, dto: ValidateFaceDto) {
     try {
-      this.logger.log(
-        `Auth: intento login facial (idCliente=${idCliente})`,
-      );
+      this.logger.log(`Auth: intento login facial (idCliente=${idCliente})`);
 
-      const { status, data } =
-        await this.behaviorIqAuthService.validateFace(idCliente, dto);
+      const { status, data } = await this.behaviorIqAuthService.validateFace(
+        idCliente,
+        dto,
+      );
 
       if (status === 401 || status === 403) {
         throw new UnauthorizedException('No autorizado ante BehaviorIQ.');
@@ -393,9 +342,7 @@ export class AuthService {
       }
 
       if (user.cliente2?.estatus !== 1) {
-        this.logger.warn(
-          `Auth: facial rechazado — cliente inactivo (userId=${user.id})`,
-        );
+        this.logger.warn(`Auth: facial rechazado — cliente inactivo (userId=${user.id})`);
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
@@ -413,10 +360,7 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
-      const session = await this.createSessionForUser(
-        user,
-        this.optionalFaceClaim(user),
-      );
+      const session = await this.createSessionForUser(user, this.optionalFaceClaim(user));
 
       this.logger.log(
         `Auth: login facial correcto (userId=${user.id}, idCliente=${user.idCliente})`,
@@ -449,109 +393,117 @@ export class AuthService {
       this.logger.warn(
         `Auth: /me rechazado — usuario no encontrado o inactivo (userId=${userId})`,
       );
-      throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      throw new UnauthorizedException('Usuario no autorizado');
     }
     const permisos = await this.permisosRepository.find({
       select: ['idPermiso'],
       where: { idUsuario: user.id, estatus: 1 },
     });
     return {
-      message: 'login exitoso',
+      message: 'Perfil obtenido exitosamente',
       id: Number(user.id),
       nombre: user.nombre ?? '',
       apellidoPaterno: user.apellidoPaterno ?? '',
       apellidoMaterno: user.apellidoMaterno ?? '',
       idCliente: Number(user.idCliente),
+      nombreCliente: user.cliente2?.nombre ?? '',
+      apellidoPaternoCliente: user.cliente2?.apellidoPaterno ?? '',
+      apellidoMaternoCliente: user.cliente2?.apellidoMaterno ?? '',
       logotipo: user.cliente2?.logotipo ?? '',
-      ultimoLogin: user.ultimoLogin ?? '',
-      fotoPerfil: user.fotoPerfil ?? '',
       telefono: user.telefono ?? '',
+      ultimoLogin: user.ultimoLogin ?? '',
+      fechaCreacion: user.fechaCreacion,
+      fotoPerfil: user.fotoPerfil ?? '',
       userName: user.userName ?? '',
       rol: user.idRol2,
       permisos,
     };
   }
 
-
   async refreshToken(refreshToken: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
     try {
       this.logger.log('Auth: solicitud de refresh token');
-      const refreshSecret = process.env.JWT_REFRESH_SECRET;
-      if (!refreshSecret) {
-        this.logger.error(
-          'Auth: refresh abortado — falta variable JWT_REFRESH_SECRET',
-        );
-        throw new InternalServerErrorException({
-          message: 'Falta JWT_REFRESH_SECRET.',
-        });
-      }
 
-      let decoded: any;
+      let decoded: { id?: number; type?: string; jti?: string };
       try {
-        decoded = this.jwtService.verify(refreshToken, { secret: refreshSecret });
+        decoded = this.authTokensService.verifyRefreshToken(refreshToken);
       } catch {
         this.logger.warn('Auth: refresh rechazado — JWT refresh inválido o expirado');
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+        throw new UnauthorizedException('Refresh token inválido o expirado');
       }
 
-      const userId = decoded?.id;
-      if (!userId) {
-        this.logger.warn('Auth: refresh rechazado — payload sin id de usuario');
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      if (decoded?.type !== 'refresh' || !decoded?.jti || decoded?.id == null) {
+        this.logger.warn('Auth: refresh rechazado — payload de refresh inválido');
+        throw new UnauthorizedException('Refresh token inválido o expirado');
       }
 
-      const user = await this.usuariosRepository
-        .createQueryBuilder('u')
-        .select([
-          'u.id',
-          'u.userName',
-          'u.idCliente',
-          'u.idRol',
-          'u.estatus',
-          'u.tokenHash',
-          'u.tokenExpira',
-          'u.tokenRevocado',
-        ])
-        .where('u.id = :id', { id: userId })
-        .getOne();
+      const userId = Number(decoded.id);
+      const sessionRepo = queryRunner.manager.getRepository(RefreshSessions);
+      const session = await sessionRepo.findOne({
+        where: { jti: decoded.jti, idUsuario: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
       const now = new Date();
+      const incomingHash = this.authTokensService.hashRefreshToken(refreshToken);
       if (
-        !user ||
-        user.estatus !== 1 ||
-        user.tokenRevocado !== 0 ||
-        !user.tokenExpira ||
-        user.tokenExpira <= now ||
-        !user.tokenHash
+        !session ||
+        session.revokedAt != null ||
+        session.tokenHash !== incomingHash ||
+        session.expiresAt <= now
       ) {
         this.logger.warn(
           `Auth: refresh rechazado — sesión inválida o revocada (userId=${userId})`,
         );
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+        throw new UnauthorizedException('Sesión de refresh inválida o revocada');
       }
 
-      const incomingHash = hashRefreshToken(refreshToken);
-      if (incomingHash !== user.tokenHash) {
-        this.logger.warn(
-          `Auth: refresh rechazado — hash de token no coincide (userId=${userId})`,
-        );
-        throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
+      const user = await queryRunner.manager.getRepository(Usuarios).findOne({
+        where: { id: userId, estatus: 1 },
+      });
+      if (!user) {
+        this.logger.warn(`Auth: refresh rechazado — usuario inactivo (userId=${userId})`);
+        throw new UnauthorizedException('Sesión de refresh inválida o revocada');
       }
 
-      const accessPayload = {
-        id: user.id,
-        email: user.userName,
-        idCliente: user.idCliente,
-        rol: user.idRol,
-      };
+      const token = this.authTokensService.signAccessToken(
+        user,
+        this.optionalFaceClaim(user),
+      );
+      const {
+        token: newRefreshToken,
+        jti,
+        expiresAt,
+      } = this.authTokensService.signRefreshToken(user.id);
 
-      const token = this.jwtService.sign(accessPayload);
-      const expiresIn = jwtExpiresInSeconds();
+      const newSession = await sessionRepo.save(
+        sessionRepo.create({
+          idUsuario: user.id,
+          jti,
+          tokenHash: this.authTokensService.hashRefreshToken(newRefreshToken),
+          expiresAt,
+          revokedAt: null,
+          replacedById: null,
+        }),
+      );
 
-      // Para cubrir ambos nombres del contrato: token (POST /login) y accessToken (POST /login/operador/accesso/nip)
+      await sessionRepo.update(session.id, {
+        revokedAt: now,
+        replacedById: newSession.id,
+      });
+
+      await queryRunner.commitTransaction();
+
       this.logger.log(`Auth: refresh correcto (userId=${user.id})`);
-      return { token, accessToken: token, expiresIn };
+      return {
+        token,
+        refreshToken: newRefreshToken,
+      };
     } catch (error) {
+      await queryRunner.rollbackTransaction();
       if (error instanceof HttpException) throw error;
       this.logger.error(
         `Auth: error no controlado en refresh — ${(error as Error)?.message}`,
@@ -561,14 +513,57 @@ export class AuthService {
         message: 'Ocurrió un error al refrescar la sesión.',
         error: (error as Error)?.message,
       });
+    } finally {
+      await queryRunner.release();
     }
   }
 
+  async logoutRefresh(refreshToken: string) {
+    try {
+      let decoded: { id?: number; type?: string; jti?: string };
+      try {
+        decoded = this.authTokensService.verifyRefreshToken(refreshToken);
+      } catch {
+        return { message: MSG_LOGOUT_OK };
+      }
+
+      if (decoded?.type !== 'refresh' || !decoded?.jti || decoded?.id == null) {
+        return { message: MSG_LOGOUT_OK };
+      }
+
+      const userId = Number(decoded.id);
+      const session = await this.refreshSessionsRepository.findOne({
+        where: { jti: decoded.jti, idUsuario: userId },
+      });
+      if (!session || session.revokedAt != null) {
+        return { message: MSG_LOGOUT_OK };
+      }
+
+      const incomingHash = this.authTokensService.hashRefreshToken(refreshToken);
+      if (session.tokenHash !== incomingHash) {
+        return { message: MSG_LOGOUT_OK };
+      }
+
+      await this.refreshSessionsRepository.update(session.id, {
+        revokedAt: new Date(),
+      });
+      this.logger.log(`Auth: logout correcto (userId=${userId})`);
+      return { message: MSG_LOGOUT_OK };
+    } catch (error) {
+      this.logger.error(
+        `Auth: error en logout — ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
+      return { message: MSG_LOGOUT_OK };
+    }
+  }
+
+  /** @deprecated Usar logoutRefresh; se mantiene por compatibilidad interna. */
   async logout(userId: number) {
     try {
-      await this.usuariosRepository.update(userId, { tokenRevocado: 1 });
+      await this.revokeAllRefreshSessionsForUser(userId);
       this.logger.log(`Auth: logout correcto (userId=${userId})`);
-      return 'Sesión cerrada exitosamente.';
+      return { message: MSG_LOGOUT_OK };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(
@@ -620,10 +615,10 @@ export class AuthService {
             intentosFallidos,
             ...(intentosFallidos >= 3
               ? {
-                usado: EstatusEnum.INACTIVO,
-                estatus: EstatusEnum.INACTIVO,
-                fechaUso: new Date(),
-              }
+                  usado: EstatusEnum.INACTIVO,
+                  estatus: EstatusEnum.INACTIVO,
+                  fechaUso: new Date(),
+                }
               : {}),
           });
         }
@@ -669,9 +664,7 @@ export class AuthService {
         fechaUso: ahora,
       });
 
-      this.logger.log(
-        `Auth: verificación de correo correcta (userId=${user.id})`,
-      );
+      this.logger.log(`Auth: verificación de correo correcta (userId=${user.id})`);
       return `La verificación del usuario ${user.nombre} se ha completado con éxito. Muchas gracias por su preferencia.`;
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -686,9 +679,7 @@ export class AuthService {
     }
   }
 
-  async recuperarContrasena(
-    loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
-  ) {
+  async recuperarContrasena(loginAuthConfirmacionDto: LoginAuthConfirmacionDto) {
     const mensajeGenerico =
       'Si el correo está registrado, recibirás un enlace de recuperación.';
     try {
@@ -733,16 +724,10 @@ export class AuthService {
       const token = this.jwtService.sign(payload, {
         expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
       });
-      const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
-      await this.emailService.sendResetPasswordEmail(
-        user.userName,
-        name,
-        token,
-        codigo,
-      );
-      this.logger.log(
-        `Auth: correo de recuperación enviado (userId=${user.id})`,
-      );
+      const name =
+        `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
+      await this.emailService.sendResetPasswordEmail(user.userName, name, token, codigo);
+      this.logger.log(`Auth: correo de recuperación enviado (userId=${user.id})`);
       return mensajeGenerico;
     } catch {
       this.logger.error(
@@ -753,15 +738,10 @@ export class AuthService {
   }
 
   async generarCodigo(idUsuario: number, tipo: number): Promise<string> {
-    const codigo = (
-      100000 + Math.floor(Math.random() * 900000)
-    ).toString();
+    const codigo = (100000 + Math.floor(Math.random() * 900000)).toString();
     const ahora = new Date();
-    const expiracionMin =
-      tipo === TipoCodigoAutenticacion.CONFIRMACION_CORREO ? 5 : 15;
-    const expiracion = new Date(
-      ahora.getTime() + expiracionMin * 60 * 1000,
-    );
+    const expiracionMin = tipo === TipoCodigoAutenticacion.CONFIRMACION_CORREO ? 5 : 15;
+    const expiracion = new Date(ahora.getTime() + expiracionMin * 60 * 1000);
 
     const codigoExiste = await this.codigoAutenticacioRepository.findOne({
       where: { idUsuario, tipo },
@@ -792,9 +772,7 @@ export class AuthService {
     return codigo;
   }
 
-  async recuperarConfirmacion(
-    loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
-  ) {
+  async recuperarConfirmacion(loginAuthConfirmacionDto: LoginAuthConfirmacionDto) {
     try {
       this.logger.log(
         `Auth: reenvío confirmación correo (userName=${loginAuthConfirmacionDto.userName})`,
@@ -816,16 +794,10 @@ export class AuthService {
       const token = this.jwtService.sign(payload, {
         expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
       });
-      const name = `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
-      await this.emailService.sendConfirmationEmail(
-        user.userName,
-        name,
-        token,
-        codigo,
-      );
-      this.logger.log(
-        `Auth: correo de confirmación enviado (userId=${user.id})`,
-      );
+      const name =
+        `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
+      await this.emailService.sendConfirmationEmail(user.userName, name, token, codigo);
+      this.logger.log(`Auth: correo de confirmación enviado (userId=${user.id})`);
       return `Se ha enviado un correo con el codigo de autenticación.`;
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -859,14 +831,9 @@ export class AuthService {
         this.logger.warn(
           `Auth: cambio contraseña — confirmación no coincide (userId=${idUser})`,
         );
-        throw new BadRequestException(
-          'La contraseña y la confirmación deben coincidir.',
-        );
+        throw new BadRequestException('La contraseña y la confirmación deben coincidir.');
       }
-      const isSamePassword = await bcrypt.compare(
-        dto.passwordNueva,
-        user.passwordHash,
-      );
+      const isSamePassword = await bcrypt.compare(dto.passwordNueva, user.passwordHash);
       if (isSamePassword) {
         this.logger.warn(
           `Auth: cambio contraseña — misma que la anterior (userId=${idUser})`,
@@ -880,6 +847,7 @@ export class AuthService {
         passwordHash: hashedPassword,
         tokenRevocado: 1,
       });
+      await this.revokeAllRefreshSessionsForUser(user.id);
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
         `Se ha actualizado la contraseña del usuario con ID: ${user.id}.`,

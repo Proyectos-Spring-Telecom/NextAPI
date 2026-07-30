@@ -1,6 +1,5 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -9,9 +8,6 @@ import {
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
-import { Instalaciones } from './Instalaciones';
-import { Dispositivos } from './Dispositivos';
-import { Vehiculos } from './Vehiculos';
 
 @applySchema
 @Index('IX_HistInstalaciones_IdCliente_IdInstalacion', [
@@ -35,57 +31,78 @@ export class HistoricoInstalaciones {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @Column('bigint', { name: 'IdCliente' })
+  @Column('bigint', {
+    name: 'IdCliente',
+    comment: 'FK → Clientes.Id (multitenancy)',
+  })
   idCliente: number;
 
-  @Column('bigint', { name: 'IdInstalacion', nullable: true })
+  @Column('bigint', {
+    name: 'IdInstalacion',
+    nullable: true,
+    comment: 'FK → Instalaciones.Id',
+  })
   idInstalacion: number | null;
 
-  @Column('bigint', { name: 'IdDispositivo', nullable: true })
+  @Column('bigint', {
+    name: 'IdDispositivo',
+    nullable: true,
+    comment: 'Dispositivo GPS que estaba instalado',
+  })
   idDispositivo: number | null;
 
-  @Column('bigint', { name: 'IdVehiculo' })
+  @Column('bigint', {
+    name: 'IdVehiculo',
+    comment: 'Vehículo donde estaba instalado',
+  })
   idVehiculo: number;
 
-  @Column('bigint', { name: 'IdActivos', nullable: true })
+  @Column('bigint', {
+    name: 'IdActivos',
+    nullable: true,
+    comment: 'Activo que estaba asociado',
+  })
   idActivos: number | null;
 
-  @Column('bigint', { name: 'IdPortatiles', nullable: true })
+  @Column('bigint', {
+    name: 'IdPortatiles',
+    nullable: true,
+    comment: 'Portátil que estaba asociado',
+  })
   idPortatiles: number | null;
 
-  @Column('bigint', { name: 'EstatusInstalacion' })
+  @Column('bigint', {
+    name: 'EstatusInstalacion',
+    comment: 'Estatus que tenía la instalación',
+  })
   estatusInstalacion: number;
 
-  @Column('varchar', { name: 'Accion', length: 50 })
+  @Column('varchar', {
+    name: 'Accion',
+    length: 50,
+    comment:
+      'Ej: Instalación, Desinstalación, Cambio de Dispositivo, Cambio de Vehículo, Suspensión',
+  })
   accion: string;
 
-  @Column('text', { name: 'Comentario', nullable: true })
+  @Column('text', {
+    name: 'Comentario',
+    nullable: true,
+    comment: 'Observaciones del técnico o motivo del cambio',
+  })
   comentario: string | null;
 
-  @CreateDateColumn({ name: 'FechaRegistro' })
+  @Column('datetime', {
+    name: 'FechaRegistro',
+    default: () => 'CURRENT_TIMESTAMP',
+    comment: 'Fecha en que se registró el movimiento',
+  })
   fechaRegistro: Date;
 
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
+  @ManyToOne(() => Clientes, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
-
-  @ManyToOne(() => Instalaciones, {
-    nullable: true,
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdInstalacion', referencedColumnName: 'id' }])
-  idInstalacion2: Instalaciones | null;
-
-  @ManyToOne(() => Dispositivos, {
-    nullable: true,
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
-  idDispositivo2: Dispositivos | null;
-
-  @ManyToOne(() => Vehiculos, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdVehiculo', referencedColumnName: 'id' }])
-  idVehiculo2: Vehiculos;
 }

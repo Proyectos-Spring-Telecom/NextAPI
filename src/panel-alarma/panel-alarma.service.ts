@@ -9,7 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
-import { Inmuebles } from 'src/entities/Inmuebles';
+import { Dispositivos } from 'src/entities/Dispositivos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreatePanelAlarmaDto } from './dto/create-panel-alarma.dto';
 import { UpdatePanelAlarmaDto } from './dto/update-panel-alarma.dto';
@@ -27,25 +27,25 @@ export class PanelAlarmaService {
   constructor(
     @InjectRepository(PanelAlarma)
     private readonly repository: Repository<PanelAlarma>,
-    @InjectRepository(Inmuebles)
-    private readonly inmueblesRepo: Repository<Inmuebles>,
+    @InjectRepository(Dispositivos)
+    private readonly dispositivosRepo: Repository<Dispositivos>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
-  private async assertInmuebleDelCliente(
-    idInmueble: number,
+  private async assertDispositivoDelCliente(
+    idDispositivo: number,
     idCliente: number,
-  ): Promise<Inmuebles> {
-    const inmueble = await this.inmueblesRepo.findOne({
-      where: { id: idInmueble, idCliente, estatus: 1 },
+  ): Promise<Dispositivos> {
+    const dispositivo = await this.dispositivosRepo.findOne({
+      where: { id: idDispositivo, idCliente },
     });
-    if (!inmueble) {
+    if (!dispositivo) {
       throw new BadRequestException(
-        'El inmueble no existe o no pertenece al cliente',
+        'El dispositivo no existe o no pertenece al cliente',
       );
     }
-    return inmueble;
+    return dispositivo;
   }
 
   private validarCifrado(dto: {
@@ -74,7 +74,16 @@ export class PanelAlarmaService {
         aesBits,
       });
 
-      await this.assertInmuebleDelCliente(dto.idInmueble, idCliente);
+      await this.assertDispositivoDelCliente(dto.idDispositivo, idCliente);
+
+      const panelExistente = await this.repository.findOne({
+        where: { idDispositivo: dto.idDispositivo },
+      });
+      if (panelExistente) {
+        throw new BadRequestException(
+          'El dispositivo ya está asociado a un panel de alarma',
+        );
+      }
 
       const existeCuenta = await this.repository.findOne({
         where: { cuentaSia: dto.cuentaSia },
@@ -84,10 +93,10 @@ export class PanelAlarmaService {
       }
 
       const entity = this.repository.create({
+        idDispositivo: dto.idDispositivo,
+        idCliente,
         cuentaSia: dto.cuentaSia.trim(),
         nombre: dto.nombre.trim(),
-        idCliente,
-        idInmueble: dto.idInmueble,
         ip: dto.ip ?? null,
         cifradoActivo,
         aesKey: cifradoActivo === 1 ? (dto.aesKey ?? null) : null,
@@ -110,7 +119,10 @@ export class PanelAlarmaService {
       return {
         status: 'success',
         message: 'Panel de alarma creado correctamente',
-        data: { id: Number(saved.id), nombre: saved.nombre },
+        data: {
+          id: Number(saved.idDispositivo),
+          nombre: saved.nombre,
+        },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
@@ -148,14 +160,13 @@ export class PanelAlarmaService {
       };
       const data = await this.repository.find({
         where,
-        order: { id: 'DESC' },
+        order: { idDispositivo: 'DESC' },
       });
       return {
         data: data.map((item) => ({
           ...item,
-          id: Number(item.id),
+          idDispositivo: Number(item.idDispositivo),
           idCliente: Number(item.idCliente),
-          idInmueble: Number(item.idInmueble),
         })),
       };
     } catch (error) {
@@ -189,14 +200,13 @@ export class PanelAlarmaService {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        order: { id: 'DESC' },
+        order: { idDispositivo: 'DESC' },
       });
       return {
         data: data.map((item) => ({
           ...item,
-          id: Number(item.id),
+          idDispositivo: Number(item.idDispositivo),
           idCliente: Number(item.idCliente),
-          idInmueble: Number(item.idInmueble),
         })),
         paginated: {
           total,
@@ -216,7 +226,7 @@ export class PanelAlarmaService {
   ): Promise<{ data: PanelAlarma }> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idDispositivo: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');
@@ -224,9 +234,8 @@ export class PanelAlarmaService {
       return {
         data: {
           ...entity,
-          id: Number(entity.id),
+          idDispositivo: Number(entity.idDispositivo),
           idCliente: Number(entity.idCliente),
-          idInmueble: Number(entity.idInmueble),
         },
       };
     } catch (error) {
@@ -246,7 +255,7 @@ export class PanelAlarmaService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idDispositivo: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');
@@ -261,10 +270,6 @@ export class PanelAlarmaService {
         }
       }
 
-      if (dto.idInmueble !== undefined) {
-        await this.assertInmuebleDelCliente(dto.idInmueble, idCliente);
-      }
-
       const cifradoActivo =
         dto.cifradoActivo !== undefined ? dto.cifradoActivo : entity.cifradoActivo;
       const aesKey =
@@ -277,7 +282,6 @@ export class PanelAlarmaService {
       const updateData: Partial<PanelAlarma> = {};
       if (dto.cuentaSia !== undefined) updateData.cuentaSia = dto.cuentaSia.trim();
       if (dto.nombre !== undefined) updateData.nombre = dto.nombre.trim();
-      if (dto.idInmueble !== undefined) updateData.idInmueble = dto.idInmueble;
       if (dto.ip !== undefined) updateData.ip = dto.ip;
       if (dto.cifradoActivo !== undefined)
         updateData.cifradoActivo = dto.cifradoActivo;
@@ -302,7 +306,9 @@ export class PanelAlarmaService {
         EstatusEnumBitcora.SUCCESS,
       );
 
-      const updated = await this.repository.findOne({ where: { id } });
+      const updated = await this.repository.findOne({
+        where: { idDispositivo: id },
+      });
       return {
         status: 'success',
         message: 'Panel de alarma actualizado correctamente',
@@ -335,7 +341,7 @@ export class PanelAlarmaService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idDispositivo: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');

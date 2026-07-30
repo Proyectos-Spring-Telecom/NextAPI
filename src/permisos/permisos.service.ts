@@ -354,7 +354,6 @@ export class PermisosService {
         }),
         this.usuarioPanelAlarmaRepository.find({
           where: { idUsuario: idUsuarioNum },
-          relations: ['idPanelAlarma2'],
         }),
         this.asignacionSolucionesRepository.find({
           where: { idUsuario: idUsuarioNum },
@@ -400,10 +399,14 @@ export class PermisosService {
           Instalacion: {
             Id: Number(item.idInstalacion2.id),
             IdCliente: Number(item.idInstalacion2.idCliente),
-            IdVehiculo: Number(item.idInstalacion2.idVehiculo),
+            IdProducto: Number(item.idInstalacion2.idProducto),
             IdDispositivo:
               item.idInstalacion2.idDispositivo != null
                 ? Number(item.idInstalacion2.idDispositivo)
+                : null,
+            IdSim:
+              item.idInstalacion2.idSim != null
+                ? Number(item.idInstalacion2.idSim)
                 : null,
             EstatusInstalacion: Number(item.idInstalacion2.estatusInstalacion),
             Estatus: item.idInstalacion2.estatus,
@@ -418,16 +421,6 @@ export class PermisosService {
         Estatus: item.estatus,
         FechaCreacion: item.fechaCreacion,
         FechaActualizacion: item.fechaActualizacion,
-        ...(item.idPanelAlarma2 && {
-          PanelAlarma: {
-            Id: Number(item.idPanelAlarma2.id),
-            CuentaSia: item.idPanelAlarma2.cuentaSia,
-            Nombre: item.idPanelAlarma2.nombre,
-            IdCliente: Number(item.idPanelAlarma2.idCliente),
-            IdInmueble: Number(item.idPanelAlarma2.idInmueble),
-            Estatus: item.idPanelAlarma2.estatus,
-          },
-        }),
       }));
 
       const AsignacionSoluciones = asignacionSolucionesRaw.map((item) => ({

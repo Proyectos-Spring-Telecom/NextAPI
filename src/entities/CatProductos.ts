@@ -1,9 +1,7 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 
@@ -16,9 +14,18 @@ export class CatProductos {
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
-  fechaCreacion: Date;
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    nullable: true,
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  fechaCreacion: Date | null;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
-  fechaActualizacion: Date;
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    nullable: true,
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  fechaActualizacion: Date | null;
 }

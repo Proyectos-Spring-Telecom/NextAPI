@@ -1,16 +1,13 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Usuarios } from './Usuarios';
-import { PanelAlarma } from './PanelAlarma';
 
 @applySchema
 @Index('UQ_UsuarioPanelAlarma_Usuario_Panel', ['idUsuario', 'idPanelAlarma'], {
@@ -29,23 +26,27 @@ export class UsuarioPanelAlarma {
   @Column('bigint', { name: 'IdPanelAlarma' })
   idPanelAlarma: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaCreacion: Date;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
   fechaActualizacion: Date;
 
-  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
+  @Column('tinyint', {
+    name: 'Estatus',
+    default: () => "'1'",
+    comment: '1=acceso activo, 0=acceso pausado/revocado',
+  })
   estatus: number;
 
   @ManyToOne(() => Usuarios, { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' })
   @JoinColumn([{ name: 'IdUsuario', referencedColumnName: 'id' }])
   idUsuario2: Usuarios;
-
-  @ManyToOne(() => PanelAlarma, {
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  })
-  @JoinColumn([{ name: 'IdPanelAlarma', referencedColumnName: 'id' }])
-  idPanelAlarma2: PanelAlarma;
 }

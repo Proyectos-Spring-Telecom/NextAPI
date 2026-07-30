@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -14,51 +15,53 @@ export class CreateCatTelefoniaDto {
     example: 'Telcel',
     maxLength: 100,
   })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  nombre: string;
+  NombreTelefonia: string;
 
-  @ApiProperty({
-    description: 'Nombre corto o siglas',
-    example: 'TEL',
-    maxLength: 20,
-    required: false,
+  @ApiPropertyOptional({
+    description: 'Nombre del asesor de la compañía',
+    example: 'Juan Pérez',
+    maxLength: 200,
   })
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  NombreAsesor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número telefónico del asesor',
+    example: '7771234567',
+    maxLength: 20,
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  nombreCorto?: string;
+  NumeroAsesor?: string;
 
-  @ApiProperty({
-    description: 'País de cobertura principal',
-    example: 'México',
-    maxLength: 100,
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  paisCobertura?: string = 'México';
-
-  @ApiProperty({
-    description: 'URL del sitio web',
-    example: 'https://www.telcel.com',
-    maxLength: 255,
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  sitioWeb?: string;
-
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Estatus (1 activo, 0 inactivo)',
     example: 1,
-    required: false,
   })
+  @Type(() => Number)
   @IsOptional()
   @IsInt()
   @IsIn([0, 1])
-  estatus?: number = 1;
+  Estatus?: number;
 }

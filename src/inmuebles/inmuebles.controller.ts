@@ -19,7 +19,6 @@ import {
 import { InmueblesService } from './inmuebles.service';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
-import { UpdateInmueblesEstatusDto } from './dto/update-inmuebles-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -50,7 +49,7 @@ export class InmueblesController {
   @Get('list')
   @ApiOperation({
     summary: 'Lista completa de inmuebles',
-    description: 'Solo activos (Estatus=1). Alcance según rol.',
+    description: 'Lista de inmuebles. Alcance según rol.',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
@@ -63,7 +62,7 @@ export class InmueblesController {
   @Get(':page/:limit')
   @ApiOperation({
     summary: 'Lista paginada de inmuebles',
-    description: 'Activos e inactivos. Alcance según rol.',
+    description: 'Lista paginada. Alcance según rol.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
@@ -91,22 +90,6 @@ export class InmueblesController {
   ) {
     const idCliente = req.user.idCliente;
     return this.inmueblesService.findOne(id, idCliente);
-  }
-
-  @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
-  @ApiParam({ name: 'id', description: 'ID del inmueble' })
-  @ApiResponse({ status: 200, description: 'Estatus actualizado' })
-  @ApiResponse({ status: 404, description: 'Inmueble no encontrado' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async updateEstatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateInmueblesEstatusDto,
-    @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.inmueblesService.updateEstatus(id, dto, idCliente, idUser);
   }
 
   @Patch(':id')

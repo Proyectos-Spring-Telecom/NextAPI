@@ -1,11 +1,15 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 
 @applySchema
-@Entity('CatTipoCombustible')
-export class CatTipoCombustible {
+@Index('UQ_CatEstatusInstalacion_Codigo', ['codigo'], { unique: true })
+@Entity('CatEstatusInstalacion')
+export class CatEstatusInstalacion {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
+
+  @Column('varchar', { name: 'Codigo', length: 20 })
+  codigo: string;
 
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;

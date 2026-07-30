@@ -20,15 +20,15 @@ export class CatMarcas {
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
   @Column('bigint', { name: 'IdProducto' })
   idProducto: number;
 
   @ManyToOne(() => CatProductos, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
   @JoinColumn([{ name: 'IdProducto', referencedColumnName: 'id' }])
   idProducto2: CatProductos;

@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -11,6 +10,11 @@ import {
 } from 'class-validator';
 
 export class CreateVehiculosDto {
+  @ApiProperty({ description: 'ID del producto asociado' })
+  @IsInt()
+  @IsNotEmpty()
+  idProducto: number;
+
   @ApiProperty({
     description: 'Placas oficiales (S/P si no tiene)',
     example: 'ABC1234',
@@ -25,11 +29,12 @@ export class CreateVehiculosDto {
     description: 'Número interno de flota',
     example: 'VH-001',
     maxLength: 50,
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(50)
-  numeroEconomico: string;
+  numeroEconomico?: string;
 
   @ApiProperty({
     description: 'ID marca (CatMarcas)',
@@ -47,11 +52,11 @@ export class CreateVehiculosDto {
   @IsInt()
   idModeloVehiculo?: number | null;
 
-  @ApiProperty({ description: 'Año modelo', example: 2024 })
+  @ApiProperty({ description: 'Año modelo', example: 2024, required: false })
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
   @Min(1900)
-  anio: number;
+  anio?: number;
 
   @ApiProperty({ description: 'Color', maxLength: 30, required: false })
   @IsOptional()
@@ -147,13 +152,4 @@ export class CreateVehiculosDto {
   @IsNumber()
   capacidadLitros?: number;
 
-  @ApiProperty({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
 }

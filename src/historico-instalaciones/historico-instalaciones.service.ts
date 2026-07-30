@@ -48,7 +48,7 @@ export class HistoricoInstalacionesService {
   ): Promise<void> {
     if (dto.idVehiculo !== undefined) {
       const vehiculo = await this.vehiculosRepo.findOne({
-        where: { id: dto.idVehiculo, idCliente },
+        where: { idProducto: dto.idVehiculo, idCliente },
       });
       if (!vehiculo) {
         throw new BadRequestException(

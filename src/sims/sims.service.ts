@@ -65,23 +65,14 @@ export class SimsService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const existeIcc = await this.repository.findOne({
-        where: { icc: dto.icc },
-      });
-      if (existeIcc) {
-        throw new BadRequestException('El ICC ya existe');
-      }
-
       await this.validarFks({
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
       });
 
       const entity = this.repository.create({
-        icc: dto.icc,
         imei: dto.imei ?? null,
         numeroTelefono: dto.numeroTelefono ?? null,
-        ipEstatica: dto.ipEstatica ?? null,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
         idCliente,
@@ -97,10 +88,12 @@ export class SimsService {
       });
 
       const saved = await this.repository.save(entity);
+      const nombreSim =
+        saved.numeroTelefono ?? saved.imei ?? `SIM ${saved.id}`;
 
       await this.bitacoraLogger.logToBitacora(
         'Sims',
-        `Se creó el SIM ICC: ${dto.icc}`,
+        `Se creó el SIM ID: ${saved.id}`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -111,12 +104,12 @@ export class SimsService {
       return {
         status: 'success',
         message: 'SIM creado correctamente',
-        data: { id: Number(saved.id), nombre: saved.icc },
+        data: { id: Number(saved.id), nombre: nombreSim },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
         'Sims',
-        `Error al crear SIM ICC: ${dto.icc}`,
+        `Error al crear SIM`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -246,26 +239,15 @@ export class SimsService {
         throw new NotFoundException('SIM no encontrado');
       }
 
-      if (dto.icc && dto.icc !== entity.icc) {
-        const existeIcc = await this.repository.findOne({
-          where: { icc: dto.icc },
-        });
-        if (existeIcc) {
-          throw new BadRequestException('El ICC ya existe');
-        }
-      }
-
       await this.validarFks({
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
       });
 
       const updateData: Partial<Sims> = {};
-      if (dto.icc !== undefined) updateData.icc = dto.icc;
       if (dto.imei !== undefined) updateData.imei = dto.imei;
       if (dto.numeroTelefono !== undefined)
         updateData.numeroTelefono = dto.numeroTelefono;
-      if (dto.ipEstatica !== undefined) updateData.ipEstatica = dto.ipEstatica;
       if (dto.idTelefonia !== undefined) updateData.idTelefonia = dto.idTelefonia;
       if (dto.idPlanTelefonia !== undefined)
         updateData.idPlanTelefonia = dto.idPlanTelefonia;
@@ -294,12 +276,18 @@ export class SimsService {
       );
 
       const updated = await this.repository.findOne({ where: { id } });
+      const nombreSim =
+        updated?.numeroTelefono ??
+        updated?.imei ??
+        entity.numeroTelefono ??
+        entity.imei ??
+        `SIM ${id}`;
       return {
         status: 'success',
         message: 'SIM actualizado correctamente',
         data: {
           id,
-          nombre: updated?.icc ?? entity.icc,
+          nombre: nombreSim,
         },
       };
     } catch (error) {
@@ -348,7 +336,11 @@ export class SimsService {
         status: 'success',
         message: 'Estatus actualizado correctamente',
         estatus: { estatus: dto.estatus },
-        data: { id, nombre: entity.icc },
+        data: {
+          id,
+          nombre:
+            entity.numeroTelefono ?? entity.imei ?? `SIM ${id}`,
+        },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(

@@ -3,7 +3,6 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -12,7 +11,6 @@ import { Inmuebles } from 'src/entities/Inmuebles';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
-import { UpdateInmueblesEstatusDto } from './dto/update-inmuebles-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -31,7 +29,7 @@ export class InmueblesService {
   ) {}
 
   private nombreDisplay(entity: Inmuebles): string {
-    return entity.inmueble?.trim() || `Inmueble ${entity.id}`;
+    return entity.inmueble?.trim() || `Inmueble ${entity.idProducto}`;
   }
 
   async create(
@@ -41,19 +39,15 @@ export class InmueblesService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = this.repository.create({
+        idProducto: dto.idProducto,
         inmueble: dto.inmueble ?? null,
         idCliente,
         direccionFiscal: dto.direccionFiscal ?? null,
-        vigenciaAnios: dto.vigenciaAnios ?? null,
-        fechaInicio: dto.fechaInicio ? new Date(dto.fechaInicio) : null,
-        fechaFin: dto.fechaFin ? new Date(dto.fechaFin) : null,
         nombreRepresentante: dto.nombreRepresentante ?? null,
         telefonoRepresentante: dto.telefonoRepresentante ?? null,
         correoRepresentante: dto.correoRepresentante ?? null,
         lat: dto.lat ?? null,
         lng: dto.lng ?? null,
-        mapaInmueble: dto.mapaInmueble ?? null,
-        estatus: dto.estatus ?? 1,
       });
 
       const saved = await this.repository.save(entity);
@@ -71,7 +65,10 @@ export class InmueblesService {
       return {
         status: 'success',
         message: 'Inmueble creado correctamente',
-        data: { id: Number(saved.id), nombre: this.nombreDisplay(saved) },
+        data: {
+          id: Number(saved.idProducto),
+          nombre: this.nombreDisplay(saved),
+        },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
@@ -102,17 +99,19 @@ export class InmueblesService {
         return { data: [] };
       }
       const where: FindOptionsWhere<Inmuebles> = {
-        estatus: 1,
         ...(tenant.idCliente !== undefined
           ? { idCliente: tenant.idCliente }
           : {}),
       };
       const data = await this.repository.find({
         where,
-        order: { id: 'DESC' },
+        order: { idProducto: 'DESC' },
       });
       return {
-        data: data.map((item) => ({ ...item, id: Number(item.id) })),
+        data: data.map((item) => ({
+          ...item,
+          idProducto: Number(item.idProducto),
+        })),
       };
     } catch (error) {
       throw new BadRequestException((error as Error)?.message);
@@ -145,10 +144,13 @@ export class InmueblesService {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        order: { id: 'DESC' },
+        order: { idProducto: 'DESC' },
       });
       return {
-        data: data.map((item) => ({ ...item, id: Number(item.id) })),
+        data: data.map((item) => ({
+          ...item,
+          idProducto: Number(item.idProducto),
+        })),
         paginated: {
           total,
           page,
@@ -167,13 +169,13 @@ export class InmueblesService {
   ): Promise<{ data: Inmuebles }> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idProducto: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
       }
       return {
-        data: { ...entity, id: Number(entity.id) },
+        data: { ...entity, idProducto: Number(entity.idProducto) },
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -192,7 +194,7 @@ export class InmueblesService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idProducto: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
@@ -202,14 +204,6 @@ export class InmueblesService {
       if (dto.inmueble !== undefined) updateData.inmueble = dto.inmueble;
       if (dto.direccionFiscal !== undefined)
         updateData.direccionFiscal = dto.direccionFiscal;
-      if (dto.vigenciaAnios !== undefined)
-        updateData.vigenciaAnios = dto.vigenciaAnios;
-      if (dto.fechaInicio !== undefined)
-        updateData.fechaInicio = dto.fechaInicio
-          ? new Date(dto.fechaInicio)
-          : null;
-      if (dto.fechaFin !== undefined)
-        updateData.fechaFin = dto.fechaFin ? new Date(dto.fechaFin) : null;
       if (dto.nombreRepresentante !== undefined)
         updateData.nombreRepresentante = dto.nombreRepresentante;
       if (dto.telefonoRepresentante !== undefined)
@@ -218,9 +212,6 @@ export class InmueblesService {
         updateData.correoRepresentante = dto.correoRepresentante;
       if (dto.lat !== undefined) updateData.lat = dto.lat;
       if (dto.lng !== undefined) updateData.lng = dto.lng;
-      if (dto.mapaInmueble !== undefined)
-        updateData.mapaInmueble = dto.mapaInmueble;
-      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       Object.assign(entity, updateData);
       await this.repository.save(entity);
@@ -235,7 +226,9 @@ export class InmueblesService {
         EstatusEnumBitcora.SUCCESS,
       );
 
-      const updated = await this.repository.findOne({ where: { id } });
+      const updated = await this.repository.findOne({
+        where: { idProducto: id },
+      });
       return {
         status: 'success',
         message: 'Inmueble actualizado correctamente',
@@ -260,53 +253,4 @@ export class InmueblesService {
     }
   }
 
-  async updateEstatus(
-    id: number,
-    dto: UpdateInmueblesEstatusDto,
-    idCliente: number,
-    idUser: number,
-  ): Promise<ApiCrudResponse> {
-    try {
-      const entity = await this.repository.findOne({
-        where: { id, idCliente },
-      });
-      if (!entity) {
-        throw new NotFoundException('Inmueble no encontrado');
-      }
-
-      await this.repository.update(id, { estatus: dto.estatus });
-
-      await this.bitacoraLogger.logToBitacora(
-        'Inmuebles',
-        `Se actualizó estatus de inmueble ID: ${id} a ${dto.estatus}`,
-        'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
-        idUser,
-        EnumModulos.INMUEBLES,
-        EstatusEnumBitcora.SUCCESS,
-      );
-
-      return {
-        status: 'success',
-        message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
-        data: { id, nombre: this.nombreDisplay(entity) },
-      };
-    } catch (error) {
-      await this.bitacoraLogger.logToBitacora(
-        'Inmuebles',
-        `Error al actualizar estatus de inmueble ID: ${id}`,
-        'UPDATE',
-        { id, dto, idCliente },
-        idUser,
-        EnumModulos.INMUEBLES,
-        EstatusEnumBitcora.ERROR,
-        (error as Error)?.message,
-      );
-      if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException(
-        'Error al cambiar estatus del inmueble',
-      );
-    }
-  }
 }

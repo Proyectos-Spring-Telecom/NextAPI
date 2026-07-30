@@ -9,13 +9,13 @@ import { Usuarios } from "./Usuarios";
 import { applySchema } from "src/common/apply-schema.decorator";
 
 @applySchema
-@Index("UQ_Roles_Nombre", ["nombre"], { unique: true })
+@Index("FK_IX_ROLES_NOMBRE", ["nombre"], { unique: true })
 @Entity("Roles")
 export class Roles {
   @PrimaryGeneratedColumn({ type: "bigint", name: "Id" })
   id: number;
 
-  @Column("varchar", { name: "Nombre", unique: true, length: 100 })
+  @Column("varchar", { name: "Nombre", length: 100 })
   nombre: string;
 
   @Column("varchar", { name: "Descripcion", nullable: true, length: 255 })
@@ -28,7 +28,10 @@ export class Roles {
   fechaCreacion: Date;
 
   @Column("datetime", {
-    name: "FechaActualizacion", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP", })
+    name: "FechaActualizacion",
+    default: () => "CURRENT_TIMESTAMP",
+    onUpdate: "CURRENT_TIMESTAMP",
+  })
   fechaActualizacion: Date;
 
   @Column("tinyint", { name: "Estatus", default: () => "'1'" })

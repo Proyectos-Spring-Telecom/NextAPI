@@ -11,6 +11,12 @@ import {
 } from 'class-validator';
 
 export class CreatePanelAlarmaDto {
+  @ApiProperty({ description: 'ID del dispositivo asociado al panel' })
+  @IsInt()
+  @IsNotEmpty()
+  @Type(() => Number)
+  idDispositivo: number;
+
   @ApiProperty({ description: 'Cuenta SIA del panel AX PRO', maxLength: 20 })
   @IsString()
   @IsNotEmpty()
@@ -22,12 +28,6 @@ export class CreatePanelAlarmaDto {
   @IsNotEmpty()
   @MaxLength(100)
   nombre: string;
-
-  @ApiProperty({ description: 'ID del inmueble donde está instalado' })
-  @IsInt()
-  @IsNotEmpty()
-  @Type(() => Number)
-  idInmueble: number;
 
   @ApiProperty({ description: 'IP del panel', maxLength: 45, required: false })
   @IsOptional()

@@ -11,7 +11,7 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatMarcas } from 'src/entities/CatMarcas';
-import { Sims } from 'src/entities/Sims';
+import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
@@ -34,51 +34,49 @@ export class DispositivosService {
     private readonly catModelosRepo: Repository<CatModelos>,
     @InjectRepository(CatMarcas)
     private readonly catMarcasRepo: Repository<CatMarcas>,
-    @InjectRepository(Sims)
-    private readonly simsRepo: Repository<Sims>,
+    @InjectRepository(CatTipoDispositivo)
+    private readonly catTipoDispositivoRepo: Repository<CatTipoDispositivo>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
   private async validarFks(dto: {
-    idMarcaDispositivo?: number | null;
-    idModeloDispositivo?: number | null;
-    idSim?: number;
+    idTipoDispositivo?: number;
+    idMarca?: number | null;
+    idModelo?: number | null;
   }): Promise<void> {
-    if (dto.idMarcaDispositivo != null) {
-      const marca = await this.catMarcasRepo.findOne({
-        where: { id: dto.idMarcaDispositivo },
+    if (dto.idTipoDispositivo !== undefined) {
+      const tipo = await this.catTipoDispositivoRepo.findOne({
+        where: { id: dto.idTipoDispositivo },
       });
-      if (!marca) {
+      if (!tipo) {
         throw new BadRequestException(
-          'IdMarcaDispositivo no existe en CatMarcas',
+          'IdTipoDispositivo no existe en CatTipoDispositivo',
         );
       }
     }
-    if (dto.idModeloDispositivo != null) {
+    if (dto.idMarca != null) {
+      const marca = await this.catMarcasRepo.findOne({
+        where: { id: dto.idMarca },
+      });
+      if (!marca) {
+        throw new BadRequestException('IdMarca no existe en CatMarcas');
+      }
+    }
+    if (dto.idModelo != null) {
       const model = await this.catModelosRepo.findOne({
-        where: { id: dto.idModeloDispositivo },
+        where: { id: dto.idModelo },
       });
       if (!model) {
-        throw new BadRequestException(
-          'IdModeloDispositivo no existe en CatModelos',
-        );
+        throw new BadRequestException('IdModelo no existe en CatModelos');
       }
       if (
-        dto.idMarcaDispositivo != null &&
-        Number(model.idCatMarcas) !== Number(dto.idMarcaDispositivo)
+        dto.idMarca != null &&
+        Number(model.idCatMarcas) !== Number(dto.idMarca)
       ) {
         throw new BadRequestException(
           'El modelo no pertenece a la marca indicada',
         );
-      }
-    }
-    if (dto.idSim !== undefined) {
-      const sim = await this.simsRepo.findOne({
-        where: { id: dto.idSim },
-      });
-      if (!sim) {
-        throw new BadRequestException('IdSim no existe');
       }
     }
   }
@@ -96,39 +94,20 @@ export class DispositivosService {
         throw new BadRequestException('El número de serie ya existe');
       }
 
-      const dispositivoConSim = await this.repository.findOne({
-        where: { idSim: dto.idSim },
-      });
-      if (dispositivoConSim) {
-        throw new BadRequestException(
-          'El SIM ya está asignado a otro dispositivo',
-        );
-      }
-
-      const sim = await this.simsRepo.findOne({
-        where: { id: dto.idSim },
-      });
-      if (!sim) {
-        throw new BadRequestException('IdSim no existe');
-      }
-      if (sim.idCliente !== idCliente) {
-        throw new BadRequestException(
-          'El SIM debe pertenecer al mismo cliente',
-        );
-      }
-
       await this.validarFks({
-        idMarcaDispositivo: dto.idMarcaDispositivo,
-        idModeloDispositivo: dto.idModeloDispositivo,
+        idTipoDispositivo: dto.idTipoDispositivo,
+        idMarca: dto.idMarca,
+        idModelo: dto.idModelo,
       });
 
       const entity = this.repository.create({
-        numeroSerie: dto.numeroSerie,
-        idMarcaDispositivo: dto.idMarcaDispositivo ?? null,
-        idModeloDispositivo: dto.idModeloDispositivo ?? null,
-        estatusDispositivo: dto.estatusDispositivo ?? 1,
-        idSim: dto.idSim,
         idCliente,
+        idTipoDispositivo: dto.idTipoDispositivo,
+        numeroSerie: dto.numeroSerie,
+        imei: dto.imei ?? null,
+        eco: dto.eco ?? null,
+        idMarca: dto.idMarca ?? null,
+        idModelo: dto.idModelo ?? null,
         estatus: dto.estatus ?? 1,
       });
 
@@ -294,56 +273,27 @@ export class DispositivosService {
         }
       }
 
-      if (dto.idSim !== undefined && dto.idSim !== entity.idSim) {
-        const dispositivoConSim = await this.repository.findOne({
-          where: { idSim: dto.idSim },
-        });
-        if (dispositivoConSim) {
-          throw new BadRequestException(
-            'El SIM ya está asignado a otro dispositivo',
-          );
-        }
-        const sim = await this.simsRepo.findOne({
-          where: { id: dto.idSim },
-        });
-        if (!sim) {
-          throw new BadRequestException('IdSim no existe');
-        }
-        if (sim.idCliente !== idCliente) {
-          throw new BadRequestException(
-            'El SIM debe pertenecer al mismo cliente',
-          );
-        }
-      }
-
       await this.validarFks({
-        idMarcaDispositivo:
-          dto.idMarcaDispositivo !== undefined ||
-          dto.idModeloDispositivo !== undefined
-            ? (dto.idMarcaDispositivo !== undefined
-                ? dto.idMarcaDispositivo
-                : entity.idMarcaDispositivo)
+        idTipoDispositivo: dto.idTipoDispositivo,
+        idMarca:
+          dto.idMarca !== undefined || dto.idModelo !== undefined
+            ? (dto.idMarca !== undefined ? dto.idMarca : entity.idMarca)
             : undefined,
-        idModeloDispositivo:
-          dto.idMarcaDispositivo !== undefined ||
-          dto.idModeloDispositivo !== undefined
-            ? (dto.idModeloDispositivo !== undefined
-                ? dto.idModeloDispositivo
-                : entity.idModeloDispositivo)
-            : dto.idModeloDispositivo,
-        idSim: dto.idSim,
+        idModelo:
+          dto.idMarca !== undefined || dto.idModelo !== undefined
+            ? (dto.idModelo !== undefined ? dto.idModelo : entity.idModelo)
+            : dto.idModelo,
       });
 
       const updateData: Partial<Dispositivos> = {};
+      if (dto.idTipoDispositivo !== undefined)
+        updateData.idTipoDispositivo = dto.idTipoDispositivo;
       if (dto.numeroSerie !== undefined)
         updateData.numeroSerie = dto.numeroSerie;
-      if (dto.idMarcaDispositivo !== undefined)
-        updateData.idMarcaDispositivo = dto.idMarcaDispositivo;
-      if (dto.idModeloDispositivo !== undefined)
-        updateData.idModeloDispositivo = dto.idModeloDispositivo;
-      if (dto.estatusDispositivo !== undefined)
-        updateData.estatusDispositivo = dto.estatusDispositivo;
-      if (dto.idSim !== undefined) updateData.idSim = dto.idSim;
+      if (dto.imei !== undefined) updateData.imei = dto.imei;
+      if (dto.eco !== undefined) updateData.eco = dto.eco;
+      if (dto.idMarca !== undefined) updateData.idMarca = dto.idMarca;
+      if (dto.idModelo !== undefined) updateData.idModelo = dto.idModelo;
       if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       await this.repository.update(id, updateData);

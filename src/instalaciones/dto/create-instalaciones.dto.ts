@@ -9,6 +9,13 @@ import {
 
 export class CreateInstalacionesDto {
   @ApiProperty({
+    description: 'ID de producto (obligatorio)',
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idProducto: number;
+
+  @ApiProperty({
     description: 'ID dispositivo (debe pertenecer al mismo cliente)',
     required: false,
     nullable: true,
@@ -18,26 +25,15 @@ export class CreateInstalacionesDto {
   @IsInt()
   idDispositivo?: number | null;
 
-  @ApiProperty({ description: 'ID vehículo (debe pertenecer al mismo cliente)' })
-  @IsInt()
-  @IsNotEmpty()
-  idVehiculo: number;
-
   @ApiProperty({
-    description: 'ID activo (pendiente — sin FK en BD)',
+    description: 'ID SIM (debe pertenecer al mismo cliente)',
     required: false,
+    nullable: true,
   })
   @IsOptional()
+  @ValidateIf((_, value) => value != null)
   @IsInt()
-  idActivos?: number;
-
-  @ApiProperty({
-    description: 'ID portátil (pendiente — sin FK en BD)',
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  idPortatiles?: number;
+  idSim?: number | null;
 
   @ApiProperty({
     description: 'Estatus de instalación (valor numérico)',

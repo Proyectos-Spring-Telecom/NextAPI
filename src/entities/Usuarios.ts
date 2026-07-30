@@ -108,7 +108,7 @@ export class Usuarios {
     nullable: true,
     default: () => "'0'",
   })
-  tokenRevocado: number;
+  tokenRevocado: number | null;
 
   @Column('varchar', {
     name: 'TokenHashAdmin',
@@ -136,6 +136,4 @@ export class Usuarios {
   })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   cliente2: Clientes;
-
-
 }

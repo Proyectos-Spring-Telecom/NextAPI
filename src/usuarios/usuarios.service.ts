@@ -35,6 +35,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { S3Service } from 'src/s3/s3.service';
+import { AuthService } from 'src/auth/auth.service';
 
 @Injectable()
 export class UsuariosService {
@@ -50,7 +51,8 @@ export class UsuariosService {
     private readonly jwtService: JwtService,
     private readonly tenantFilter: TenantFilterService,
     private readonly s3Service: S3Service,
-  ) { }
+    private readonly authService: AuthService,
+  ) {}
 
   // ========================================
   // 🔹 OBTENER USUARIOS POR PAGINACIÓN
@@ -77,8 +79,7 @@ export class UsuariosService {
           },
         };
       }
-      const excludeSelf =
-        rolNum === 1 || rolNum === 2 ? '' : ' AND u.Id != ? ';
+      const excludeSelf = rolNum === 1 || rolNum === 2 ? '' : ' AND u.Id != ? ';
       const usuariosSql = `
 SELECT
   u.Id AS Id,
@@ -115,10 +116,7 @@ LIMIT ? OFFSET ?`;
         limit,
         offset,
       ];
-      const usuarios = await this.usuarioRepository.query(
-        usuariosSql,
-        usuariosParams,
-      );
+      const usuarios = await this.usuarioRepository.query(usuariosSql, usuariosParams);
 
       const totalSql = `
 SELECT COUNT(*) AS total
@@ -128,10 +126,7 @@ WHERE 1 = 1
 ${tenant.sql}
 ${excludeSelf}`;
       const totalParams = [...tenant.params, ...(excludeSelf ? [idUser] : [])];
-      const totalResult = await this.usuarioRepository.query(
-        totalSql,
-        totalParams,
-      );
+      const totalResult = await this.usuarioRepository.query(totalSql, totalParams);
 
       const total = Number(totalResult[0]?.total || 0);
 
@@ -168,10 +163,7 @@ ${excludeSelf}`;
   // ========================================
   // 🔹 OBTENER LISTADO DE USUARIOS
   // ========================================
-  async getAllListUsuarios(
-    cliente: number,
-    rol: number,
-  ): Promise<ApiResponseCommon> {
+  async getAllListUsuarios(cliente: number, rol: number): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.build(rol, cliente, 'u', 'IdCliente');
       if (tenant.sinAcceso) {
@@ -383,8 +375,7 @@ ORDER BY u.Id DESC`,
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
     const usuariosInstalacionesRepo =
       queryRunner.manager.getRepository(UsuariosInstalaciones);
-    const usuarioPanelAlarmaRepo =
-      queryRunner.manager.getRepository(UsuarioPanelAlarma);
+    const usuarioPanelAlarmaRepo = queryRunner.manager.getRepository(UsuarioPanelAlarma);
     const asignacionSolucionesRepo =
       queryRunner.manager.getRepository(AsignacionSoluciones);
 
@@ -433,10 +424,7 @@ ORDER BY u.Id DESC`,
         fotoPerfil = url;
       }
 
-      const hashedPassword = await bcrypt.hash(
-        createUsuarioDto.passwordHash,
-        10,
-      );
+      const hashedPassword = await bcrypt.hash(createUsuarioDto.passwordHash, 10);
 
       const newUser = usuarioRepo.create({
         ...usuarioData,
@@ -459,8 +447,7 @@ ORDER BY u.Id DESC`,
       }
 
       if (instalacionesIdsUnicos.length > 0) {
-        const instalacionesRepo =
-          queryRunner.manager.getRepository(Instalaciones);
+        const instalacionesRepo = queryRunner.manager.getRepository(Instalaciones);
         const instalaciones = await instalacionesRepo.find({
           where: { id: In(instalacionesIdsUnicos) },
         });
@@ -471,12 +458,11 @@ ORDER BY u.Id DESC`,
           );
         }
 
-        const usuariosInstalaciones = instalacionesIdsUnicos.map(
-          (idInstalacion) =>
-            usuariosInstalacionesRepo.create({
-              idUsuario: userSave.id,
-              idInstalacion,
-            }),
+        const usuariosInstalaciones = instalacionesIdsUnicos.map((idInstalacion) =>
+          usuariosInstalacionesRepo.create({
+            idUsuario: userSave.id,
+            idInstalacion,
+          }),
         );
         await usuariosInstalacionesRepo.save(usuariosInstalaciones);
       }
@@ -484,7 +470,7 @@ ORDER BY u.Id DESC`,
       if (panelesAlarmaIdsUnicos.length > 0) {
         const panelRepo = queryRunner.manager.getRepository(PanelAlarma);
         const paneles = await panelRepo.find({
-          where: { id: In(panelesAlarmaIdsUnicos) },
+          where: { idDispositivo: In(panelesAlarmaIdsUnicos) },
         });
 
         if (paneles.length !== panelesAlarmaIdsUnicos.length) {
@@ -493,12 +479,11 @@ ORDER BY u.Id DESC`,
           );
         }
 
-        const usuariosPanelesAlarma = panelesAlarmaIdsUnicos.map(
-          (idPanelAlarma) =>
-            usuarioPanelAlarmaRepo.create({
-              idUsuario: userSave.id,
-              idPanelAlarma,
-            }),
+        const usuariosPanelesAlarma = panelesAlarmaIdsUnicos.map((idPanelAlarma) =>
+          usuarioPanelAlarmaRepo.create({
+            idUsuario: userSave.id,
+            idPanelAlarma,
+          }),
         );
         await usuarioPanelAlarmaRepo.save(usuariosPanelesAlarma);
       }
@@ -524,11 +509,9 @@ ORDER BY u.Id DESC`,
         await asignacionSolucionesRepo.save(asignacionesSoluciones);
       }
 
-
       await queryRunner.commitTransaction();
 
-      const { passwordHash: _passwordHash, ...payloadBitacora } =
-        createUsuarioDto;
+      const { passwordHash: _passwordHash, ...payloadBitacora } = createUsuarioDto;
       const querylogger = {
         ...payloadBitacora,
         permisosIds: permisosIdsUnicos,
@@ -551,8 +534,7 @@ ORDER BY u.Id DESC`,
         message: 'Usuario creado correctamente',
         data: {
           id: Number(userSave.id),
-          nombre:
-            `${userSave.nombre} ${userSave.apellidoPaterno}`.trim() || '',
+          nombre: `${userSave.nombre} ${userSave.apellidoPaterno}`.trim() || '',
         },
       };
     } catch (error) {
@@ -596,15 +578,11 @@ ORDER BY u.Id DESC`,
         where: { id: idUser },
       });
       if (!usuario) {
-        throw new NotFoundException(
-          `No se encontró un usuario con ID: ${idUser}.`,
-        );
+        throw new NotFoundException(`No se encontró un usuario con ID: ${idUser}.`);
       }
 
       if (dto.passwordNueva !== dto.passwordNuevaConfirmacion) {
-        throw new BadRequestException(
-          'La contraseña y la confirmación deben coincidir.',
-        );
+        throw new BadRequestException('La contraseña y la confirmación deben coincidir.');
       }
 
       const passwordActualValido = await bcrypt.compare(
@@ -623,6 +601,7 @@ ORDER BY u.Id DESC`,
         actualizacionPassword: fechaActual,
         tokenRevocado: 1,
       });
+      await this.authService.revokeAllRefreshSessionsForUser(idUser);
 
       const querylogger = { id: idUser };
       await this.bitacoraLogger.logToBitacora(
@@ -668,18 +647,13 @@ ORDER BY u.Id DESC`,
   // ========================================
   // 🔹 CREAR O ACTUALIZAR MI NIP (usuario autenticado por token)
   // ========================================
-  async createMyPin(
-    idUser: number,
-    dto: UpdateMiPinDto,
-  ): Promise<ApiCrudResponse> {
+  async createMyPin(idUser: number, dto: UpdateMiPinDto): Promise<ApiCrudResponse> {
     try {
       const usuario = await this.usuarioRepository.findOne({
         where: { id: idUser, estatus: 1 },
       });
       if (!usuario) {
-        throw new NotFoundException(
-          `No se encontró un usuario con ID: ${idUser}.`,
-        );
+        throw new NotFoundException(`No se encontró un usuario con ID: ${idUser}.`);
       }
 
       const hashedPin = await bcrypt.hash(dto.pinHash, 10);
@@ -723,24 +697,17 @@ ORDER BY u.Id DESC`,
   // ========================================
   // 🔹 REGISTRAR IdFaceAuth (solo columna; usuario del token)
   // ========================================
-  async setIdFaceAuth(
-    idUser: number,
-    dto: SetFaceAuthDto,
-  ): Promise<ApiCrudResponse> {
+  async setIdFaceAuth(idUser: number, dto: SetFaceAuthDto): Promise<ApiCrudResponse> {
     try {
       const usuario = await this.usuarioRepository.findOne({
         where: { id: idUser, estatus: 1 },
       });
       if (!usuario) {
-        throw new NotFoundException(
-          `No se encontró un usuario con ID: ${idUser}.`,
-        );
+        throw new NotFoundException(`No se encontró un usuario con ID: ${idUser}.`);
       }
 
       if (usuario.idFaceAuth != null) {
-        throw new BadRequestException(
-          'El usuario ya tiene un rostro afiliado.',
-        );
+        throw new BadRequestException('El usuario ya tiene un rostro afiliado.');
       }
 
       await this.usuarioRepository.update(idUser, {
@@ -807,10 +774,7 @@ ORDER BY u.Id DESC`,
     });
 
     const existentesMap = new Map(
-      relacionesExistentes.map((relacion) => [
-        obtenerIdRelacion(relacion),
-        relacion,
-      ]),
+      relacionesExistentes.map((relacion) => [obtenerIdRelacion(relacion), relacion]),
     );
 
     const todosIds = new Set([...nuevaLista, ...existentesMap.keys()]);
@@ -854,8 +818,7 @@ ORDER BY u.Id DESC`,
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
     const usuariosInstalacionesRepo =
       queryRunner.manager.getRepository(UsuariosInstalaciones);
-    const usuarioPanelAlarmaRepo =
-      queryRunner.manager.getRepository(UsuarioPanelAlarma);
+    const usuarioPanelAlarmaRepo = queryRunner.manager.getRepository(UsuarioPanelAlarma);
     const asignacionSolucionesRepo =
       queryRunner.manager.getRepository(AsignacionSoluciones);
 
@@ -867,13 +830,9 @@ ORDER BY u.Id DESC`,
 
       if (updateUsuarioDto.idCliente) {
         try {
-          await this.clientesService.getOneCliente(
-            Number(updateUsuarioDto.idCliente),
-          );
+          await this.clientesService.getOneCliente(Number(updateUsuarioDto.idCliente));
         } catch {
-          throw new BadRequestException(
-            'No se encontró el cliente especificado.',
-          );
+          throw new BadRequestException('No se encontró el cliente especificado.');
         }
       }
 
@@ -936,8 +895,7 @@ ORDER BY u.Id DESC`,
           }>,
           id,
           instalacionesIds,
-          (relacion) =>
-            Number((relacion as UsuariosInstalaciones).idInstalacion),
+          (relacion) => Number((relacion as UsuariosInstalaciones).idInstalacion),
           (idInstalacion) => ({ idUsuario: id, idInstalacion, estatus: 1 }),
         );
       }
@@ -951,8 +909,7 @@ ORDER BY u.Id DESC`,
           }>,
           id,
           panelesAlarmaIds,
-          (relacion) =>
-            Number((relacion as UsuarioPanelAlarma).idPanelAlarma),
+          (relacion) => Number((relacion as UsuarioPanelAlarma).idPanelAlarma),
           (idPanelAlarma) => ({ idUsuario: id, idPanelAlarma, estatus: 1 }),
         );
       }
@@ -1072,8 +1029,7 @@ ORDER BY u.Id DESC`,
         },
         data: {
           id: id,
-          nombre:
-            `${usuarioResult.nombre} ${usuarioResult.apellidoPaterno} ` || '',
+          nombre: `${usuarioResult.nombre} ${usuarioResult.apellidoPaterno} ` || '',
         },
       };
       return result;

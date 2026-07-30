@@ -1,26 +1,25 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  PrimaryColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
-import { Clientes } from './Clientes';
-import { Inmuebles } from './Inmuebles';
+import { Dispositivos } from './Dispositivos';
 
 @applySchema
 @Index('UQ_PanelAlarma_CuentaSia', ['cuentaSia'], { unique: true })
-@Index('FK_PanelAlarma_Clientes', ['idCliente'])
-@Index('FK_PanelAlarma_Inmuebles', ['idInmueble'])
-@Index('IX_PanelAlarma_IdCliente_Estatus', ['idCliente', 'estatus'])
+@Index('IX_PanelAlarma_UltimoHeartbeat', ['ultimoHeartbeat'])
+@Index('FK_PanelAlarma_Dispositivo', ['idCliente', 'idDispositivo'])
 @Entity('PanelAlarma')
 export class PanelAlarma {
-  @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
-  id: number;
+  @PrimaryColumn('bigint', { name: 'IdDispositivo' })
+  idDispositivo: number;
+
+  @Column('bigint', { name: 'IdCliente' })
+  idCliente: number;
 
   @Column('varchar', { name: 'CuentaSia', length: 20 })
   cuentaSia: string;
@@ -28,42 +27,49 @@ export class PanelAlarma {
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;
 
-  @Column('bigint', { name: 'IdCliente' })
-  idCliente: number;
-
-  @Column('bigint', { name: 'IdInmueble' })
-  idInmueble: number;
-
   @Column('varchar', { name: 'Ip', nullable: true, length: 45 })
   ip: string | null;
 
-  @Column('tinyint', { name: 'CifradoActivo', default: 0 })
+  @Column('tinyint', { name: 'CifradoActivo', default: () => "'0'" })
   cifradoActivo: number;
 
-  // TODO: cifrar en reposo
-  @Column('varchar', { name: 'AesKey', nullable: true, length: 255 })
+  @Column('varchar', {
+    name: 'AesKey',
+    nullable: true,
+    length: 255,
+    comment: 'TODO: cifrar en reposo',
+  })
   aesKey: string | null;
 
-  @Column('smallint', { name: 'AesBits', default: 128 })
+  @Column('smallint', { name: 'AesBits', default: () => "'128'" })
   aesBits: number;
 
   @Column('datetime', { name: 'UltimoHeartbeat', nullable: true })
   ultimoHeartbeat: Date | null;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
-  fechaCreacion: Date;
-
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
-  fechaActualizacion: Date;
-
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
-  idCliente2: Clientes;
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  fechaCreacion: Date;
 
-  @ManyToOne(() => Inmuebles, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdInmueble', referencedColumnName: 'id' }])
-  idInmueble2: Inmuebles;
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  fechaActualizacion: Date;
+
+  @ManyToOne(() => Dispositivos, {
+    onDelete: 'CASCADE',
+    onUpdate: 'NO ACTION',
+  })
+  @JoinColumn([
+    { name: 'IdCliente', referencedColumnName: 'idCliente' },
+    { name: 'IdDispositivo', referencedColumnName: 'id' },
+  ])
+  idDispositivo2: Dispositivos;
 }

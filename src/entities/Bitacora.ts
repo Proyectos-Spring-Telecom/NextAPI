@@ -54,7 +54,7 @@ export class Bitacora {
     onUpdate: "NO ACTION",
   })
   @JoinColumn([{ name: "IdModulo", referencedColumnName: "id" }])
-  idModulo2: Modulos;
+  idModulo2: Modulos | null;
 
   @ManyToOne(() => Usuarios, (usuarios) => usuarios.bitacoras, {
     onDelete: "NO ACTION",

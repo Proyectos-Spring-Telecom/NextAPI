@@ -1,12 +1,10 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { CatTelefonia } from './CatTelefonia';
@@ -14,13 +12,10 @@ import { CatTelefonia } from './CatTelefonia';
 @applySchema
 @Index('FK_CatPlanesTelefonia_Telefonia', ['idTelefonia'])
 @Index('IX_CatPlanesTelefonia_Estatus', ['estatus'])
-@Entity('CatPlanesTelefonia')
+@Entity({ name: 'CatPlanesTelefonia' })
 export class CatPlanesTelefonia {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
-
-  @Column('varchar', { name: 'Nombre', length: 150 })
-  nombre: string;
 
   @Column('varchar', { name: 'Descripcion', length: 500, nullable: true })
   descripcion: string | null;
@@ -28,76 +23,75 @@ export class CatPlanesTelefonia {
   @Column('bigint', { name: 'IdTelefonia' })
   idTelefonia: number;
 
-  @Column('int', { name: 'DatosMB', unsigned: true, nullable: true })
+  @Column('int', {
+    name: 'DatosMB',
+    unsigned: true,
+    nullable: true,
+    default: () => "'0'",
+    comment: 'Cantidad de datos incluidos en MB (NULL = ilimitado)',
+  })
   datosMB: number | null;
 
-  @Column('int', { name: 'SMSIncluidos', unsigned: true, default: 0 })
+  @Column('int', {
+    name: 'SMSIncluidos',
+    unsigned: true,
+    default: () => "'0'",
+    comment: 'Cantidad de SMS incluidos',
+  })
   smsIncluidos: number;
 
-  @Column('int', { name: 'VozMinutos', unsigned: true, default: 0 })
-  vozMinutos: number;
-
-  @Column('varchar', { name: 'TecnologiaRed', length: 50, nullable: true })
-  tecnologiaRed: string | null;
-
-  @Column('varchar', { name: 'APN', length: 100, nullable: true })
-  apn: string | null;
-
-  @Column('varchar', { name: 'TipoRed', length: 50, default: 'M2M' })
-  tipoRed: string;
+  @Column('int', {
+    name: 'VozIncluidos',
+    unsigned: true,
+    default: () => "'0'",
+    comment: 'Minutos de voz incluidos',
+  })
+  vozIncluidos: number;
 
   @Column('decimal', {
     name: 'CostoMensual',
     precision: 10,
     scale: 2,
     nullable: true,
+    comment: 'Costo mensual en MXN',
   })
   costoMensual: string | null;
 
-  @Column('decimal', {
-    name: 'CostoActivacion',
-    precision: 10,
-    scale: 2,
-    default: '0.00',
-  })
-  costoActivacion: string;
-
-  @Column('decimal', {
-    name: 'CostoExcedenteMB',
-    precision: 10,
-    scale: 4,
+  @Column('date', {
+    name: 'FechaInicioVigencia',
     nullable: true,
+    comment: 'Desde cuándo está disponible el plan',
   })
-  costoExcedenteMB: string | null;
+  fechaInicioVigencia: string | null;
 
-  @Column('varchar', { name: 'Moneda', length: 3, default: 'MXN' })
-  moneda: string;
+  @Column('date', {
+    name: 'FechaFinVigencia',
+    nullable: true,
+    comment: 'Hasta cuándo está disponible (NULL = sin fecha fin)',
+  })
+  fechaFinVigencia: string | null;
 
-  @Column('int', { name: 'VigenciaDias', unsigned: true, default: 30 })
-  vigenciaDias: number;
-
-  @Column('tinyint', { name: 'RenovacionAutomatica', default: 1 })
-  renovacionAutomatica: number;
-
-  @Column('date', { name: 'FechaInicioVigencia', nullable: true })
-  fechaInicioVigencia: Date | null;
-
-  @Column('date', { name: 'FechaFinVigencia', nullable: true })
-  fechaFinVigencia: Date | null;
-
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaCreacion: Date;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
   fechaActualizacion: Date;
 
-  @ManyToOne(() => CatTelefonia, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+  @ManyToOne(() => CatTelefonia, (telefonia) => telefonia.planesTelefonia, {
+    nullable: false,
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
-  @JoinColumn([{ name: 'IdTelefonia', referencedColumnName: 'id' }])
-  idTelefonia2: CatTelefonia;
+  @JoinColumn({ name: 'IdTelefonia', referencedColumnName: 'id' })
+  telefonia: CatTelefonia;
 }

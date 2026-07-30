@@ -1,80 +1,100 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatMarcas } from './CatMarcas';
 import { CatModelos } from './CatModelos';
-import { Sims } from './Sims';
+import { CatTipoDispositivo } from './CatTipoDispositivo';
 
 @applySchema
-@Index('UQ_Dispositivos_IdCliente_Id', ['idCliente', 'id'], { unique: true })
+@Index('UQ_Dispositivos_Cliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Dispositivos_NumeroSerie', ['numeroSerie'], { unique: true })
-@Index('UQ_Dispositivos_IdSim', ['idSim'], { unique: true })
-@Index('IX_Dispositivos_IdCliente_IdEstatusDispositivo', [
+@Index('IX_Dispositivos_Cliente_Tipo', [
   'idCliente',
-  'estatusDispositivo',
+  'idTipoDispositivo',
+  'estatus',
 ])
-@Index('FK_Dispositivos_ModeloDispositivo_idx', ['idModeloDispositivo'])
-@Index('FK_Dispositivos_MarcaDispositivo_idx', ['idMarcaDispositivo'])
+@Index('FK_Dispositivos_CatMarcas_idx', ['idMarca'])
+@Index('FK_Dispositivos_CatModelos_idx', ['idModelo'])
+@Index('FK_Dispositivos_Tipo', ['idTipoDispositivo'])
 @Entity('Dispositivos')
 export class Dispositivos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @Column('varchar', { name: 'NumeroSerie', length: 100 })
-  numeroSerie: string;
-
-  @Column('bigint', { name: 'IdMarcaDispositivo', nullable: true })
-  idMarcaDispositivo: number | null;
-
-  @Column('bigint', { name: 'IdModeloDispositivo', nullable: true })
-  idModeloDispositivo: number | null;
-
-  @Column('bigint', { name: 'EstatusDispositivo', default: 1 })
-  estatusDispositivo: number;
-
-  @Column('bigint', { name: 'IdSim' })
-  idSim: number;
-
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
-  fechaCreacion: Date;
+  @Column('bigint', { name: 'IdTipoDispositivo' })
+  idTipoDispositivo: number;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
-  fechaActualizacion: Date;
+  @Column('varchar', { name: 'NumeroSerie', length: 100 })
+  numeroSerie: string;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
+  @Column('varchar', { name: 'Imei', length: 20, nullable: true })
+  imei: string | null;
+
+  @Column('varchar', {
+    name: 'Eco',
+    length: 50,
+    nullable: true,
+    comment: 'Número económico',
+  })
+  eco: string | null;
+
+  @Column('bigint', { name: 'IdMarca', nullable: true })
+  idMarca: number | null;
+
+  @Column('bigint', { name: 'IdModelo', nullable: true })
+  idModelo: number | null;
+
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  fechaCreacion: Date;
+
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  fechaActualizacion: Date;
+
+  @ManyToOne(() => Clientes, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
   @ManyToOne(() => CatMarcas, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
-  @JoinColumn([{ name: 'IdMarcaDispositivo', referencedColumnName: 'id' }])
-  idMarcaDispositivo2: CatMarcas | null;
+  @JoinColumn([{ name: 'IdMarca', referencedColumnName: 'id' }])
+  idMarca2: CatMarcas | null;
 
   @ManyToOne(() => CatModelos, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
-  @JoinColumn([{ name: 'IdModeloDispositivo', referencedColumnName: 'id' }])
-  idModeloDispositivo2: CatModelos | null;
+  @JoinColumn([{ name: 'IdModelo', referencedColumnName: 'id' }])
+  idModelo2: CatModelos | null;
 
-  @ManyToOne(() => Sims, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdSim', referencedColumnName: 'id' }])
-  idSim2: Sims;
+  @ManyToOne(() => CatTipoDispositivo, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  })
+  @JoinColumn([{ name: 'IdTipoDispositivo', referencedColumnName: 'id' }])
+  idTipoDispositivo2: CatTipoDispositivo;
 }

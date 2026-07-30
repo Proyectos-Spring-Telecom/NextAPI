@@ -1,31 +1,33 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
+  Controller,
+  Delete,
+  Get,
   Param,
-  Request,
-  Query,
   ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
   ApiQuery,
   ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { CatPlanesTelefoniaService } from './cat-planes-telefonia.service';
-import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.dto';
-import { UpdateCatPlanesTelefoniaDto } from './dto/update-cat-planes-telefonia.dto';
-import { UpdateCatPlanesTelefoniaEstatusDto } from './dto/update-cat-planes-telefonia-estatus.dto';
-import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
-import { Roles } from 'src/common/decorators/roles.decorator';
+import { CatPlanesTelefoniaService } from './cat-planes-telefonia.service';
+import { CatPlanTelefoniaResponseDto } from './dto/cat-plan-telefonia-response.dto';
+import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.dto';
+import { FilterCatPlanesTelefoniaDto } from './dto/filter-cat-planes-telefonia.dto';
+import { UpdateCatPlanesTelefoniaDto } from './dto/update-cat-planes-telefonia.dto';
+import { UpdateCatPlanesTelefoniaEstatusDto } from './dto/update-cat-planes-telefonia-estatus.dto';
 
 @ApiTags('Catálogo Planes Telefonía')
 @ApiBearerAuth('bearer-token')
@@ -33,126 +35,114 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 @Roles()
 @Controller('cat-planes-telefonia')
 export class CatPlanesTelefoniaController {
-  constructor(
-    private readonly catPlanesTelefoniaService: CatPlanesTelefoniaService,
-  ) {}
+  constructor(private readonly service: CatPlanesTelefoniaService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Crear plan de telefonía' })
-  @ApiResponse({ status: 201, description: 'Plan creado correctamente' })
-  @ApiResponse({ status: 400, description: 'Datos inválidos' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async create(
-    @Body() dto: CreateCatPlanesTelefoniaDto,
-    @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return this.catPlanesTelefoniaService.create(dto, idUser);
+  @ApiOperation({ summary: 'Crear un plan de telefonía' })
+  @ApiResponse({
+    status: 201,
+    description: 'Plan creado correctamente',
+    type: CatPlanTelefoniaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Datos o fechas inválidos' })
+  @ApiResponse({ status: 404, description: 'Telefonía no encontrada' })
+  @ApiResponse({ status: 409, description: 'Telefonía inactiva' })
+  create(@Body() dto: CreateCatPlanesTelefoniaDto, @Request() req) {
+    return this.service.create(dto, req.user.userId);
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'Lista completa de planes de telefonía' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos (estatus=1)',
+  @ApiOperation({ summary: 'Obtener lista simple de planes' })
+  @ApiQuery({ name: 'soloActivos', required: false, type: Boolean })
+  @ApiQuery({ name: 'idTelefonia', required: false, type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista obtenida correctamente',
+    type: [CatPlanTelefoniaResponseDto],
   })
-  @ApiQuery({
-    name: 'idTelefonia',
-    required: false,
-    description: 'Filtrar por ID de operador de telefonía (CatTelefonia)',
-  })
-  @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findAllList(
+  findAllList(
     @Query('soloActivos') soloActivos?: string,
     @Query('idTelefonia') idTelefonia?: string,
-  ): Promise<ApiResponseCommon> {
-    const soloActivosBool = soloActivos !== 'false';
-    const idTelefoniaParsed =
-      idTelefonia !== undefined && idTelefonia !== ''
-        ? parseInt(idTelefonia, 10)
-        : NaN;
-    const idTelefoniaNum = !isNaN(idTelefoniaParsed) ? idTelefoniaParsed : undefined;
-    return this.catPlanesTelefoniaService.findAllList(
-      soloActivosBool,
-      idTelefoniaNum,
+  ) {
+    const parsed = idTelefonia ? Number(idTelefonia) : undefined;
+    return this.service.findAllList(
+      soloActivos !== 'false',
+      parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined,
     );
   }
 
+  @Get()
+  @ApiOperation({ summary: 'Consultar planes con filtros y paginación' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado con propiedades camelCase',
+    type: [CatPlanTelefoniaResponseDto],
+  })
+  findAll(@Query() filters: FilterCatPlanesTelefoniaDto) {
+    return this.service.findAll(filters);
+  }
+
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de planes de telefonía' })
-  @ApiParam({ name: 'page', description: 'Número de página' })
-  @ApiParam({ name: 'limit', description: 'Registros por página' })
-  @ApiQuery({
-    name: 'soloActivos',
-    required: false,
-    description: 'Si true, solo retorna registros activos',
-  })
-  @ApiQuery({
-    name: 'idTelefonia',
-    required: false,
-    description: 'Filtrar por ID de operador de telefonía',
-  })
-  @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findAll(
+  @ApiOperation({ summary: 'Consultar planes paginados (ruta compatible)' })
+  @ApiParam({ name: 'page', type: Number })
+  @ApiParam({ name: 'limit', type: Number })
+  @ApiQuery({ name: 'soloActivos', required: false, type: Boolean })
+  @ApiQuery({ name: 'idTelefonia', required: false, type: Number })
+  findAllLegacy(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Query('soloActivos') soloActivos?: string,
     @Query('idTelefonia') idTelefonia?: string,
-  ): Promise<ApiResponseCommon> {
-    const soloActivosBool = soloActivos === 'true';
-    const idTelefoniaParsed =
-      idTelefonia !== undefined && idTelefonia !== ''
-        ? parseInt(idTelefonia, 10)
-        : NaN;
-    const idTelefoniaNum = !isNaN(idTelefoniaParsed) ? idTelefoniaParsed : undefined;
-    return this.catPlanesTelefoniaService.findAll(
+  ) {
+    const parsed = idTelefonia ? Number(idTelefonia) : undefined;
+    return this.service.findAll({
       page,
       limit,
-      soloActivosBool,
-      idTelefoniaNum,
-    );
+      ...(soloActivos === 'true' ? { Estatus: 1 } : {}),
+      ...(parsed !== undefined && Number.isInteger(parsed)
+        ? { IdTelefonia: parsed }
+        : {}),
+    });
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener plan por ID' })
-  @ApiParam({ name: 'id', description: 'ID del plan' })
-  @ApiResponse({ status: 200, description: 'Plan encontrado' })
+  @ApiOperation({ summary: 'Obtener un plan y su telefonía' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Plan encontrado',
+    type: CatPlanTelefoniaResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Plan no encontrado' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.catPlanesTelefoniaService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar plan de telefonía' })
-  @ApiParam({ name: 'id', description: 'ID del plan' })
-  @ApiResponse({ status: 200, description: 'Plan actualizado' })
-  @ApiResponse({ status: 404, description: 'Plan no encontrado' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async update(
+  @ApiOperation({ summary: 'Actualizar parcialmente un plan' })
+  @ApiParam({ name: 'id', type: Number })
+  update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCatPlanesTelefoniaDto,
     @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return this.catPlanesTelefoniaService.update(id, dto, idUser);
+  ) {
+    return this.service.update(id, dto, req.user.userId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Desactivar un plan (baja lógica)' })
+  @ApiParam({ name: 'id', type: Number })
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.service.remove(id, req.user.userId);
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
-  @ApiParam({ name: 'id', description: 'ID del plan' })
-  @ApiResponse({ status: 200, description: 'Estatus actualizado' })
-  @ApiResponse({ status: 404, description: 'Plan no encontrado' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async updateEstatus(
+  @ApiOperation({ summary: 'Cambiar estatus (ruta compatible)' })
+  updateEstatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCatPlanesTelefoniaEstatusDto,
     @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return this.catPlanesTelefoniaService.updateEstatus(id, dto, idUser);
+  ) {
+    return this.service.updateEstatus(id, dto, req.user.userId);
   }
 }

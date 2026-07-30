@@ -43,7 +43,7 @@ import * as jwt from 'jsonwebtoken';
             const decoded: any = jwt.decode(token);
             return `userId:${decoded?.id ?? decoded?.userId ?? 'unknown'}`;
           }
-        } catch {}
+        } catch { }
 
         const userName = req?.body?.userName;
         if (userName) return `userName:${userName}`;
@@ -53,7 +53,7 @@ import * as jwt from 'jsonwebtoken';
           try {
             const decoded: any = jwt.decode(refreshToken);
             return `userId:${decoded?.id ?? decoded?.userId ?? 'unknown'}`;
-          } catch {}
+          } catch { }
         }
 
         return `ip:${req?.ip ?? 'unknown'}`;
@@ -69,7 +69,6 @@ import * as jwt from 'jsonwebtoken';
         DB_DATABASE: Joi.string().required(),
         JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().required(),
-        JWT_REFRESH_SECRET: Joi.string().required(),
         JWT_REFRESH_EXPIRES_IN: Joi.string().required(),
         // Throttling (Auth) - defaults alineados a FLUJO-SEGURIDAD-AUTH.md
         THROTTLE_LOGIN_LIMIT: Joi.number().required(),
@@ -115,7 +114,7 @@ import * as jwt from 'jsonwebtoken';
         entities: [__dirname + '/entities/*{.ts,.js}'],
         synchronize: false, //Nunca poner en true
         dateStrings: false,
-        timezone: '-06:00',
+        timezone: config.get<string>('DB_TZ'),
         bigNumberStrings: false,
         logging: true,
         extra: {
@@ -163,8 +162,6 @@ import * as jwt from 'jsonwebtoken';
 
     WebhookEmitterModule,
   ],
-  providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule { }

@@ -1,26 +1,34 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Usuarios } from './Usuarios';
 import { Instalaciones } from './Instalaciones';
 
 @applySchema
+@Index('FK_UsuariosInstalaciones_Usuarios', ['idUsuario'])
+@Index('FK_UsuariosInstalaciones_Instalaciones', ['idInstalacion'])
 @Entity('UsuariosInstalaciones')
 export class UsuariosInstalaciones {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @CreateDateColumn({ name: 'FechaCreacion' })
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaCreacion: Date;
 
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
   fechaActualizacion: Date;
 
   @Column('tinyint', { name: 'Estatus', default: () => "'1'" })

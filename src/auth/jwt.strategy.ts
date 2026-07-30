@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -15,9 +15,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   validate(payload: any) {
-    this.logger.debug(
-      `JWT access aceptado (userId=${payload?.id ?? 'desconocido'})`,
-    );
+    if (payload?.type !== 'access') {
+      this.logger.warn(
+        `JWT rechazado — type inválido (type=${payload?.type ?? 'undefined'})`,
+      );
+      throw new UnauthorizedException('Token de acceso inválido');
+    }
+
+    this.logger.debug(`JWT access aceptado (userId=${payload?.id ?? 'desconocido'})`);
     return {
       userId: payload.id,
       email: payload.email,

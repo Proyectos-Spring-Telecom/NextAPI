@@ -21,7 +21,7 @@ export class Clientes {
   @Column("bigint", { name: "IdPadre", nullable: true })
   idPadre: number | null;
 
-  @Column("varchar", { name: "RFC", unique: true, length: 16 })
+  @Column("varchar", { name: "RFC", length: 16 })
   rfc: string;
 
   @Column("tinyint", { name: "TipoPersona" })
@@ -105,7 +105,10 @@ export class Clientes {
   fechaCreacion: Date;
 
   @Column("datetime", {
-    name: "FechaActualizacion", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP", })
+    name: "FechaActualizacion",
+    default: () => "CURRENT_TIMESTAMP",
+    onUpdate: "CURRENT_TIMESTAMP",
+  })
   fechaActualizacion: Date;
 
   @Column("tinyint", { name: "Estatus", default: () => "'1'" })
@@ -116,7 +119,7 @@ export class Clientes {
     onUpdate: "NO ACTION",
   })
   @JoinColumn([{ name: "IdPadre", referencedColumnName: "id" }])
-  idPadre2: Clientes;
+  idPadre2: Clientes | null;
 
   @OneToMany(() => Clientes, (clientes) => clientes.idPadre2)
   clientes: Clientes[];

@@ -12,6 +12,7 @@ import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
+import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
@@ -31,8 +32,8 @@ const ID_MODULO_VEHICULOS = 16;
 export interface VehiculoPorPlacaData {
   id: number;
   placa: string;
-  numeroEconomico: string;
-  anio: number;
+  numeroEconomico: string | null;
+  anio: number | null;
   color: string | null;
   fotoFrente: string | null;
   km: number | null;
@@ -60,6 +61,8 @@ export class VehiculosService {
     private readonly catMarcasRepo: Repository<CatMarcas>,
     @InjectRepository(CatTipoCombustible)
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
+    @InjectRepository(Productos)
+    private readonly productosRepo: Repository<Productos>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
@@ -132,6 +135,15 @@ export class VehiculosService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
+      const producto = await this.productosRepo.findOne({
+        where: { id: dto.idProducto, idCliente },
+      });
+      if (!producto) {
+        throw new BadRequestException(
+          'El producto no existe o no pertenece al cliente',
+        );
+      }
+
       const existePlaca = await this.repository.findOne({
         where: { placa: dto.placa, idCliente },
       });
@@ -146,11 +158,13 @@ export class VehiculosService {
       });
 
       const entity = this.repository.create({
+        idProducto: dto.idProducto,
+        idCliente,
         placa: dto.placa,
-        numeroEconomico: dto.numeroEconomico,
+        numeroEconomico: dto.numeroEconomico ?? null,
         idMarcaVehiculo: dto.idMarcaVehiculo ?? null,
         idModeloVehiculo: dto.idModeloVehiculo ?? null,
-        anio: dto.anio,
+        anio: dto.anio ?? null,
         color: dto.color ?? null,
         numeroSerie: dto.numeroSerie ?? null,
         foto: dto.foto ?? null,
@@ -166,8 +180,6 @@ export class VehiculosService {
         idCombustible: dto.idCombustible ?? null,
         km: dto.km ?? null,
         capacidadLitros: dto.capacidadLitros ?? null,
-        idCliente,
-        estatus: dto.estatus ?? 1,
       });
 
       const saved = await this.repository.save(entity);
@@ -185,7 +197,7 @@ export class VehiculosService {
       this.webhookEmitter.emit(
         WebhookEvent.VEHICULO_CREATED,
         idCliente,
-        Number(saved.id),
+        Number(saved.idProducto),
         this.buildVehiculoWebhookData(
           saved.placa,
           await this.resolveMarcaNombre(saved.idMarcaVehiculo),
@@ -195,7 +207,10 @@ export class VehiculosService {
       return {
         status: 'success',
         message: 'Vehículo creado correctamente',
-        data: { id: Number(saved.id), nombre: saved.placa },
+        data: {
+          id: Number(saved.idProducto),
+          nombre: saved.placa,
+        },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
@@ -220,7 +235,7 @@ export class VehiculosService {
         return { data: [] };
       }
       const where: FindOptionsWhere<Vehiculos> = {
-        estatus: 1,
+        idProducto2: { estatus: 1 },
         ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
       };
       const data = await this.repository.find({
@@ -228,8 +243,9 @@ export class VehiculosService {
         relations: {
           idMarcaVehiculo2: true,
           idModeloVehiculo2: true,
+          idProducto2: true,
         },
-        order: { id: 'ASC' },
+        order: { idProducto: 'ASC' },
       });
       const dataNormalizada = data.map((item) =>
         this.mapVehiculoConRelaciones(item),
@@ -267,11 +283,11 @@ export class VehiculosService {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        order: { id: 'ASC' },
+        order: { idProducto: 'ASC' },
       });
       const dataNormalizada = data.map((item) => ({
         ...item,
-        id: Number(item.id),
+        idProducto: Number(item.idProducto),
       }));
       return {
         data: dataNormalizada,
@@ -290,13 +306,13 @@ export class VehiculosService {
   async findOne(id: number, idCliente: number): Promise<{ data: Vehiculos }> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idProducto: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
       return {
-        data: { ...entity, id: Number(entity.id) },
+        data: { ...entity, idProducto: Number(entity.idProducto) },
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -310,7 +326,7 @@ export class VehiculosService {
   /** SELECT + JOINs comunes; el WHERE y LIMIT se arman en `findOneByPlaca`. */
   private static readonly SQL_VEHICULO_POR_PLACA_BASE = `
 SELECT
-    v.Id AS id,
+    v.IdProducto AS id,
     v.Placa AS placa,
     v.NumeroEconomico AS numeroEconomico,
     v.Anio AS anio,
@@ -318,8 +334,8 @@ SELECT
     v.FotoFrente AS fotoFrente,
     v.KM AS km,
     v.CapacidadLitros AS capacidadLitros,
-    v.Estatus AS estatus,
-    v.FechaCreacion AS fechaCreacion,
+    p.Estatus AS estatus,
+    p.FechaCreacion AS fechaCreacion,
     c.Id AS idCliente,
     CONCAT_WS(' ', c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno) AS nombreCompleto,
     mv.Id AS modeloId,
@@ -329,7 +345,8 @@ SELECT
     tc.Id AS combustibleId,
     tc.Nombre AS combustibleNombre
 FROM Vehiculos v
-INNER JOIN Clientes c ON v.IdCliente = c.Id
+INNER JOIN Productos p ON v.IdCliente = p.IdCliente AND v.IdProducto = p.Id
+INNER JOIN Clientes c ON p.IdCliente = c.Id
 LEFT JOIN CatModelos mv ON v.IdModeloVehiculo = mv.Id
 LEFT JOIN CatMarcas mar ON v.IdMarcaVehiculo = mar.Id
 LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
@@ -342,7 +359,7 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
 
     return {
       ...vehiculo,
-      id: Number(item.id),
+      idProducto: Number(item.idProducto),
       idMarcaVehiculo:
         item.idMarcaVehiculo != null ? Number(item.idMarcaVehiculo) : null,
       idModeloVehiculo:
@@ -378,8 +395,8 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
     return {
       id: num('id'),
       placa: String(g('placa')),
-      numeroEconomico: String(g('numeroEconomico')),
-      anio: num('anio'),
+      numeroEconomico: strOrNull('numeroEconomico'),
+      anio: numOrNull('anio'),
       color: strOrNull('color'),
       fotoFrente: strOrNull('fotoFrente'),
       km: numOrNull('km'),
@@ -416,7 +433,7 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       const filtroPorVariosClientes = tenant.sql.includes('IN');
       const limit = sinAcotarCliente || filtroPorVariosClientes ? 2 : 1;
 
-      const whereClause = `WHERE v.Estatus = 1 AND v.Placa = ?${tenant.sql}`;
+      const whereClause = `WHERE p.Estatus = 1 AND v.Placa = ?${tenant.sql}`;
       const parametros: unknown[] = [placaNorm, ...tenant.params];
 
       const query = `${VehiculosService.SQL_VEHICULO_POR_PLACA_BASE}
@@ -455,7 +472,7 @@ LIMIT ${limit}
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id },
+        where: { idProducto: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
@@ -514,8 +531,6 @@ LIMIT ${limit}
       if (dto.km !== undefined) updateData.km = dto.km;
       if (dto.capacidadLitros !== undefined)
         updateData.capacidadLitros = dto.capacidadLitros;
-      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
-
       await this.repository.update(id, updateData);
 
       await this.bitacoraLogger.logToBitacora(
@@ -529,7 +544,7 @@ LIMIT ${limit}
       );
 
       const updated = await this.repository.findOne({
-        where: { id },
+        where: { idProducto: id },
         relations: { idMarcaVehiculo2: true },
       });
 
@@ -578,13 +593,16 @@ LIMIT ${limit}
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { idProducto: id, idCliente },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      await this.productosRepo.update(
+        { id, idCliente },
+        { estatus: dto.estatus },
+      );
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',

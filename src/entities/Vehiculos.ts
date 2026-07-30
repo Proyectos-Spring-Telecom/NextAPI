@@ -1,30 +1,28 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  OneToOne,
+  PrimaryColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
-import { Clientes } from './Clientes';
 import { CatMarcas } from './CatMarcas';
 import { CatModelos } from './CatModelos';
 import { CatTipoCombustible } from './CatTipoCombustible';
+import { Productos } from './Productos';
 
 @applySchema
-@Index('UQ_Vehiculos_IdCliente_Id', ['idCliente', 'id'], { unique: true })
-@Index('UQ_Vehiculos_Placa', ['placa', 'idCliente'], { unique: true })
-@Index('FK_Vehiculos_CatTipoCombustible', ['idCombustible'])
-@Index('FK_Vehiculos_Placa', ['placa'])
-@Index('FK_Vehiculos_CatMarcaVehiculo_idx', ['idMarcaVehiculo'])
-@Index('FK_Vehiculos_CatModeloVehiculo_idx', ['idModeloVehiculo'])
+@Index('UQ_Vehiculos_Cliente_Placa', ['idCliente', 'placa'], { unique: true })
+@Index('FK_Vehiculos_Marca_idx', ['idMarcaVehiculo'])
+@Index('FK_Vehiculos_Modelo_idx', ['idModeloVehiculo'])
+@Index('FK_Vehiculos_Combustible_idx', ['idCombustible'])
+@Index('FK_Vehiculos_Producto', ['idCliente', 'idProducto'])
 @Entity('Vehiculos')
 export class Vehiculos {
-  @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
-  id: number;
+  @PrimaryColumn('bigint', { name: 'IdProducto' })
+  idProducto: number;
 
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
@@ -32,8 +30,8 @@ export class Vehiculos {
   @Column('varchar', { name: 'Placa', length: 10 })
   placa: string;
 
-  @Column('varchar', { name: 'NumeroEconomico', length: 50 })
-  numeroEconomico: string;
+  @Column('varchar', { name: 'NumeroEconomico', length: 50, nullable: true })
+  numeroEconomico: string | null;
 
   @Column('bigint', { name: 'IdMarcaVehiculo', nullable: true })
   idMarcaVehiculo: number | null;
@@ -41,13 +39,18 @@ export class Vehiculos {
   @Column('bigint', { name: 'IdModeloVehiculo', nullable: true })
   idModeloVehiculo: number | null;
 
-  @Column('int', { name: 'Anio' })
-  anio: number;
+  @Column('int', { name: 'Anio', nullable: true })
+  anio: number | null;
 
   @Column('varchar', { name: 'Color', length: 30, nullable: true })
   color: string | null;
 
-  @Column('varchar', { name: 'NumeroSerie', length: 20, nullable: true })
+  @Column('varchar', {
+    name: 'NumeroSerie',
+    length: 20,
+    nullable: true,
+    comment: 'VIN',
+  })
   numeroSerie: string | null;
 
   @Column('varchar', { name: 'Foto', length: 500, nullable: true })
@@ -89,37 +92,34 @@ export class Vehiculos {
   @Column('float', { name: 'CapacidadLitros', nullable: true })
   capacidadLitros: number | null;
 
-  @Column('tinyint', { name: 'Estatus', default: 1 })
-  estatus: number;
-
-  @CreateDateColumn({ name: 'FechaCreacion' })
-  fechaCreacion: Date;
-
-  @UpdateDateColumn({ name: 'FechaActualizacion' })
-  fechaActualizacion: Date;
-
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
-  idCliente2: Clientes;
-
   @ManyToOne(() => CatMarcas, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
   @JoinColumn([{ name: 'IdMarcaVehiculo', referencedColumnName: 'id' }])
   idMarcaVehiculo2: CatMarcas | null;
 
   @ManyToOne(() => CatModelos, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
   @JoinColumn([{ name: 'IdModeloVehiculo', referencedColumnName: 'id' }])
   idModeloVehiculo2: CatModelos | null;
 
   @ManyToOne(() => CatTipoCombustible, {
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
   })
   @JoinColumn([{ name: 'IdCombustible', referencedColumnName: 'id' }])
   idCombustible2: CatTipoCombustible | null;
+
+  @OneToOne(() => Productos, {
+    onDelete: 'CASCADE',
+    onUpdate: 'NO ACTION',
+  })
+  @JoinColumn([
+    { name: 'IdCliente', referencedColumnName: 'idCliente' },
+    { name: 'IdProducto', referencedColumnName: 'id' },
+  ])
+  idProducto2: Productos;
 }

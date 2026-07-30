@@ -3,37 +3,27 @@ import {
   Entity,
   Index,
   JoinColumn,
-  ManyToOne,
-  PrimaryGeneratedColumn,
+  OneToOne,
+  PrimaryColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
-import { Clientes } from './Clientes';
+import { Productos } from './Productos';
 
 @applySchema
-@Index('FK_Inmuebles_Clientes', ['idCliente'])
-@Index('IX_Inmuebles_IdCliente_Estatus', ['idCliente', 'estatus'])
+@Index('FK_Inmuebles_Producto', ['idCliente', 'idProducto'])
 @Entity('Inmuebles')
 export class Inmuebles {
-  @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
-  id: number;
-
-  @Column('varchar', { name: 'Inmueble', nullable: true, length: 400 })
-  inmueble: string | null;
+  @PrimaryColumn('bigint', { name: 'IdProducto' })
+  idProducto: number;
 
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
+  @Column('varchar', { name: 'Inmueble', nullable: true, length: 400 })
+  inmueble: string | null;
+
   @Column('text', { name: 'DireccionFiscal', nullable: true })
   direccionFiscal: string | null;
-
-  @Column('varchar', { name: 'VigenciaAnios', nullable: true, length: 45 })
-  vigenciaAnios: string | null;
-
-  @Column('datetime', { name: 'FechaInicio', nullable: true })
-  fechaInicio: Date | null;
-
-  @Column('datetime', { name: 'FechaFin', nullable: true })
-  fechaFin: Date | null;
 
   @Column('varchar', {
     name: 'NombreRepresentante',
@@ -71,10 +61,13 @@ export class Inmuebles {
   @Column('double', { name: 'Lng', nullable: true })
   lng: number | null;
 
-  @Column('json', { name: 'MapaInmueble', nullable: true })
-  mapaInmueble: Record<string, unknown> | null;
-
-  @ManyToOne(() => Clientes, { onDelete: 'RESTRICT', onUpdate: 'CASCADE' })
-  @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
-  idCliente2: Clientes;
+  @OneToOne(() => Productos, {
+    onDelete: 'CASCADE',
+    onUpdate: 'NO ACTION',
+  })
+  @JoinColumn([
+    { name: 'IdCliente', referencedColumnName: 'idCliente' },
+    { name: 'IdProducto', referencedColumnName: 'id' },
+  ])
+  idProducto2: Productos;
 }

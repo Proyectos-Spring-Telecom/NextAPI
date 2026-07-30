@@ -8,6 +8,7 @@ import {
 } from "typeorm";
 import { Permisos } from "./Permisos";
 import { Soluciones } from "./Soluciones";
+import { Usuarios } from "./Usuarios";
 import { applySchema } from "src/common/apply-schema.decorator";
 
 @applySchema
@@ -16,6 +17,7 @@ import { applySchema } from "src/common/apply-schema.decorator";
 })
 @Index("FK_UsuariosPermisos_Usuarios", ["idUsuario"], {})
 @Index("FK_UsuariosPermisos_Permisos", ["idPermiso"], {})
+@Index("FK_UsuaPerm_Soluciones", ["idSolucion"])
 @Index("IX_UsuariosPermisos_IdUsuario_IdSolucion", [
   "idUsuario",
   "idSolucion",
@@ -49,6 +51,13 @@ export class UsuariosPermisos {
 
   @Column("bigint", { name: "IdSolucion", nullable: true })
   idSolucion: number | null;
+
+  @ManyToOne(() => Usuarios, {
+    onDelete: "NO ACTION",
+    onUpdate: "NO ACTION",
+  })
+  @JoinColumn([{ name: "IdUsuario", referencedColumnName: "id" }])
+  idUsuario2: Usuarios;
 
   @ManyToOne(() => Permisos, (permisos) => permisos.usuariosPermisos, {
     onDelete: "NO ACTION",

@@ -22,18 +22,12 @@ import { Throttle } from '@nestjs/throttler';
 import { LoginRefreshTokenDto } from './dto/login-refresh-token.dto';
 
 const THROTTLE_LOGIN_LIMIT = Number(process.env.THROTTLE_LOGIN_LIMIT ?? 5);
-const THROTTLE_LOGIN_TTL_MS = Number(
-  process.env.THROTTLE_LOGIN_TTL_MS ?? 60000,
-);
+const THROTTLE_LOGIN_TTL_MS = Number(process.env.THROTTLE_LOGIN_TTL_MS ?? 60000);
 const THROTTLE_PIN_LIMIT = Number(process.env.THROTTLE_PIN_LIMIT ?? 5);
 const THROTTLE_PIN_TTL_MS = Number(process.env.THROTTLE_PIN_TTL_MS ?? 60000);
 const THROTTLE_VERIFY_LIMIT = Number(process.env.THROTTLE_VERIFY_LIMIT ?? 3);
-const THROTTLE_VERIFY_TTL_MS = Number(
-  process.env.THROTTLE_VERIFY_TTL_MS ?? 60000,
-);
-const THROTTLE_RECUPERACION_LIMIT = Number(
-  process.env.THROTTLE_RECUPERACION_LIMIT ?? 2,
-);
+const THROTTLE_VERIFY_TTL_MS = Number(process.env.THROTTLE_VERIFY_TTL_MS ?? 60000);
+const THROTTLE_RECUPERACION_LIMIT = Number(process.env.THROTTLE_RECUPERACION_LIMIT ?? 2);
 const THROTTLE_RECUPERACION_TTL_MS = Number(
   process.env.THROTTLE_RECUPERACION_TTL_MS ?? 60000,
 );
@@ -44,13 +38,9 @@ const THROTTLE_RECUPERACION_CONFIRMACION_TTL_MS = Number(
   process.env.THROTTLE_RECUPERACION_CONFIRMACION_TTL_MS ?? 60000,
 );
 const THROTTLE_REFRESH_LIMIT = Number(process.env.THROTTLE_REFRESH_LIMIT ?? 5);
-const THROTTLE_REFRESH_TTL_MS = Number(
-  process.env.THROTTLE_REFRESH_TTL_MS ?? 60000,
-);
+const THROTTLE_REFRESH_TTL_MS = Number(process.env.THROTTLE_REFRESH_TTL_MS ?? 60000);
 const THROTTLE_LOGOUT_LIMIT = Number(process.env.THROTTLE_LOGOUT_LIMIT ?? 5);
-const THROTTLE_LOGOUT_TTL_MS = Number(
-  process.env.THROTTLE_LOGOUT_TTL_MS ?? 60000,
-);
+const THROTTLE_LOGOUT_TTL_MS = Number(process.env.THROTTLE_LOGOUT_TTL_MS ?? 60000);
 
 @ApiTags('Autenticación')
 @ApiBearerAuth('bearer-token')
@@ -58,10 +48,12 @@ const THROTTLE_LOGOUT_TTL_MS = Number(
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('usuario/solicitud/recuperacion')
-  @Throttle({ default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS } })
+  @Throttle({
+    default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS },
+  })
   async solicitudRecuperacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
@@ -84,9 +76,7 @@ export class AuthController {
     this.logger.log(
       `HTTP POST login/recuperar/confirmacion (userName=${loginAuthConfirmacionDto.userName})`,
     );
-    return await this.authService.recuperarConfirmacion(
-      loginAuthConfirmacionDto,
-    );
+    return await this.authService.recuperarConfirmacion(loginAuthConfirmacionDto);
   }
 
   @Post('operador/accesso/nip')
@@ -115,16 +105,13 @@ export class AuthController {
     name: 'Nombres',
     required: false,
     description:
-      'Nombre de la solución (debe existir en Soluciones y debe estar activo). Ej.: AM, PM',
+      'Nombre de la solución (debe existir en Soluciones y deben estar activo). Ej.: AM, PM',
   })
-  async login(
-    @Body() loginAuthDto: LoginAuthDto,
-    @Query('Nombres') nombres?: string,
-  ) {
+  async login(@Body() loginAuthDto: LoginAuthDto, @Query('Nombres') nombres?: string) {
     this.logger.log(
-      `HTTP POST login (userName=${loginAuthDto.userName}, nombres=${nombres ? 'sí' : 'no'})`,
+      `HTTP POST login (userName=${loginAuthDto.userName}, nombres=${nombres ? 'NXT' : 'NXT'})`,
     );
-    return this.authService.signIn(loginAuthDto, nombres ?? 'SIT');
+    return this.authService.signIn(loginAuthDto, nombres ?? 'NXT');
   }
 
   @Get('me')
@@ -154,9 +141,7 @@ export class AuthController {
   @Throttle({
     default: { limit: THROTTLE_VERIFY_LIMIT, ttl: THROTTLE_VERIFY_TTL_MS },
   })
-  async verifyUser(
-    @Body() codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion,
-  ) {
+  async verifyUser(@Body() codigoPasajeroAutenticacion: CodigoPasajeroAutenticacion) {
     this.logger.log(
       `HTTP PATCH login/verify (userName=${codigoPasajeroAutenticacion.userName})`,
     );
@@ -175,12 +160,11 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: { limit: THROTTLE_LOGOUT_LIMIT, ttl: THROTTLE_LOGOUT_TTL_MS },
   })
-  async logout(@Request() req: { user: { userId: number } }) {
-    this.logger.log(`HTTP POST login/logout (userId=${req.user.userId})`);
-    return await this.authService.logout(req.user.userId);
+  async logout(@Body() dto: LoginRefreshTokenDto) {
+    this.logger.log('HTTP POST login/logout');
+    return await this.authService.logoutRefresh(dto.refreshToken);
   }
 }

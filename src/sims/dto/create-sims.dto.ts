@@ -11,16 +11,6 @@ import {
 
 export class CreateSimsDto {
   @ApiProperty({
-    description: 'ICC/ICCID del SIM (hasta 22 dígitos)',
-    example: '8944110000000000001',
-    maxLength: 22,
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(22)
-  icc: string;
-
-  @ApiProperty({
     description: 'IMEI/identificador en red (opcional)',
     maxLength: 15,
     required: false,
@@ -39,16 +29,6 @@ export class CreateSimsDto {
   @IsString()
   @MaxLength(20)
   numeroTelefono?: string;
-
-  @ApiProperty({
-    description: 'IP estática (IPv4 o IPv6)',
-    maxLength: 45,
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(45)
-  ipEstatica?: string;
 
   @ApiProperty({ description: 'ID compañía telefónica (CatTelefonia)' })
   @IsInt()

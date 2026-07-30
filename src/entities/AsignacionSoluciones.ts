@@ -1,12 +1,10 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from "typeorm";
 import { applySchema } from "src/common/apply-schema.decorator";
 import { Usuarios } from "./Usuarios";
@@ -32,10 +30,17 @@ export class AsignacionSoluciones {
   @Column("bigint", { name: "IdSolucion" })
   idSolucion: number;
 
-  @CreateDateColumn({ name: "FechaCreacion" })
+  @Column("datetime", {
+    name: "FechaCreacion",
+    default: () => "CURRENT_TIMESTAMP",
+  })
   fechaCreacion: Date;
 
-  @UpdateDateColumn({ name: "FechaActualizacion" })
+  @Column("datetime", {
+    name: "FechaActualizacion",
+    default: () => "CURRENT_TIMESTAMP",
+    onUpdate: "CURRENT_TIMESTAMP",
+  })
   fechaActualizacion: Date;
 
   @Column("tinyint", { name: "Estatus", default: () => "'1'" })

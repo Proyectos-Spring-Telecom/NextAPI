@@ -10,7 +10,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
-import { Vehiculos } from 'src/entities/Vehiculos';
+import { Sims } from 'src/entities/Sims';
+import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
@@ -31,8 +32,10 @@ export class InstalacionesService {
     private readonly repository: Repository<Instalaciones>,
     @InjectRepository(Dispositivos)
     private readonly dispositivosRepo: Repository<Dispositivos>,
-    @InjectRepository(Vehiculos)
-    private readonly vehiculosRepo: Repository<Vehiculos>,
+    @InjectRepository(Sims)
+    private readonly simsRepo: Repository<Sims>,
+    @InjectRepository(CatEstatusInstalacion)
+    private readonly estatusInstalacionRepo: Repository<CatEstatusInstalacion>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
@@ -52,19 +55,19 @@ export class InstalacionesService {
     return dispositivo;
   }
 
-  private async validarVehiculoPerteneceCliente(
-    idVehiculo: number,
+  private async validarSimPerteneceCliente(
+    idSim: number,
     idCliente: number,
-  ): Promise<Vehiculos> {
-    const vehiculo = await this.vehiculosRepo.findOne({
-      where: { id: idVehiculo, idCliente },
+  ): Promise<Sims> {
+    const sim = await this.simsRepo.findOne({
+      where: { id: idSim, idCliente },
     });
-    if (!vehiculo) {
+    if (!sim) {
       throw new BadRequestException(
-        'IdVehiculo no existe o no pertenece al cliente',
+        'IdSim no existe o no pertenece al cliente',
       );
     }
-    return vehiculo;
+    return sim;
   }
 
   private async validarDispositivoSinInstalacionActiva(
@@ -88,15 +91,15 @@ export class InstalacionesService {
     }
   }
 
-  private async validarVehiculoSinInstalacionActiva(
-    idVehiculo: number,
+  private async validarSimSinInstalacionActiva(
+    idSim: number,
     idCliente: number,
     excludeId?: number,
   ): Promise<void> {
     const qb = this.repository
       .createQueryBuilder('i')
       .where('i.idCliente = :idCliente', { idCliente })
-      .andWhere('i.idVehiculo = :idVehiculo', { idVehiculo })
+      .andWhere('i.idSim = :idSim', { idSim })
       .andWhere('i.estatus = 1');
     if (excludeId !== undefined) {
       qb.andWhere('i.id != :excludeId', { excludeId });
@@ -104,8 +107,17 @@ export class InstalacionesService {
     const existe = await qb.getOne();
     if (existe) {
       throw new BadRequestException(
-        'El vehículo ya tiene una instalación activa',
+        'El SIM ya tiene una instalación activa',
       );
+    }
+  }
+
+  private async validarEstatusInstalacion(id: number): Promise<void> {
+    const estatus = await this.estatusInstalacionRepo.findOne({
+      where: { id },
+    });
+    if (!estatus) {
+      throw new BadRequestException('EstatusInstalacion no existe');
     }
   }
 
@@ -125,18 +137,17 @@ export class InstalacionesService {
           idCliente,
         );
       }
-      await this.validarVehiculoPerteneceCliente(dto.idVehiculo, idCliente);
-      await this.validarVehiculoSinInstalacionActiva(
-        dto.idVehiculo,
-        idCliente,
-      );
+      if (dto.idSim != null) {
+        await this.validarSimPerteneceCliente(dto.idSim, idCliente);
+        await this.validarSimSinInstalacionActiva(dto.idSim, idCliente);
+      }
+      await this.validarEstatusInstalacion(dto.estatusInstalacion ?? 1);
 
       const entity = this.repository.create({
-        idDispositivo: dto.idDispositivo ?? null,
-        idVehiculo: dto.idVehiculo,
-        idActivos: dto.idActivos ?? null,
-        idPortatiles: dto.idPortatiles ?? null,
         idCliente,
+        idProducto: dto.idProducto,
+        idDispositivo: dto.idDispositivo ?? null,
+        idSim: dto.idSim ?? null,
         estatusInstalacion: dto.estatusInstalacion ?? 1,
         estatus: dto.estatus ?? 1,
       });
@@ -148,7 +159,7 @@ export class InstalacionesService {
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
-        `Se creó la instalación ID: ${saved.id} (${dispositivoLabel} - Vehículo ${dto.idVehiculo})`,
+        `Se creó la instalación ID: ${saved.id} (${dispositivoLabel})`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -167,7 +178,7 @@ export class InstalacionesService {
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
-        `Error al crear instalación (Vehículo ${dto.idVehiculo})`,
+        `Error al crear instalación (Producto ${dto.idProducto})`,
         'CREATE',
         { dto, idCliente },
         idUser,
@@ -317,23 +328,27 @@ export class InstalacionesService {
         }
       }
 
-      if (dto.idVehiculo !== undefined && dto.idVehiculo !== entity.idVehiculo) {
-        await this.validarVehiculoPerteneceCliente(dto.idVehiculo, idCliente);
-        await this.validarVehiculoSinInstalacionActiva(
-          dto.idVehiculo,
-          idCliente,
-          id,
-        );
+      if (dto.idSim !== undefined && dto.idSim !== entity.idSim) {
+        if (dto.idSim != null) {
+          await this.validarSimPerteneceCliente(dto.idSim, idCliente);
+          await this.validarSimSinInstalacionActiva(
+            dto.idSim,
+            idCliente,
+            id,
+          );
+        }
+      }
+
+      if (dto.estatusInstalacion !== undefined) {
+        await this.validarEstatusInstalacion(dto.estatusInstalacion);
       }
 
       const updateData: Partial<Instalaciones> = {};
+      if (dto.idProducto !== undefined)
+        updateData.idProducto = dto.idProducto;
       if (dto.idDispositivo !== undefined)
         updateData.idDispositivo = dto.idDispositivo;
-      if (dto.idVehiculo !== undefined)
-        updateData.idVehiculo = dto.idVehiculo;
-      if (dto.idActivos !== undefined) updateData.idActivos = dto.idActivos;
-      if (dto.idPortatiles !== undefined)
-        updateData.idPortatiles = dto.idPortatiles;
+      if (dto.idSim !== undefined) updateData.idSim = dto.idSim;
       if (dto.estatusInstalacion !== undefined)
         updateData.estatusInstalacion = dto.estatusInstalacion;
       if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
