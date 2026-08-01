@@ -12,8 +12,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { Roles } from 'src/entities/Roles';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
-import { ApiCrudResponse, ApiResponseCommon, EstatusEnumBitcora } from 'src/common/ApiResponse';
-import { UpdateRolEstatusDto } from './dto/update-rol.dto';
+import {
+  ApiCrudResponse,
+  ApiResponseCommon,
+  EstatusEnumBitcora,
+} from 'src/common/ApiResponse';
 import { Response } from 'express';
 
 @Injectable()
@@ -24,10 +27,7 @@ export class RolesService {
     private readonly bitacoraLogger: BitacoraLoggerService,
   ) {}
 
-  async create(
-    idUser: number,
-    createRoleDto: CreateRolDto,
-  ): Promise<ApiCrudResponse> {
+  async create(idUser: number, createRoleDto: CreateRolDto): Promise<ApiCrudResponse> {
     try {
       const rol = await this.rolesRepository.find({
         where: { nombre: createRoleDto.nombre },
@@ -83,11 +83,7 @@ export class RolesService {
     }
   }
 
-  async findAll(
-    rol: number,
-    page: number,
-    limit: number,
-  ): Promise<ApiResponseCommon> {
+  async findAll(rol: number, page: number, limit: number): Promise<ApiResponseCommon> {
     let data;
     let total;
     switch (rol) {
@@ -103,7 +99,7 @@ export class RolesService {
           skip: (page - 1) * limit,
           take: limit,
           where: {
-            id: Not(1), 
+            id: Not(1),
           },
         });
         break;
@@ -152,7 +148,7 @@ export class RolesService {
       });
       if (!permiso) throw new NotFoundException('Rol no encontrado');
 
-      return {data:permiso};
+      return { data: permiso };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -191,13 +187,11 @@ export class RolesService {
         message: 'Rol actualizado correctamente',
         data: {
           id: id,
-          nombre:
-            `${updateRoleDto?.nombre} ${updateRoleDto?.descripcion} ` || '',
+          nombre: `${updateRoleDto?.nombre} ${updateRoleDto?.descripcion} ` || '',
         },
       };
       return result;
     } catch (error) {
-
       // --- Registro en la bitácora --- ERROR
       const querylogger = { updateRoleDto };
       await this.bitacoraLogger.logToBitacora(
@@ -221,26 +215,21 @@ export class RolesService {
     }
   }
 
-  async updateEstatus(
-    id: number,
-    idUser: number,
-    updateRolEstatusDto: UpdateRolEstatusDto,
-  ): Promise<ApiCrudResponse> {
+  async updateEstatus(id: number, idUser: number): Promise<ApiCrudResponse> {
     try {
       const rol = await this.rolesRepository.findOne({
         where: { id: id },
       });
       if (!rol) throw new NotFoundException('Rol no encontrado');
-      //Actualiza
-      const rolResult = await this.rolesRepository.update(id, {
-        estatus: updateRolEstatusDto.estatus,
-      });
+      const estatusAnterior = Number(rol.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.rolesRepository.update(id, { estatus });
 
       // --- Registro en la bitácora --- SUCCESS
-      const querylogger = { updateRolEstatusDto };
+      const querylogger = { id, estatusAnterior, estatus };
       await this.bitacoraLogger.logToBitacora(
         'Roles',
-        `Se actualizo a estatus ${updateRolEstatusDto.estatus} del rol: ${rol.nombre}`,
+        `Se actualizó a estatus ${estatus} el rol: ${rol.nombre}`,
         'UPDATE',
         querylogger,
         idUser,
@@ -252,7 +241,7 @@ export class RolesService {
       const result: ApiCrudResponse = {
         status: 'success',
         message: 'Estatus rol actualizado correctamente',
-        estatus: { estatus: updateRolEstatusDto.estatus },
+        estatus: { estatus },
         data: {
           id: id,
           nombre: `${rol.nombre} ${rol.descripcion} ` || '',
@@ -261,10 +250,10 @@ export class RolesService {
       return result;
     } catch (error) {
       // --- Registro en la bitácora --- ERROR
-      const querylogger = { updateRolEstatusDto };
+      const querylogger = { id };
       await this.bitacoraLogger.logToBitacora(
         'Roles',
-        `Se actualizo a estatus ${updateRolEstatusDto.estatus} del rol con ID: ${id}`,
+        `No se pudo cambiar el estatus del rol con ID: ${id}`,
         'UPDATE',
         querylogger,
         idUser,
@@ -282,57 +271,4 @@ export class RolesService {
     }
   }
 
-  async remove(id: number, idUser: number) {
-    try {
-      const rol = await this.rolesRepository.findOne({ where: { id: id } });
-      if (!rol) throw new NotFoundException('Rol no encontrado');
-
-      //Desahabilitamos el rol
-      await this.rolesRepository.update(id, { estatus: 0 });
-
-      // --- Registro en la bitácora --- SUCCESS
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Roles',
-        `Se desactivo el rol: ${rol.nombre}`,
-        'UPDATE',
-        querylogger,
-        idUser,
-        3,
-        EstatusEnumBitcora.SUCCESS,
-      );
-
-      //Api response
-      const result: ApiCrudResponse = {
-        status: 'success',
-        message: 'Rol eliminado correctamente',
-        data: {
-          id: id,
-          nombre: `${rol.nombre} ${rol.descripcion} ` || '',
-        },
-      };
-      return result;
-    } catch (error) {
-      // --- Registro en la bitácora --- ERROR
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Roles',
-        `Se desactivo el rol con ID: ${id}`,
-        'UPDATE',
-        querylogger,
-        idUser,
-        3,
-        EstatusEnumBitcora.ERROR,
-        error.message,
-      );
-
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new InternalServerErrorException({
-        message: 'Error al eliminar rol',
-        error,
-      });
-    }
-  }
 }

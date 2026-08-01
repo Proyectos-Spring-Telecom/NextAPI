@@ -121,7 +121,7 @@ export class S3Service {
     }
   }
 
-  async deleteFile(
+  private async removePreviousFile(
     fileUrl: string | null | undefined,
     idUser: number,
     idModule: number,
@@ -195,7 +195,7 @@ export class S3Service {
     const result = await this.uploadFile(newFile, folder, idUser, idModule);
 
     if (oldUrl) {
-      this.deleteFile(oldUrl, idUser, idModule).catch((err: Error) => {
+      this.removePreviousFile(oldUrl, idUser, idModule).catch((err: Error) => {
         const errorMessage = err?.message ?? String(err);
         void this.bitacoraLogger.logToBitacora(
           folder,

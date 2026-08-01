@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -27,7 +26,6 @@ import { CatPlanTelefoniaResponseDto } from './dto/cat-plan-telefonia-response.d
 import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.dto';
 import { FilterCatPlanesTelefoniaDto } from './dto/filter-cat-planes-telefonia.dto';
 import { UpdateCatPlanesTelefoniaDto } from './dto/update-cat-planes-telefonia.dto';
-import { UpdateCatPlanesTelefoniaEstatusDto } from './dto/update-cat-planes-telefonia-estatus.dto';
 
 @ApiTags('Catálogo Planes Telefonía')
 @ApiBearerAuth('bearer-token')
@@ -129,20 +127,15 @@ export class CatPlanesTelefoniaController {
     return this.service.update(id, dto, req.user.userId);
   }
 
-  @Delete(':id')
-  @ApiOperation({ summary: 'Desactivar un plan (baja lógica)' })
-  @ApiParam({ name: 'id', type: Number })
-  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.service.remove(id, req.user.userId);
-  }
-
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (ruta compatible)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCatPlanesTelefoniaEstatusDto,
     @Request() req,
   ) {
-    return this.service.updateEstatus(id, dto, req.user.userId);
+    return this.service.updateEstatus(id, req.user.userId);
   }
 }

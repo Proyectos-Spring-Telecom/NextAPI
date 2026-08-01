@@ -16,7 +16,6 @@ import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
-import { UpdateVehiculosEstatusDto } from './dto/update-vehiculos-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -25,8 +24,24 @@ import {
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
+import { S3Service } from 'src/s3/s3.service';
+import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import type {
+  VehiculoFileField,
+  VehiculosUploadFiles,
+} from './vehiculos-upload.interceptor';
 
-const ID_MODULO_VEHICULOS = 16;
+const VEHICULO_FILE_FIELDS: VehiculoFileField[] = [
+  'foto',
+  'fotoFrente',
+  'fotoTrasera',
+  'fotoDerecha',
+  'fotoIzquierda',
+  'fotoExtra',
+  'tarjetaCirculacion',
+  'polizaSeguro',
+  'permisoCarga',
+];
 
 /** Fila devuelta por la query base de vehículo por placa (activos). */
 export interface VehiculoPorPlacaData {
@@ -66,7 +81,54 @@ export class VehiculosService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
-  ) { }
+    private readonly s3Service: S3Service,
+  ) {}
+
+  private async uploadFiles(
+    files: VehiculosUploadFiles,
+    idUser: number,
+  ): Promise<Partial<Record<VehiculoFileField, string>>> {
+    const urls: Partial<Record<VehiculoFileField, string>> = {};
+
+    for (const field of VEHICULO_FILE_FIELDS) {
+      const file = files[field]?.[0];
+      if (!file) continue;
+
+      const { url } = await this.s3Service.uploadFile(
+        file,
+        'vehiculos',
+        idUser,
+        EnumModulos.VEHICULOS,
+      );
+      urls[field] = url;
+    }
+
+    return urls;
+  }
+
+  private async replaceFiles(
+    entity: Vehiculos,
+    files: VehiculosUploadFiles,
+    idUser: number,
+  ): Promise<Partial<Record<VehiculoFileField, string>>> {
+    const urls: Partial<Record<VehiculoFileField, string>> = {};
+
+    for (const field of VEHICULO_FILE_FIELDS) {
+      const file = files[field]?.[0];
+      if (!file) continue;
+
+      const { url } = await this.s3Service.updateFile(
+        entity[field],
+        file,
+        'vehiculos',
+        idUser,
+        EnumModulos.VEHICULOS,
+      );
+      urls[field] = url;
+    }
+
+    return urls;
+  }
 
   private async validarFks(dto: {
     idMarcaVehiculo?: number | null;
@@ -133,6 +195,7 @@ export class VehiculosService {
     dto: CreateVehiculosDto,
     idCliente: number,
     idUser: number,
+    files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     try {
       const producto = await this.productosRepo.findOne({
@@ -156,6 +219,7 @@ export class VehiculosService {
         idModeloVehiculo: dto.idModeloVehiculo,
         idCombustible: dto.idCombustible,
       });
+      const fileUrls = await this.uploadFiles(files, idUser);
 
       const entity = this.repository.create({
         idProducto: dto.idProducto,
@@ -167,16 +231,15 @@ export class VehiculosService {
         anio: dto.anio ?? null,
         color: dto.color ?? null,
         numeroSerie: dto.numeroSerie ?? null,
-        foto: dto.foto ?? null,
-        fotoFrente: dto.fotoFrente ?? null,
-        fotoTrasera: dto.fotoTrasera ?? null,
-        fotoDerecha: dto.fotoDerecha ?? null,
-        fotoIzquierda: dto.fotoIzquierda ?? null,
-        fotoExtra: dto.fotoExtra ?? null,
-        tarjetaCirculacion: dto.tarjetaCirculacion ?? null,
-        polizaSeguro: dto.polizaSeguro ?? null,
-        permisoConcesion: dto.permisoConcesion ?? null,
-        inspeccionMecanica: dto.inspeccionMecanica ?? null,
+        foto: fileUrls.foto ?? null,
+        fotoFrente: fileUrls.fotoFrente ?? null,
+        fotoTrasera: fileUrls.fotoTrasera ?? null,
+        fotoDerecha: fileUrls.fotoDerecha ?? null,
+        fotoIzquierda: fileUrls.fotoIzquierda ?? null,
+        fotoExtra: fileUrls.fotoExtra ?? null,
+        tarjetaCirculacion: fileUrls.tarjetaCirculacion ?? null,
+        polizaSeguro: fileUrls.polizaSeguro ?? null,
+        permisoCarga: fileUrls.permisoCarga ?? null,
         idCombustible: dto.idCombustible ?? null,
         km: dto.km ?? null,
         capacidadLitros: dto.capacidadLitros ?? null,
@@ -190,7 +253,7 @@ export class VehiculosService {
         'CREATE',
         { dto, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -219,7 +282,7 @@ export class VehiculosService {
         'CREATE',
         { dto, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -235,7 +298,7 @@ export class VehiculosService {
         return { data: [] };
       }
       const where: FindOptionsWhere<Vehiculos> = {
-        idProducto2: { estatus: 1 },
+        idProducto2: { estatus: EstatusEnum.ACTIVO },
         ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
       };
       const data = await this.repository.find({
@@ -433,7 +496,7 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
       const filtroPorVariosClientes = tenant.sql.includes('IN');
       const limit = sinAcotarCliente || filtroPorVariosClientes ? 2 : 1;
 
-      const whereClause = `WHERE p.Estatus = 1 AND v.Placa = ?${tenant.sql}`;
+      const whereClause = `WHERE p.Estatus = ${EstatusEnum.ACTIVO} AND v.Placa = ?${tenant.sql}`;
       const parametros: unknown[] = [placaNorm, ...tenant.params];
 
       const query = `${VehiculosService.SQL_VEHICULO_POR_PLACA_BASE}
@@ -469,6 +532,7 @@ LIMIT ${limit}
     dto: UpdateVehiculosDto,
     idCliente: number,
     idUser: number,
+    files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
@@ -514,23 +578,14 @@ LIMIT ${limit}
       if (dto.anio !== undefined) updateData.anio = dto.anio;
       if (dto.color !== undefined) updateData.color = dto.color;
       if (dto.numeroSerie !== undefined) updateData.numeroSerie = dto.numeroSerie;
-      if (dto.foto !== undefined) updateData.foto = dto.foto;
-      if (dto.fotoFrente !== undefined) updateData.fotoFrente = dto.fotoFrente;
-      if (dto.fotoTrasera !== undefined) updateData.fotoTrasera = dto.fotoTrasera;
-      if (dto.fotoDerecha !== undefined) updateData.fotoDerecha = dto.fotoDerecha;
-      if (dto.fotoIzquierda !== undefined) updateData.fotoIzquierda = dto.fotoIzquierda;
-      if (dto.fotoExtra !== undefined) updateData.fotoExtra = dto.fotoExtra;
-      if (dto.tarjetaCirculacion !== undefined)
-        updateData.tarjetaCirculacion = dto.tarjetaCirculacion;
-      if (dto.polizaSeguro !== undefined) updateData.polizaSeguro = dto.polizaSeguro;
-      if (dto.permisoConcesion !== undefined)
-        updateData.permisoConcesion = dto.permisoConcesion;
-      if (dto.inspeccionMecanica !== undefined)
-        updateData.inspeccionMecanica = dto.inspeccionMecanica;
       if (dto.idCombustible !== undefined) updateData.idCombustible = dto.idCombustible;
       if (dto.km !== undefined) updateData.km = dto.km;
       if (dto.capacidadLitros !== undefined)
         updateData.capacidadLitros = dto.capacidadLitros;
+      Object.assign(
+        updateData,
+        await this.replaceFiles(entity, files, idUser),
+      );
       await this.repository.update(id, updateData);
 
       await this.bitacoraLogger.logToBitacora(
@@ -539,7 +594,7 @@ LIMIT ${limit}
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -576,7 +631,7 @@ LIMIT ${limit}
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -587,7 +642,6 @@ LIMIT ${limit}
 
   async updateEstatus(
     id: number,
-    dto: UpdateVehiculosEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -598,23 +652,37 @@ LIMIT ${limit}
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
+      const producto = await this.productosRepo.findOne({
+        where: { id, idCliente },
+      });
+      if (!producto) {
+        throw new NotFoundException('Producto del vehículo no encontrado');
+      }
 
+      const estatusAnterior =
+        Number(producto.estatus) === EstatusEnum.ACTIVO
+          ? EstatusEnum.ACTIVO
+          : EstatusEnum.INACTIVO;
+      const estatus =
+        estatusAnterior === EstatusEnum.ACTIVO
+          ? EstatusEnum.INACTIVO
+          : EstatusEnum.ACTIVO;
       await this.productosRepo.update(
         { id, idCliente },
-        { estatus: dto.estatus },
+        { estatus },
       );
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',
-        `Se actualizó estatus de vehículo ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de vehículo ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
-      if (dto.estatus === 0) {
+      if (estatus === EstatusEnum.INACTIVO) {
         this.webhookEmitter.emit(
           WebhookEvent.VEHICULO_DELETED,
           idCliente,
@@ -629,7 +697,7 @@ LIMIT ${limit}
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: entity.placa },
       };
     } catch (error) {
@@ -637,9 +705,9 @@ LIMIT ${limit}
         'Vehiculos',
         `Error al actualizar estatus de vehículo ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
-        ID_MODULO_VEHICULOS,
+        EnumModulos.VEHICULOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );

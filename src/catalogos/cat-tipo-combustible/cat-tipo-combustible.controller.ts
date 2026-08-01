@@ -21,7 +21,6 @@ import {
 import { CatTipoCombustibleService } from './cat-tipo-combustible.service';
 import { CreateCatTipoCombustibleDto } from './dto/create-cat-tipo-combustible.dto';
 import { UpdateCatTipoCombustibleDto } from './dto/update-cat-tipo-combustible.dto';
-import { UpdateCatTipoCombustibleEstatusDto } from './dto/update-cat-tipo-combustible-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -116,17 +115,19 @@ export class CatTipoCombustibleController {
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID del tipo de combustible' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Tipo de combustible no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCatTipoCombustibleEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return this.catTipoCombustibleService.updateEstatus(id, dto, idUser);
+    return this.catTipoCombustibleService.updateEstatus(id, idUser);
   }
 }

@@ -21,7 +21,6 @@ import {
 import { CatEstatusOperadorService } from './cat-estatus-operador.service';
 import { CreateCatEstatusOperadorDto } from './dto/create-cat-estatus-operador.dto';
 import { UpdateCatEstatusOperadorDto } from './dto/update-cat-estatus-operador.dto';
-import { UpdateCatEstatusOperadorEstatusDto } from './dto/update-cat-estatus-operador-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -116,17 +115,19 @@ export class CatEstatusOperadorController {
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID del estatus' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Estatus no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCatEstatusOperadorEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return this.catEstatusOperadorService.updateEstatus(id, dto, idUser);
+    return this.catEstatusOperadorService.updateEstatus(id, idUser);
   }
 }

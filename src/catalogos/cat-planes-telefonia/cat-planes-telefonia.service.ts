@@ -353,7 +353,7 @@ export class CatPlanesTelefoniaService {
     }
   }
 
-  async remove(id: number, idUser: number) {
+  async updateEstatus(id: number, idUser: number) {
     try {
       const entity = await this.repository.findOne({
         where: { id },
@@ -362,24 +362,27 @@ export class CatPlanesTelefoniaService {
       if (!entity) {
         throw new NotFoundException('Plan de telefonía no encontrado.');
       }
-      await this.repository.update(id, { estatus: 0 });
-      entity.estatus = 0;
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
+      entity.estatus = estatus;
       await this.log(
-        'DELETE',
-        `Se desactivó el plan de telefonía ID: ${id}`,
-        { id },
+        'UPDATE',
+        `Se cambió el estatus del plan de telefonía ID: ${id} a ${estatus}`,
+        { id, estatusAnterior, estatus },
         idUser,
         EstatusEnumBitcora.SUCCESS,
       );
       return {
         status: 'success',
-        message: 'Plan de telefonía desactivado correctamente.',
+        message: 'Estatus actualizado correctamente.',
+        estatus: { estatus },
         data: this.mapPlan(entity),
       };
     } catch (error) {
       await this.log(
-        'DELETE',
-        `Error al desactivar el plan de telefonía ID: ${id}`,
+        'UPDATE',
+        `Error al cambiar el estatus del plan de telefonía ID: ${id}`,
         { id },
         idUser,
         EstatusEnumBitcora.ERROR,
@@ -387,13 +390,8 @@ export class CatPlanesTelefoniaService {
       );
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException(
-        'No fue posible desactivar el plan de telefonía.',
+        'No fue posible cambiar el estatus del plan de telefonía.',
       );
     }
-  }
-
-  async updateEstatus(id: number, dto: { estatus: number }, idUser: number) {
-    if (dto.estatus === 0) return this.remove(id, idUser);
-    return this.update(id, { Estatus: dto.estatus }, idUser);
   }
 }

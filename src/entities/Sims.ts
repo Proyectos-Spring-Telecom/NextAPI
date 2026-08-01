@@ -10,10 +10,11 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatTelefonia } from './CatTelefonia';
 import { CatPlanesTelefonia } from './CatPlanesTelefonia';
+import { EstatusEnum } from 'src/common/estatus.enum';
 
 @applySchema
 @Index('UQ_Sims_Cliente_Id', ['idCliente', 'id'], { unique: true })
-@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente', 'estatusSim'])
+@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente'])
 @Index('IX_Sims_IdTelefonia', ['idTelefonia'])
 @Index('IX_Sims_IdPlanTelefonia', ['idPlanTelefonia'])
 @Index('IX_Sims_IMEI', ['imei'])
@@ -56,13 +57,6 @@ export class Sims {
   })
   idCliente: number;
 
-  @Column('tinyint', {
-    name: 'EstatusSim',
-    default: () => "'1'",
-    comment: 'Estatus actual del SIM',
-  })
-  estatusSim: number;
-
   @Column('date', {
     name: 'FechaActivacion',
     nullable: true,
@@ -93,7 +87,7 @@ export class Sims {
   })
   fechaActualizacion: Date;
 
-  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
+  @Column('tinyint', { name: 'Estatus', default: EstatusEnum.ACTIVO })
   estatus: number;
 
   @ManyToOne(() => Clientes, { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' })

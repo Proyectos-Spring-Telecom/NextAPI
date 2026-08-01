@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   Put,
   Request,
   Query,
@@ -16,8 +15,7 @@ import {
 import { ModulosService } from './modulos.service';
 import { CreateModuloDto } from './dto/create-modulo.dto';
 import { UpdateModuloDto } from './dto/update-modulo.dto';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { UpdateModulosEstatusDto } from './dto/update-modulo-estatus.dto';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -64,29 +62,24 @@ export class ModulosController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateModuloDto: UpdateModuloDto,
     @Request() req,
-  ): Promise <ApiCrudResponse> {
+  ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.modulosService.update(id,updateModuloDto, idUser);
+    return await this.modulosService.update(id, updateModuloDto, idUser);
   }
 
-  @Patch('estatus/:id')
+  @Patch(':id/estatus')
+  @ApiOperation({
+    summary: 'Cambiar estatus del módulo',
+    description:
+      'Alterna el estatus del módulo y sus permisos asociados: 1 ↔ 0. No requiere body.',
+  })
+  @ApiParam({ name: 'id', type: Number })
   async updateModuloEstatus(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Request() req,
-    @Body()updateModulosEstatusDto: UpdateModulosEstatusDto,
-  ):Promise <ApiCrudResponse> {
+  ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.modulosService.updateModulosStatus(
-      +id,
-      idUser,
-      updateModulosEstatusDto,
-    );
+    return await this.modulosService.updateModulosStatus(id, idUser);
   }
 
-  @Delete(':id')
-  @Roles(1) // Solo SuperAdministrador puede eliminar módulos
-  async remove(@Param('id',ParseIntPipe)id:number,@Request()req):Promise <ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return await this.modulosService.deleteModulo(id,idUser);
-  }
 }

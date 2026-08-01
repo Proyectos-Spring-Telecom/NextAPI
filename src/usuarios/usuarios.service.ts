@@ -10,7 +10,6 @@ import { DataSource, In, Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { UpdateUsuarioEstatusDto } from './dto/update-usuario-estatus.dto';
 import * as bcrypt from 'bcrypt';
 import {
   ApiCrudResponse,
@@ -987,11 +986,7 @@ ORDER BY u.Id DESC`,
   // ========================================
   // 🔹 ACTUALIZAR ESTATUS DEL USUARIO
   // ========================================
-  async updateUsuarioEstatus(
-    id: number,
-    updateUsuarioEstatusDto: UpdateUsuarioEstatusDto,
-    idUser: number,
-  ): Promise<ApiCrudResponse> {
+  async updateUsuarioEstatus(id: number, idUser: number): Promise<ApiCrudResponse> {
     try {
       const usuario = await this.usuarioRepository.findOne({
         where: { id: id },
@@ -999,9 +994,13 @@ ORDER BY u.Id DESC`,
       if (!usuario) {
         throw new NotFoundException(`No se encontró un usuario con ID: ${id}.`);
       }
-      const { estatus } = updateUsuarioEstatusDto;
+      const estatusAnterior = Number(usuario.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
 
-      await this.usuarioRepository.update(id, { estatus: estatus });
+      await this.usuarioRepository.update(id, { estatus });
+      if (estatus === 0) {
+        await this.authService.revokeAllRefreshSessionsForUser(id);
+      }
       const usuarioResult = await this.usuarioRepository.findOne({
         where: { id: id },
       });
@@ -1009,7 +1008,7 @@ ORDER BY u.Id DESC`,
         throw new NotFoundException(`No se encontró un usuario con ID: ${id}.`);
       }
       //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { updateUsuarioEstatusDto };
+      const querylogger = { id, estatusAnterior, estatus };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
         `Se cambió el estatus del usuario ${usuarioResult.nombre} con ID: ${id} a estatus: ${estatus}.`,
@@ -1035,10 +1034,10 @@ ORDER BY u.Id DESC`,
       return result;
     } catch (error) {
       //-----Registro en la bitacora----- ERROR
-      const querylogger = { updateUsuarioEstatusDto };
+      const querylogger = { id };
       await this.bitacoraLogger.logToBitacora(
         'Usuarios',
-        `Se cambió el estatus del usuario con ID: ${id} a estatus: ${updateUsuarioEstatusDto.estatus}.`,
+        `No se pudo cambiar el estatus del usuario con ID: ${id}.`,
         'UPDATE',
         querylogger,
         idUser,
@@ -1057,62 +1056,4 @@ ORDER BY u.Id DESC`,
     }
   }
 
-  // ========================================
-  // 🔹 ELIMINAR USUARIO
-  // ========================================
-  async deleteUsuario(id: number, idUser: string): Promise<ApiCrudResponse> {
-    try {
-      const usuario = await this.usuarioRepository.findOne({
-        where: { id: id },
-      });
-      if (!usuario) {
-        throw new NotFoundException(`No se encontró un usuario con ID: ${id}.`);
-      }
-      //Se hacer eliminado logico
-      //Cambiamos el estatus del usuario a 0
-      await this.usuarioRepository.update(id, { estatus: 0 });
-
-      //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Usuarios',
-        `Se eliminó el usuario con ID: ${id}.`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        EnumModulos.USUARIOS,
-        EstatusEnumBitcora.SUCCESS,
-      );
-      //Api response
-      const result: ApiCrudResponse = {
-        status: 'success',
-        message: 'El usuario ha sido eliminado correctamente.',
-        data: {
-          id: id,
-          nombre: `${usuario.nombre} ${usuario.apellidoPaterno} ` || '',
-        },
-      };
-      return result;
-    } catch (error) {
-      //-----Registro en la bitacora----- ERROR
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Usuarios',
-        `Se eliminó el usuario con ID: ${id}.`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        EnumModulos.USUARIOS,
-        EstatusEnumBitcora.ERROR,
-        (error as Error)?.message,
-      );
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new InternalServerErrorException({
-        message: 'Hubo un problema al intentar eliminar el usuario.',
-        error: (error as Error)?.message,
-      });
-    }
-  }
 }

@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
@@ -8,146 +9,96 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  transformOptionalNumber,
+  transformOptionalString,
+} from 'src/common/transforms/form-data.transforms';
 
 export class CreateVehiculosDto {
   @ApiProperty({ description: 'ID del producto asociado' })
+  @Transform(transformOptionalNumber)
   @IsInt()
   @IsNotEmpty()
-  idProducto: number;
+  idProducto!: number;
 
   @ApiProperty({
     description: 'Placas oficiales (S/P si no tiene)',
     example: 'ABC1234',
     maxLength: 10,
   })
+  @Transform(transformOptionalString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(10)
-  placa: string;
+  placa!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Número interno de flota',
     example: 'VH-001',
     maxLength: 50,
-    required: false,
   })
+  @Transform(transformOptionalString)
   @IsOptional()
   @IsString()
   @MaxLength(50)
   numeroEconomico?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID marca (CatMarcas)',
-    required: false,
   })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsInt()
   idMarcaVehiculo?: number | null;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID modelo (CatModelos)',
-    required: false,
   })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsInt()
   idModeloVehiculo?: number | null;
 
-  @ApiProperty({ description: 'Año modelo', example: 2024, required: false })
+  @ApiPropertyOptional({ description: 'Año modelo', example: 2024 })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsInt()
   @Min(1900)
   anio?: number;
 
-  @ApiProperty({ description: 'Color', maxLength: 30, required: false })
+  @ApiPropertyOptional({ description: 'Color', maxLength: 30 })
+  @Transform(transformOptionalString)
   @IsOptional()
   @IsString()
   @MaxLength(30)
   color?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'VIN / Número de serie',
     maxLength: 20,
-    required: false,
   })
+  @Transform(transformOptionalString)
   @IsOptional()
   @IsString()
   @MaxLength(20)
   numeroSerie?: string;
 
-  @ApiProperty({ description: 'URL imagen principal S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  foto?: string;
-
-  @ApiProperty({ description: 'URL FotoFrente S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoFrente?: string;
-
-  @ApiProperty({ description: 'URL FotoTrasera S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoTrasera?: string;
-
-  @ApiProperty({ description: 'URL FotoDerecha S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoDerecha?: string;
-
-  @ApiProperty({ description: 'URL FotoIzquierda S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoIzquierda?: string;
-
-  @ApiProperty({ description: 'URL FotoExtra S3', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoExtra?: string;
-
-  @ApiProperty({ description: 'URL TarjetaCirculacion', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  tarjetaCirculacion?: string;
-
-  @ApiProperty({ description: 'URL PolizaSeguro', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  polizaSeguro?: string;
-
-  @ApiProperty({ description: 'URL PermisoConcesion', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  permisoConcesion?: string;
-
-  @ApiProperty({ description: 'URL InspeccionMecanica', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  inspeccionMecanica?: string;
-
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID combustible (CatTipoCombustible)',
-    required: false,
   })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsInt()
   idCombustible?: number;
 
-  @ApiProperty({ description: 'KM por litro', required: false })
+  @ApiPropertyOptional({ description: 'Kilometraje del vehículo' })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsNumber()
   km?: number;
 
-  @ApiProperty({ description: 'Capacidad tanque (litros)', required: false })
+  @ApiPropertyOptional({ description: 'Capacidad del tanque en litros' })
+  @Transform(transformOptionalNumber)
   @IsOptional()
   @IsNumber()
   capacidadLitros?: number;

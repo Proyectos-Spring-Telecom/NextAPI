@@ -2,7 +2,6 @@ import {
   Controller,
   Post,
   Patch,
-  Delete,
   UploadedFile,
   UseInterceptors,
   Body,
@@ -18,7 +17,6 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UploadDto } from './dto/update-s3.dto';
 import { UpdateFileDto } from './dto/update-file.dto';
-import { DeleteFileDto } from './dto/delete-file.dto';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -260,59 +258,4 @@ export class S3Controller {
     );
   }
 
-  @Delete('delete')
-  @ApiOperation({
-    summary: 'Eliminar un archivo del bucket por su URL',
-    description:
-      'Elimina el objeto en S3 usando la URL completa almacenada en BD. ' +
-      'El servicio extrae la key del path (formato: `https://{bucket}.s3.{region}.amazonaws.com/{key}`).\n\n' +
-      '**Body JSON:** `fileUrl` + `idModule` (para bitácora).\n\n' +
-      '**Autenticación obligatoria:** Bearer JWT; el usuario en bitácora es el del token.\n\n' +
-      '**Nota:** algunos clientes no envían body en DELETE; usa Postman o fetch con body.\n\n' +
-      '**Roles:** ',
-  })
-  @ApiBody({
-    type: DeleteFileDto,
-    description:
-      'JSON con la URL del objeto y el id de módulo para registrar la acción en bitácora.',
-  })
-  @ApiOkResponse({
-    description:
-      'Si `deleted` es false, no se ejecutó DeleteObject (URL vacía o key no extraíble).',
-    schema: {
-      type: 'object',
-      properties: {
-        deleted: {
-          type: 'boolean',
-          example: true,
-          description: 'true si se envió DeleteObject a S3 con éxito.',
-        },
-        key: {
-          type: 'string',
-          example:
-            'vehiculos/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png',
-          description: 'Key del objeto eliminado (solo si deleted=true).',
-        },
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description: 'Validación fallida (campos requeridos o formato).',
-  })
-  @ApiUnauthorizedResponse({ description: 'Token ausente o inválido.' })
-  @ApiForbiddenResponse({ description: 'Rol no autorizado.' })
-  @ApiInternalServerErrorResponse({
-    description: 'Error al eliminar en S3 o error interno.',
-  })
-  async deleteFile(
-    @Body() body: DeleteFileDto,
-    @Request() req: { user: { userId: number } },
-  ) {
-    const idUser = req.user.userId;
-    return this.s3Service.deleteFile(
-      body.fileUrl,
-      idUser,
-      Number(body.idModule),
-    );
-  }
 }

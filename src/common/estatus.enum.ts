@@ -22,6 +22,7 @@ export enum EnumModulos {
   DISPOSITIVOS = 11,
   BLUEVOXS = 12,
   INSTALACIONES = 13,
+  SIMS = 14,
   TURNOS = 14,
   VIAJES = 15,
   REGIONES = 16,
@@ -61,14 +62,6 @@ export enum EnumFiltros {
 export enum EnumTipoVerificacion {
   VERIFICACION_MECANICA = 1,
   VERIFICACION_AMBIENTAL = 2,
-}
-
-/** Valores de EstatusSim en tabla Sims (antes CatEstatusSim). */
-export enum EnumEstatusSim {
-  DISPONIBLE = 1, // SIM adquirido pero sin asignar a ningún dispositivo
-  ASIGNADO = 2, // SIM operativo con servicio activo
-  BAJA = 3, // SIM dado de baja 
-  BAJA_CAMBIO = 4, // SIM dado de baja por cambio de sim
 }
 
 /** Valores de EstatusDispositivo en tabla Dispositivos (antes CatEstatusDispositivo). */

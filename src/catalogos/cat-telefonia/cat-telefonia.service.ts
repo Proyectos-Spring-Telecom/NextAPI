@@ -314,44 +314,46 @@ export class CatTelefoniaService {
     }
   }
 
-  async remove(id: number, idUser: number) {
+  async updateEstatus(id: number, idUser: number) {
     try {
       const entity = await this.repository.findOne({ where: { id } });
       if (!entity) {
         throw new NotFoundException('Telefonía no encontrada.');
       }
-      await this.assertSinPlanesActivos(id);
-      await this.repository.update(id, { estatus: 0 });
-      entity.estatus = 0;
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      if (estatus === 0) {
+        await this.assertSinPlanesActivos(id);
+      }
+      await this.repository.update(id, { estatus });
+      entity.estatus = estatus;
       await this.log(
-        'DELETE',
-        `Se desactivó la telefonía ID: ${id}`,
-        { id },
+        'UPDATE',
+        `Se cambió el estatus de la telefonía ID: ${id} a ${estatus}`,
+        { id, estatusAnterior, estatus },
         idUser,
         EstatusEnumBitcora.SUCCESS,
       );
       return {
         status: 'success',
-        message: 'Telefonía desactivada correctamente.',
+        message: 'Estatus actualizado correctamente.',
+        estatus: { estatus },
         data: this.mapTelefonia(entity),
       };
     } catch (error) {
       await this.log(
-        'DELETE',
-        `Error al desactivar la telefonía ID: ${id}`,
+        'UPDATE',
+        `Error al cambiar el estatus de la telefonía ID: ${id}`,
         { id },
         idUser,
         EstatusEnumBitcora.ERROR,
         (error as Error).message,
       );
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('No fue posible desactivar la telefonía.');
+      throw new InternalServerErrorException(
+        'No fue posible cambiar el estatus de la telefonía.',
+      );
     }
-  }
-
-  async updateEstatus(id: number, dto: { estatus: number }, idUser: number) {
-    if (dto.estatus === 0) return this.remove(id, idUser);
-    return this.update(id, { Estatus: dto.estatus }, idUser);
   }
 
   async findPlanesByTelefonia(idTelefonia: number, filters: FilterCatPlanesTelefoniaDto) {

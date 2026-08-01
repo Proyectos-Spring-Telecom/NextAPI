@@ -8,6 +8,8 @@ import {
   Request,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,15 +17,24 @@ import {
   ApiOperation,
   ApiParam,
   ApiResponse,
+  ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { VehiculosService } from './vehiculos.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
-import { UpdateVehiculosEstatusDto } from './dto/update-vehiculos-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import {
+  vehiculosFileFieldsInterceptor,
+} from './vehiculos-upload.interceptor';
+import type { VehiculosUploadFiles } from './vehiculos-upload.interceptor';
+import {
+  vehiculosCreateMultipartApiBody,
+  vehiculosUpdateMultipartApiBody,
+} from './vehiculos-swagger-multipart';
 
 @ApiTags('Vehiculos')
 @ApiBearerAuth('bearer-token')
@@ -34,17 +45,21 @@ export class VehiculosController {
   constructor(private readonly vehiculosService: VehiculosService) {}
 
   @Post()
+  @UseInterceptors(vehiculosFileFieldsInterceptor())
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(vehiculosCreateMultipartApiBody)
   @ApiOperation({ summary: 'Crear vehículo' })
   @ApiResponse({ status: 201, description: 'Vehículo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateVehiculosDto,
+    @UploadedFiles() files: VehiculosUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.vehiculosService.create(dto, idCliente, idUser);
+    return this.vehiculosService.create(dto, idCliente, idUser, files);
   }
 
   @Get('list')
@@ -110,6 +125,9 @@ export class VehiculosController {
   }
 
   @Patch(':id')
+  @UseInterceptors(vehiculosFileFieldsInterceptor())
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(vehiculosUpdateMultipartApiBody)
   @ApiOperation({ summary: 'Actualizar vehículo' })
   @ApiParam({ name: 'id', description: 'ID del vehículo' })
   @ApiResponse({ status: 200, description: 'Vehículo actualizado' })
@@ -118,26 +136,29 @@ export class VehiculosController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateVehiculosDto,
+    @UploadedFiles() files: VehiculosUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.vehiculosService.update(id, dto, idCliente, idUser);
+    return this.vehiculosService.update(id, dto, idCliente, idUser, files);
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID del vehículo' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateVehiculosEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.vehiculosService.updateEstatus(id, dto, idCliente, idUser);
+    return this.vehiculosService.updateEstatus(id, idCliente, idUser);
   }
 }

@@ -10,6 +10,7 @@ import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.modul
 import { WebhookEmitterModule } from 'src/webhook-emitter/webhook-emitter.module';
 import { VehiculosController } from './vehiculos.controller';
 import { VehiculosService } from './vehiculos.service';
+import { S3Module } from 'src/s3/s3.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { VehiculosService } from './vehiculos.service';
     BitacoraModule,
     TenantFilterModule,
     WebhookEmitterModule,
+    S3Module,
   ],
   controllers: [VehiculosController],
   providers: [VehiculosService],
