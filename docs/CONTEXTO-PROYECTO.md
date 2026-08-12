@@ -9,9 +9,10 @@ Documento de referencia que integra la visión del sistema **Next** (Plataforma 
 **Next** es la plataforma central de monitoreo vehicular y gestión integral de flotas. Funciona como el sistema maestro (**Source of Truth**) de todo el ecosistema, siendo el dueño absoluto de las entidades fundamentales del negocio:
 
 - Clientes y usuarios
-- Vehículos y operadores
+- Productos (vehículos, activos, inmuebles, personas) y operadores
 - Licencias de conducir
 - Dispositivos GPS y tarjetas SIM
+- Paneles de alarma e inmuebles (SpringPanel)
 - Posiciones en tiempo real
 
 Ningún otro servicio del ecosistema (como ShiftControl o futuros módulos) puede crear, modificar o eliminar directamente estos datos. Todos consumen la información de Next exclusivamente a través de su API REST versionada y sus WebSockets de posiciones.
@@ -110,8 +111,8 @@ Next aspira a ser la plataforma de referencia para empresas de transporte en Mé
 | **Guards** | `JwtAuthGuard` + `RolesGuard` + `@Roles()` |
 | **GET findAll** | Query `soloActivos` opcional en listados |
 | **Rutas de estatus** | `PATCH /estatus/:id` (explícito) |
-| **DELETE** | Soft delete vía PATCH (cambiar Estatus a 0); no DELETE físico |
-| **Bitácora** | `BitacoraLoggerService` en create, update y delete |
+| **DELETE** | Soft delete vía `PATCH /estatus/:id` **sin body** (toggle); no DELETE HTTP de negocio |
+| **Bitácora** | `BitacoraLoggerService` en create, update y cambio de estatus |
 | **Logs** | `Logger` en servicio (y opcionalmente controlador) en puntos críticos — ver §3 y `CONTRATO-PROYECTO-NEXTAPI.md` §5 |
 | **Respuestas** | `ApiCrudResponse`, `ApiResponseCommon` |
 | **Paginación** | `GET /list` (lista completa) + `GET /:page/:limit` (paginado) |
@@ -120,29 +121,40 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-### 4.2 Dominio: Gestión de Flota — Parcialmente implementado
+### 4.2 Dominio: Productos y Flota — Implementado (licencias pendientes)
+
+Los productos se agrupan en **`ProductosModule`** (mismo patrón que `CatalogosModule`): módulo padre + submódulos CRUD. La tabla `Productos` es la cabecera (`IdCliente`, `IdTipoProducto`, `Nombre`, `Estatus`); cada subtipo tiene PK `IdProducto` + `IdCliente` con FK a `Productos` (`ON DELETE CASCADE`).
 
 | Módulo | Estado BD | Estado API | Responsabilidad |
 |--------|-----------|------------|-----------------|
-| VehiculosModule | ✅ Tabla existente | 🔲 | ABM de vehículos: placa, económico, marca/modelo, documentos, fotos, estado |
+| ProductosModule | ✅ Tabla existente | ✅ Implementado | Listado/detalle/nombre/estatus de productos; filtro opcional `idTipoProducto` |
+| VehiculosModule | ✅ Tabla existente | ✅ Implementado | ABM vehículos bajo `/api/productos/vehiculos`. Alta transaccional (Productos + Vehiculos). Multipart S3 (9 archivos). Placa única por cliente |
+| ActivosModule | ✅ Tabla existente | ✅ Implementado | ABM activos bajo `/api/productos/activos` (nombre, descripción) |
+| InmueblesModule | ✅ Tabla existente | ✅ Implementado | ABM inmuebles bajo `/api/productos/inmuebles` (dirección, representante, lat/lng) |
+| PersonasModule | ✅ Tabla existente | ✅ Implementado | ABM personas bajo `/api/productos/personas` (nombre, teléfono) |
 | OperadoresModule | ✅ Tabla existente | ✅ Implementado | ABM de conductores (1:1 Usuario, CURP/NSS únicos por cliente, documentos, CatEstatusOperador) |
 | LicenciasModule | ✅ Tabla existente | 🔲 | Licencias por operador (tipo A–E, Federal), vencimientos, alertas |
 
-**Catálogos en BD (poblados) con API:** CatMarcaVehiculo (30), CatModeloVehiculo (84), CatTipoVehiculo (10), CatEstatusVehiculo (5), CatTipoCombustible (7), CatTipoLicencia (6), CatCategoriaLicencia (2), CatEstatusOperador (6).
+**`CatTipoProducto` (IDs vigentes):** `1=VEHICULO`, `2=ACTIVO`, `3=INMUEBLE`, `4=PERSONA`. Enum: `EnumTipoProducto`.
+
+**Catálogos con API Nest:** CatTipoCombustible, CatEstatusOperador, CatTelefonia, CatPlanesTelefonia. El resto de catálogos de flota existen en BD/entidades (`CatMarcas`, `CatModelos`, etc.) y se consumen como FK.
 
 ---
 
-### 4.3 Dominio: Dispositivos GPS e IoT — Parcialmente implementado
+### 4.3 Dominio: Dispositivos GPS e IoT — Implementado
 
 | Módulo | Estado BD | Estado API | Responsabilidad |
 |--------|-----------|------------|-----------------|
-| SimsModule | ✅ Tabla existente | ✅ Implementado | Tarjetas SIM: ICC, plan de datos, estatus (multitenancy, ICC único) |
+| SimsModule | ✅ Tabla existente | ✅ Implementado | SIM: `idCliente` en DTO, IMEI único (`varchar(25)`, `UQ_Sims_IMEI`), FKs CatTelefonia/CatPlanesTelefonia. Alta con `EnumEstatusRecurso.DISPONIBLE`. Toggle `PATCH estatus/:id` DISPONIBLE ↔ BAJA. Sin DELETE HTTP |
 | DispositivosModule | ✅ Tabla existente | ✅ Implementado | ABM de dispositivos GPS por NumeroSerie, marca/modelo, SIM asignado |
-| InstalacionesModule | ✅ Tabla existente + HistoricoInstalaciones | 🔲 | Vinculación Dispositivo–Vehículo (1:1), historial de cambios |
+| InstalacionesModule | ✅ Tabla existente | ✅ Implementado | Vinculación dispositivo–producto/vehículo; `PATCH estatus/:id` sin body |
+| HistoricoInstalacionesModule | ✅ Tabla existente | ✅ Implementado | Movimientos de instalación (alta, listado, detalle, actualización; sin toggle de estatus) |
 
-**Catálogos en BD (poblados) con API:** CatMarcaDispositivo (9), CatModeloDispositivo (22), CatTipoDispositivo (4), CatEstatusDispositivo (6), CatEstatusSim (5), CatEstatusInstalacion (4), CatTelefonia (6), CatPlanesTelefonia (6).
+**Catálogos con API Nest (IoT):** CatTelefonia, CatPlanesTelefonia. Alta de telefonía/planes **sin** `Estatus` en el DTO de creación (default `EstatusEnum.ACTIVO`).
 
-**Cadena operativa:** CatTelefonia → CatPlanesTelefonia → Sims → Dispositivos → Instalaciones → Vehiculos.
+**Cadena operativa:** CatTelefonia → CatPlanesTelefonia → Sims → Dispositivos → Instalaciones → Productos/Vehiculos.
+
+**`EnumEstatusRecurso`:** `BAJA=0`, `DISPONIBLE=1`, `ASIGNADO=2`, `REVISION=3`, `REMOVIDO=4`.
 
 ---
 
@@ -159,7 +171,16 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-### 4.5 Dominio: Alertas y Geocercas — Fase futura
+### 4.5 Dominio: Alarmas (SpringPanel) — Implementado (CRUD)
+
+| Módulo | Estado BD | Estado API | Responsabilidad |
+|--------|-----------|------------|-----------------|
+| InmueblesModule | ✅ (detalle de producto tipo INMUEBLE) | ✅ | Sitios físicos; rutas bajo `/api/productos/inmuebles` |
+| PanelAlarmaModule | ✅ Tabla existente | ✅ Implementado | Paneles AX PRO: cuenta SIA, cifrado, heartbeat. Ruta `/api/panel-alarma` |
+
+Entidades relacionadas aún sin CRUD HTTP: `EventoAlarma`, `UltimoEventoAlarma`.
+
+### 4.6 Dominio: Alertas y Geocercas — Fase futura
 
 | Módulo | Estado | Alcance planeado |
 |--------|--------|------------------|
@@ -169,7 +190,7 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 
 ---
 
-### 4.6 Dominio: Mantenimiento Mecánico — Fase 3 (catálogo preparado)
+### 4.7 Dominio: Mantenimiento Mecánico — Fase 3 (catálogo preparado)
 
 - **CatTipoVerificaciones** — ✅ API implementada (tipos de verificaciones vehiculares)
 - Órdenes de mantenimiento preventivo y correctivo
@@ -185,11 +206,19 @@ Rutas estándar: `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PUT` o
 src/
   auth/
   usuarios/
-  vehiculos/
+  productos/                    ← Patrón Auranet: padre + submódulos
+    productos.module.ts
+    productos.controller.ts     ← GET/PATCH /api/productos
+    vehiculos/                  ← /api/productos/vehiculos (multipart S3)
+    activos/                    ← /api/productos/activos
+    inmuebles/                  ← /api/productos/inmuebles
+    personas/                   ← /api/productos/personas
   dispositivos/
   sims/
   instalaciones/
+  historico-instalaciones/
   operadores/
+  panel-alarma/
   clientes/
   catalogos/                    ← Patrón Auranet: catálogos agrupados
     catalogos.module.ts
@@ -197,8 +226,10 @@ src/
     catalogos.service.ts
     catalogos.registry.ts
     cat-tipo-combustible/
-    cat-tipo-vehiculo/
-    ... (20 submódulos)
+    cat-estatus-operador/
+    cat-telefonia/
+    cat-planes-telefonia/
+  webhook-emitter/
   entities/
   common/
   bitacora/
@@ -222,10 +253,17 @@ src/
 - **JWT + JwtAuthGuard + RolesGuard + @Roles()**
 - **Validadores:** `MatchPasswordConstraint` (password/confirmación), `PinValidator` (NIP 4 dígitos)
 - **CodigoAutenticacion:** códigos de 6 dígitos; vigencia 5 min (confirmación correo) / 15 min (recuperación); columna `IntentosFallidos` para verify
-- **Catálogos API (20):** Agrupados en `CatalogosModule` bajo `src/catalogos/`. Cada catálogo (CatCategoriaLicencia, CatEstatusDispositivo, CatEstatusInstalacion, CatEstatusOperador, CatEstatusSim, CatEstatusVehiculo, CatMarcaDispositivo, CatMarcaVehiculo, CatModeloDispositivo, CatModeloVehiculo, CatReferenciaServicio, CatTelefonia, CatPlanesTelefonia, CatTipoAlerta, CatTipoCombustible, CatTipoDispositivo, CatTipoGeocerca, CatTipoLicencia, CatTipoVehiculo, CatTipoVerificaciones) mantiene CRUD estándar, Bitácora, soft delete. **Endpoint dinámico:** `GET /api/catalogos/:nombreCatalogo` para consultar cualquier catálogo por nombre (ej: `cat-tipo-combustible`).
-- **SimsModule:** ABM de tarjetas SIM (multitenancy, ICC único, FKs a CatTelefonia, CatPlanesTelefonia, CatEstatusSim)
+- **Catálogos API (4 con CRUD Nest):** `CatalogosModule` bajo `src/catalogos/`: CatTipoCombustible, CatEstatusOperador, CatTelefonia, CatPlanesTelefonia. CRUD estándar, Bitácora, soft delete vía `PATCH /estatus/:id` **sin body** (toggle 1 ↔ 0). Alta de telefonía/planes **sin** campo `Estatus` (default `ACTIVO`). **Endpoint dinámico:** `GET /api/catalogos/:nombreCatalogo` (nombres: `cat-tipo-combustible`, `cat-estatus-operador`, `cat-telefonia`, `cat-planes-telefonia`).
+- **ProductosModule:** Padre + submódulos. Cabecera `Productos` (`GET/PATCH /api/productos`). Alta de cada subtipo crea `Productos` + detalle en transacción. `EnumTipoProducto`: VEHICULO=1, ACTIVO=2, INMUEBLE=3, PERSONA=4.
+- **Vehiculos (submódulo):** `POST/PATCH /api/productos/vehiculos` **multipart/form-data**; 9 archivos a S3 (`folder=vehiculos`): foto, fotoFrente, fotoTrasera, fotoDerecha, fotoIzquierda, fotoExtra, tarjetaCirculacion, polizaSeguro, permisoCarga. Placa obligatoria y única por cliente. Webhooks `vehiculo.created|updated|deleted`.
+- **Activos / Inmuebles / Personas (submódulos):** CRUD JSON bajo `/api/productos/activos`, `/inmuebles`, `/personas`.
+- **SimsModule:** ABM de SIMs. `idCliente` en DTO de alta. IMEI único (`UQ_Sims_IMEI`, varchar 25). Estatus de recurso (`EnumEstatusRecurso`); alta = `DISPONIBLE`; toggle DISPONIBLE ↔ BAJA. Sin ICC, sin `IdEstatusSim`, sin fechas de activación/vencimiento.
 - **DispositivosModule:** ABM de dispositivos GPS (multitenancy, NumeroSerie único, IdSim obligatorio)
+- **InstalacionesModule + HistoricoInstalacionesModule:** Vinculación e historial de movimientos.
+- **PanelAlarmaModule:** CRUD paneles AX PRO (`/api/panel-alarma`).
+- **WebhookEmitterModule:** Emisión firmada HMAC a `WEBHOOK_SUBSCRIBERS` (eventos de vehículo y cliente).
 - **OperadoresModule:** ABM de conductores (multitenancy, 1:1 Usuario, CURP/NSS únicos por cliente, documentos S3, CatEstatusOperador). **Integración Licencias:** crear operador exige primera licencia; respuestas (`findAllList`, `findAll`, `findOne`) incluyen `licencias` con tipo y categoría. Un operador puede tener varias licencias.
+- **Convención transversal:** no hay `DELETE` HTTP de negocio; baja lógica con `PATCH /estatus/:id` **sin body** (alterna 1 ↔ 0, o DISPONIBLE ↔ BAJA en recursos).
 
 ### Roles y permisos
 
@@ -237,14 +275,14 @@ src/
 
 ### Pendiente (API)
 
-- TenantGuard para multitenancy automático
-- VehiculosModule, LicenciasModule (tablas BD listas)
-- InstalacionesModule (tablas BD listas)
+- TenantGuard dedicado (hoy el filtrado es `TenantFilterService` en cada servicio)
+- LicenciasModule como API independiente (la primera licencia ya se crea junto al operador)
+- CRUD HTTP de `EventoAlarma` / recepción DC-09
 - PosicionesModule + tabla Posiciones + Receptor TCP/UDP + WebSocket
-- Webhook Emitter
 - Dominios de Alertas, Geocercas, Mantenimiento
+- Resto de catálogos `Cat*` (marcas, modelos, tipos, estatus) como CRUD Nest; hoy se usan como entidades/FK
 
-**Nota:** SimsModule, DispositivosModule y OperadoresModule ya están implementados. Los permisos 61–84 para Sims, Dispositivos, Vehiculos, Instalaciones, Operadores y Licencias existen en la BD.
+**Nota:** Productos (vehículos, activos, inmuebles, personas), Sims, Dispositivos, Instalaciones, Histórico, Operadores, PanelAlarma y Webhook Emitter ya están implementados.
 
 ---
 
@@ -261,18 +299,19 @@ Next funciona como **proveedor de datos** para todo el ecosistema. Principios de
 | **Idempotente** | PUT idempotente |
 | **Consistente** | Mismo formato JSON, errores `{ statusCode, message, error }` |
 
-### Webhook Emitter (planificado)
+### Webhook Emitter (implementado)
 
-Next emitiría eventos a URLs en `WEBHOOK_SUBSCRIBERS`:
+`WebhookEmitterModule` emite a URLs en `WEBHOOK_SUBSCRIBERS` (HMAC con `WEBHOOK_SECRET`). Eventos actuales:
 
 | Evento | Cuándo |
 |--------|--------|
 | vehiculo.created | Crear vehículo |
 | vehiculo.updated | Editar vehículo |
-| operador.updated | Editar operador |
-| operador.suspended | Suspender operador |
-| licencia.expired | Cron detecta vencimiento |
-| instalacion.changed | Cambio dispositivo–vehículo |
+| vehiculo.deleted | Baja lógica del vehículo (`PATCH estatus` → inactivo) |
+| cliente.created | Crear cliente |
+| cliente.updated | Editar cliente |
+
+Pendientes de emitir: operador, licencia, instalación.
 
 ---
 
@@ -285,9 +324,10 @@ Next emitiría eventos a URLs en `WEBHOOK_SUBSCRIBERS`:
 | Categoría | Tablas | Registros | Estado |
 |-----------|--------|-----------|--------|
 | **Core / Auth** | Clientes, Usuarios, Roles, Modulos, Permisos, UsuariosPermisos, CodigoAutenticacion, Bitacora | Con datos | ✅ API implementada |
-| **Flota** | Vehiculos, Operadores, Licencias | Vacías | ✅ Tablas listas, API pendiente |
-| **GPS / IoT** | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones | Vacías | ✅ Sims y Dispositivos con API; Instalaciones pendiente |
-| **Catálogos** | 20 tablas Cat* (marcas, modelos, tipos, estatus, etc.) | Poblados | Listos para consumo |
+| **Productos / Flota** | Productos, Vehiculos, Activos, Inmuebles, Personas, Operadores, Licencias, CatTipoProducto | En uso | ✅ API de productos y operadores; LicenciasModule independiente pendiente |
+| **GPS / IoT** | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones | En uso | ✅ API implementada |
+| **Alarmas** | PanelAlarma, EventoAlarma, UltimoEventoAlarma | En uso | ✅ Panel CRUD; eventos pendientes |
+| **Catálogos** | Cat* (marcas, modelos, tipos, estatus, telefonía, etc.) | Poblados | 4 con CRUD Nest; el resto como entidades/FK |
 | **Monitoreo** | Posiciones | — | ❌ Tabla no existe, por crear |
 | **Mantenimiento** | CatEstatusMantenimiento, CatCategoriaMantenimientoMecanico, etc. | Poblados | Catálogos listos |
 
@@ -297,13 +337,18 @@ Next emitiría eventos a URLs en `WEBHOOK_SUBSCRIBERS`:
 Clientes (IdPadre → Clientes)
     ├── Usuarios (IdCliente, IdRol → Roles)
     │       └── UsuariosPermisos (IdUsuario, IdPermiso)
-    ├── Vehiculos (IdCliente, IdModeloVehiculo, IdTipoVehiculo, IdEstatusVehiculo)
+    ├── Productos (IdCliente, IdTipoProducto → CatTipoProducto)
+    │       ├── Vehiculos (IdProducto+IdCliente, CatMarcas, CatModelos, CatTipoCombustible)
+    │       ├── Activos (IdProducto+IdCliente)
+    │       ├── Inmuebles (IdProducto+IdCliente)
+    │       └── Personas (IdProducto+IdCliente)
     ├── Operadores (IdCliente, IdUsuario → Usuarios, IdEstatusOperador)
     │       └── Licencias (IdOperador, IdTipoLicencia, IdCategoriaLicencia)
-    ├── Sims (IdCliente, IdTelefonia, IdPlanTelefonia, IdEstatusSim)
-    ├── Dispositivos (IdCliente, IdModeloDispositivo, IdTipoDispositivo, IdSim → Sims)
-    └── Instalaciones (IdCliente, IdDispositivo, IdVehiculo, IdEstatusInstalacion)
-            └── HistoricoInstalaciones
+    ├── Sims (IdCliente, IdTelefonia, IdPlanTelefonia, Estatus = EnumEstatusRecurso)
+    ├── Dispositivos (IdCliente, IdSim → Sims)
+    ├── Instalaciones (IdCliente, IdDispositivo, IdProducto/Vehículo)
+    │       └── HistoricoInstalaciones
+    └── PanelAlarma (IdCliente, sitio/inmueble)
 ```
 
 ### 8.3 Módulos y permisos en BD
@@ -332,11 +377,11 @@ Clientes (IdPadre → Clientes)
 
 ### 8.5 Convenciones de BD
 
-- **Soft delete:** Campo `Estatus` (1=Activo, 0=Inactivo). No DELETE físico.
+- **Soft delete:** Campo `Estatus` (1=Activo, 0=Inactivo) o `EnumEstatusRecurso` en SIMs. No DELETE HTTP de negocio.
 - **Auditoría:** FechaCreacion, FechaActualizacion, Bitacora (Query JSON).
-- **Multitenancy:** `IdCliente` en Vehiculos, Operadores, Sims, Dispositivos, Instalaciones.
+- **Multitenancy:** `IdCliente` en Productos y subtipos, Operadores, Sims, Dispositivos, Instalaciones, PanelAlarma.
 - **Nombrado:** PascalCase, prefijo `Cat` para catálogos, prefijo `Id` para FKs.
-- **Unique:** RFC (Clientes), Placa (Vehiculos), NumeroSerie (Dispositivos), ICC (Sims), NumeroLicencia (Licencias).
+- **Unique:** RFC (Clientes), (IdCliente, Placa) en Vehiculos, NumeroSerie (Dispositivos), IMEI (Sims).
 
 ---
 
@@ -344,7 +389,7 @@ Clientes (IdPadre → Clientes)
 
 | Fase | Alcance | Estado |
 |------|---------|--------|
-| **FASE 1** | Core + Flota + GPS (ABM, Receptor TCP, Posiciones, WebSocket, Webhooks) | En desarrollo |
+| **FASE 1** | Core + Productos/Flota + GPS (ABM) + Webhooks | ABM y webhooks entregados; Receptor/Posiciones/WS pendiente |
 | **FASE 2** | Monitoreo avanzado, alertas, geocercas, notificaciones, replay, reportes | Planeado |
 | **FASE 3** | Mantenimiento mecánico, verificaciones vehiculares | Catálogos listos |
 | **FASE 4** | Analítica, ML, scoring operadores, app móvil, Event-Driven, Kubernetes | Visión |
@@ -408,10 +453,9 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/:id` | Por ID |
 | POST | `/` | Crear — **`multipart/form-data`**. Campos texto (`rfc`, `tipoPersona`, …) + archivos opcionales `logotipo` (imagen) y, para documentos, **`actaConstitutiva`**, **`comprobanteDomicilio`**, **`constanciaSituacionFiscal`** (PDF). Los tres documentos son **obligatorios** en alta: cada uno como archivo PDF **o** URL en el campo de texto homónimo. Sube a S3 (`folder=clientes`). Ver Swagger y `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. |
 | PATCH | `/:id` | Actualizar — **`multipart/form-data`** (parcial). Archivos nuevos reemplazan URLs vía `S3Service.updateFile` cuando aplica. |
-| PATCH | `/estatus/:id` | Cambiar estatus |
-| DELETE | `/:id` | Eliminar (Roles 1) |
+| PATCH | `/estatus/:id` | Cambiar estatus (toggle 1 ↔ 0, **sin body**) |
 
-**Compatibilidad:** El alta/edición de cliente **no** usa `application/json` en el cuerpo de `POST /` ni `PATCH /:id` con la implementación actual. Flujo alterno: subir archivos con `POST /api/s3/upload` y enviar las URLs por otro medio acordado con el front, si se expone.
+**Compatibilidad:** El alta/edición de cliente **no** usa `application/json` en el cuerpo de `POST /` ni `PATCH /:id` con la implementación actual. Flujo alterno: subir archivos con `POST /api/s3/upload` y enviar las URLs por otro medio acordado con el front, si se expone. **No hay DELETE HTTP**; la baja es lógica vía estatus.
 
 ### Usuarios (`/api/usuarios`)
 
@@ -423,10 +467,9 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/:id` | Por ID |
 | POST | `/` | Crear (Roles 1) — **`application/json`**, `CreateUsuarioDto`; `fotoPerfil` opcional como URL; `permisosIds` como array numérico |
 | PATCH | `/:id` | Actualizar — **`application/json`**, `UpdateUsuarioDto`; `fotoPerfil` opcional como URL si se cambia imagen |
-| PATCH | `/estatus/:id` | Cambiar estatus |
+| PATCH | `/estatus/:id` | Cambiar estatus (toggle 1 ↔ 0, **sin body**) |
 | PATCH | `/actualizar/contrasena` | Cambiar mi contraseña (usuario desde JWT) |
 | PATCH | `/mi-nip` | Crear o actualizar NIP (usuario desde JWT) |
-| DELETE | `/:id` | Eliminar (Roles 1) |
 
 **Foto de perfil:** subir imagen con **`POST /api/s3/upload`** (`folder=usuarios`, `idModule=2`) y enviar la URL en **`fotoPerfil`**. Patrón *multipart* directo en `POST/PATCH` usuarios: solo como referencia en `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md` (no es el contrato del API actual).
 
@@ -439,7 +482,7 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/:id` | Por ID |
 | POST | `/` | Crear (Roles 1) |
 | PUT | `/:id` | Actualizar |
-| PATCH | `/estatus/:id` | Cambiar estatus |
+| PATCH | `/estatus/:id` | Cambiar estatus (toggle 1 ↔ 0, **sin body**) |
 
 ### Permisos (`/api/permisos`)
 
@@ -451,7 +494,7 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/:id` | Por ID |
 | POST | `/` | Crear (Roles 1) |
 | PUT | `/:id` | Actualizar |
-| PATCH | `/estatus/:id` | Cambiar estatus |
+| PATCH | `/estatus/:id` | Cambiar estatus (toggle 1 ↔ 0, **sin body**) |
 
 ### Modulos (`/api/modulos`)
 
@@ -462,8 +505,7 @@ Resumen de lo implementado. Ver Swagger en `http://localhost:3010/api/docs` para
 | GET | `/:id` | Por ID |
 | POST | `/` | Crear (Roles 1) |
 | PUT | `/:id` | Actualizar |
-| PATCH | `/estatus/:id` | Cambiar estatus |
-| DELETE | `/:id` | Eliminar (Roles 1) |
+| PATCH | `/estatus/:id` | Cambiar estatus (toggle 1 ↔ 0, **sin body**) |
 
 ### Bitácora (`/api/bitacora`)
 
@@ -483,54 +525,77 @@ Todos los endpoints exigen **Authorization: Bearer** y `@Roles(1, 2, 3)`. El **u
 | PATCH | `/update` | Reemplazar: sube `file` nuevo; si viene `oldUrl`, intenta eliminar el objeto anterior en S3 en segundo plano. Respuesta `{ url }`. |
 | DELETE | `/delete` | Eliminar objeto en bucket. Body JSON: `fileUrl` (URL completa guardada en BD), `idModule`. Respuesta `{ deleted, key? }`. |
 
-**`folder` permitido:** `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros`.
+**`folder` permitido:** `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros`. Los vehículos también suben archivos en el propio `POST/PATCH /api/productos/vehiculos` (multipart).
 
 Documentación detallada en Swagger (`/api/docs`, tag **S3 - archivos**). Flujo técnico: `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`. **Clientes** multipart: `docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`. **Usuarios** (foto URL + guía futura multipart): `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. Histórico logotipo Clientes: `docs/FLUJO-SUBIDA-IMAGENES-CLIENTES-S3.md`.
 
-### Catálogos (CRUD estándar)
+### Catálogos (CRUD Nest implementado)
 
-Cada catálogo expone las mismas rutas bajo su prefijo. Todas usan `@Roles()`, JWT Bearer y Bitácora.
+Cada catálogo expone las mismas rutas bajo su prefijo. Todas usan `@Roles()`, JWT Bearer y Bitácora. **Alta:** sin `Estatus` en el DTO (default `ACTIVO`) en telefonía y planes.
 
 | Prefijo | Descripción |
 |---------|-------------|
-| `/api/cat-categoria-licencia` | Categorías de licencia (Tipo A, B, etc.) |
-| `/api/cat-estatus-dispositivo` | Estatus de dispositivos GPS |
-| `/api/cat-marca-dispositivo` | Marcas de dispositivos (Teltonika, Queclink, etc.) |
-| `/api/cat-modelo-dispositivo` | Modelos de dispositivos (por marca) |
-| `/api/cat-estatus-instalacion` | Estatus de instalaciones dispositivo–vehículo |
+| `/api/cat-tipo-combustible` | Tipos de combustible |
 | `/api/cat-estatus-operador` | Estatus de operadores |
-| `/api/cat-estatus-sim` | Estatus de tarjetas SIM |
-| `/api/cat-estatus-vehiculo` | Estatus de vehículos |
-| `/api/cat-marca-vehiculo` | Marcas de vehículos |
-| `/api/cat-modelo-vehiculo` | Modelos de vehículos (por marca) |
-| `/api/cat-referencia-servicio` | Referencia de servicio (kilometraje, tiempo) |
 | `/api/cat-telefonia` | Compañías telefónicas |
 | `/api/cat-planes-telefonia` | Planes de datos por compañía |
-| `/api/cat-tipo-alerta` | Tipos de alertas (exceso velocidad, geocercas, etc.) |
-| `/api/cat-tipo-combustible` | Tipos de combustible |
-| `/api/cat-tipo-dispositivo` | Tipos de dispositivo (vehicular, personal, OBD-II) |
-| `/api/cat-tipo-geocerca` | Tipos de geocerca |
-| `/api/cat-tipo-licencia` | Tipos de licencia (A–E, Federal) |
-| `/api/cat-tipo-vehiculo` | Tipos de vehículo (sedán, camioneta, etc.) |
-| `/api/cat-tipo-verificaciones` | Tipos de verificaciones vehiculares (Fase 3) |
 
-**Rutas por catálogo:** `GET /list?soloActivos=`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id`
+**Rutas por catálogo:** `GET /list?soloActivos=`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id` (toggle **sin body**)
 
-**Estructura (Patrón Auranet):** Los 20 catálogos están bajo `src/catalogos/`. `CatalogosModule` importa todos los submódulos, expone `CatalogosRegistry` y `CatalogosService`, y ofrece el endpoint dinámico:
+**Endpoint dinámico (Patrón Auranet):**
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/catalogos/:nombreCatalogo` | Obtiene la lista completa del catálogo por nombre (ej: `cat-tipo-combustible`). Requiere JWT Bearer. |
+| GET | `/api/catalogos/:nombreCatalogo` | Lista del catálogo registrado (`cat-tipo-combustible`, `cat-estatus-operador`, `cat-telefonia`, `cat-planes-telefonia`). JWT Bearer. |
+
+### Productos (`/api/productos`) — módulo padre
+
+Cabecera de todos los tipos. **No hay POST** en el padre: el alta ocurre en el subtipo (crea `Productos` + detalle).
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/list?idTipoProducto=` | Lista completa; filtro opcional por `EnumTipoProducto` |
+| GET | `/:page/:limit?idTipoProducto=` | Paginado |
+| GET | `/:id` | Por ID (incluye tipo) |
+| PATCH | `/:id` | Actualizar `nombre` |
+| PATCH | `/estatus/:id` | Toggle 1 ↔ 0, **sin body** |
+
+### Vehículos (`/api/productos/vehiculos`)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/` | Crear — **multipart/form-data**. Obligatoria `placa`. Crea Productos (`IdTipoProducto=1`) + Vehiculos. Archivos opcionales a S3 |
+| GET | `/list` | Lista (activos). Alcance según rol |
+| GET | `/placa/:placa` | Por placa (activos, tenant) |
+| GET | `/:page/:limit` | Paginado (activos e inactivos) |
+| GET | `/:id` | Por `IdProducto` |
+| PATCH | `/:id` | Actualizar — **multipart/form-data**; archivos nuevos reemplazan en S3 |
+| PATCH | `/estatus/:id` | Toggle estatus del producto, **sin body**. Si pasa a inactivo emite `vehiculo.deleted` |
+
+### Activos (`/api/productos/activos`)
+
+JSON. Alta crea Productos (`IdTipoProducto=2`) + Activos. Campos: `nombre` (obligatorio), `descripcion`. Rutas: `POST /`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /:id`, `PATCH /estatus/:id`.
+
+### Inmuebles (`/api/productos/inmuebles`)
+
+JSON. Alta crea Productos (`IdTipoProducto=3`) + Inmuebles. Campos: `inmueble`, `direccionFiscal`, representante, `lat`/`lng`. Rutas estándar + `PATCH /estatus/:id`.
+
+### Personas (`/api/productos/personas`)
+
+JSON. Alta crea Productos (`IdTipoProducto=4`) + Personas. Campos: `nombre` (obligatorio), `telefono`. Rutas estándar + `PATCH /estatus/:id`.
 
 ### Módulos operativos (multitenancy)
 
 | Prefijo | Descripción |
 |---------|-------------|
-| `/api/sims` | Tarjetas SIM: ICC, plan, estatus. IdCliente desde JWT. ICC único global. |
-| `/api/dispositivos` | Dispositivos GPS: NumeroSerie, modelo, tipo, SIM. IdCliente desde JWT. NumeroSerie único global. |
-| `/api/operadores` | Operadores (conductores): 1:1 con Usuario, CURP/NSS únicos por cliente, documentos. IdCliente desde JWT. |
+| `/api/sims` | SIM: `idCliente` en alta, IMEI único, `estatus` = `EnumEstatusRecurso` (alta `DISPONIBLE`; toggle DISPONIBLE ↔ BAJA). Sin DELETE |
+| `/api/dispositivos` | Dispositivos GPS: NumeroSerie único, SIM asignado |
+| `/api/instalaciones` | Vinculación dispositivo–producto. Toggle estatus sin body |
+| `/api/historico-instalaciones` | Movimientos de instalación (`POST`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /:id`) |
+| `/api/operadores` | Conductores: 1:1 Usuario, CURP/NSS, documentos, primera licencia al crear |
+| `/api/panel-alarma` | Paneles AX PRO (cuenta SIA, cifrado, heartbeat) |
 
-**Rutas:** `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id`
+**Rutas CRUD típicas:** `GET /list`, `GET /:page/:limit`, `GET /:id`, `POST /`, `PATCH /:id`, `PATCH /estatus/:id` (sin body). **No hay DELETE HTTP de negocio.**
 
 ### Mail
 
@@ -555,8 +620,9 @@ El módulo Mail **no expone rutas HTTP**. Es un servicio de apoyo usado por Auth
 | UPLOAD_MAX_SIZE | Límite de subida (bytes) |
 | HOST, SMTP, E_MAIL, MAIL_PASSWORD | Nodemailer (obligatorias) |
 | MAIL_FRONTEND_URL | URL base del frontend para enlaces en correos (opcional). Ej: `https://springtelecom.mx/shiftcontrolapp` |
-| WEBHOOK_SUBSCRIBERS | URLs para webhooks (futuro) |
+| WEBHOOK_SUBSCRIBERS | URLs suscriptoras (separadas); vacío = no emite |
+| WEBHOOK_SECRET | Secreto HMAC de firma de webhooks |
 
 ---
 
-*Documento actualizado (marzo 2026): Clientes `POST/PATCH` multipart (`docs/FLUJO-CLIENTES-FORM-DATA-DOCUMENTOS.md`); Usuarios `POST/PATCH` en **JSON** y foto vía S3 genérico; guía usuarios `docs/FLUJO-USUARIOS-FORM-DATA-FOTOPERFIL.md`. S3, Patrón Auranet, refresh SHA256, Operadores+Licencias, `THROTTLE_*`. Contrato: `docs/CONTRATO-PROYECTO-NEXTAPI.md` **v1.7**. Ver `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`, `docs/FLUJO-MODULO-OPERADORES.md`, `docs/FLUJO-REFRESH-TOKEN.md`.*
+*Documento actualizado (agosto 2026): **ProductosModule** (vehículos, activos, inmuebles, personas); Sims con IMEI único y `EnumEstatusRecurso`; catálogos Nest (4); instalaciones, histórico, panel alarma, webhook emitter. Baja lógica `PATCH /estatus/:id` sin body; sin DELETE HTTP de negocio. Contrato: `docs/CONTRATO-PROYECTO-NEXTAPI.md` **v2.0**. Ver `docs/FLUJO-MODULO-PRODUCTOS.md`, `docs/FLUJO-MODULO-SIMS.md`, `docs/FLUJO-MEJORA-S3-UPDATE-DELETE.md`.*

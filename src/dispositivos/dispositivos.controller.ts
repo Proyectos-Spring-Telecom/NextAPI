@@ -19,7 +19,6 @@ import {
 import { DispositivosService } from './dispositivos.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
-import { UpdateDispositivosEstatusDto } from './dto/update-dispositivos-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -112,18 +111,20 @@ export class DispositivosController {
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateDispositivosEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.dispositivosService.updateEstatus(id, dto, idCliente, idUser);
+    return this.dispositivosService.updateEstatus(id, idCliente, idUser);
   }
 }

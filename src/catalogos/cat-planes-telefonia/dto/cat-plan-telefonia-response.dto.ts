@@ -27,17 +27,17 @@ export class CatPlanTelefoniaResponseDto {
   @ApiProperty({ example: 2 })
   idTelefonia: number;
 
-  @ApiProperty({ example: 10240, nullable: true })
-  datosMB: number | null;
+  @ApiProperty({ example: '10240', nullable: true })
+  datos: string | null;
 
-  @ApiProperty({ example: 1000 })
-  smsIncluidos: number;
+  @ApiProperty({ example: '1000', nullable: true })
+  smsIncluidos: string | null;
 
-  @ApiProperty({ example: 1000 })
-  vozIncluidos: number;
+  @ApiProperty({ example: '1000', nullable: true })
+  vozIncluidos: string | null;
 
-  @ApiProperty({ example: 499.9, nullable: true })
-  costoMensual: number | null;
+  @ApiProperty({ example: '499.90', nullable: true })
+  costoMensual: string | null;
 
   @ApiProperty({ example: '2026-07-01', nullable: true })
   fechaInicioVigencia: string | null;

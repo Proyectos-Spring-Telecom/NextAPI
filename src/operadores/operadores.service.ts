@@ -15,7 +15,6 @@ import { Licencias } from 'src/entities/Licencias';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateOperadoresDto } from './dto/create-operadores.dto';
 import { UpdateOperadoresDto } from './dto/update-operadores.dto';
-import { UpdateOperadoresEstatusDto } from './dto/update-operadores-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -404,7 +403,6 @@ export class OperadoresService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateOperadoresEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -416,13 +414,15 @@ export class OperadoresService {
         throw new NotFoundException('Operador no encontrado');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Operadores',
-        `Se actualizó estatus de operador ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de operador ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
         ID_MODULO_OPERADORES,
         EstatusEnumBitcora.SUCCESS,
@@ -431,7 +431,7 @@ export class OperadoresService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: `Operador ${id}` },
       };
     } catch (error) {
@@ -439,7 +439,7 @@ export class OperadoresService {
         'Operadores',
         `Error al actualizar estatus de operador ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
         ID_MODULO_OPERADORES,
         EstatusEnumBitcora.ERROR,

@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   ParseIntPipe,
   Request,
   Put,
@@ -19,9 +18,8 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { UpdateRolEstatusDto } from './dto/update-rol.dto';
 import type { Response } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Roles')
 @ApiBearerAuth('bearer-token')
@@ -44,7 +42,7 @@ export class RolesController {
   async findAll(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
-    @Request() req
+    @Request() req,
   ): Promise<ApiResponseCommon> {
     const idUser = req.user.userId;
     const cliente = req.user.cliente;
@@ -59,7 +57,6 @@ export class RolesController {
     const rol = req.user.rol;
     return await this.rolesService.findAllList(+rol);
   }
-
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number) {
@@ -77,23 +74,18 @@ export class RolesController {
   }
 
   @Patch('estatus/:id')
+  @ApiOperation({
+    summary: 'Cambiar estatus del rol',
+    description:
+      'Alterna el estatus: si está activo (1) pasa a inactivo (0) y viceversa. No requiere body.',
+  })
+  @ApiParam({ name: 'id', type: Number })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
-    @Body() updateRolEstatusDto: UpdateRolEstatusDto,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.rolesService.updateEstatus(
-      id,
-      idUser,
-      updateRolEstatusDto,
-    );
+    return await this.rolesService.updateEstatus(id, idUser);
   }
 
-  @Delete(':id')
-  @Roles(1) // Solo SuperAdministrador puede eliminar roles
-  remove(@Param('id') id: string, @Request() req) {
-    const idUser = req.user.userId;
-    return this.rolesService.remove(+id, idUser);
-  }
 }

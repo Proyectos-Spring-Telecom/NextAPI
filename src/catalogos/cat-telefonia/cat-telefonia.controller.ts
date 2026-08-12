@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -28,7 +27,6 @@ import { CreateCatTelefoniaDto } from './dto/create-cat-telefonia.dto';
 import { FilterCatPlanesTelefoniaDto } from '../cat-planes-telefonia/dto/filter-cat-planes-telefonia.dto';
 import { FilterCatTelefoniaDto } from './dto/filter-cat-telefonia.dto';
 import { UpdateCatTelefoniaDto } from './dto/update-cat-telefonia.dto';
-import { UpdateCatTelefoniaEstatusDto } from './dto/update-cat-telefonia-estatus.dto';
 
 @ApiTags('Catálogo Telefonía')
 @ApiBearerAuth('bearer-token')
@@ -76,7 +74,7 @@ export class CatTelefoniaController {
   @Get(':idTelefonia/planes')
   @ApiOperation({ summary: 'Consultar planes asociados a una telefonía' })
   @ApiParam({ name: 'idTelefonia', type: Number })
-  @ApiQuery({ name: 'Estatus', required: false, enum: [0, 1] })
+  @ApiQuery({ name: 'estatus', required: false, enum: [0, 1] })
   @ApiQuery({ name: 'vigentes', required: false, type: Boolean })
   findPlanes(
     @Param('idTelefonia', ParseIntPipe) idTelefonia: number,
@@ -100,7 +98,7 @@ export class CatTelefoniaController {
     return this.service.findAll({
       page,
       limit,
-      ...(soloActivos === 'true' ? { Estatus: 1 } : {}),
+      ...(soloActivos === 'true' ? { estatus: 1 } : {}),
     });
   }
 
@@ -128,21 +126,16 @@ export class CatTelefoniaController {
     return this.service.update(id, dto, req.user.userId);
   }
 
-  @Delete(':id')
-  @ApiOperation({ summary: 'Desactivar una telefonía (baja lógica)' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 409, description: 'Tiene planes activos asociados' })
-  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.service.remove(id, req.user.userId);
-  }
-
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (ruta compatible)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
+  @ApiResponse({ status: 409, description: 'Tiene planes activos asociados' })
   updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCatTelefoniaEstatusDto,
     @Request() req,
   ) {
-    return this.service.updateEstatus(id, dto, req.user.userId);
+    return this.service.updateEstatus(id, req.user.userId);
   }
 }

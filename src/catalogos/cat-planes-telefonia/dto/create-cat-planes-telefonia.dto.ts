@@ -1,11 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  IsIn,
   IsDateString,
   IsInt,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -28,7 +26,7 @@ export class CreateCatPlanesTelefoniaDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  Descripcion?: string;
+  descripcion?: string;
 
   @ApiProperty({
     description: 'ID del operador de telefonía (CatTelefonia)',
@@ -38,48 +36,76 @@ export class CreateCatPlanesTelefoniaDto {
   @IsInt()
   @IsNotEmpty()
   @Min(1)
-  IdTelefonia: number;
+  idTelefonia!: number;
 
   @ApiPropertyOptional({
-    description: 'Datos incluidos en MB (null = ilimitado)',
-    example: 10240,
+    description: 'Datos incluidos (NULL = ilimitado)',
+    example: '10240',
+    maxLength: 100,
     nullable: true,
   })
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  DatosMB?: number | null;
+  @IsString()
+  @MaxLength(100)
+  datos?: string | null;
 
   @ApiPropertyOptional({
     description: 'SMS incluidos',
-    example: 1000,
+    example: '1000',
+    maxLength: 100,
   })
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  SMSIncluidos?: number;
+  @IsString()
+  @MaxLength(100)
+  smsIncluidos?: string;
 
   @ApiPropertyOptional({
     description: 'Minutos de voz incluidos',
-    example: 1000,
+    example: '1000',
+    maxLength: 100,
   })
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  VozIncluidos?: number;
+  @IsString()
+  @MaxLength(100)
+  vozIncluidos?: string;
 
   @ApiPropertyOptional({
-    description: 'Costo mensual en MXN, máximo dos decimales',
-    example: 499.9,
+    description: 'Costo mensual en MXN',
+    example: '499.90',
+    maxLength: 100,
   })
-  @Type(() => Number)
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === ''
+      ? undefined
+      : typeof value === 'string'
+        ? value.trim()
+        : value,
+  )
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  CostoMensual?: number;
+  @IsString()
+  @MaxLength(100)
+  costoMensual?: string;
 
   @ApiPropertyOptional({
     description: 'Fecha de inicio de vigencia (YYYY-MM-DD)',
@@ -87,7 +113,7 @@ export class CreateCatPlanesTelefoniaDto {
   })
   @IsOptional()
   @IsDateString({ strict: true })
-  FechaInicioVigencia?: string;
+  fechaInicioVigencia?: string;
 
   @ApiPropertyOptional({
     description: 'Fecha fin de vigencia (null = sin fecha fin)',
@@ -96,15 +122,5 @@ export class CreateCatPlanesTelefoniaDto {
   })
   @IsOptional()
   @IsDateString({ strict: true })
-  FechaFinVigencia?: string | null;
-
-  @ApiPropertyOptional({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-  })
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  Estatus?: number;
+  fechaFinVigencia?: string | null;
 }

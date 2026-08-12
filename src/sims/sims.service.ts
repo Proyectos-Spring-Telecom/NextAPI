@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -7,22 +8,24 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Sims } from 'src/entities/Sims';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
+import { Clientes } from 'src/entities/Clientes';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
 import { UpdateSimsDto } from './dto/update-sims.dto';
-import { UpdateSimsEstatusDto } from './dto/update-sims-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-
-const ID_MODULO_SIMS = 14;
+import {
+  EnumEstatusRecurso,
+  EnumModulos,
+} from 'src/common/estatus.enum';
 
 @Injectable()
 export class SimsService {
@@ -33,14 +36,25 @@ export class SimsService {
     private readonly catTelefoniaRepo: Repository<CatTelefonia>,
     @InjectRepository(CatPlanesTelefonia)
     private readonly catPlanesTelefoniaRepo: Repository<CatPlanesTelefonia>,
+    @InjectRepository(Clientes)
+    private readonly clientesRepo: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private async validarFks(dto: {
+    idCliente?: number;
     idTelefonia?: number;
     idPlanTelefonia?: number;
   }): Promise<void> {
+    if (dto.idCliente !== undefined) {
+      const cliente = await this.clientesRepo.findOne({
+        where: { id: dto.idCliente },
+      });
+      if (!cliente) {
+        throw new BadRequestException('IdCliente no existe');
+      }
+    }
     if (dto.idTelefonia !== undefined) {
       const tel = await this.catTelefoniaRepo.findOne({
         where: { id: dto.idTelefonia },
@@ -59,32 +73,44 @@ export class SimsService {
     }
   }
 
+  private async assertImeiDisponible(
+    imei: string | null | undefined,
+    excludeId?: number,
+  ): Promise<void> {
+    const valor = imei?.trim();
+    if (!valor) return;
+
+    const where: FindOptionsWhere<Sims> = { imei: valor };
+    if (excludeId !== undefined) {
+      where.id = Not(excludeId);
+    }
+
+    const existente = await this.repository.findOne({ where });
+    if (existente) {
+      throw new ConflictException('El IMEI ya está registrado');
+    }
+  }
+
   async create(
     dto: CreateSimsDto,
-    idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
       await this.validarFks({
+        idCliente: dto.idCliente,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
       });
+      await this.assertImeiDisponible(dto.imei);
 
       const entity = this.repository.create({
         imei: dto.imei ?? null,
         numeroTelefono: dto.numeroTelefono ?? null,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
-        idCliente,
-        estatusSim: dto.estatusSim ?? 1,
-        fechaActivacion: dto.fechaActivacion
-          ? new Date(dto.fechaActivacion)
-          : null,
-        fechaVencimiento: dto.fechaVencimiento
-          ? new Date(dto.fechaVencimiento)
-          : null,
+        idCliente: dto.idCliente,
         notas: dto.notas ?? null,
-        estatus: dto.estatus ?? 1,
+        estatus: EnumEstatusRecurso.DISPONIBLE,
       });
 
       const saved = await this.repository.save(entity);
@@ -95,9 +121,9 @@ export class SimsService {
         'Sims',
         `Se creó el SIM ID: ${saved.id}`,
         'CREATE',
-        { dto, idCliente },
+        { dto },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -111,9 +137,9 @@ export class SimsService {
         'Sims',
         `Error al crear SIM`,
         'CREATE',
-        { dto, idCliente },
+        { dto },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -135,7 +161,7 @@ export class SimsService {
         return { data: [] };
       }
       const where: FindOptionsWhere<Sims> = {
-        estatus: 1,
+        estatus: EnumEstatusRecurso.DISPONIBLE,
         ...(tenant.idCliente !== undefined
           ? { idCliente: tenant.idCliente }
           : {}),
@@ -208,7 +234,7 @@ export class SimsService {
   async findOne(id: number, idCliente: number): Promise<{ data: Sims }> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
@@ -233,36 +259,30 @@ export class SimsService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
       }
 
       await this.validarFks({
+        idCliente: dto.idCliente,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
       });
+      if (dto.imei !== undefined) {
+        await this.assertImeiDisponible(dto.imei, id);
+      }
 
       const updateData: Partial<Sims> = {};
       if (dto.imei !== undefined) updateData.imei = dto.imei;
       if (dto.numeroTelefono !== undefined)
         updateData.numeroTelefono = dto.numeroTelefono;
+      if (dto.idCliente !== undefined) updateData.idCliente = dto.idCliente;
       if (dto.idTelefonia !== undefined) updateData.idTelefonia = dto.idTelefonia;
       if (dto.idPlanTelefonia !== undefined)
         updateData.idPlanTelefonia = dto.idPlanTelefonia;
-      if (dto.estatusSim !== undefined) updateData.estatusSim = dto.estatusSim;
-      if (dto.fechaActivacion !== undefined)
-        updateData.fechaActivacion = dto.fechaActivacion
-          ? new Date(dto.fechaActivacion)
-          : null;
-      if (dto.fechaVencimiento !== undefined)
-        updateData.fechaVencimiento = dto.fechaVencimiento
-          ? new Date(dto.fechaVencimiento)
-          : null;
       if (dto.notas !== undefined) updateData.notas = dto.notas;
-      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
-
       await this.repository.update(id, updateData);
 
       await this.bitacoraLogger.logToBitacora(
@@ -271,7 +291,7 @@ export class SimsService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -297,7 +317,7 @@ export class SimsService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -308,34 +328,41 @@ export class SimsService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateSimsEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior =
+        Number(entity.estatus) === EnumEstatusRecurso.DISPONIBLE
+          ? EnumEstatusRecurso.DISPONIBLE
+          : EnumEstatusRecurso.BAJA;
+      const estatus =
+        estatusAnterior === EnumEstatusRecurso.DISPONIBLE
+          ? EnumEstatusRecurso.BAJA
+          : EnumEstatusRecurso.DISPONIBLE;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Sims',
-        `Se actualizó estatus de SIM ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de SIM ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.SUCCESS,
       );
 
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: {
           id,
           nombre:
@@ -347,9 +374,9 @@ export class SimsService {
         'Sims',
         `Error al actualizar estatus de SIM ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
-        ID_MODULO_SIMS,
+        EnumModulos.SIMS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );

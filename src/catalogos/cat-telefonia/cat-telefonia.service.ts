@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CreateCatTelefoniaDto } from './dto/create-cat-telefonia.dto';
@@ -32,10 +33,10 @@ export interface PlanTelefoniaSimpleResponse {
   id: number;
   descripcion: string | null;
   idTelefonia: number;
-  datosMB: number | null;
-  smsIncluidos: number;
-  vozIncluidos: number;
-  costoMensual: number | null;
+  datos: string | null;
+  smsIncluidos: string | null;
+  vozIncluidos: string | null;
+  costoMensual: string | null;
   fechaInicioVigencia: string | null;
   fechaFinVigencia: string | null;
   estatus: number;
@@ -58,10 +59,10 @@ export class CatTelefoniaService {
       id: Number(plan.id),
       descripcion: plan.descripcion,
       idTelefonia: Number(plan.idTelefonia),
-      datosMB: plan.datosMB,
+      datos: plan.datos,
       smsIncluidos: plan.smsIncluidos,
       vozIncluidos: plan.vozIncluidos,
-      costoMensual: plan.costoMensual == null ? null : Number(plan.costoMensual),
+      costoMensual: plan.costoMensual,
       fechaInicioVigencia: plan.fechaInicioVigencia,
       fechaFinVigencia: plan.fechaFinVigencia,
       estatus: plan.estatus,
@@ -75,18 +76,19 @@ export class CatTelefoniaService {
     cantidadPlanes?: number,
     includePlanes = false,
   ): TelefoniaResponse {
+    const planes = entity.planesTelefonia ?? [];
+    const totalPlanes =
+      cantidadPlanes !== undefined ? cantidadPlanes : includePlanes ? planes.length : undefined;
     return {
       id: Number(entity.id),
       nombreTelefonia: entity.nombreTelefonia,
       nombreAsesor: entity.nombreAsesor,
       numeroAsesor: entity.numeroAsesor,
       estatus: entity.estatus,
-      ...(cantidadPlanes !== undefined ? { cantidadPlanes } : {}),
+      ...(totalPlanes !== undefined ? { cantidadPlanes: totalPlanes } : {}),
       ...(includePlanes
         ? {
-            planesTelefonia: (entity.planesTelefonia ?? []).map((plan) =>
-              this.mapPlan(plan),
-            ),
+            planesTelefonia: planes.map((plan) => this.mapPlan(plan)),
           }
         : {}),
     };
@@ -98,11 +100,11 @@ export class CatTelefoniaService {
   ): Promise<void> {
     const qb = this.repository
       .createQueryBuilder('telefonia')
-      .where('LOWER(TRIM(telefonia.NombreTelefonia)) = LOWER(:nombre)', {
+      .where('LOWER(TRIM(telefonia.nombreTelefonia)) = LOWER(:nombre)', {
         nombre: nombreTelefonia.trim(),
       });
     if (excludeId !== undefined) {
-      qb.andWhere('telefonia.Id <> :excludeId', { excludeId });
+      qb.andWhere('telefonia.id <> :excludeId', { excludeId });
     }
     if (await qb.getExists()) {
       throw new ConflictException(
@@ -144,13 +146,13 @@ export class CatTelefoniaService {
 
   async create(dto: CreateCatTelefoniaDto, idUser: number) {
     try {
-      await this.assertNombreDisponible(dto.NombreTelefonia);
+      await this.assertNombreDisponible(dto.nombreTelefonia);
       const saved = await this.repository.save(
         this.repository.create({
-          nombreTelefonia: dto.NombreTelefonia,
-          nombreAsesor: dto.NombreAsesor ?? null,
-          numeroAsesor: dto.NumeroAsesor ?? null,
-          estatus: dto.Estatus ?? 1,
+          nombreTelefonia: dto.nombreTelefonia,
+          nombreAsesor: dto.nombreAsesor ?? null,
+          numeroAsesor: dto.numeroAsesor ?? null,
+          estatus: EstatusEnum.ACTIVO,
         }),
       );
       await this.log(
@@ -168,7 +170,7 @@ export class CatTelefoniaService {
     } catch (error) {
       await this.log(
         'CREATE',
-        `Error al crear la telefonía: ${dto.NombreTelefonia}`,
+        `Error al crear la telefonía: ${dto.nombreTelefonia}`,
         { dto },
         idUser,
         EstatusEnumBitcora.ERROR,
@@ -179,45 +181,63 @@ export class CatTelefoniaService {
     }
   }
 
+  private async contarPlanesPorTelefonia(
+    idsTelefonia: number[],
+  ): Promise<Map<number, number>> {
+    const counts = new Map<number, number>();
+    if (idsTelefonia.length === 0) {
+      return counts;
+    }
+    const rows = await this.planesRepository
+      .createQueryBuilder('plan')
+      .select('plan.idTelefonia', 'idTelefonia')
+      .addSelect('COUNT(*)', 'cantidad')
+      .where('plan.idTelefonia IN (:...ids)', { ids: idsTelefonia })
+      .groupBy('plan.idTelefonia')
+      .getRawMany<{ idTelefonia: string | number; cantidad: string | number }>();
+
+    for (const row of rows) {
+      counts.set(Number(row.idTelefonia), Number(row.cantidad));
+    }
+    return counts;
+  }
+
   async findAll(filters: FilterCatTelefoniaDto) {
     const qb = this.repository
       .createQueryBuilder('telefonia')
-      .loadRelationCountAndMap('telefonia.cantidadPlanes', 'telefonia.planesTelefonia')
-      .orderBy('telefonia.Id', 'DESC')
+      .orderBy('telefonia.id', 'DESC')
       .skip((filters.page - 1) * filters.limit)
       .take(filters.limit);
 
-    if (filters.NombreTelefonia) {
-      qb.andWhere('telefonia.NombreTelefonia LIKE :nombreTelefonia', {
-        nombreTelefonia: `%${filters.NombreTelefonia}%`,
+    if (filters.nombreTelefonia) {
+      qb.andWhere('telefonia.nombreTelefonia LIKE :nombreTelefonia', {
+        nombreTelefonia: `%${filters.nombreTelefonia}%`,
       });
     }
-    if (filters.NombreAsesor) {
-      qb.andWhere('telefonia.NombreAsesor LIKE :nombreAsesor', {
-        nombreAsesor: `%${filters.NombreAsesor}%`,
+    if (filters.nombreAsesor) {
+      qb.andWhere('telefonia.nombreAsesor LIKE :nombreAsesor', {
+        nombreAsesor: `%${filters.nombreAsesor}%`,
       });
     }
-    if (filters.NumeroAsesor) {
-      qb.andWhere('telefonia.NumeroAsesor LIKE :numeroAsesor', {
-        numeroAsesor: `%${filters.NumeroAsesor}%`,
+    if (filters.numeroAsesor) {
+      qb.andWhere('telefonia.numeroAsesor LIKE :numeroAsesor', {
+        numeroAsesor: `%${filters.numeroAsesor}%`,
       });
     }
-    if (filters.Estatus !== undefined) {
-      qb.andWhere('telefonia.Estatus = :estatus', {
-        estatus: filters.Estatus,
+    if (filters.estatus !== undefined) {
+      qb.andWhere('telefonia.estatus = :estatus', {
+        estatus: filters.estatus,
       });
     }
 
     try {
       const [entities, total] = await qb.getManyAndCount();
+      const counts = await this.contarPlanesPorTelefonia(
+        entities.map((entity) => Number(entity.id)),
+      );
       return {
         data: entities.map((entity) =>
-          this.mapTelefonia(
-            entity,
-            Number(
-              (entity as CatTelefonia & { cantidadPlanes?: number }).cantidadPlanes ?? 0,
-            ),
-          ),
+          this.mapTelefonia(entity, counts.get(Number(entity.id)) ?? 0),
         ),
         pagination: {
           total,
@@ -226,8 +246,13 @@ export class CatTelefoniaService {
           totalPages: Math.ceil(total / filters.limit),
         },
       };
-    } catch {
-      throw new InternalServerErrorException('No fue posible consultar las telefonías.');
+    } catch (error) {
+      const detail = (error as Error)?.message;
+      throw new InternalServerErrorException(
+        detail
+          ? `No fue posible consultar las telefonías: ${detail}`
+          : 'No fue posible consultar las telefonías.',
+      );
     }
   }
 
@@ -235,7 +260,7 @@ export class CatTelefoniaService {
     const result = await this.findAll({
       page: 1,
       limit: 100,
-      ...(soloActivos ? { Estatus: 1 } : {}),
+      ...(soloActivos ? { estatus: 1 } : {}),
     });
     return { data: result.data };
   }
@@ -247,11 +272,11 @@ export class CatTelefoniaService {
         .leftJoinAndSelect(
           'telefonia.planesTelefonia',
           'plan',
-          'plan.Estatus = :estatusPlan',
+          'plan.estatus = :estatusPlan',
           { estatusPlan: 1 },
         )
-        .where('telefonia.Id = :id', { id })
-        .orderBy('plan.Id', 'DESC')
+        .where('telefonia.id = :id', { id })
+        .orderBy('plan.id', 'DESC')
         .getOne();
       if (!entity) {
         throw new NotFoundException('Telefonía no encontrada.');
@@ -269,20 +294,20 @@ export class CatTelefoniaService {
       if (!entity) {
         throw new NotFoundException('Telefonía no encontrada.');
       }
-      if (dto.NombreTelefonia !== undefined) {
-        await this.assertNombreDisponible(dto.NombreTelefonia, id);
+      if (dto.nombreTelefonia !== undefined) {
+        await this.assertNombreDisponible(dto.nombreTelefonia, id);
       }
-      if (dto.Estatus === 0) {
+      if (dto.estatus === 0) {
         await this.assertSinPlanesActivos(id);
       }
       const updateData: Partial<CatTelefonia> = {};
-      if (dto.NombreTelefonia !== undefined)
-        updateData.nombreTelefonia = dto.NombreTelefonia;
-      if (dto.NombreAsesor !== undefined && dto.NombreAsesor !== null)
-        updateData.nombreAsesor = dto.NombreAsesor;
-      if (dto.NumeroAsesor !== undefined && dto.NumeroAsesor !== null)
-        updateData.numeroAsesor = dto.NumeroAsesor;
-      if (dto.Estatus !== undefined) updateData.estatus = dto.Estatus;
+      if (dto.nombreTelefonia !== undefined)
+        updateData.nombreTelefonia = dto.nombreTelefonia;
+      if (dto.nombreAsesor !== undefined && dto.nombreAsesor !== null)
+        updateData.nombreAsesor = dto.nombreAsesor;
+      if (dto.numeroAsesor !== undefined && dto.numeroAsesor !== null)
+        updateData.numeroAsesor = dto.numeroAsesor;
+      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       if (Object.keys(updateData).length > 0) {
         await this.repository.update(id, updateData);
@@ -314,44 +339,46 @@ export class CatTelefoniaService {
     }
   }
 
-  async remove(id: number, idUser: number) {
+  async updateEstatus(id: number, idUser: number) {
     try {
       const entity = await this.repository.findOne({ where: { id } });
       if (!entity) {
         throw new NotFoundException('Telefonía no encontrada.');
       }
-      await this.assertSinPlanesActivos(id);
-      await this.repository.update(id, { estatus: 0 });
-      entity.estatus = 0;
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      if (estatus === 0) {
+        await this.assertSinPlanesActivos(id);
+      }
+      await this.repository.update(id, { estatus });
+      entity.estatus = estatus;
       await this.log(
-        'DELETE',
-        `Se desactivó la telefonía ID: ${id}`,
-        { id },
+        'UPDATE',
+        `Se cambió el estatus de la telefonía ID: ${id} a ${estatus}`,
+        { id, estatusAnterior, estatus },
         idUser,
         EstatusEnumBitcora.SUCCESS,
       );
       return {
         status: 'success',
-        message: 'Telefonía desactivada correctamente.',
+        message: 'Estatus actualizado correctamente.',
+        estatus: { estatus },
         data: this.mapTelefonia(entity),
       };
     } catch (error) {
       await this.log(
-        'DELETE',
-        `Error al desactivar la telefonía ID: ${id}`,
+        'UPDATE',
+        `Error al cambiar el estatus de la telefonía ID: ${id}`,
         { id },
         idUser,
         EstatusEnumBitcora.ERROR,
         (error as Error).message,
       );
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('No fue posible desactivar la telefonía.');
+      throw new InternalServerErrorException(
+        'No fue posible cambiar el estatus de la telefonía.',
+      );
     }
-  }
-
-  async updateEstatus(id: number, dto: { estatus: number }, idUser: number) {
-    if (dto.estatus === 0) return this.remove(id, idUser);
-    return this.update(id, { Estatus: dto.estatus }, idUser);
   }
 
   async findPlanesByTelefonia(idTelefonia: number, filters: FilterCatPlanesTelefoniaDto) {
@@ -364,18 +391,18 @@ export class CatTelefoniaService {
 
     const qb = this.planesRepository
       .createQueryBuilder('plan')
-      .where('plan.IdTelefonia = :idTelefonia', { idTelefonia })
-      .orderBy('plan.Id', 'DESC');
-    if (filters.Estatus !== undefined) {
-      qb.andWhere('plan.Estatus = :estatus', { estatus: filters.Estatus });
+      .where('plan.idTelefonia = :idTelefonia', { idTelefonia })
+      .orderBy('plan.id', 'DESC');
+    if (filters.estatus !== undefined) {
+      qb.andWhere('plan.estatus = :estatus', { estatus: filters.estatus });
     }
     if (filters.vigentes) {
-      qb.andWhere('plan.Estatus = 1')
+      qb.andWhere('plan.estatus = 1')
         .andWhere(
-          '(plan.FechaInicioVigencia IS NULL OR plan.FechaInicioVigencia <= CURDATE())',
+          '(plan.fechaInicioVigencia IS NULL OR plan.fechaInicioVigencia <= CURDATE())',
         )
         .andWhere(
-          '(plan.FechaFinVigencia IS NULL OR plan.FechaFinVigencia >= CURDATE())',
+          '(plan.fechaFinVigencia IS NULL OR plan.fechaFinVigencia >= CURDATE())',
         );
     }
     const planes = await qb.getMany();

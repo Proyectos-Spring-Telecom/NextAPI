@@ -77,11 +77,8 @@ export class Vehiculos {
   @Column('varchar', { name: 'PolizaSeguro', length: 500, nullable: true })
   polizaSeguro: string | null;
 
-  @Column('varchar', { name: 'PermisoConcesion', length: 500, nullable: true })
-  permisoConcesion: string | null;
-
-  @Column('varchar', { name: 'InspeccionMecanica', length: 500, nullable: true })
-  inspeccionMecanica: string | null;
+  @Column('varchar', { name: 'PermisoCarga', length: 500, nullable: true })
+  permisoCarga: string | null;
 
   @Column('bigint', { name: 'IdCombustible', nullable: true })
   idCombustible: number | null;

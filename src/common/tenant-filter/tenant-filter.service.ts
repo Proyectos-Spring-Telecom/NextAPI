@@ -3,11 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Clientes } from 'src/entities/Clientes';
 
-/** Roles que ven todo sin filtro de cliente. */
-const ROLES_SIN_FILTRO = new Set([1, 2]);
+/**
+ * Roles con visualización global (sin filtro de IdCliente).
+ * 1, 2, 3, 4, 5, 8
+ */
+const ROLES_SIN_FILTRO = new Set([1, 2, 3, 4, 5, 8]);
 
-/** Roles que ven su cliente + hijos (spGetClientes). */
-const ROLES_CLIENTE_HIJOS = new Set([3, 4]);
+/**
+ * Rol que ve su cliente + hijos (spGetClientes / getClienteHijosIds).
+ * 6
+ */
+const ROLES_CLIENTE_HIJOS = new Set([6]);
 
 /** Resultado del fragmento SQL de tenant. */
 export interface TenantFragment {
@@ -28,6 +34,10 @@ export class TenantFilterService {
 
   /**
    * Genera un fragmento SQL + params para filtrar por tenant según el rol.
+   *
+   * - Roles 1, 2, 3, 4, 5, 8 → sin filtro (ven todo).
+   * - Rol 6 → su cliente + hijos (`getClienteHijosIds` / `spGetClientes`).
+   * - Rol 7 (y cualquier otro) → solo su `idCliente`.
    */
   async build(
     rol: number,
@@ -111,8 +121,8 @@ export class TenantFilterService {
   }
 
   /**
-   * Condición de `idCliente` para `repository.find` / `findAndCount` (conserva relaciones).
-   * Roles 1–2: sin restricción de cliente. 3–4: In(ids jerarquía). 5–6 y otros: igual al token.
+   * Condición de `idCliente` para `repository.find` / `findAndCount`.
+   * Roles 1–5 y 8: sin restricción. Rol 6: In(ids jerarquía). Rol 7 u otros: igual al token.
    */
   async forTypeOrmIdCliente(
     rol: number,

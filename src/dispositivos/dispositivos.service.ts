@@ -15,7 +15,6 @@ import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
-import { UpdateDispositivosEstatusDto } from './dto/update-dispositivos-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -335,7 +334,6 @@ export class DispositivosService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateDispositivosEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -347,13 +345,15 @@ export class DispositivosService {
         throw new NotFoundException('Dispositivo no encontrado');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
-        `Se actualizó estatus de dispositivo ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de dispositivo ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
         ID_MODULO_DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,
@@ -362,7 +362,7 @@ export class DispositivosService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: entity.numeroSerie },
       };
     } catch (error) {
@@ -370,7 +370,7 @@ export class DispositivosService {
         'Dispositivos',
         `Error al actualizar estatus de dispositivo ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
         ID_MODULO_DISPOSITIVOS,
         EstatusEnumBitcora.ERROR,

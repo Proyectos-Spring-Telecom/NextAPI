@@ -31,7 +31,7 @@ export class FilterCatPlanesTelefoniaDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  IdTelefonia?: number;
+  idTelefonia?: number;
 
   @ApiPropertyOptional({ description: 'Coincidencia parcial' })
   @Transform(({ value }) =>
@@ -43,38 +43,38 @@ export class FilterCatPlanesTelefoniaDto {
   )
   @IsOptional()
   @IsString()
-  Descripcion?: string;
+  descripcion?: string;
 
   @ApiPropertyOptional({ enum: [0, 1] })
   @Type(() => Number)
   @IsOptional()
   @IsInt()
   @IsIn([0, 1])
-  Estatus?: number;
+  estatus?: number;
 
   @ApiPropertyOptional({ example: '2026-07-01' })
   @IsOptional()
   @IsDateString({ strict: true })
-  FechaInicioVigencia?: string;
+  fechaInicioVigencia?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
   @IsDateString({ strict: true })
-  FechaFinVigencia?: string;
+  fechaFinVigencia?: string;
 
   @ApiPropertyOptional({ minimum: 0 })
   @Type(() => Number)
   @IsOptional()
   @IsNumber()
   @Min(0)
-  CostoMensualMin?: number;
+  costoMensualMin?: number;
 
   @ApiPropertyOptional({ minimum: 0 })
   @Type(() => Number)
   @IsOptional()
   @IsNumber()
   @Min(0)
-  CostoMensualMax?: number;
+  costoMensualMax?: number;
 
   @ApiPropertyOptional({
     description: 'Solo planes activos vigentes a la fecha actual',

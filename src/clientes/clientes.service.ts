@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
-import { UpdateClienteEstatusDto } from './dto/update-clientes-estatus.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Clientes } from 'src/entities/Clientes';
@@ -18,9 +17,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import {
-  EnumModulos,
-} from 'src/common/estatus.enum';
+import { EnumModulos } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
@@ -59,10 +56,9 @@ export class ClientesService {
           ? idClienteRaizOpcional
           : idClienteToken;
 
-      const result = await this.clienteRepository.query(
-        'CALL spGetClientes(?);',
-        [idRaiz],
-      );
+      const result = await this.clienteRepository.query('CALL spGetClientes(?);', [
+        idRaiz,
+      ]);
       const rows = (result?.[0] ?? []) as Record<string, unknown>[];
 
       const data = rows.map((row) => ({
@@ -76,10 +72,8 @@ export class ClientesService {
         estatus: Number(row.Estatus ?? row.estatus ?? 0),
         logo: row.Logo ?? row.logo ?? null,
         nombre: row.Nombre != null ? String(row.Nombre) : null,
-        apellidoPaterno:
-          row.ApellidoPaterno != null ? String(row.ApellidoPaterno) : null,
-        apellidoMaterno:
-          row.ApellidoMaterno != null ? String(row.ApellidoMaterno) : null,
+        apellidoPaterno: row.ApellidoPaterno != null ? String(row.ApellidoPaterno) : null,
+        apellidoMaterno: row.ApellidoMaterno != null ? String(row.ApellidoMaterno) : null,
         telefono: row.Telefono != null ? String(row.Telefono) : null,
         correo: row.Correo != null ? String(row.Correo) : null,
         nombrePadre: row.Padre != null ? String(row.Padre) : null,
@@ -225,8 +219,7 @@ export class ClientesService {
         message: 'El cliente ha sido creado correctamente.',
         data: {
           id: clienteCreado.id,
-          nombre:
-            `${clienteCreado.nombre} ${clienteCreado.apellidoPaterno} ` || '',
+          nombre: `${clienteCreado.nombre} ${clienteCreado.apellidoPaterno} ` || '',
         },
       };
       return result;
@@ -435,7 +428,7 @@ ORDER BY Id ASC
       };
       return result;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       if (error instanceof HttpException) {
         throw error;
       }
@@ -454,9 +447,7 @@ ORDER BY Id ASC
         where: { id: id },
       });
       if (!cliente) {
-        throw new NotFoundException(
-          `El cliente con ID: ${id} no fue encontrado.`,
-        );
+        throw new NotFoundException(`El cliente con ID: ${id} no fue encontrado.`);
       }
       return { data: cliente };
     } catch (error) {
@@ -487,9 +478,7 @@ ORDER BY Id ASC
         where: { id: id },
       });
       if (!Cliente) {
-        throw new NotFoundException(
-          `El cliente con ID: ${id} no fue encontrado.`,
-        );
+        throw new NotFoundException(`El cliente con ID: ${id} no fue encontrado.`);
       }
 
       const {
@@ -574,12 +563,9 @@ ORDER BY Id ASC
         where: { id: id },
       });
 
-      this.webhookEmitter.emit(
-        WebhookEvent.CLIENTE_UPDATED,
-        id,
-        id,
-        { idPadre: clientefind?.idPadre },
-      );
+      this.webhookEmitter.emit(WebhookEvent.CLIENTE_UPDATED, id, id, {
+        idPadre: clientefind?.idPadre,
+      });
 
       //Api response
       const result: ApiCrudResponse = {
@@ -587,13 +573,12 @@ ORDER BY Id ASC
         message: 'Cliente actualizado correctamente.',
         data: {
           id: id,
-          nombre:
-            `${clientefind?.nombre} ${clientefind?.apellidoPaterno} ` || '',
+          nombre: `${clientefind?.nombre} ${clientefind?.apellidoPaterno} ` || '',
         },
       };
       return result;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       //-----Registro en la bitacora----- ERROR
       const querylogger = { updateClienteDto };
       await this.bitacoraLogger.logToBitacora(
@@ -619,12 +604,7 @@ ORDER BY Id ASC
   // ========================================
   // 🔹 ACTUALIZAR ESTATUS DEL CLIENTE
   // ========================================
-  async updateClienteStatus(
-    id: number,
-    idUser: number,
-    cliente: number,
-    updateClienteEstatusDto: UpdateClienteEstatusDto,
-  ): Promise<ApiCrudResponse> {
+  async updateClienteStatus(id: number, idUser: number): Promise<ApiCrudResponse> {
     try {
       const clienteEntidad = await this.clienteRepository.findOne({
         where: { id: id },
@@ -637,21 +617,21 @@ ORDER BY Id ASC
       const idsUpdate = idsJerarquia.length > 0 ? idsJerarquia : [id];
       const placeholders = idsUpdate.map(() => '?').join(', ');
 
-      //Obtenemos el valor de estatus
-      const estatus = updateClienteEstatusDto.estatus;
+      const estatusAnterior = Number(clienteEntidad.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
 
       //Hacemos eliminado logico al cliente padre e hijos
       await this.clienteRepository.query(
         `
         UPDATE Clientes
-        SET Estatus = ${estatus}
+        SET Estatus = ?
         WHERE Id IN (${placeholders})
         `,
-        [...idsUpdate],
+        [estatus, ...idsUpdate],
       );
 
       //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { updateClienteEstatusDto };
+      const querylogger = { id, idsAfectados: idsUpdate, estatusAnterior, estatus };
       await this.bitacoraLogger.logToBitacora(
         'Clientes',
         `El estatus del cliente con ID ${id} se modificó exitosamente a: ${estatus}.`,
@@ -677,10 +657,10 @@ ORDER BY Id ASC
       return result;
     } catch (error) {
       //-----Registro en la bitacora----- ERROR
-      const querylogger = { updateClienteEstatusDto };
+      const querylogger = { id };
       await this.bitacoraLogger.logToBitacora(
         'Clientes',
-        `Se cambió el estatus del cliente con ID: ${id} a estatus: ${updateClienteEstatusDto.estatus}.`,
+        `No se pudo cambiar el estatus del cliente con ID: ${id}.`,
         'UPDATE',
         querylogger,
         idUser,
@@ -698,84 +678,4 @@ ORDER BY Id ASC
     }
   }
 
-  // ========================================
-  // 🔹 ELIMINAR CLIENTES
-  // ========================================
-  async removeCliente(
-    id: number,
-    idUser: number,
-    cliente: number,
-  ): Promise<ApiCrudResponse> {
-    try {
-
-      //Buscamos al cliente y verificamos
-      const clienteEliminar = await this.clienteRepository.findOne({
-        where: { id: id },
-      });
-      if (!clienteEliminar) {
-        throw new NotFoundException(
-          `El cliente con ID: ${id} no fue encontrado.`,
-        );
-      }
-
-      const idsCascadeRaw = await this.tenantFilter.getClienteHijosIds(id);
-      const idsCascade =
-        idsCascadeRaw.length > 0 ? idsCascadeRaw : [id];
-      const placeholdersCascade = idsCascade.map(() => '?').join(', ');
-
-      await this.clienteRepository.query(
-        `
-        UPDATE Clientes
-        SET Estatus = 0
-        WHERE Id IN (${placeholdersCascade})
-        `,
-        [...idsCascade],
-      );
-
-      //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Clientes',
-        `Se eliminó el cliente con ID: ${id}.`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        EnumModulos.CLIENTES,
-        EstatusEnumBitcora.SUCCESS,
-      );
-
-      //Api response
-      const result: ApiCrudResponse = {
-        status: 'success',
-        message: 'El cliente fue eliminado correctamente.',
-        data: {
-          id: id,
-          nombre:
-            `${clienteEliminar.nombre} ${clienteEliminar.apellidoPaterno} ` ||
-            '',
-        },
-      };
-      return result;
-    } catch (error) {
-      //-----Registro en la bitacora----- ERROR
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Clientes',
-        `Se eliminó el cliente con ID: ${id}.`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        EnumModulos.CLIENTES,
-        EstatusEnumBitcora.ERROR,
-        error.message,
-      );
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new InternalServerErrorException({
-        message: `Error al eliminar el cliente con ID: ${id}.`,
-        error: error.message,
-      });
-    }
-  }
 }

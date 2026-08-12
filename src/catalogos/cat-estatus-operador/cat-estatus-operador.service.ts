@@ -12,7 +12,6 @@ import { CatEstatusOperador } from 'src/entities/CatEstatusOperador';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateCatEstatusOperadorDto } from './dto/create-cat-estatus-operador.dto';
 import { UpdateCatEstatusOperadorDto } from './dto/update-cat-estatus-operador.dto';
-import { UpdateCatEstatusOperadorEstatusDto } from './dto/update-cat-estatus-operador-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -197,7 +196,6 @@ export class CatEstatusOperadorService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateCatEstatusOperadorEstatusDto,
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
@@ -205,13 +203,15 @@ export class CatEstatusOperadorService {
       if (!entity) {
         throw new NotFoundException('Estatus de operador no encontrado');
       }
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'CatEstatusOperador',
-        `Se actualizó estatus de operador ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de operador ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus },
+        { id, estatusAnterior, estatus },
         idUser,
         ID_MODULO_OPERADORES,
         EstatusEnumBitcora.SUCCESS,
@@ -220,7 +220,7 @@ export class CatEstatusOperadorService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: entity.nombre },
       };
     } catch (error) {
@@ -228,7 +228,7 @@ export class CatEstatusOperadorService {
         'CatEstatusOperador',
         `Error al actualizar estatus de operador ID: ${id}`,
         'UPDATE',
-        { id, dto },
+        { id },
         idUser,
         ID_MODULO_OPERADORES,
         EstatusEnumBitcora.ERROR,

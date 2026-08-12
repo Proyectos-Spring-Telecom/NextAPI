@@ -15,7 +15,6 @@ import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
-import { UpdateInstalacionesEstatusDto } from './dto/update-instalaciones-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -392,7 +391,6 @@ export class InstalacionesService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateInstalacionesEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -404,13 +402,15 @@ export class InstalacionesService {
         throw new NotFoundException('Instalación no encontrada');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
-        `Se actualizó estatus de instalación ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de instalación ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
         ID_MODULO_INSTALACIONES,
         EstatusEnumBitcora.SUCCESS,
@@ -419,7 +419,7 @@ export class InstalacionesService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: `Instalación ${id}` },
       };
     } catch (error) {
@@ -427,7 +427,7 @@ export class InstalacionesService {
         'Instalaciones',
         `Error al actualizar estatus de instalación ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
         ID_MODULO_INSTALACIONES,
         EstatusEnumBitcora.ERROR,

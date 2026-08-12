@@ -19,7 +19,6 @@ import {
 import { InstalacionesService } from './instalaciones.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
-import { UpdateInstalacionesEstatusDto } from './dto/update-instalaciones-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -113,18 +112,20 @@ export class InstalacionesController {
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID de la instalación' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateInstalacionesEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.instalacionesService.updateEstatus(id, dto, idCliente, idUser);
+    return this.instalacionesService.updateEstatus(id, idCliente, idUser);
   }
 }

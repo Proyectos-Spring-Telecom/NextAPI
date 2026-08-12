@@ -12,7 +12,6 @@ import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateCatTipoCombustibleDto } from './dto/create-cat-tipo-combustible.dto';
 import { UpdateCatTipoCombustibleDto } from './dto/update-cat-tipo-combustible.dto';
-import { UpdateCatTipoCombustibleEstatusDto } from './dto/update-cat-tipo-combustible-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -197,7 +196,6 @@ export class CatTipoCombustibleService {
 
   async updateEstatus(
     id: number,
-    dto: UpdateCatTipoCombustibleEstatusDto,
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
@@ -205,13 +203,15 @@ export class CatTipoCombustibleService {
       if (!entity) {
         throw new NotFoundException('Tipo de combustible no encontrado');
       }
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'CatTipoCombustible',
-        `Se actualizó estatus de tipo de combustible ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus de tipo de combustible ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus },
+        { id, estatusAnterior, estatus },
         idUser,
         ID_MODULO_VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
@@ -220,7 +220,7 @@ export class CatTipoCombustibleService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: entity.nombre },
       };
     } catch (error) {
@@ -228,7 +228,7 @@ export class CatTipoCombustibleService {
         'CatTipoCombustible',
         `Error al actualizar estatus de tipo de combustible ID: ${id}`,
         'UPDATE',
-        { id, dto },
+        { id },
         idUser,
         ID_MODULO_VEHICULOS,
         EstatusEnumBitcora.ERROR,

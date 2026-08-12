@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.dto';
@@ -30,10 +31,10 @@ export interface PlanTelefoniaResponse {
   id: number;
   descripcion: string | null;
   idTelefonia: number;
-  datosMB: number | null;
-  smsIncluidos: number;
-  vozIncluidos: number;
-  costoMensual: number | null;
+  datos: string | null;
+  smsIncluidos: string | null;
+  vozIncluidos: string | null;
+  costoMensual: string | null;
   fechaInicioVigencia: string | null;
   fechaFinVigencia: string | null;
   estatus: number;
@@ -70,10 +71,10 @@ export class CatPlanesTelefoniaService {
       id: Number(entity.id),
       descripcion: entity.descripcion,
       idTelefonia: Number(entity.idTelefonia),
-      datosMB: entity.datosMB,
+      datos: entity.datos,
       smsIncluidos: entity.smsIncluidos,
       vozIncluidos: entity.vozIncluidos,
-      costoMensual: entity.costoMensual == null ? null : Number(entity.costoMensual),
+      costoMensual: entity.costoMensual,
       fechaInicioVigencia: entity.fechaInicioVigencia,
       fechaFinVigencia: entity.fechaFinVigencia,
       estatus: entity.estatus,
@@ -129,19 +130,19 @@ export class CatPlanesTelefoniaService {
 
   async create(dto: CreateCatPlanesTelefoniaDto, idUser: number) {
     try {
-      await this.obtenerTelefoniaActiva(dto.IdTelefonia);
-      this.validarFechas(dto.FechaInicioVigencia, dto.FechaFinVigencia);
+      await this.obtenerTelefoniaActiva(dto.idTelefonia);
+      this.validarFechas(dto.fechaInicioVigencia, dto.fechaFinVigencia);
       const saved = await this.repository.save(
         this.repository.create({
-          descripcion: dto.Descripcion ?? null,
-          idTelefonia: dto.IdTelefonia,
-          datosMB: dto.DatosMB === undefined ? 0 : dto.DatosMB,
-          smsIncluidos: dto.SMSIncluidos ?? 0,
-          vozIncluidos: dto.VozIncluidos ?? 0,
-          costoMensual: dto.CostoMensual?.toString() ?? null,
-          fechaInicioVigencia: dto.FechaInicioVigencia ?? null,
-          fechaFinVigencia: dto.FechaFinVigencia ?? null,
-          estatus: dto.Estatus ?? 1,
+          descripcion: dto.descripcion ?? null,
+          idTelefonia: dto.idTelefonia,
+          datos: dto.datos === undefined ? '0' : dto.datos,
+          smsIncluidos: dto.smsIncluidos ?? '0',
+          vozIncluidos: dto.vozIncluidos ?? '0',
+          costoMensual: dto.costoMensual ?? null,
+          fechaInicioVigencia: dto.fechaInicioVigencia ?? null,
+          fechaFinVigencia: dto.fechaFinVigencia ?? null,
+          estatus: EstatusEnum.ACTIVO,
         }),
       );
       const result = await this.repository.findOneOrFail({
@@ -178,9 +179,9 @@ export class CatPlanesTelefoniaService {
 
   async findAll(filters: FilterCatPlanesTelefoniaDto) {
     if (
-      filters.CostoMensualMin !== undefined &&
-      filters.CostoMensualMax !== undefined &&
-      filters.CostoMensualMax < filters.CostoMensualMin
+      filters.costoMensualMin !== undefined &&
+      filters.costoMensualMax !== undefined &&
+      filters.costoMensualMax < filters.costoMensualMin
     ) {
       throw new BadRequestException(
         'El costo mensual máximo no puede ser menor que el mínimo.',
@@ -190,50 +191,52 @@ export class CatPlanesTelefoniaService {
     const qb = this.repository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.telefonia', 'telefonia')
-      .orderBy('plan.Id', 'DESC')
+      .orderBy('plan.id', 'DESC')
       .skip((filters.page - 1) * filters.limit)
       .take(filters.limit);
 
-    if (filters.IdTelefonia !== undefined) {
-      qb.andWhere('plan.IdTelefonia = :idTelefonia', {
-        idTelefonia: filters.IdTelefonia,
+    if (filters.idTelefonia !== undefined) {
+      qb.andWhere('plan.idTelefonia = :idTelefonia', {
+        idTelefonia: filters.idTelefonia,
       });
     }
-    if (filters.Descripcion) {
-      qb.andWhere('plan.Descripcion LIKE :descripcion', {
-        descripcion: `%${filters.Descripcion}%`,
+    if (filters.descripcion) {
+      qb.andWhere('plan.descripcion LIKE :descripcion', {
+        descripcion: `%${filters.descripcion}%`,
       });
     }
-    if (filters.Estatus !== undefined) {
-      qb.andWhere('plan.Estatus = :estatus', { estatus: filters.Estatus });
+    if (filters.estatus !== undefined) {
+      qb.andWhere('plan.estatus = :estatus', { estatus: filters.estatus });
     }
-    if (filters.FechaInicioVigencia) {
-      qb.andWhere('plan.FechaInicioVigencia >= :fechaInicio', {
-        fechaInicio: filters.FechaInicioVigencia,
+    if (filters.fechaInicioVigencia) {
+      qb.andWhere('plan.fechaInicioVigencia >= :fechaInicio', {
+        fechaInicio: filters.fechaInicioVigencia,
       });
     }
-    if (filters.FechaFinVigencia) {
-      qb.andWhere('plan.FechaFinVigencia <= :fechaFin', {
-        fechaFin: filters.FechaFinVigencia,
+    if (filters.fechaFinVigencia) {
+      qb.andWhere('plan.fechaFinVigencia <= :fechaFin', {
+        fechaFin: filters.fechaFinVigencia,
       });
     }
-    if (filters.CostoMensualMin !== undefined) {
-      qb.andWhere('plan.CostoMensual >= :costoMin', {
-        costoMin: filters.CostoMensualMin,
-      });
+    if (filters.costoMensualMin !== undefined) {
+      qb.andWhere(
+        'CAST(plan.costoMensual AS DECIMAL(10,2)) >= :costoMin',
+        { costoMin: filters.costoMensualMin },
+      );
     }
-    if (filters.CostoMensualMax !== undefined) {
-      qb.andWhere('plan.CostoMensual <= :costoMax', {
-        costoMax: filters.CostoMensualMax,
-      });
+    if (filters.costoMensualMax !== undefined) {
+      qb.andWhere(
+        'CAST(plan.costoMensual AS DECIMAL(10,2)) <= :costoMax',
+        { costoMax: filters.costoMensualMax },
+      );
     }
     if (filters.vigentes) {
-      qb.andWhere('plan.Estatus = 1')
+      qb.andWhere('plan.estatus = 1')
         .andWhere(
-          '(plan.FechaInicioVigencia IS NULL OR plan.FechaInicioVigencia <= CURDATE())',
+          '(plan.fechaInicioVigencia IS NULL OR plan.fechaInicioVigencia <= CURDATE())',
         )
         .andWhere(
-          '(plan.FechaFinVigencia IS NULL OR plan.FechaFinVigencia >= CURDATE())',
+          '(plan.fechaFinVigencia IS NULL OR plan.fechaFinVigencia >= CURDATE())',
         );
     }
 
@@ -248,9 +251,12 @@ export class CatPlanesTelefoniaService {
           totalPages: Math.ceil(total / filters.limit),
         },
       };
-    } catch {
+    } catch (error) {
+      const detail = (error as Error)?.message;
       throw new InternalServerErrorException(
-        'No fue posible consultar los planes de telefonía.',
+        detail
+          ? `No fue posible consultar los planes de telefonía: ${detail}`
+          : 'No fue posible consultar los planes de telefonía.',
       );
     }
   }
@@ -259,8 +265,8 @@ export class CatPlanesTelefoniaService {
     const result = await this.findAll({
       page: 1,
       limit: 100,
-      ...(soloActivos ? { Estatus: 1 } : {}),
-      ...(idTelefonia !== undefined ? { IdTelefonia: idTelefonia } : {}),
+      ...(soloActivos ? { estatus: 1 } : {}),
+      ...(idTelefonia !== undefined ? { idTelefonia } : {}),
     });
     return { data: result.data };
   }
@@ -289,34 +295,33 @@ export class CatPlanesTelefoniaService {
       if (!entity) {
         throw new NotFoundException('Plan de telefonía no encontrado.');
       }
-      if (dto.IdTelefonia !== undefined) {
-        await this.obtenerTelefoniaActiva(dto.IdTelefonia);
-      } else if (dto.Estatus === 1) {
+      if (dto.idTelefonia !== undefined) {
+        await this.obtenerTelefoniaActiva(dto.idTelefonia);
+      } else if (dto.estatus === 1) {
         await this.obtenerTelefoniaActiva(entity.idTelefonia);
       }
       const fechaInicio =
-        dto.FechaInicioVigencia !== undefined
-          ? dto.FechaInicioVigencia
+        dto.fechaInicioVigencia !== undefined
+          ? dto.fechaInicioVigencia
           : entity.fechaInicioVigencia;
       const fechaFin =
-        dto.FechaFinVigencia !== undefined
-          ? dto.FechaFinVigencia
+        dto.fechaFinVigencia !== undefined
+          ? dto.fechaFinVigencia
           : entity.fechaFinVigencia;
       this.validarFechas(fechaInicio, fechaFin);
 
       const updateData: Partial<CatPlanesTelefonia> = {};
-      if (dto.Descripcion !== undefined) updateData.descripcion = dto.Descripcion;
-      if (dto.IdTelefonia !== undefined) updateData.idTelefonia = dto.IdTelefonia;
-      if (dto.DatosMB !== undefined) updateData.datosMB = dto.DatosMB;
-      if (dto.SMSIncluidos !== undefined) updateData.smsIncluidos = dto.SMSIncluidos;
-      if (dto.VozIncluidos !== undefined) updateData.vozIncluidos = dto.VozIncluidos;
-      if (dto.CostoMensual !== undefined)
-        updateData.costoMensual = dto.CostoMensual.toString();
-      if (dto.FechaInicioVigencia !== undefined)
-        updateData.fechaInicioVigencia = dto.FechaInicioVigencia;
-      if (dto.FechaFinVigencia !== undefined)
-        updateData.fechaFinVigencia = dto.FechaFinVigencia;
-      if (dto.Estatus !== undefined) updateData.estatus = dto.Estatus;
+      if (dto.descripcion !== undefined) updateData.descripcion = dto.descripcion;
+      if (dto.idTelefonia !== undefined) updateData.idTelefonia = dto.idTelefonia;
+      if (dto.datos !== undefined) updateData.datos = dto.datos;
+      if (dto.smsIncluidos !== undefined) updateData.smsIncluidos = dto.smsIncluidos;
+      if (dto.vozIncluidos !== undefined) updateData.vozIncluidos = dto.vozIncluidos;
+      if (dto.costoMensual !== undefined) updateData.costoMensual = dto.costoMensual;
+      if (dto.fechaInicioVigencia !== undefined)
+        updateData.fechaInicioVigencia = dto.fechaInicioVigencia;
+      if (dto.fechaFinVigencia !== undefined)
+        updateData.fechaFinVigencia = dto.fechaFinVigencia;
+      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
 
       if (Object.keys(updateData).length > 0) {
         await this.repository.update(id, updateData);
@@ -353,7 +358,7 @@ export class CatPlanesTelefoniaService {
     }
   }
 
-  async remove(id: number, idUser: number) {
+  async updateEstatus(id: number, idUser: number) {
     try {
       const entity = await this.repository.findOne({
         where: { id },
@@ -362,24 +367,27 @@ export class CatPlanesTelefoniaService {
       if (!entity) {
         throw new NotFoundException('Plan de telefonía no encontrado.');
       }
-      await this.repository.update(id, { estatus: 0 });
-      entity.estatus = 0;
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
+      entity.estatus = estatus;
       await this.log(
-        'DELETE',
-        `Se desactivó el plan de telefonía ID: ${id}`,
-        { id },
+        'UPDATE',
+        `Se cambió el estatus del plan de telefonía ID: ${id} a ${estatus}`,
+        { id, estatusAnterior, estatus },
         idUser,
         EstatusEnumBitcora.SUCCESS,
       );
       return {
         status: 'success',
-        message: 'Plan de telefonía desactivado correctamente.',
+        message: 'Estatus actualizado correctamente.',
+        estatus: { estatus },
         data: this.mapPlan(entity),
       };
     } catch (error) {
       await this.log(
-        'DELETE',
-        `Error al desactivar el plan de telefonía ID: ${id}`,
+        'UPDATE',
+        `Error al cambiar el estatus del plan de telefonía ID: ${id}`,
         { id },
         idUser,
         EstatusEnumBitcora.ERROR,
@@ -387,13 +395,8 @@ export class CatPlanesTelefoniaService {
       );
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException(
-        'No fue posible desactivar el plan de telefonía.',
+        'No fue posible cambiar el estatus del plan de telefonía.',
       );
     }
-  }
-
-  async updateEstatus(id: number, dto: { estatus: number }, idUser: number) {
-    if (dto.estatus === 0) return this.remove(id, idUser);
-    return this.update(id, { Estatus: dto.estatus }, idUser);
   }
 }

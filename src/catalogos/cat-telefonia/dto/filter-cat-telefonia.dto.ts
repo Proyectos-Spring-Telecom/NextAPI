@@ -26,7 +26,7 @@ export class FilterCatTelefoniaDto {
   )
   @IsOptional()
   @IsString()
-  NombreTelefonia?: string;
+  nombreTelefonia?: string;
 
   @ApiPropertyOptional({ description: 'Coincidencia parcial por asesor' })
   @Transform(({ value }) =>
@@ -38,7 +38,7 @@ export class FilterCatTelefoniaDto {
   )
   @IsOptional()
   @IsString()
-  NombreAsesor?: string;
+  nombreAsesor?: string;
 
   @ApiPropertyOptional({ description: 'Coincidencia parcial por número' })
   @Transform(({ value }) =>
@@ -50,12 +50,12 @@ export class FilterCatTelefoniaDto {
   )
   @IsOptional()
   @IsString()
-  NumeroAsesor?: string;
+  numeroAsesor?: string;
 
   @ApiPropertyOptional({ enum: [0, 1] })
   @Type(() => Number)
   @IsOptional()
   @IsInt()
   @IsIn([0, 1])
-  Estatus?: number;
+  estatus?: number;
 }

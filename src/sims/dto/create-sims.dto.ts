@@ -1,7 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsDateString,
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -10,74 +8,60 @@ import {
 } from 'class-validator';
 
 export class CreateSimsDto {
-  @ApiProperty({
-    description: 'IMEI/identificador en red (opcional)',
-    maxLength: 15,
-    required: false,
+  @ApiPropertyOptional({
+    description: 'IMEI / ICC del suscriptor en la red móvil',
+    maxLength: 25,
+    example: '356938035643809',
+    nullable: true,
   })
   @IsOptional()
   @IsString()
-  @MaxLength(15)
+  @MaxLength(25)
   imei?: string;
 
-  @ApiProperty({
-    description: 'Número de teléfono / MSISDN',
+  @ApiPropertyOptional({
+    description: 'Número de línea / MSISDN del SIM',
     maxLength: 20,
-    required: false,
+    example: '5512345678',
+    nullable: true,
   })
   @IsOptional()
   @IsString()
   @MaxLength(20)
   numeroTelefono?: string;
 
-  @ApiProperty({ description: 'ID compañía telefónica (CatTelefonia)' })
+  @ApiProperty({
+    description: 'ID del cliente/tenant propietario del SIM. Obligatorio.',
+    example: 11,
+  })
   @IsInt()
   @IsNotEmpty()
-  idTelefonia: number;
+  idCliente!: number;
 
-  @ApiProperty({ description: 'ID plan de datos (CatPlanesTelefonia)' })
+  @ApiProperty({
+    description: 'ID de la compañía telefónica (CatTelefonia). Obligatorio.',
+    example: 1,
+  })
   @IsInt()
   @IsNotEmpty()
-  idPlanTelefonia: number;
+  idTelefonia!: number;
 
   @ApiProperty({
-    description: 'Estatus operativo del SIM (tinyint, default 1)',
-    default: 1,
-    required: false,
+    description: 'ID del plan de datos (CatPlanesTelefonia). Obligatorio.',
+    example: 3,
   })
-  @IsOptional()
   @IsInt()
-  estatusSim?: number = 1;
+  @IsNotEmpty()
+  idPlanTelefonia!: number;
 
-  @ApiProperty({
-    description: 'Fecha de activación (YYYY-MM-DD)',
-    required: false,
+  @ApiPropertyOptional({
+    description: 'Notas u observaciones del SIM',
+    maxLength: 500,
+    example: 'SIM asignada a unidad 45',
+    nullable: true,
   })
-  @IsOptional()
-  @IsDateString()
-  fechaActivacion?: string;
-
-  @ApiProperty({
-    description: 'Fecha de vencimiento (YYYY-MM-DD)',
-    required: false,
-  })
-  @IsOptional()
-  @IsDateString()
-  fechaVencimiento?: string;
-
-  @ApiProperty({ description: 'Notas', maxLength: 500, required: false })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   notas?: string;
-
-  @ApiProperty({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
 }

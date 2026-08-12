@@ -13,7 +13,6 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreatePanelAlarmaDto } from './dto/create-panel-alarma.dto';
 import { UpdatePanelAlarmaDto } from './dto/update-panel-alarma.dto';
-import { UpdatePanelAlarmaEstatusDto } from './dto/update-panel-alarma-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -335,7 +334,6 @@ export class PanelAlarmaService {
 
   async updateEstatus(
     id: number,
-    dto: UpdatePanelAlarmaEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -347,13 +345,15 @@ export class PanelAlarmaService {
         throw new NotFoundException('Panel de alarma no encontrado');
       }
 
-      await this.repository.update(id, { estatus: dto.estatus });
+      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'PanelAlarma',
-        `Se actualizó estatus del panel ID: ${id} a ${dto.estatus}`,
+        `Se actualizó estatus del panel ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatus: dto.estatus, idCliente },
+        { id, estatusAnterior, estatus, idCliente },
         idUser,
         EnumModulos.PANELALARMA,
         EstatusEnumBitcora.SUCCESS,
@@ -362,7 +362,7 @@ export class PanelAlarmaService {
       return {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: dto.estatus },
+        estatus: { estatus },
         data: { id, nombre: entity.nombre },
       };
     } catch (error) {
@@ -370,7 +370,7 @@ export class PanelAlarmaService {
         'PanelAlarma',
         `Error al actualizar estatus del panel ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, idCliente },
         idUser,
         EnumModulos.PANELALARMA,
         EstatusEnumBitcora.ERROR,

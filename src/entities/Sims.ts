@@ -10,10 +10,12 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { CatTelefonia } from './CatTelefonia';
 import { CatPlanesTelefonia } from './CatPlanesTelefonia';
+import { EnumEstatusRecurso } from 'src/common/estatus.enum';
 
 @applySchema
 @Index('UQ_Sims_Cliente_Id', ['idCliente', 'id'], { unique: true })
-@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente', 'estatusSim'])
+@Index('UQ_Sims_IMEI', ['imei'], { unique: true })
+@Index('IX_Sims_IdCliente_IdEstatusSim', ['idCliente'])
 @Index('IX_Sims_IdTelefonia', ['idTelefonia'])
 @Index('IX_Sims_IdPlanTelefonia', ['idPlanTelefonia'])
 @Index('IX_Sims_IMEI', ['imei'])
@@ -24,9 +26,9 @@ export class Sims {
 
   @Column('varchar', {
     name: 'IMEI',
-    length: 15,
+    length: 25,
     nullable: true,
-    comment: 'Identificador del suscriptor en la red móvil',
+    comment: 'Identificador del suscriptor en la red móvil ICC',
   })
   imei: string | null;
 
@@ -56,27 +58,6 @@ export class Sims {
   })
   idCliente: number;
 
-  @Column('tinyint', {
-    name: 'EstatusSim',
-    default: () => "'1'",
-    comment: 'Estatus actual del SIM',
-  })
-  estatusSim: number;
-
-  @Column('date', {
-    name: 'FechaActivacion',
-    nullable: true,
-    comment: 'Fecha en que se activó el SIM',
-  })
-  fechaActivacion: Date | null;
-
-  @Column('date', {
-    name: 'FechaVencimiento',
-    nullable: true,
-    comment: 'Fecha de vencimiento del servicio o plan',
-  })
-  fechaVencimiento: Date | null;
-
   @Column('varchar', { name: 'Notas', length: 500, nullable: true })
   notas: string | null;
 
@@ -93,7 +74,10 @@ export class Sims {
   })
   fechaActualizacion: Date;
 
-  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
+  @Column('tinyint', {
+    name: 'Estatus',
+    default: EnumEstatusRecurso.DISPONIBLE,
+  })
   estatus: number;
 
   @ManyToOne(() => Clientes, { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' })

@@ -19,7 +19,6 @@ import {
 import { PanelAlarmaService } from './panel-alarma.service';
 import { CreatePanelAlarmaDto } from './dto/create-panel-alarma.dto';
 import { UpdatePanelAlarmaDto } from './dto/update-panel-alarma.dto';
-import { UpdatePanelAlarmaEstatusDto } from './dto/update-panel-alarma-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -94,19 +93,21 @@ export class PanelAlarmaController {
   }
 
   @Patch('estatus/:id')
-  @ApiOperation({ summary: 'Cambiar estatus (soft delete)' })
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
   @ApiParam({ name: 'id', description: 'ID del panel' })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
   @ApiResponse({ status: 404, description: 'Panel no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdatePanelAlarmaEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.panelAlarmaService.updateEstatus(id, dto, idCliente, idUser);
+    return this.panelAlarmaService.updateEstatus(id, idCliente, idUser);
   }
 
   @Patch(':id')

@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   UseGuards,
   Req,
   Put,
@@ -18,9 +17,8 @@ import { UpdatePermisoDto } from './dto/update-permiso.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { UpdatePermisoEstatusDto } from './dto/update-permiso-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Permisos')
 @ApiBearerAuth('bearer-token')
@@ -56,8 +54,7 @@ export class PermisosController {
   @Get('permisosAgrupados')
   async findAllAgrupado(@Req() req): Promise<any> {
     const idUsuario = req.user.userId;
-    const permiso =
-      await this.permisosService.obtenerPermisosAgrupados(idUsuario);
+    const permiso = await this.permisosService.obtenerPermisosAgrupados(idUsuario);
     return permiso;
   }
 
@@ -76,24 +73,19 @@ export class PermisosController {
     return await this.permisosService.update(id, updatePermisoDto, idUser);
   }
 
-  @Patch('estatus/:id')
+  @Patch(':id/estatus')
+  @ApiOperation({
+    summary: 'Cambiar estatus del permiso',
+    description:
+      'Alterna el estatus: si está activo (1) pasa a inactivo (0) y viceversa. No requiere body.',
+  })
+  @ApiParam({ name: 'id', type: Number })
   async updatePermisoEstatus(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Request() req,
-    @Body() updatePermisoEstatusDto: UpdatePermisoEstatusDto,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return await this.permisosService.updateEstatus(
-      +id,
-      idUser,
-      updatePermisoEstatusDto,
-    );
+    return await this.permisosService.updateEstatus(id, idUser);
   }
 
-  @Delete(':id')
-  @Roles(1) // Solo SuperAdministrador puede eliminar permisos
-  remove(@Param('id') id: string, @Request() req): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return this.permisosService.remove(+id, idUser);
-  }
 }

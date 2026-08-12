@@ -16,8 +16,7 @@ import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { HistoricoInstalacionesModule } from './historico-instalaciones/historico-instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
-import { VehiculosModule } from './vehiculos/vehiculos.module';
-import { InmueblesModule } from './inmuebles/inmuebles.module';
+import { ProductosModule } from './productos/productos.module';
 import { PanelAlarmaModule } from './panel-alarma/panel-alarma.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -154,9 +153,7 @@ import * as jwt from 'jsonwebtoken';
 
     OperadoresModule,
 
-    VehiculosModule,
-
-    InmueblesModule,
+    ProductosModule,
 
     PanelAlarmaModule,
 

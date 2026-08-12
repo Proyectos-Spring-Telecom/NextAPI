@@ -13,7 +13,6 @@ import { Modulos } from 'src/entities/Modulos';
 import { Repository } from 'typeorm';
 import { Permisos } from 'src/entities/Permisos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
-import { UpdateModulosEstatusDto } from './dto/update-modulo-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -94,11 +93,11 @@ export class ModulosService {
       const data = modulos.map((item) => ({
         ...item,
         id: Number(item.id),
-        permisos: item.permisos.map(permiso => ({
+        permisos: item.permisos.map((permiso) => ({
           ...permiso,
           id: Number(permiso.id),
           idModulo: Number(permiso.idModulo),
-        }))
+        })),
       }));
       const result: ApiResponseCommon = {
         data,
@@ -120,11 +119,11 @@ export class ModulosService {
       const modulos = data.map((item) => ({
         ...item,
         id: Number(item.id),
-        permisos: item.permisos.map(permiso => ({
+        permisos: item.permisos.map((permiso) => ({
           ...permiso,
           id: Number(permiso.id),
           idModulo: Number(permiso.idModulo),
-        }))
+        })),
       }));
 
       const result: ApiResponseCommon = {
@@ -148,22 +147,22 @@ export class ModulosService {
         where: { id: id },
         relations: ['permisos'],
       });
-      if (!modulo)      throw new NotFoundException({ message: 'Módulo no encontrado' });
+      if (!modulo) throw new NotFoundException({ message: 'Módulo no encontrado' });
 
       return { data: modulo };
     } catch (error) {
-    if (error instanceof HttpException) throw error;
+      if (error instanceof HttpException) throw error;
 
-    console.error('Error interno:', error);
+      console.error('Error interno:', error);
 
-    throw new HttpException(
-      {
-        message: 'Error interno al buscar el módulo',
-        details: error.message,
-      },
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
-  }
+      throw new HttpException(
+        {
+          message: 'Error interno al buscar el módulo',
+          details: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async update(
@@ -220,21 +219,19 @@ export class ModulosService {
     }
   }
 
-  async updateModulosStatus(
-    id: number,
-    idUser: number,
-    updateModulosEstatusDto: UpdateModulosEstatusDto,
-  ): Promise<ApiCrudResponse> {
+  async updateModulosStatus(id: number, idUser: number): Promise<ApiCrudResponse> {
     try {
       const modulo = await this.moduloRepository.findOne({ where: { id: id } });
       if (!modulo) {
         throw new NotFoundException('Modulo no encontrado');
       }
-      const estatus = updateModulosEstatusDto.estatus;
-      await this.moduloRepository.update(id, { estatus: estatus });
+      const estatusAnterior = Number(modulo.estatus) === 1 ? 1 : 0;
+      const estatus = estatusAnterior === 1 ? 0 : 1;
+      await this.moduloRepository.update(id, { estatus });
+      await this.permisosRepository.update({ idModulo: id }, { estatus });
 
       //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { updateModulosEstatusDto };
+      const querylogger = { id, estatusAnterior, estatus };
       await this.bitacoraLogger.logToBitacora(
         'Modulos',
         `Se actualizo el modulo con ID: ${id} a estatus: ${estatus}`,
@@ -258,10 +255,10 @@ export class ModulosService {
       return result;
     } catch (error) {
       //-----Registro en la bitacora----- ERROR
-      const querylogger = { updateModulosEstatusDto };
+      const querylogger = { id };
       await this.bitacoraLogger.logToBitacora(
         'Modulos',
-        `Se actualizo el modulo con ID: ${id} a estatus: ${updateModulosEstatusDto.estatus}`,
+        `No se pudo cambiar el estatus del módulo con ID: ${id}`,
         'UPDATE',
         querylogger,
         idUser,
@@ -279,77 +276,4 @@ export class ModulosService {
     }
   }
 
-  async deleteModulo(id: number, idUser: number): Promise<ApiCrudResponse> {
-    try {
-      const modulo = await this.moduloRepository.findOne({ where: { id: id } });
-  
-      if (!modulo) throw new NotFoundException('Modulo no encontrado');
-      if (modulo.estatus === 1) {
-        modulo.estatus = 0;
-        await this.moduloRepository.update(id, modulo);
-  
-        const permisos = await this.permisosRepository.find({
-          where: { id: id },
-        });
-        if (permisos.length > 0) {
-          for (const permiso of permisos) {
-            permiso.estatus = 0;
-            await this.permisosRepository.update(permiso.id, permiso);
-          }
-        }
-      } else {
-        modulo.estatus = 1;
-        await this.moduloRepository.update(id, modulo);
-        const permisos = await this.permisosRepository.find({
-          where: { idModulo: id },
-        });
-        if (permisos.length > 0) {
-          for (const permiso of permisos) {
-            permiso.estatus = 1;
-            await this.permisosRepository.update(permiso.id, permiso);
-          }
-        }
-      }
-  
-      //-----Registro en la bitacora----- SUCCESS
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Modulos',
-        `Se eliminó el modulos con ID: ${id}`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        5,
-        EstatusEnumBitcora.SUCCESS,
-      );
-      
-      //Api response
-      const result: ApiCrudResponse = {
-        status: 'success',
-        message: 'Modulo eliminado correctamente',
-        data: {
-          id: id,
-          nombre: `${modulo.nombre} ${modulo.descripcion} ` || '',
-        },
-      };
-      return result;
-    } catch (error) {
-      //-----Registro en la bitacora----- ERROR
-      const querylogger = { id: id, estatus: 0 };
-      await this.bitacoraLogger.logToBitacora(
-        'Modulos',
-        `Se eliminó el modulos con ID: ${id}`,
-        'UPDATE',
-        querylogger,
-        Number(idUser),
-        5,
-        EstatusEnumBitcora.ERROR,
-        error.message,
-      );
-      throw new InternalServerErrorException({
-        message: 'Error al eliminar modulos.',
-        error: error.message,
-      });
-    }
-  }
 }
