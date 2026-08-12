@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Operadores } from 'src/entities/Operadores';
 import { Usuarios } from 'src/entities/Usuarios';
-import { CatEstatusOperador } from 'src/entities/CatEstatusOperador';
 import { Licencias } from 'src/entities/Licencias';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
@@ -11,12 +10,7 @@ import { OperadoresService } from './operadores.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Operadores,
-      Usuarios,
-      CatEstatusOperador,
-      Licencias,
-    ]),
+    TypeOrmModule.forFeature([Operadores, Usuarios, Licencias]),
     BitacoraModule,
     TenantFilterModule,
   ],

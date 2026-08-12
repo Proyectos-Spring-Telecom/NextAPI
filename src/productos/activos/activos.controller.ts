@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -23,6 +24,7 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { ActivosService } from './activos.service';
 import { CreateActivosDto } from './dto/create-activos.dto';
 import { UpdateActivosDto } from './dto/update-activos.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 
 @ApiTags('Productos - Activos')
 @ApiBearerAuth('bearer-token')
@@ -36,7 +38,8 @@ export class ActivosController {
   @ApiOperation({
     summary: 'Crear activo',
     description:
-      'Crea el producto (tipo ACTIVO) y el detalle de activo en una transacción. El estatus inicia en ACTIVO.',
+      'Crea el producto (tipo ACTIVO) y el detalle de activo en una transacción. ' +
+      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Activo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -45,11 +48,7 @@ export class ActivosController {
     @Body() dto: CreateActivosDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.activosService.create(
-      dto,
-      req.user.idCliente,
-      req.user.userId,
-    );
+    return this.activosService.create(dto, req.user.userId);
   }
 
   @Get('list')
@@ -92,18 +91,23 @@ export class ActivosController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0 del producto. No requiere body.',
+    description:
+      'Establece el estatus del producto. Body requerido: `{ "estatus": 0 | 1 }`.',
   })
   @ApiParam({ name: 'id', description: 'ID del producto / activo' })
+  @ApiBody({ type: UpdateProductoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 400, description: 'estatus inválido' })
   @ApiResponse({ status: 404, description: 'Activo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.activosService.updateEstatus(
       id,
+      dto,
       req.user.idCliente,
       req.user.userId,
     );

@@ -120,7 +120,7 @@ export class CreateOperadoresDto {
   antecedentesNoPenales?: string;
 
   @ApiProperty({
-    description: 'ID estatus operador (CatEstatusOperador)',
+    description: 'ID estatus del operador',
     default: 1,
     required: false,
   })

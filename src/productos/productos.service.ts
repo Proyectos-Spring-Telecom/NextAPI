@@ -10,6 +10,7 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { UpdateProductosDto } from './dto/update-productos.dto';
+import { UpdateProductoEstatusDto } from './dto/update-producto-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -198,6 +199,7 @@ export class ProductosService {
 
   async updateEstatus(
     id: number,
+    dto: UpdateProductoEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -209,14 +211,8 @@ export class ProductosService {
         throw new NotFoundException('Producto no encontrado');
       }
 
-      const estatusAnterior =
-        Number(entity.estatus) === EstatusEnum.ACTIVO
-          ? EstatusEnum.ACTIVO
-          : EstatusEnum.INACTIVO;
-      const estatus =
-        estatusAnterior === EstatusEnum.ACTIVO
-          ? EstatusEnum.INACTIVO
-          : EstatusEnum.ACTIVO;
+      const estatusAnterior = Number(entity.estatus);
+      const estatus = dto.estatus;
       await this.repository.update({ id, idCliente }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
@@ -243,7 +239,7 @@ export class ProductosService {
         'Productos',
         `Error al actualizar estatus de producto ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.PRODUCTOS,
         EstatusEnumBitcora.ERROR,

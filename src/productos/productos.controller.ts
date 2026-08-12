@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -24,6 +25,7 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { EnumTipoProducto } from 'src/common/estatus.enum';
 import { ProductosService } from './productos.service';
 import { UpdateProductosDto } from './dto/update-productos.dto';
+import { UpdateProductoEstatusDto } from './dto/update-producto-estatus.dto';
 
 @ApiTags('Productos')
 @ApiBearerAuth('bearer-token')
@@ -102,18 +104,23 @@ export class ProductosController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+    description:
+      'Establece el estatus del producto. Body requerido: `{ "estatus": 0 | 1 }`.',
   })
   @ApiParam({ name: 'id', description: 'ID del producto' })
+  @ApiBody({ type: UpdateProductoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 400, description: 'estatus inválido' })
   @ApiResponse({ status: 404, description: 'Producto no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.productosService.updateEstatus(
       id,
+      dto,
       req.user.idCliente,
       req.user.userId,
     );
