@@ -96,9 +96,9 @@ export class CatPlanesTelefoniaController {
     return this.service.findAll({
       page,
       limit,
-      ...(soloActivos === 'true' ? { Estatus: 1 } : {}),
+      ...(soloActivos === 'true' ? { estatus: 1 } : {}),
       ...(parsed !== undefined && Number.isInteger(parsed)
-        ? { IdTelefonia: parsed }
+        ? { idTelefonia: parsed }
         : {}),
     });
   }

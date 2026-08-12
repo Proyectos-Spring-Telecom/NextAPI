@@ -7,13 +7,12 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
-import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatTelefonia } from './CatTelefonia';
 
 @applySchema
 @Index('FK_CatPlanesTelefonia_Telefonia', ['idTelefonia'])
 @Index('IX_CatPlanesTelefonia_Estatus', ['estatus'])
-@Entity({ name: 'CatPlanesTelefonia' })
+@Entity('CatPlanesTelefonia')
 export class CatPlanesTelefonia {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
@@ -24,35 +23,36 @@ export class CatPlanesTelefonia {
   @Column('bigint', { name: 'IdTelefonia' })
   idTelefonia: number;
 
-  @Column('int', {
-    name: 'DatosMB',
-    unsigned: true,
+  @Column('varchar', {
+    name: 'Datos',
+    length: 100,
     nullable: true,
     default: () => "'0'",
     comment: 'Cantidad de datos incluidos en MB (NULL = ilimitado)',
   })
-  datosMB: number | null;
+  datos: string | null;
 
-  @Column('int', {
+  @Column('varchar', {
     name: 'SMSIncluidos',
-    unsigned: true,
+    length: 100,
+    nullable: true,
     default: () => "'0'",
     comment: 'Cantidad de SMS incluidos',
   })
-  smsIncluidos: number;
+  smsIncluidos: string | null;
 
-  @Column('int', {
+  @Column('varchar', {
     name: 'VozIncluidos',
-    unsigned: true,
+    length: 100,
+    nullable: true,
     default: () => "'0'",
     comment: 'Minutos de voz incluidos',
   })
-  vozIncluidos: number;
+  vozIncluidos: string | null;
 
-  @Column('decimal', {
+  @Column('varchar', {
     name: 'CostoMensual',
-    precision: 10,
-    scale: 2,
+    length: 100,
     nullable: true,
     comment: 'Costo mensual en MXN',
   })
@@ -72,7 +72,7 @@ export class CatPlanesTelefonia {
   })
   fechaFinVigencia: string | null;
 
-  @Column('tinyint', { name: 'Estatus', default: EstatusEnum.ACTIVO })
+  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
   @Column('datetime', {
@@ -89,10 +89,9 @@ export class CatPlanesTelefonia {
   fechaActualizacion: Date;
 
   @ManyToOne(() => CatTelefonia, (telefonia) => telefonia.planesTelefonia, {
-    nullable: false,
     onDelete: 'NO ACTION',
     onUpdate: 'NO ACTION',
   })
-  @JoinColumn({ name: 'IdTelefonia', referencedColumnName: 'id' })
+  @JoinColumn([{ name: 'IdTelefonia', referencedColumnName: 'id' }])
   telefonia: CatTelefonia;
 }

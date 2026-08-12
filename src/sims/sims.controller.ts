@@ -54,8 +54,10 @@ const CREATE_BODY_EXAMPLE: CreateSimsDto = {
 };
 
 const UPDATE_BODY_EXAMPLE: UpdateSimsDto = {
+  imei: '356938035643809',
   numeroTelefono: '5598765432',
   idCliente: 11,
+  idTelefonia: 1,
   idPlanTelefonia: 4,
   notas: 'Cambio de plan',
 };
@@ -195,74 +197,10 @@ export class SimsController {
     return this.simsService.findOne(id, idCliente);
   }
 
-  @Patch(':id')
-  @ApiOperation({
-    summary: 'Actualizar SIM',
-    description:
-      'Actualización parcial de un SIM.\n\n' +
-      '- Todos los campos del body son opcionales; solo se modifican los enviados.\n' +
-      '- Campos: `imei`, `numeroTelefono`, `idCliente`, `idTelefonia`, `idPlanTelefonia`, `notas`.\n' +
-      '- `estatus` no se actualiza aquí; usa `PATCH /sims/estatus/:id`.\n' +
-      '- Si se envían `idCliente`, `idTelefonia` o `idPlanTelefonia`, se valida que existan.',
-  })
-  @ApiParam({ name: 'id', description: 'ID del SIM a actualizar', example: 5 })
-  @ApiBody({
-    type: UpdateSimsDto,
-    description: 'Body parcial. Omitir un campo = conservar el valor actual.',
-    examples: {
-      cambioPlan: {
-        summary: 'Cambiar plan y teléfono',
-        value: {
-          numeroTelefono: '5598765432',
-          idPlanTelefonia: 4,
-          notas: 'Cambio de plan',
-        },
-      },
-      cambioCliente: {
-        summary: 'Reasignar cliente',
-        value: {
-          idCliente: 12,
-        },
-      },
-      cambioCompleto: {
-        summary: 'Actualización de varios campos',
-        value: UPDATE_BODY_EXAMPLE,
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'SIM actualizado correctamente',
-    schema: {
-      example: {
-        status: 'success',
-        message: 'SIM actualizado correctamente',
-        data: { id: 5, nombre: '5598765432' },
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description:
-      'Datos inválidos o FK inexistente (`IdCliente` / `IdTelefonia` / `IdPlanTelefonia`)',
-  })
-  @ApiConflictResponse({ description: 'El IMEI ya está registrado' })
-  @ApiNotFoundResponse({ description: 'SIM no encontrado' })
-  @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateSimsDto,
-    @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.simsService.update(id, dto, idCliente, idUser);
-  }
-
   @Patch('estatus/:id')
   @ApiOperation({
-    summary: 'Cambiar estatus del SIM',
-    description:
-      'Alterna el estatus del SIM: `EnumEstatusRecurso.DISPONIBLE` ↔ `EnumEstatusRecurso.BAJA`. ' +
-      'No requiere body; el backend calcula el nuevo valor a partir del actual.',
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
   })
   @ApiParam({ name: 'id', description: 'ID del SIM', example: 5 })
   @ApiOkResponse({
@@ -285,5 +223,93 @@ export class SimsController {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
     return this.simsService.updateEstatus(id, idCliente, idUser);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Actualizar SIM',
+    description:
+      'Actualización parcial de un SIM (`application/json`, propiedades en **camelCase**).\n\n' +
+      '**Campos opcionales** (omitir = conservar valor actual):\n' +
+      '- `imei` — string, máx. 25; único en BD (`UQ_Sims_IMEI`).\n' +
+      '- `numeroTelefono` — string, máx. 20.\n' +
+      '- `idCliente` — reasigna el tenant propietario (debe existir en `Clientes`).\n' +
+      '- `idTelefonia` — FK a `CatTelefonia`.\n' +
+      '- `idPlanTelefonia` — FK a `CatPlanesTelefonia`.\n' +
+      '- `notas` — string, máx. 500.\n\n' +
+      '**No incluido:** `estatus`. Para cambiarlo usa `PATCH /api/sims/estatus/{id}` ' +
+      '(toggle `DISPONIBLE` ↔ `BAJA`, sin body).\n\n' +
+      '**Validaciones:** FKs enviadas deben existir; si cambia `imei`, no puede estar duplicado.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del SIM a actualizar',
+    example: 5,
+  })
+  @ApiBody({
+    type: UpdateSimsDto,
+    description:
+      'Body parcial en camelCase. Solo se actualizan los campos enviados.',
+    examples: {
+      cambioPlan: {
+        summary: 'Cambiar plan y teléfono',
+        value: {
+          numeroTelefono: '5598765432',
+          idPlanTelefonia: 4,
+          notas: 'Cambio de plan',
+        },
+      },
+      cambioImei: {
+        summary: 'Actualizar IMEI',
+        value: {
+          imei: '356938035643809',
+        },
+      },
+      cambioCliente: {
+        summary: 'Reasignar cliente',
+        value: {
+          idCliente: 12,
+        },
+      },
+      cambioTelefoniaPlan: {
+        summary: 'Cambiar compañía y plan',
+        value: {
+          idTelefonia: 2,
+          idPlanTelefonia: 5,
+        },
+      },
+      cambioCompleto: {
+        summary: 'Actualización de varios campos',
+        value: UPDATE_BODY_EXAMPLE,
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'SIM actualizado correctamente',
+    schema: {
+      example: {
+        status: 'success',
+        message: 'SIM actualizado correctamente',
+        data: { id: 5, nombre: '5598765432' },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos o FK inexistente (`idCliente` / `idTelefonia` / `idPlanTelefonia`)',
+  })
+  @ApiConflictResponse({
+    description: 'El IMEI ya está registrado (`UQ_Sims_IMEI`)',
+  })
+  @ApiNotFoundResponse({ description: 'SIM no encontrado' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado (JWT Bearer)' })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSimsDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    const idCliente = req.user.idCliente;
+    const idUser = req.user.userId;
+    return this.simsService.update(id, dto, idCliente, idUser);
   }
 }

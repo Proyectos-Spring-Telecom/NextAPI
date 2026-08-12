@@ -17,7 +17,7 @@ export class CreateCatTelefoniaDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  NombreTelefonia: string;
+  nombreTelefonia!: string;
 
   @ApiPropertyOptional({
     description: 'Nombre del asesor de la compañía',
@@ -34,7 +34,7 @@ export class CreateCatTelefoniaDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  NombreAsesor?: string;
+  nombreAsesor?: string;
 
   @ApiPropertyOptional({
     description: 'Número telefónico del asesor',
@@ -51,5 +51,5 @@ export class CreateCatTelefoniaDto {
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  NumeroAsesor?: string;
+  numeroAsesor?: string;
 }

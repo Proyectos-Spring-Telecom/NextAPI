@@ -40,7 +40,7 @@ export class SimsService {
     private readonly clientesRepo: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private async validarFks(dto: {
     idCliente?: number;
@@ -234,7 +234,7 @@ export class SimsService {
   async findOne(id: number, idCliente: number): Promise<{ data: Sims }> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
@@ -259,7 +259,7 @@ export class SimsService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
@@ -333,7 +333,7 @@ export class SimsService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');

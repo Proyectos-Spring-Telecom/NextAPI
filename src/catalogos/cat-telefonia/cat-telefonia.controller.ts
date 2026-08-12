@@ -74,7 +74,7 @@ export class CatTelefoniaController {
   @Get(':idTelefonia/planes')
   @ApiOperation({ summary: 'Consultar planes asociados a una telefonía' })
   @ApiParam({ name: 'idTelefonia', type: Number })
-  @ApiQuery({ name: 'Estatus', required: false, enum: [0, 1] })
+  @ApiQuery({ name: 'estatus', required: false, enum: [0, 1] })
   @ApiQuery({ name: 'vigentes', required: false, type: Boolean })
   findPlanes(
     @Param('idTelefonia', ParseIntPipe) idTelefonia: number,
@@ -98,7 +98,7 @@ export class CatTelefoniaController {
     return this.service.findAll({
       page,
       limit,
-      ...(soloActivos === 'true' ? { Estatus: 1 } : {}),
+      ...(soloActivos === 'true' ? { estatus: 1 } : {}),
     });
   }
 

@@ -14,5 +14,5 @@ export class UpdateCatTelefoniaDto extends PartialType(CreateCatTelefoniaDto) {
   @Type(() => Number)
   @IsOptional()
   @IsEnum(EstatusEnum)
-  Estatus?: EstatusEnum;
+  estatus?: EstatusEnum;
 }
