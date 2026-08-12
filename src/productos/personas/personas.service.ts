@@ -12,6 +12,7 @@ import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -53,9 +54,9 @@ export class PersonasService {
 
   async create(
     dto: CreatePersonasDto,
-    idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -262,6 +263,7 @@ export class PersonasService {
 
   async updateEstatus(
     id: number,
+    dto: UpdateProductoEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -279,14 +281,8 @@ export class PersonasService {
         throw new NotFoundException('Producto de la persona no encontrado');
       }
 
-      const estatusAnterior =
-        Number(producto.estatus) === EstatusEnum.ACTIVO
-          ? EstatusEnum.ACTIVO
-          : EstatusEnum.INACTIVO;
-      const estatus =
-        estatusAnterior === EstatusEnum.ACTIVO
-          ? EstatusEnum.INACTIVO
-          : EstatusEnum.ACTIVO;
+      const estatusAnterior = Number(producto.estatus);
+      const estatus = dto.estatus;
       await this.productosRepo.update({ id, idCliente }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
@@ -310,7 +306,7 @@ export class PersonasService {
         'Personas',
         `Error al actualizar estatus de persona ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.PERSONAS,
         EstatusEnumBitcora.ERROR,

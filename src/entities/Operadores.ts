@@ -10,7 +10,6 @@ import {
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { Usuarios } from './Usuarios';
-import { CatEstatusOperador } from './CatEstatusOperador';
 import { Licencias } from './Licencias';
 
 @applySchema
@@ -21,7 +20,6 @@ import { Licencias } from './Licencias';
   'idCliente',
   'idEstatusOperador',
 ])
-@Index('FK_Operadores_CatEstatusOperador', ['idEstatusOperador'])
 @Entity('Operadores')
 export class Operadores {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -93,7 +91,6 @@ export class Operadores {
   @Column('bigint', {
     name: 'IdEstatusOperador',
     default: () => "'1'",
-    comment: 'FK → CatEstatusOperador.Id',
   })
   idEstatusOperador: number;
 
@@ -126,13 +123,6 @@ export class Operadores {
   })
   @JoinColumn([{ name: 'IdUsuario', referencedColumnName: 'id' }])
   idUsuario2: Usuarios;
-
-  @ManyToOne(() => CatEstatusOperador, {
-    onDelete: 'NO ACTION',
-    onUpdate: 'NO ACTION',
-  })
-  @JoinColumn([{ name: 'IdEstatusOperador', referencedColumnName: 'id' }])
-  idEstatusOperador2: CatEstatusOperador;
 
   @OneToMany(() => Licencias, (licencia) => licencia.idOperador2)
   licencias: Licencias[];

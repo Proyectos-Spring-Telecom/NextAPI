@@ -16,6 +16,7 @@ import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -199,10 +200,10 @@ export class VehiculosService {
 
   async create(
     dto: CreateVehiculosDto,
-    idCliente: number,
     idUser: number,
     files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
+    const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -661,6 +662,7 @@ LIMIT ${limit}
 
   async updateEstatus(
     id: number,
+    dto: UpdateProductoEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -678,14 +680,8 @@ LIMIT ${limit}
         throw new NotFoundException('Producto del vehículo no encontrado');
       }
 
-      const estatusAnterior =
-        Number(producto.estatus) === EstatusEnum.ACTIVO
-          ? EstatusEnum.ACTIVO
-          : EstatusEnum.INACTIVO;
-      const estatus =
-        estatusAnterior === EstatusEnum.ACTIVO
-          ? EstatusEnum.INACTIVO
-          : EstatusEnum.ACTIVO;
+      const estatusAnterior = Number(producto.estatus);
+      const estatus = dto.estatus;
       await this.productosRepo.update(
         { id, idCliente },
         { estatus },
@@ -724,7 +720,7 @@ LIMIT ${limit}
         'Vehiculos',
         `Error al actualizar estatus de vehículo ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.VEHICULOS,
         EstatusEnumBitcora.ERROR,

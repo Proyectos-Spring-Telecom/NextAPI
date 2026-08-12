@@ -1,4 +1,4 @@
-const vehiculoProperties = {
+const vehiculoUpdateProperties = {
   placa: {
     type: 'string',
     maxLength: 10,
@@ -72,12 +72,17 @@ const vehiculoProperties = {
 export const vehiculosCreateMultipartApiBody = {
   description:
     'Crea el producto (tipo VEHICULO) y el vehículo, y carga los archivos al bucket S3. ' +
-    'Los campos de archivo son opcionales y admiten un archivo por campo.',
+    'Requiere `idCliente` y `placa`. Los campos de archivo son opcionales (un archivo por campo).',
   schema: {
     type: 'object',
-    required: ['placa'],
+    required: ['idCliente', 'placa'],
     properties: {
-      ...vehiculoProperties,
+      idCliente: {
+        type: 'integer',
+        example: 11,
+        description: 'ID del cliente/tenant propietario. Obligatorio.',
+      },
+      ...vehiculoUpdateProperties,
     },
   },
 } as const;
@@ -88,6 +93,6 @@ export const vehiculosUpdateMultipartApiBody = {
     'reemplaza el archivo anterior almacenado en S3; si no se envía, se conserva.',
   schema: {
     type: 'object',
-    properties: vehiculoProperties,
+    properties: vehiculoUpdateProperties,
   },
 } as const;

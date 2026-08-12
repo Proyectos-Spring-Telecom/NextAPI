@@ -12,6 +12,7 @@ import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -43,9 +44,9 @@ export class InmueblesService {
 
   async create(
     dto: CreateInmueblesDto,
-    idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -287,6 +288,7 @@ export class InmueblesService {
 
   async updateEstatus(
     id: number,
+    dto: UpdateProductoEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -304,14 +306,8 @@ export class InmueblesService {
         throw new NotFoundException('Producto del inmueble no encontrado');
       }
 
-      const estatusAnterior =
-        Number(producto.estatus) === EstatusEnum.ACTIVO
-          ? EstatusEnum.ACTIVO
-          : EstatusEnum.INACTIVO;
-      const estatus =
-        estatusAnterior === EstatusEnum.ACTIVO
-          ? EstatusEnum.INACTIVO
-          : EstatusEnum.ACTIVO;
+      const estatusAnterior = Number(producto.estatus);
+      const estatus = dto.estatus;
       await this.productosRepo.update({ id, idCliente }, { estatus });
       await this.repository.update(
         { idProducto: id, idCliente },
@@ -339,7 +335,7 @@ export class InmueblesService {
         'Inmuebles',
         `Error al actualizar estatus de inmueble ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.INMUEBLES,
         EstatusEnumBitcora.ERROR,

@@ -23,7 +23,7 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('Next API')
     .setDescription('Documentación de la API de NEXT')
-    .setVersion('2.0.0')
+    .setVersion('2.2.0')
     .addServer('http://localhost:3004', 'Servidor Local')
     .addServer('https://springtelecom.mx/nextAPI', 'Servidor Spring')
     .addBearerAuth(

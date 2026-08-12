@@ -16,6 +16,15 @@ import {
 
 export class CreateVehiculosDto {
   @ApiProperty({
+    description: 'ID del cliente/tenant propietario. Obligatorio.',
+    example: 11,
+  })
+  @Transform(transformOptionalNumber)
+  @IsInt()
+  @IsNotEmpty()
+  idCliente!: number;
+
+  @ApiProperty({
     description: 'Placas oficiales (S/P si no tiene)',
     example: 'ABC1234',
     maxLength: 10,

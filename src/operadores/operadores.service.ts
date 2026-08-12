@@ -10,7 +10,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Operadores } from 'src/entities/Operadores';
 import { Usuarios } from 'src/entities/Usuarios';
-import { CatEstatusOperador } from 'src/entities/CatEstatusOperador';
 import { Licencias } from 'src/entities/Licencias';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateOperadoresDto } from './dto/create-operadores.dto';
@@ -31,26 +30,11 @@ export class OperadoresService {
     private readonly repository: Repository<Operadores>,
     @InjectRepository(Usuarios)
     private readonly usuariosRepo: Repository<Usuarios>,
-    @InjectRepository(CatEstatusOperador)
-    private readonly catEstatusOperadorRepo: Repository<CatEstatusOperador>,
     @InjectRepository(Licencias)
     private readonly licenciasRepo: Repository<Licencias>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
-
-  private async validarFks(dto: {
-    idEstatusOperador?: number;
-  }): Promise<void> {
-    if (dto.idEstatusOperador !== undefined) {
-      const est = await this.catEstatusOperadorRepo.findOne({
-        where: { id: dto.idEstatusOperador },
-      });
-      if (!est) {
-        throw new BadRequestException('IdEstatusOperador no existe');
-      }
-    }
-  }
 
   async create(
     dto: CreateOperadoresDto,
@@ -99,8 +83,6 @@ export class OperadoresService {
       if (existeLicencia) {
         throw new BadRequestException('El número de licencia ya está registrado');
       }
-
-      await this.validarFks({ idEstatusOperador: dto.idEstatusOperador ?? 1 });
 
       const entity = this.repository.create({
         idCliente,
@@ -184,11 +166,7 @@ export class OperadoresService {
       };
       const data = await this.repository.find({
         where,
-        relations: [
-          'idUsuario2',
-          'idEstatusOperador2',
-          'licencias',
-        ],
+        relations: ['idUsuario2', 'licencias'],
         order: { id: 'ASC' },
       });
       const dataNormalizada = data.map((item) => ({
@@ -230,11 +208,7 @@ export class OperadoresService {
       };
       const [data, total] = await this.repository.findAndCount({
         where,
-        relations: [
-          'idUsuario2',
-          'idEstatusOperador2',
-          'licencias',
-        ],
+        relations: ['idUsuario2', 'licencias'],
         skip: (page - 1) * limit,
         take: limit,
         order: { id: 'ASC' },
@@ -264,11 +238,7 @@ export class OperadoresService {
     try {
       const entity = await this.repository.findOne({
         where: { id, idCliente },
-        relations: [
-          'idUsuario2',
-          'idEstatusOperador2',
-          'licencias',
-        ],
+        relations: ['idUsuario2', 'licencias'],
       });
       if (!entity) {
         throw new NotFoundException('Operador no encontrado');
@@ -338,8 +308,6 @@ export class OperadoresService {
           throw new BadRequestException('El NSS ya existe para este cliente');
         }
       }
-
-      await this.validarFks({ idEstatusOperador: dto.idEstatusOperador });
 
       const updateData: Partial<Operadores> = {};
       if (dto.idUsuario !== undefined) updateData.idUsuario = dto.idUsuario;

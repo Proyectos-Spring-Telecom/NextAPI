@@ -23,6 +23,7 @@ import {
 import { VehiculosService } from './vehiculos.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -51,7 +52,8 @@ export class VehiculosController {
   @ApiOperation({
     summary: 'Crear vehículo',
     description:
-      'Crea el producto (tipo VEHICULO) y el detalle de vehículo en una transacción. El estatus inicia en ACTIVO.',
+      'Crea el producto (tipo VEHICULO) y el detalle de vehículo en una transacción. ' +
+      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Vehículo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -61,9 +63,7 @@ export class VehiculosController {
     @UploadedFiles() files: VehiculosUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.vehiculosService.create(dto, idCliente, idUser, files);
+    return this.vehiculosService.create(dto, req.user.userId, files);
   }
 
   @Get('list')
@@ -131,19 +131,26 @@ export class VehiculosController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+    description:
+      'Establece el estatus del producto. Body requerido: `{ "estatus": 0 | 1 }`.',
   })
   @ApiParam({ name: 'id', description: 'ID del vehículo' })
+  @ApiBody({ type: UpdateProductoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 400, description: 'estatus inválido' })
   @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.vehiculosService.updateEstatus(id, idCliente, idUser);
+    return this.vehiculosService.updateEstatus(
+      id,
+      dto,
+      req.user.idCliente,
+      req.user.userId,
+    );
   }
 
   @Patch(':id')

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -23,6 +24,7 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { PersonasService } from './personas.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
+import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 
 @ApiTags('Productos - Personas')
 @ApiBearerAuth('bearer-token')
@@ -36,7 +38,8 @@ export class PersonasController {
   @ApiOperation({
     summary: 'Crear persona',
     description:
-      'Crea el producto (tipo PERSONA) y el detalle de persona en una transacción. El estatus inicia en ACTIVO.',
+      'Crea el producto (tipo PERSONA) y el detalle de persona en una transacción. ' +
+      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Persona creada correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -45,11 +48,7 @@ export class PersonasController {
     @Body() dto: CreatePersonasDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.personasService.create(
-      dto,
-      req.user.idCliente,
-      req.user.userId,
-    );
+    return this.personasService.create(dto, req.user.userId);
   }
 
   @Get('list')
@@ -92,18 +91,23 @@ export class PersonasController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0 del producto. No requiere body.',
+    description:
+      'Establece el estatus del producto. Body requerido: `{ "estatus": 0 | 1 }`.',
   })
   @ApiParam({ name: 'id', description: 'ID del producto / persona' })
+  @ApiBody({ type: UpdateProductoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 400, description: 'estatus inválido' })
   @ApiResponse({ status: 404, description: 'Persona no encontrada' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.personasService.updateEstatus(
       id,
+      dto,
       req.user.idCliente,
       req.user.userId,
     );
