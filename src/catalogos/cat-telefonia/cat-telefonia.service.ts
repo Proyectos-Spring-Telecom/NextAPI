@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CreateCatTelefoniaDto } from './dto/create-cat-telefonia.dto';
@@ -150,7 +151,7 @@ export class CatTelefoniaService {
           nombreTelefonia: dto.NombreTelefonia,
           nombreAsesor: dto.NombreAsesor ?? null,
           numeroAsesor: dto.NumeroAsesor ?? null,
-          estatus: dto.Estatus ?? 1,
+          estatus: EstatusEnum.ACTIVO,
         }),
       );
       await this.log(

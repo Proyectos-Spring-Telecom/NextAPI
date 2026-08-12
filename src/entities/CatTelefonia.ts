@@ -1,5 +1,6 @@
 import { Column, Entity, Index, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatPlanesTelefonia } from './CatPlanesTelefonia';
 
 @applySchema
@@ -18,7 +19,7 @@ export class CatTelefonia {
   @Column('varchar', { name: 'NumeroAsesor', length: 20, nullable: true })
   numeroAsesor: string | null;
 
-  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
+  @Column('tinyint', { name: 'Estatus', default: EstatusEnum.ACTIVO })
   estatus: number;
 
   @OneToMany(() => CatPlanesTelefonia, (plan) => plan.telefonia)

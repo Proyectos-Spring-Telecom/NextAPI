@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsDateString,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -10,19 +9,21 @@ import {
 
 export class CreateSimsDto {
   @ApiPropertyOptional({
-    description: 'IMEI/identificador en red',
-    maxLength: 15,
+    description: 'IMEI / ICC del suscriptor en la red móvil',
+    maxLength: 25,
     example: '356938035643809',
+    nullable: true,
   })
   @IsOptional()
   @IsString()
-  @MaxLength(15)
+  @MaxLength(25)
   imei?: string;
 
   @ApiPropertyOptional({
-    description: 'Número de teléfono / MSISDN',
+    description: 'Número de línea / MSISDN del SIM',
     maxLength: 20,
     example: '5512345678',
+    nullable: true,
   })
   @IsOptional()
   @IsString()
@@ -30,7 +31,15 @@ export class CreateSimsDto {
   numeroTelefono?: string;
 
   @ApiProperty({
-    description: 'ID compañía telefónica (CatTelefonia)',
+    description: 'ID del cliente/tenant propietario del SIM. Obligatorio.',
+    example: 11,
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idCliente!: number;
+
+  @ApiProperty({
+    description: 'ID de la compañía telefónica (CatTelefonia). Obligatorio.',
     example: 1,
   })
   @IsInt()
@@ -38,7 +47,7 @@ export class CreateSimsDto {
   idTelefonia!: number;
 
   @ApiProperty({
-    description: 'ID plan de datos (CatPlanesTelefonia)',
+    description: 'ID del plan de datos (CatPlanesTelefonia). Obligatorio.',
     example: 3,
   })
   @IsInt()
@@ -46,29 +55,13 @@ export class CreateSimsDto {
   idPlanTelefonia!: number;
 
   @ApiPropertyOptional({
-    description: 'Fecha de activación (YYYY-MM-DD)',
-    example: '2026-01-15',
-  })
-  @IsOptional()
-  @IsDateString()
-  fechaActivacion?: string;
-
-  @ApiPropertyOptional({
-    description: 'Fecha de vencimiento (YYYY-MM-DD)',
-    example: '2027-01-15',
-  })
-  @IsOptional()
-  @IsDateString()
-  fechaVencimiento?: string;
-
-  @ApiPropertyOptional({
-    description: 'Notas',
+    description: 'Notas u observaciones del SIM',
     maxLength: 500,
     example: 'SIM asignada a unidad 45',
+    nullable: true,
   })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   notas?: string;
-
 }

@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatTelefonia } from './CatTelefonia';
 
 @applySchema
@@ -71,7 +72,7 @@ export class CatPlanesTelefonia {
   })
   fechaFinVigencia: string | null;
 
-  @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
+  @Column('tinyint', { name: 'Estatus', default: EstatusEnum.ACTIVO })
   estatus: number;
 
   @Column('datetime', {

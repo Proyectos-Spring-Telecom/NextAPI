@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  IsIn,
   IsDateString,
   IsInt,
   IsNotEmpty,
@@ -97,14 +96,4 @@ export class CreateCatPlanesTelefoniaDto {
   @IsOptional()
   @IsDateString({ strict: true })
   FechaFinVigencia?: string | null;
-
-  @ApiPropertyOptional({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-  })
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  Estatus?: number;
 }

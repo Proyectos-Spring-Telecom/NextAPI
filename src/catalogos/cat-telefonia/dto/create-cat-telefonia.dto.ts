@@ -1,8 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
-  IsIn,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -54,14 +52,4 @@ export class CreateCatTelefoniaDto {
   @IsString()
   @MaxLength(20)
   NumeroAsesor?: string;
-
-  @ApiPropertyOptional({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-  })
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  Estatus?: number;
 }

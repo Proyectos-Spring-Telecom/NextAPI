@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.dto';
@@ -141,7 +142,7 @@ export class CatPlanesTelefoniaService {
           costoMensual: dto.CostoMensual?.toString() ?? null,
           fechaInicioVigencia: dto.FechaInicioVigencia ?? null,
           fechaFinVigencia: dto.FechaFinVigencia ?? null,
-          estatus: dto.Estatus ?? 1,
+          estatus: EstatusEnum.ACTIVO,
         }),
       );
       const result = await this.repository.findOneOrFail({
