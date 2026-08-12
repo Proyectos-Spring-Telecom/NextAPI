@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatMarcas } from 'src/entities/CatMarcas';
@@ -25,7 +25,12 @@ import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.serv
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 import { S3Service } from 'src/s3/s3.service';
-import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import {
+  EnumModulos,
+  EnumTipoProducto,
+  EstatusEnum,
+} from 'src/common/estatus.enum';
+import { crearProductoBase } from '../crear-producto.util';
 import type {
   VehiculoFileField,
   VehiculosUploadFiles,
@@ -78,6 +83,7 @@ export class VehiculosService {
     private readonly catTipoCombustibleRepo: Repository<CatTipoCombustible>,
     @InjectRepository(Productos)
     private readonly productosRepo: Repository<Productos>,
+    private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
@@ -197,16 +203,10 @@ export class VehiculosService {
     idUser: number,
     files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
     try {
-      const producto = await this.productosRepo.findOne({
-        where: { id: dto.idProducto, idCliente },
-      });
-      if (!producto) {
-        throw new BadRequestException(
-          'El producto no existe o no pertenece al cliente',
-        );
-      }
-
       const existePlaca = await this.repository.findOne({
         where: { placa: dto.placa, idCliente },
       });
@@ -221,8 +221,14 @@ export class VehiculosService {
       });
       const fileUrls = await this.uploadFiles(files, idUser);
 
-      const entity = this.repository.create({
-        idProducto: dto.idProducto,
+      const producto = await crearProductoBase(queryRunner.manager, {
+        idCliente,
+        idTipoProducto: EnumTipoProducto.VEHICULO,
+        nombre: dto.placa,
+      });
+
+      const entity = queryRunner.manager.create(Vehiculos, {
+        idProducto: producto.id,
         idCliente,
         placa: dto.placa,
         numeroEconomico: dto.numeroEconomico ?? null,
@@ -245,7 +251,8 @@ export class VehiculosService {
         capacidadLitros: dto.capacidadLitros ?? null,
       });
 
-      const saved = await this.repository.save(entity);
+      const saved = await queryRunner.manager.save(entity);
+      await queryRunner.commitTransaction();
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',
@@ -276,6 +283,9 @@ export class VehiculosService {
         },
       };
     } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',
         `Error al crear vehículo placa: ${dto.placa}`,
@@ -288,6 +298,8 @@ export class VehiculosService {
       );
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
+    } finally {
+      await queryRunner.release();
     }
   }
 
@@ -587,6 +599,13 @@ LIMIT ${limit}
         await this.replaceFiles(entity, files, idUser),
       );
       await this.repository.update(id, updateData);
+
+      if (dto.placa !== undefined) {
+        await this.productosRepo.update(
+          { id, idCliente },
+          { nombre: dto.placa },
+        );
+      }
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',

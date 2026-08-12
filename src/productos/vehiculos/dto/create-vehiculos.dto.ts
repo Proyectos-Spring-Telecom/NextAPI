@@ -15,12 +15,6 @@ import {
 } from 'src/common/transforms/form-data.transforms';
 
 export class CreateVehiculosDto {
-  @ApiProperty({ description: 'ID del producto asociado' })
-  @Transform(transformOptionalNumber)
-  @IsInt()
-  @IsNotEmpty()
-  idProducto!: number;
-
   @ApiProperty({
     description: 'Placas oficiales (S/P si no tiene)',
     example: 'ABC1234',

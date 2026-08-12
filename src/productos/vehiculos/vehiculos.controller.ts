@@ -36,11 +36,11 @@ import {
   vehiculosUpdateMultipartApiBody,
 } from './vehiculos-swagger-multipart';
 
-@ApiTags('Vehiculos')
+@ApiTags('Productos - Vehículos')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles()
-@Controller('vehiculos')
+@Controller('productos/vehiculos')
 export class VehiculosController {
   constructor(private readonly vehiculosService: VehiculosService) {}
 
@@ -48,7 +48,11 @@ export class VehiculosController {
   @UseInterceptors(vehiculosFileFieldsInterceptor())
   @ApiConsumes('multipart/form-data')
   @ApiBody(vehiculosCreateMultipartApiBody)
-  @ApiOperation({ summary: 'Crear vehículo' })
+  @ApiOperation({
+    summary: 'Crear vehículo',
+    description:
+      'Crea el producto (tipo VEHICULO) y el detalle de vehículo en una transacción. El estatus inicia en ACTIVO.',
+  })
   @ApiResponse({ status: 201, description: 'Vehículo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
@@ -124,6 +128,24 @@ export class VehiculosController {
     return this.vehiculosService.findOne(id, idCliente);
   }
 
+  @Patch('estatus/:id')
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del vehículo' })
+  @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async updateEstatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    const idCliente = req.user.idCliente;
+    const idUser = req.user.userId;
+    return this.vehiculosService.updateEstatus(id, idCliente, idUser);
+  }
+
   @Patch(':id')
   @UseInterceptors(vehiculosFileFieldsInterceptor())
   @ApiConsumes('multipart/form-data')
@@ -142,23 +164,5 @@ export class VehiculosController {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
     return this.vehiculosService.update(id, dto, idCliente, idUser, files);
-  }
-
-  @Patch('estatus/:id')
-  @ApiOperation({
-    summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
-  })
-  @ApiParam({ name: 'id', description: 'ID del vehículo' })
-  @ApiResponse({ status: 200, description: 'Estatus actualizado' })
-  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  async updateEstatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-  ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.vehiculosService.updateEstatus(id, idCliente, idUser);
   }
 }

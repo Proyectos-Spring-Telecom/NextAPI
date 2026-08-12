@@ -10,8 +10,8 @@
 |-------|-------|
 | **Nombre del proyecto** | NextAPI |
 | **Descripción** | Backend de la plataforma Next — sistema maestro (Source of Truth) de monitoreo vehicular y gestión integral de flotas |
-| **Versión del documento** | 1.9 |
-| **Fecha de vigencia** | Marzo 2026 (logs obligatorios en partes cruciales por módulo — Nest `Logger`; sin secretos en log; referencia Auth) |
+| **Versión del documento** | 2.0 |
+| **Fecha de vigencia** | Agosto 2026 (ProductosModule + subtipos; Sims `EnumEstatusRecurso`; baja lógica sin DELETE HTTP; logs en partes cruciales) |
 
 ---
 

@@ -2,8 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsEmail,
-  IsInt,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,11 +9,6 @@ import {
 } from 'class-validator';
 
 export class CreateInmueblesDto {
-  @ApiProperty({ description: 'ID del producto asociado' })
-  @IsInt()
-  @IsNotEmpty()
-  idProducto: number;
-
   @ApiProperty({ description: 'Nombre del inmueble', maxLength: 400, required: false })
   @IsOptional()
   @IsString()

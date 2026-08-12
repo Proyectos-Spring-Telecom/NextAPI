@@ -43,6 +43,17 @@ export enum EnumModulos {
   CATALOGOPASAJERO = 31,
   INMUEBLES = 20,
   PANELALARMA = 21,
+  PRODUCTOS = 32,
+  ACTIVOS = 33,
+  PERSONAS = 34,
+}
+
+/** Valores de CatTipoProducto.Id */
+export enum EnumTipoProducto {
+  VEHICULO = 1,
+  ACTIVO = 2,
+  INMUEBLE = 3,
+  PERSONA = 4,
 }
 
 

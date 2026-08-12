@@ -24,16 +24,20 @@ import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
-@ApiTags('Inmuebles')
+@ApiTags('Productos - Inmuebles')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles()
-@Controller('inmuebles')
+@Controller('productos/inmuebles')
 export class InmueblesController {
   constructor(private readonly inmueblesService: InmueblesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Crear inmueble' })
+  @ApiOperation({
+    summary: 'Crear inmueble',
+    description:
+      'Crea el producto (tipo INMUEBLE) y el detalle de inmueble en una transacción. El estatus inicia en ACTIVO.',
+  })
   @ApiResponse({ status: 201, description: 'Inmueble creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
@@ -90,6 +94,24 @@ export class InmueblesController {
   ) {
     const idCliente = req.user.idCliente;
     return this.inmueblesService.findOne(id, idCliente);
+  }
+
+  @Patch('estatus/:id')
+  @ApiOperation({
+    summary: 'Cambiar estatus',
+    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del inmueble' })
+  @ApiResponse({ status: 200, description: 'Estatus actualizado' })
+  @ApiResponse({ status: 404, description: 'Inmueble no encontrado' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async updateEstatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    const idCliente = req.user.idCliente;
+    const idUser = req.user.userId;
+    return this.inmueblesService.updateEstatus(id, idCliente, idUser);
   }
 
   @Patch(':id')

@@ -71,17 +71,12 @@ const vehiculoProperties = {
 
 export const vehiculosCreateMultipartApiBody = {
   description:
-    'Crea un vehículo y carga los archivos proporcionados al bucket S3. ' +
+    'Crea el producto (tipo VEHICULO) y el vehículo, y carga los archivos al bucket S3. ' +
     'Los campos de archivo son opcionales y admiten un archivo por campo.',
   schema: {
     type: 'object',
-    required: ['idProducto', 'placa'],
+    required: ['placa'],
     properties: {
-      idProducto: {
-        type: 'integer',
-        description: 'ID del producto asociado',
-        example: 1000001,
-      },
       ...vehiculoProperties,
     },
   },
