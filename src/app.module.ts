@@ -14,10 +14,8 @@ import { CatalogosModule } from './catalogos/catalogos.module';
 import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
-import { HistoricoInstalacionesModule } from './historico-instalaciones/historico-instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { ProductosModule } from './productos/productos.module';
-import { PanelAlarmaModule } from './panel-alarma/panel-alarma.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -149,13 +147,9 @@ import * as jwt from 'jsonwebtoken';
 
     InstalacionesModule,
 
-    HistoricoInstalacionesModule,
-
     OperadoresModule,
 
     ProductosModule,
-
-    PanelAlarmaModule,
 
     WebhookEmitterModule,
   ],

@@ -40,7 +40,6 @@ async function bootstrap() {
     .addTag('Autenticación', 'Endpoints de autenticación y registro')
     .addTag('Bitácora', 'Registro de actividades del sistema')
     .addTag('Clientes', 'Gestión de clientes')
-    .addTag('Mail', 'Servicio de correo electrónico')
     .addTag('Modulos', 'Gestión de módulos del sistema')
     .addTag('Permisos', 'Gestión de permisos')
     .addTag(
@@ -48,8 +47,6 @@ async function bootstrap() {
       'Almacenamiento en AWS S3: subir (POST /upload), reemplazar (PATCH /update) y eliminar (DELETE /delete). Requiere JWT; el usuario en bitácora sale del token. Tipos: PNG, JPEG, PDF. Ver carpeta permitida (folder) en cada endpoint.',
     )
     .addTag('Usuarios', 'Gestión de usuarios')
-    .addTag('Inmuebles', 'Inmuebles / sitios físicos para paneles de alarma')
-    .addTag('Panel Alarma', 'Paneles AX PRO (cuenta SIA, cifrado, heartbeat)')
     .addTag('Catálogo Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
     .addTag('Catálogo Planes Telefonía', 'Planes de datos/telefonía por operador')
     .addTag('Catálogos', 'Endpoint dinámico GET /catalogos/:nombre para consultar cualquier catálogo')
