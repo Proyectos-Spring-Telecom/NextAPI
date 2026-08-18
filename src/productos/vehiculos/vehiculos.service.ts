@@ -32,10 +32,24 @@ import {
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
+import {
+  mapClienteRelacion,
+  mapProductoCabecera,
+} from '../map-relaciones.util';
 import type {
   VehiculoFileField,
   VehiculosUploadFiles,
 } from './vehiculos-upload.interceptor';
+
+const RELACIONES_VEHICULO = {
+  idMarcaVehiculo2: true,
+  idModeloVehiculo2: true,
+  idCombustible2: true,
+  idProducto2: {
+    idCliente2: true,
+    idTipoProducto2: true,
+  },
+} as const;
 
 const VEHICULO_FILE_FIELDS: VehiculoFileField[] = [
   'foto',
@@ -316,11 +330,7 @@ export class VehiculosService {
       };
       const data = await this.repository.find({
         where,
-        relations: {
-          idMarcaVehiculo2: true,
-          idModeloVehiculo2: true,
-          idProducto2: true,
-        },
+        relations: RELACIONES_VEHICULO,
         order: { idProducto: 'ASC' },
       });
       const dataNormalizada = data.map((item) =>
@@ -357,14 +367,14 @@ export class VehiculosService {
       };
       const [data, total] = await this.repository.findAndCount({
         where,
+        relations: RELACIONES_VEHICULO,
         skip: (page - 1) * limit,
         take: limit,
         order: { idProducto: 'ASC' },
       });
-      const dataNormalizada = data.map((item) => ({
-        ...item,
-        idProducto: Number(item.idProducto),
-      }));
+      const dataNormalizada = data.map((item) =>
+        this.mapVehiculoConRelaciones(item),
+      );
       return {
         data: dataNormalizada,
         paginated: {
@@ -379,16 +389,17 @@ export class VehiculosService {
     }
   }
 
-  async findOne(id: number, idCliente: number): Promise<{ data: Vehiculos }> {
+  async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id, idCliente },
+        relations: RELACIONES_VEHICULO,
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
       return {
-        data: { ...entity, idProducto: Number(entity.idProducto) },
+        data: this.mapVehiculoConRelaciones(entity),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -429,29 +440,45 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
 `;
 
   private mapVehiculoConRelaciones(item: Vehiculos) {
-    const marca = item.idMarcaVehiculo2;
-    const modelo = item.idModeloVehiculo2;
-    const { idMarcaVehiculo2, idModeloVehiculo2, ...vehiculo } = item;
+    const {
+      idMarcaVehiculo2,
+      idModeloVehiculo2,
+      idCombustible2,
+      idProducto2,
+      ...vehiculo
+    } = item;
 
     return {
       ...vehiculo,
       idProducto: Number(item.idProducto),
+      idCliente: Number(item.idCliente),
       idMarcaVehiculo:
         item.idMarcaVehiculo != null ? Number(item.idMarcaVehiculo) : null,
       idModeloVehiculo:
         item.idModeloVehiculo != null ? Number(item.idModeloVehiculo) : null,
-      marca: marca
+      idCombustible:
+        item.idCombustible != null ? Number(item.idCombustible) : null,
+      estatus: idProducto2?.estatus ?? null,
+      cliente: mapClienteRelacion(idProducto2?.idCliente2),
+      producto: mapProductoCabecera(idProducto2),
+      marca: idMarcaVehiculo2
         ? {
-          id: Number(marca.id),
-          nombre: marca.nombre,
-        }
+            id: Number(idMarcaVehiculo2.id),
+            nombre: idMarcaVehiculo2.nombre,
+          }
         : null,
-      modelo: modelo
+      modelo: idModeloVehiculo2
         ? {
-          id: Number(modelo.id),
-          nombre: modelo.nombre,
-          idMarcaVehiculo: Number(modelo.idCatMarcas),
-        }
+            id: Number(idModeloVehiculo2.id),
+            nombre: idModeloVehiculo2.nombre,
+            idMarcaVehiculo: Number(idModeloVehiculo2.idCatMarcas),
+          }
+        : null,
+      combustible: idCombustible2
+        ? {
+            id: Number(idCombustible2.id),
+            nombre: idCombustible2.nombre,
+          }
         : null,
     };
   }

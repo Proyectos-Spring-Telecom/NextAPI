@@ -22,9 +22,13 @@ import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.serv
 import {
   EnumModulos,
   EnumTipoProducto,
-  EstatusEnum,
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
+import {
+  mapClienteRelacion,
+  mapProductoCabecera,
+  RELACIONES_DETALLE_PRODUCTO,
+} from '../map-relaciones.util';
 
 @Injectable()
 export class InmueblesService {
@@ -40,6 +44,18 @@ export class InmueblesService {
 
   private nombreDisplay(entity: Inmuebles): string {
     return entity.inmueble?.trim() || `Inmueble ${entity.idProducto}`;
+  }
+
+  private mapInmueble(item: Inmuebles) {
+    const { idProducto2, ...inmueble } = item;
+    return {
+      ...inmueble,
+      idProducto: Number(item.idProducto),
+      idCliente: Number(item.idCliente),
+      estatus: idProducto2?.estatus ?? null,
+      cliente: mapClienteRelacion(idProducto2?.idCliente2),
+      producto: mapProductoCabecera(idProducto2),
+    };
   }
 
   async create(
@@ -67,7 +83,6 @@ export class InmueblesService {
         correoRepresentante: dto.correoRepresentante ?? null,
         lat: dto.lat ?? null,
         lng: dto.lng ?? null,
-        estatus: EstatusEnum.ACTIVO,
       });
 
       const saved = await queryRunner.manager.save(entity);
@@ -131,13 +146,11 @@ export class InmueblesService {
       };
       const data = await this.repository.find({
         where,
+        relations: RELACIONES_DETALLE_PRODUCTO,
         order: { idProducto: 'DESC' },
       });
       return {
-        data: data.map((item) => ({
-          ...item,
-          idProducto: Number(item.idProducto),
-        })),
+        data: data.map((item) => this.mapInmueble(item)),
       };
     } catch (error) {
       throw new BadRequestException((error as Error)?.message);
@@ -168,15 +181,13 @@ export class InmueblesService {
       };
       const [data, total] = await this.repository.findAndCount({
         where,
+        relations: RELACIONES_DETALLE_PRODUCTO,
         skip: (page - 1) * limit,
         take: limit,
         order: { idProducto: 'DESC' },
       });
       return {
-        data: data.map((item) => ({
-          ...item,
-          idProducto: Number(item.idProducto),
-        })),
+        data: data.map((item) => this.mapInmueble(item)),
         paginated: {
           total,
           page,
@@ -189,19 +200,17 @@ export class InmueblesService {
     }
   }
 
-  async findOne(
-    id: number,
-    idCliente: number,
-  ): Promise<{ data: Inmuebles }> {
+  async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id, idCliente },
+        relations: RELACIONES_DETALLE_PRODUCTO,
       });
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
       }
       return {
-        data: { ...entity, idProducto: Number(entity.idProducto) },
+        data: this.mapInmueble(entity),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -309,10 +318,6 @@ export class InmueblesService {
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
       await this.productosRepo.update({ id, idCliente }, { estatus });
-      await this.repository.update(
-        { idProducto: id, idCliente },
-        { estatus },
-      );
 
       await this.bitacoraLogger.logToBitacora(
         'Inmuebles',
