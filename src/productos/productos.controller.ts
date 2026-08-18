@@ -39,8 +39,8 @@ export class ProductosController {
   @ApiOperation({
     summary: 'Lista completa de productos',
     description:
-      'Lista productos del cliente. Incluye `cliente` y `tipoProducto` (id y nombre). ' +
-      'Opcionalmente filtra por tipo (vehículo, inmueble, persona, activo).',
+      'Lista productos. Opcionalmente filtra por `idTipoProducto` y `idCliente`. ' +
+      'El filtro de cliente respeta el alcance del rol del token.',
   })
   @ApiQuery({
     name: 'idTipoProducto',
@@ -48,17 +48,27 @@ export class ProductosController {
     enum: EnumTipoProducto,
     description: 'Filtrar por CatTipoProducto.Id',
   })
+  @ApiQuery({
+    name: 'idCliente',
+    required: false,
+    type: Number,
+    description:
+      'Filtrar por cliente. Si se omite, aplica el alcance del rol del token.',
+  })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAllList(
     @Request() req,
     @Query('idTipoProducto') idTipoProducto?: string,
+    @Query('idCliente') idCliente?: string,
   ): Promise<ApiResponseCommon> {
     const tipo = idTipoProducto ? Number(idTipoProducto) : undefined;
+    const clienteFiltro = idCliente ? Number(idCliente) : undefined;
     return this.productosService.findAllList(
       req.user.idCliente,
       req.user.rol,
       Number.isFinite(tipo) ? tipo : undefined,
+      Number.isFinite(clienteFiltro) ? clienteFiltro : undefined,
     );
   }
 

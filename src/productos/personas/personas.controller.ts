@@ -54,7 +54,7 @@ export class PersonasController {
   @Get('list')
   @ApiOperation({
     summary: 'Lista completa de personas',
-    description: 'Incluye cliente y producto (nombre y tipo).',
+    description: 'Lista plana de personas (sin JSON anidados).',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
