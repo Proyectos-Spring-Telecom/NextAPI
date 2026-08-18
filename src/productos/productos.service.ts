@@ -170,7 +170,7 @@ export class ProductosService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        EnumModulos.PRODUCTOS,
+        EnumModulos.MODULOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -189,7 +189,7 @@ export class ProductosService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        EnumModulos.PRODUCTOS,
+        EnumModulos.MODULOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -222,7 +222,7 @@ export class ProductosService {
         'UPDATE',
         { id, estatusAnterior, estatus, idCliente },
         idUser,
-        EnumModulos.PRODUCTOS,
+        EnumModulos.MODULOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -242,7 +242,7 @@ export class ProductosService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        EnumModulos.PRODUCTOS,
+        EnumModulos.MODULOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
