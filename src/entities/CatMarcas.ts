@@ -26,6 +26,19 @@ export class CatMarcas {
   @Column('bigint', { name: 'IdProducto' })
   idProducto: number;
 
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  fechaCreacion: Date;
+
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  fechaActualizacion: Date;
+
   @ManyToOne(() => CatProductos, {
     onDelete: 'NO ACTION',
     onUpdate: 'NO ACTION',
