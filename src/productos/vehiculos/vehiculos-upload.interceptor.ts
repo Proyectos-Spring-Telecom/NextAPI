@@ -1,5 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { Observable } from 'rxjs';
 import * as multer from 'multer';
 
 export const VEHICULO_IMAGE_FIELDS = [
@@ -59,4 +66,31 @@ export function vehiculosFileFieldsInterceptor() {
       callback(null, true);
     },
   });
+}
+
+/**
+ * Swagger envía campos de archivo vacíos (`foto=`) como string en el body.
+ * Multer no los toma como archivo y ValidationPipe los rechaza.
+ */
+@Injectable()
+export class StripEmptyVehiculoFileFieldsInterceptor
+  implements NestInterceptor
+{
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const req = context.switchToHttp().getRequest();
+    const body = req.body;
+    if (!body || typeof body !== 'object') {
+      return next.handle();
+    }
+
+    const fileFields = [
+      ...VEHICULO_IMAGE_FIELDS,
+      ...VEHICULO_DOCUMENT_FIELDS,
+    ];
+    for (const field of fileFields) {
+      delete body[field];
+    }
+
+    return next.handle();
+  }
 }

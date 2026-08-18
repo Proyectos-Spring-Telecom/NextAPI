@@ -47,19 +47,40 @@ export class ProductosService {
 
   private async whereTenant(
     rol: number,
-    idCliente: number,
+    idClienteToken: number,
     idTipoProducto?: number,
+    idClienteFiltro?: number,
   ): Promise<{ sinAcceso: boolean; where: FindOptionsWhere<Productos> }> {
-    const tenant = await this.tenantFilter.forTypeOrmIdCliente(rol, idCliente);
+    const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+      rol,
+      idClienteToken,
+    );
     if (tenant.sinAcceso) {
       return { sinAcceso: true, where: {} };
     }
+
+    let idClienteWhere = tenant.idCliente;
+    if (idClienteFiltro != null) {
+      if (tenant.idCliente === undefined) {
+        idClienteWhere = idClienteFiltro;
+      } else if (typeof tenant.idCliente === 'number') {
+        if (Number(tenant.idCliente) !== idClienteFiltro) {
+          return { sinAcceso: true, where: {} };
+        }
+        idClienteWhere = idClienteFiltro;
+      } else {
+        const ids = await this.tenantFilter.getClienteHijosIds(idClienteToken);
+        if (!ids.includes(idClienteFiltro)) {
+          return { sinAcceso: true, where: {} };
+        }
+        idClienteWhere = idClienteFiltro;
+      }
+    }
+
     return {
       sinAcceso: false,
       where: {
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
+        ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
         ...(idTipoProducto != null ? { idTipoProducto } : {}),
       },
     };
@@ -69,12 +90,14 @@ export class ProductosService {
     idCliente: number,
     rol: number,
     idTipoProducto?: number,
+    idClienteFiltro?: number,
   ): Promise<ApiResponseCommon> {
     try {
       const { sinAcceso, where } = await this.whereTenant(
         rol,
         idCliente,
         idTipoProducto,
+        idClienteFiltro,
       );
       if (sinAcceso) {
         return { data: [] };

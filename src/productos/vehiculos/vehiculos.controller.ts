@@ -30,6 +30,7 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import {
   vehiculosFileFieldsInterceptor,
+  StripEmptyVehiculoFileFieldsInterceptor,
 } from './vehiculos-upload.interceptor';
 import type { VehiculosUploadFiles } from './vehiculos-upload.interceptor';
 import {
@@ -46,7 +47,10 @@ export class VehiculosController {
   constructor(private readonly vehiculosService: VehiculosService) {}
 
   @Post()
-  @UseInterceptors(vehiculosFileFieldsInterceptor())
+  @UseInterceptors(
+    vehiculosFileFieldsInterceptor(),
+    StripEmptyVehiculoFileFieldsInterceptor,
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody(vehiculosCreateMultipartApiBody)
   @ApiOperation({
@@ -154,7 +158,10 @@ export class VehiculosController {
   }
 
   @Patch(':id')
-  @UseInterceptors(vehiculosFileFieldsInterceptor())
+  @UseInterceptors(
+    vehiculosFileFieldsInterceptor(),
+    StripEmptyVehiculoFileFieldsInterceptor,
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody(vehiculosUpdateMultipartApiBody)
   @ApiOperation({ summary: 'Actualizar vehículo' })
