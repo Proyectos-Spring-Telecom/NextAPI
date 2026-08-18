@@ -52,7 +52,10 @@ export class PersonasController {
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'Lista completa de personas' })
+  @ApiOperation({
+    summary: 'Lista completa de personas',
+    description: 'Incluye cliente y producto (nombre y tipo).',
+  })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAllList(@Request() req): Promise<ApiResponseCommon> {

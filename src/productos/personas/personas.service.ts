@@ -25,6 +25,11 @@ import {
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
+import {
+  mapClienteRelacion,
+  mapProductoCabecera,
+  RELACIONES_DETALLE_PRODUCTO,
+} from '../map-relaciones.util';
 
 @Injectable()
 export class PersonasService {
@@ -43,12 +48,15 @@ export class PersonasService {
   }
 
   private mapPersona(item: Personas) {
+    const { idProducto2, ...persona } = item;
     return {
-      ...item,
+      ...persona,
       idProducto: Number(item.idProducto),
       idCliente: Number(item.idCliente),
-      estatus: item.idProducto2?.estatus ?? null,
-      nombreProducto: item.idProducto2?.nombre ?? item.nombre,
+      estatus: idProducto2?.estatus ?? null,
+      nombreProducto: idProducto2?.nombre ?? item.nombre,
+      cliente: mapClienteRelacion(idProducto2?.idCliente2),
+      producto: mapProductoCabecera(idProducto2),
     };
   }
 
@@ -134,7 +142,7 @@ export class PersonasService {
       };
       const data = await this.repository.find({
         where,
-        relations: ['idProducto2'],
+        relations: RELACIONES_DETALLE_PRODUCTO,
         order: { idProducto: 'DESC' },
       });
       return { data: data.map((item) => this.mapPersona(item)) };
@@ -167,7 +175,7 @@ export class PersonasService {
       };
       const [data, total] = await this.repository.findAndCount({
         where,
-        relations: ['idProducto2'],
+        relations: RELACIONES_DETALLE_PRODUCTO,
         skip: (page - 1) * limit,
         take: limit,
         order: { idProducto: 'DESC' },
@@ -190,7 +198,7 @@ export class PersonasService {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id, idCliente },
-        relations: ['idProducto2'],
+        relations: RELACIONES_DETALLE_PRODUCTO,
       });
       if (!entity) {
         throw new NotFoundException('Persona no encontrada');

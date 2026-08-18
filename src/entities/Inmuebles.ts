@@ -46,15 +46,6 @@ export class Inmuebles {
   })
   correoRepresentante: string | null;
 
-  @Column('datetime', {
-    name: 'FHRegistro',
-    default: () => 'CURRENT_TIMESTAMP',
-  })
-  fhRegistro: Date;
-
-  @Column('tinyint', { name: 'Estatus', default: 1 })
-  estatus: number;
-
   @Column('double', { name: 'Lat', nullable: true })
   lat: number | null;
 

@@ -39,7 +39,8 @@ export class ProductosController {
   @ApiOperation({
     summary: 'Lista completa de productos',
     description:
-      'Lista productos del cliente. Opcionalmente filtra por tipo (vehículo, inmueble, persona, activo).',
+      'Lista productos del cliente. Incluye `cliente` y `tipoProducto` (id y nombre). ' +
+      'Opcionalmente filtra por tipo (vehículo, inmueble, persona, activo).',
   })
   @ApiQuery({
     name: 'idTipoProducto',
@@ -92,7 +93,10 @@ export class ProductosController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener producto por ID' })
+  @ApiOperation({
+    summary: 'Obtener producto por ID',
+    description: 'Incluye `cliente` (id, rfc, nombre) y `tipoProducto` (id, codigo, nombre).',
+  })
   @ApiParam({ name: 'id', description: 'ID del producto' })
   @ApiResponse({ status: 200, description: 'Producto encontrado' })
   @ApiResponse({ status: 404, description: 'Producto no encontrado' })

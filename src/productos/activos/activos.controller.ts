@@ -52,7 +52,10 @@ export class ActivosController {
   }
 
   @Get('list')
-  @ApiOperation({ summary: 'Lista completa de activos' })
+  @ApiOperation({
+    summary: 'Lista completa de activos',
+    description: 'Incluye cliente y producto (nombre y tipo).',
+  })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAllList(@Request() req): Promise<ApiResponseCommon> {

@@ -17,7 +17,12 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import { EnumModulos } from 'src/common/estatus.enum';
+import {
+  mapClienteRelacion,
+  mapTipoProductoRelacion,
+  RELACIONES_PRODUCTO_BASE,
+} from './map-relaciones.util';
 
 @Injectable()
 export class ProductosService {
@@ -29,18 +34,14 @@ export class ProductosService {
   ) {}
 
   private mapProducto(item: Productos) {
+    const { idCliente2, idTipoProducto2, ...producto } = item;
     return {
-      ...item,
+      ...producto,
       id: Number(item.id),
       idCliente: Number(item.idCliente),
       idTipoProducto: Number(item.idTipoProducto),
-      tipoProducto: item.idTipoProducto2
-        ? {
-            id: Number(item.idTipoProducto2.id),
-            codigo: item.idTipoProducto2.codigo,
-            nombre: item.idTipoProducto2.nombre,
-          }
-        : null,
+      cliente: mapClienteRelacion(idCliente2),
+      tipoProducto: mapTipoProductoRelacion(idTipoProducto2),
     };
   }
 
@@ -80,7 +81,7 @@ export class ProductosService {
       }
       const data = await this.repository.find({
         where,
-        relations: ['idTipoProducto2'],
+        relations: [...RELACIONES_PRODUCTO_BASE],
         order: { id: 'DESC' },
       });
       return { data: data.map((item) => this.mapProducto(item)) };
@@ -110,7 +111,7 @@ export class ProductosService {
       }
       const [data, total] = await this.repository.findAndCount({
         where,
-        relations: ['idTipoProducto2'],
+        relations: [...RELACIONES_PRODUCTO_BASE],
         skip: (page - 1) * limit,
         take: limit,
         order: { id: 'DESC' },
@@ -133,7 +134,7 @@ export class ProductosService {
     try {
       const entity = await this.repository.findOne({
         where: { id, idCliente },
-        relations: ['idTipoProducto2'],
+        relations: [...RELACIONES_PRODUCTO_BASE],
       });
       if (!entity) {
         throw new NotFoundException('Producto no encontrado');

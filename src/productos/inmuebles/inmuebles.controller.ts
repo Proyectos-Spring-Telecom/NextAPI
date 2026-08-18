@@ -54,7 +54,7 @@ export class InmueblesController {
   @Get('list')
   @ApiOperation({
     summary: 'Lista completa de inmuebles',
-    description: 'Lista de inmuebles. Alcance según rol.',
+    description: 'Lista de inmuebles con cliente y producto (nombre y tipo).',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
