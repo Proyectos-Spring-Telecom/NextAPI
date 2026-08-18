@@ -26,7 +26,7 @@ import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
-@ApiTags('Catálogo Tipo Combustible')
+@ApiTags('Catálogos - Combustible')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles() // o según permisos del módulo Vehículos

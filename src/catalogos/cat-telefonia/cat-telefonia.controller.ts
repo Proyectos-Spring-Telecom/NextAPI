@@ -28,7 +28,7 @@ import { FilterCatPlanesTelefoniaDto } from '../cat-planes-telefonia/dto/filter-
 import { FilterCatTelefoniaDto } from './dto/filter-cat-telefonia.dto';
 import { UpdateCatTelefoniaDto } from './dto/update-cat-telefonia.dto';
 
-@ApiTags('Catálogo Telefonía')
+@ApiTags('Catálogos - Telefonía')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles()
