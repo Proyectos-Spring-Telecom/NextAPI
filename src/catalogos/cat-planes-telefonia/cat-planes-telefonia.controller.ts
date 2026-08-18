@@ -27,7 +27,7 @@ import { CreateCatPlanesTelefoniaDto } from './dto/create-cat-planes-telefonia.d
 import { FilterCatPlanesTelefoniaDto } from './dto/filter-cat-planes-telefonia.dto';
 import { UpdateCatPlanesTelefoniaDto } from './dto/update-cat-planes-telefonia.dto';
 
-@ApiTags('Catálogo Planes Telefonía')
+@ApiTags('Catálogos - Planes Telefonía')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles()

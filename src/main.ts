@@ -47,9 +47,12 @@ async function bootstrap() {
       'Almacenamiento en AWS S3: subir (POST /upload), reemplazar (PATCH /update) y eliminar (DELETE /delete). Requiere JWT; el usuario en bitácora sale del token. Tipos: PNG, JPEG, PDF. Ver carpeta permitida (folder) en cada endpoint.',
     )
     .addTag('Usuarios', 'Gestión de usuarios')
-    .addTag('Catálogo Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
-    .addTag('Catálogo Planes Telefonía', 'Planes de datos/telefonía por operador')
-    .addTag('Catálogos', 'Endpoint dinámico GET /catalogos/:nombre para consultar cualquier catálogo')
+    .addTag('Catálogos', 'Consulta dinámica GET /catalogos/:nombre')
+    .addTag('Catálogos - Combustible', 'Tipos de combustible')
+    .addTag('Catálogos - Marcas', 'Marcas de vehículos (CatMarcas)')
+    .addTag('Catálogos - Modelos', 'Modelos de vehículos (CatModelos)')
+    .addTag('Catálogos - Planes Telefonía', 'Planes de datos/telefonía por operador')
+    .addTag('Catálogos - Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
@@ -59,6 +62,7 @@ async function bootstrap() {
       defaultModelsExpandDepth: 2,
       defaultModelExpandDepth: 2,
       docExpansion: 'list',
+      tagsSorter: 'alpha',
     },
   });
 

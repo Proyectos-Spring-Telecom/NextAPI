@@ -56,5 +56,14 @@ export enum EnumTipoProducto {
   PERSONA = 4,
 }
 
+/** Valores de CatProductos.Id (categoría de marcas) */
+export enum EnumCatProducto {
+  DISPOSITIVO = 1,
+  VEHICULO = 2,
+  ACTIVO = 3,
+  TELEFONO = 4,
+  PANEL = 5,
+}
+
 
 
