@@ -33,7 +33,7 @@ import { UpdateProductoEstatusDto } from './dto/update-producto-estatus.dto';
 @Roles()
 @Controller('productos')
 export class ProductosController {
-  constructor(private readonly productosService: ProductosService) {}
+  constructor(private readonly productosService: ProductosService) { }
 
   @Get('list')
   @ApiOperation({
@@ -62,7 +62,7 @@ export class ProductosController {
     );
   }
 
-  @Get(':page/:limit')
+  @Get('paginado/:page/:limit')
   @ApiOperation({
     summary: 'Lista paginada de productos',
     description: 'Lista paginada. Alcance según rol del token.',

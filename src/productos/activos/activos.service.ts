@@ -26,8 +26,7 @@ import {
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
 import {
-  mapClienteRelacion,
-  mapProductoCabecera,
+  nombreCliente,
   RELACIONES_DETALLE_PRODUCTO,
 } from '../map-relaciones.util';
 
@@ -48,15 +47,25 @@ export class ActivosService {
   }
 
   private mapActivo(item: Activos) {
-    const { idProducto2, ...activo } = item;
+    const producto = item.idProducto2;
+    const cliente = producto?.idCliente2;
+    const tipoProducto = producto?.idTipoProducto2;
+    const idProducto = Number(item.idProducto);
+
     return {
-      ...activo,
-      idProducto: Number(item.idProducto),
+      id: idProducto,
+      nombreActivo: item.nombre,
+      descripcionActivo: item.descripcion,
+      nombreProducto: producto?.nombre ?? item.nombre,
+      estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
-      estatus: idProducto2?.estatus ?? null,
-      nombreProducto: idProducto2?.nombre ?? item.nombre,
-      cliente: mapClienteRelacion(idProducto2?.idCliente2),
-      producto: mapProductoCabecera(idProducto2),
+      nombreCliente: nombreCliente(cliente),
+      idTipoProducto:
+        tipoProducto?.id != null ? Number(tipoProducto.id) : null,
+      nombreTipoProducto: tipoProducto?.nombre ?? null,
+      codigoTipoProducto: tipoProducto?.codigo ?? null,
+      fechaCreacion: producto?.fechaCreacion ?? null,
+      fechaActualizacion: producto?.fechaActualizacion ?? null,
     };
   }
 
