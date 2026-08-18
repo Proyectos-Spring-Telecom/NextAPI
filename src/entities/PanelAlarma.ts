@@ -3,7 +3,7 @@ import {
   Entity,
   Index,
   JoinColumn,
-  ManyToOne,
+  OneToOne,
   PrimaryColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
@@ -63,7 +63,7 @@ export class PanelAlarma {
   })
   fechaActualizacion: Date;
 
-  @ManyToOne(() => Dispositivos, {
+  @OneToOne(() => Dispositivos, {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',
   })

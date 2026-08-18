@@ -28,6 +28,19 @@ export class CatModelos {
   @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
 
+  @Column('datetime', {
+    name: 'FechaCreacion',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  fechaCreacion: Date;
+
+  @Column('datetime', {
+    name: 'FechaActualizacion',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  fechaActualizacion: Date;
+
   @ManyToOne(() => CatMarcas, {
     onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
