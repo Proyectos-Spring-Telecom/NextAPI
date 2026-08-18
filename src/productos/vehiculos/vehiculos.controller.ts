@@ -70,7 +70,7 @@ export class VehiculosController {
   @ApiOperation({
     summary: 'Lista completa de vehículos',
     description:
-      'Solo registros activos (Estatus=1). Incluye cliente, producto, marca, modelo y combustible.',
+      'Lista plana de vehículos activos (Estatus=1), sin JSON anidados.',
   })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
@@ -101,7 +101,7 @@ export class VehiculosController {
   @ApiOperation({
     summary: 'Lista paginada de vehículos',
     description:
-      'Incluye activos e inactivos, con nombres de cliente, producto, marca, modelo y combustible.',
+      'Lista plana de vehículos (activos e inactivos), sin JSON anidados.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })

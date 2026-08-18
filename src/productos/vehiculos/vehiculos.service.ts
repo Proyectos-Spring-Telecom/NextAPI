@@ -33,8 +33,7 @@ import {
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
 import {
-  mapClienteRelacion,
-  mapProductoCabecera,
+  nombreCliente,
 } from '../map-relaciones.util';
 import type {
   VehiculoFileField,
@@ -440,46 +439,51 @@ LEFT JOIN CatTipoCombustible tc ON v.IdCombustible = tc.Id
 `;
 
   private mapVehiculoConRelaciones(item: Vehiculos) {
-    const {
-      idMarcaVehiculo2,
-      idModeloVehiculo2,
-      idCombustible2,
-      idProducto2,
-      ...vehiculo
-    } = item;
+    const producto = item.idProducto2;
+    const cliente = producto?.idCliente2;
+    const tipoProducto = producto?.idTipoProducto2;
+    const marca = item.idMarcaVehiculo2;
+    const modelo = item.idModeloVehiculo2;
+    const combustible = item.idCombustible2;
 
     return {
-      ...vehiculo,
-      idProducto: Number(item.idProducto),
-      idCliente: Number(item.idCliente),
+      id: Number(item.idProducto),
+      placa: item.placa,
+      numeroEconomico: item.numeroEconomico,
+      anio: item.anio != null ? Number(item.anio) : null,
+      color: item.color,
+      numeroSerie: item.numeroSerie,
+      foto: item.foto,
+      fotoFrente: item.fotoFrente,
+      fotoTrasera: item.fotoTrasera,
+      fotoDerecha: item.fotoDerecha,
+      fotoIzquierda: item.fotoIzquierda,
+      fotoExtra: item.fotoExtra,
+      tarjetaCirculacion: item.tarjetaCirculacion,
+      polizaSeguro: item.polizaSeguro,
+      permisoCarga: item.permisoCarga,
+      km: item.km != null ? Number(item.km) : null,
+      capacidadLitros:
+        item.capacidadLitros != null ? Number(item.capacidadLitros) : null,
       idMarcaVehiculo:
         item.idMarcaVehiculo != null ? Number(item.idMarcaVehiculo) : null,
+      nombreMarca: marca?.nombre ?? null,
       idModeloVehiculo:
         item.idModeloVehiculo != null ? Number(item.idModeloVehiculo) : null,
+      nombreModelo: modelo?.nombre ?? null,
       idCombustible:
         item.idCombustible != null ? Number(item.idCombustible) : null,
-      estatus: idProducto2?.estatus ?? null,
-      cliente: mapClienteRelacion(idProducto2?.idCliente2),
-      producto: mapProductoCabecera(idProducto2),
-      marca: idMarcaVehiculo2
-        ? {
-            id: Number(idMarcaVehiculo2.id),
-            nombre: idMarcaVehiculo2.nombre,
-          }
-        : null,
-      modelo: idModeloVehiculo2
-        ? {
-            id: Number(idModeloVehiculo2.id),
-            nombre: idModeloVehiculo2.nombre,
-            idMarcaVehiculo: Number(idModeloVehiculo2.idCatMarcas),
-          }
-        : null,
-      combustible: idCombustible2
-        ? {
-            id: Number(idCombustible2.id),
-            nombre: idCombustible2.nombre,
-          }
-        : null,
+      nombreCombustible: combustible?.nombre ?? null,
+      nombreProducto: producto?.nombre ?? item.placa,
+      estatus: producto?.estatus != null ? Number(producto.estatus) : null,
+      idCliente: Number(item.idCliente),
+      nombreCliente: nombreCliente(cliente),
+      idTipoProducto:
+        tipoProducto?.id != null ? Number(tipoProducto.id) : null,
+      nombreTipoProducto: tipoProducto?.nombre ?? null,
+      codigoTipoProducto: tipoProducto?.codigo ?? null,
+      fechaCreacion: producto?.fechaCreacion ?? null,
+      fechaActualizacion: producto?.fechaActualizacion ?? null,
     };
   }
 

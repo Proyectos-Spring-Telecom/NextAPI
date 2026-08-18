@@ -31,7 +31,7 @@ export class ProductosService {
     private readonly repository: Repository<Productos>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private mapProducto(item: Productos) {
     const { idCliente2, idTipoProducto2, ...producto } = item;
@@ -133,7 +133,7 @@ export class ProductosService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
         relations: [...RELACIONES_PRODUCTO_BASE],
       });
       if (!entity) {

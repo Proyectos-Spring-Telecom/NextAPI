@@ -26,8 +26,7 @@ import {
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
 import {
-  mapClienteRelacion,
-  mapProductoCabecera,
+  nombreCliente,
   RELACIONES_DETALLE_PRODUCTO,
 } from '../map-relaciones.util';
 
@@ -41,22 +40,31 @@ export class PersonasService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private nombreDisplay(entity: Personas): string {
     return entity.nombre?.trim() || `Persona ${entity.idProducto}`;
   }
 
   private mapPersona(item: Personas) {
-    const { idProducto2, ...persona } = item;
+    const producto = item.idProducto2;
+    const cliente = producto?.idCliente2;
+    const tipoProducto = producto?.idTipoProducto2;
+
     return {
-      ...persona,
-      idProducto: Number(item.idProducto),
+      id: Number(item.idProducto),
+      nombrePersona: item.nombre,
+      telefonoPersona: item.telefono,
+      nombreProducto: producto?.nombre ?? item.nombre,
+      estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
-      estatus: idProducto2?.estatus ?? null,
-      nombreProducto: idProducto2?.nombre ?? item.nombre,
-      cliente: mapClienteRelacion(idProducto2?.idCliente2),
-      producto: mapProductoCabecera(idProducto2),
+      nombreCliente: nombreCliente(cliente),
+      idTipoProducto:
+        tipoProducto?.id != null ? Number(tipoProducto.id) : null,
+      nombreTipoProducto: tipoProducto?.nombre ?? null,
+      codigoTipoProducto: tipoProducto?.codigo ?? null,
+      fechaCreacion: producto?.fechaCreacion ?? null,
+      fechaActualizacion: producto?.fechaActualizacion ?? null,
     };
   }
 
@@ -197,7 +205,7 @@ export class PersonasService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
         relations: RELACIONES_DETALLE_PRODUCTO,
       });
       if (!entity) {

@@ -25,8 +25,7 @@ import {
 } from 'src/common/estatus.enum';
 import { crearProductoBase } from '../crear-producto.util';
 import {
-  mapClienteRelacion,
-  mapProductoCabecera,
+  nombreCliente,
   RELACIONES_DETALLE_PRODUCTO,
 } from '../map-relaciones.util';
 
@@ -40,21 +39,36 @@ export class InmueblesService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private nombreDisplay(entity: Inmuebles): string {
     return entity.inmueble?.trim() || `Inmueble ${entity.idProducto}`;
   }
 
   private mapInmueble(item: Inmuebles) {
-    const { idProducto2, ...inmueble } = item;
+    const producto = item.idProducto2;
+    const cliente = producto?.idCliente2;
+    const tipoProducto = producto?.idTipoProducto2;
+
     return {
-      ...inmueble,
-      idProducto: Number(item.idProducto),
+      id: Number(item.idProducto),
+      nombreInmueble: item.inmueble,
+      direccionFiscal: item.direccionFiscal,
+      nombreRepresentante: item.nombreRepresentante,
+      telefonoRepresentante: item.telefonoRepresentante,
+      correoRepresentante: item.correoRepresentante,
+      lat: item.lat != null ? Number(item.lat) : null,
+      lng: item.lng != null ? Number(item.lng) : null,
+      nombreProducto: producto?.nombre ?? item.inmueble,
+      estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
-      estatus: idProducto2?.estatus ?? null,
-      cliente: mapClienteRelacion(idProducto2?.idCliente2),
-      producto: mapProductoCabecera(idProducto2),
+      nombreCliente: nombreCliente(cliente),
+      idTipoProducto:
+        tipoProducto?.id != null ? Number(tipoProducto.id) : null,
+      nombreTipoProducto: tipoProducto?.nombre ?? null,
+      codigoTipoProducto: tipoProducto?.codigo ?? null,
+      fechaCreacion: producto?.fechaCreacion ?? null,
+      fechaActualizacion: producto?.fechaActualizacion ?? null,
     };
   }
 
@@ -203,7 +217,7 @@ export class InmueblesService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
         relations: RELACIONES_DETALLE_PRODUCTO,
       });
       if (!entity) {
