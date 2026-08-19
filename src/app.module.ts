@@ -16,6 +16,7 @@ import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { ProductosModule } from './productos/productos.module';
+import { AlarmasModule } from './alarmas/alarmas.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -94,6 +95,9 @@ import * as jwt from 'jsonwebtoken';
         MAIL_FRONTEND_URL: Joi.string().optional(),
         WEBHOOK_SUBSCRIBERS: Joi.string().allow('').default(''),
         WEBHOOK_SECRET: Joi.string().allow('').default(''),
+        GATEWAY_HMAC_SECRET: Joi.string().min(16).required(),
+        GATEWAY_API_KEY: Joi.string().allow('').optional(),
+        SIA_OFFLINE_THRESHOLD_MS: Joi.number().default(600000),
       }),
     }),
 
@@ -150,6 +154,8 @@ import * as jwt from 'jsonwebtoken';
     OperadoresModule,
 
     ProductosModule,
+
+    AlarmasModule,
 
     WebhookEmitterModule,
   ],

@@ -1,6 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -10,11 +9,21 @@ import {
 
 export class CreateDispositivosDto {
   @ApiProperty({
-    description: 'ID del tipo de dispositivo (CatTipoDispositivo)',
+    description: 'ID del cliente/tenant propietario. Obligatorio.',
+    example: 1,
   })
   @IsInt()
   @IsNotEmpty()
-  idTipoDispositivo: number;
+  idCliente!: number;
+
+  @ApiProperty({
+    description:
+      'ID del tipo (CatTipoDispositivo): rastreador, AVL, teléfono, etc. ' +
+      'No usar el tipo panel aquí; el alta de paneles es POST /dispositivos/paneles.',
+  })
+  @IsInt()
+  @IsNotEmpty()
+  idTipoDispositivo!: number;
 
   @ApiProperty({
     description: 'Número de serie del dispositivo',
@@ -24,51 +33,27 @@ export class CreateDispositivosDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  numeroSerie: string;
+  numeroSerie!: string;
 
-  @ApiProperty({
-    description: 'IMEI del dispositivo',
-    maxLength: 20,
-    required: false,
-  })
+  @ApiPropertyOptional({ description: 'IMEI', maxLength: 20 })
   @IsOptional()
   @IsString()
   @MaxLength(20)
   imei?: string;
 
-  @ApiProperty({
-    description: 'Número económico',
-    maxLength: 50,
-    required: false,
-  })
+  @ApiPropertyOptional({ description: 'Número económico', maxLength: 50 })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   eco?: string;
 
-  @ApiProperty({
-    description: 'ID de marca (CatMarcas)',
-    required: false,
-  })
+  @ApiPropertyOptional({ description: 'ID de marca (CatMarcas)' })
   @IsOptional()
   @IsInt()
   idMarca?: number | null;
 
-  @ApiProperty({
-    description: 'ID de modelo (CatModelos)',
-    required: false,
-  })
+  @ApiPropertyOptional({ description: 'ID de modelo (CatModelos)' })
   @IsOptional()
   @IsInt()
   idModelo?: number | null;
-
-  @ApiProperty({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
 }
