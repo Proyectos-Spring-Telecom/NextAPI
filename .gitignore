@@ -3,11 +3,8 @@
 /node_modules
 /build
 
-#Documentación
-/docs
-/document
-/docs/*
-docs/ 
+# Documentación interna (Markdown en /docs sí se versiona)
+/document 
 
 # Logs
 logs

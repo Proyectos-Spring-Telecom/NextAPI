@@ -58,16 +58,20 @@ export class CatPlanesTelefonia {
   })
   costoMensual: string | null;
 
-  @Column('date', {
+  @Column({
+    type: 'date',
     name: 'FechaInicioVigencia',
     nullable: true,
+    utc: true,
     comment: 'Desde cuándo está disponible el plan',
   })
   fechaInicioVigencia: string | null;
 
-  @Column('date', {
+  @Column({
+    type: 'date',
     name: 'FechaFinVigencia',
     nullable: true,
+    utc: true,
     comment: 'Hasta cuándo está disponible (NULL = sin fecha fin)',
   })
   fechaFinVigencia: string | null;
