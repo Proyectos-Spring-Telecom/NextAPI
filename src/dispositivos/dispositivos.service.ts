@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -9,97 +8,99 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
-import { CatModelos } from 'src/entities/CatModelos';
-import { CatMarcas } from 'src/entities/CatMarcas';
-import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
+import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
+import { UpdateDispositivoEstatusDto } from './dto/update-dispositivo-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-
-const ID_MODULO_DISPOSITIVOS = 15;
+import { EnumModulos } from 'src/common/estatus.enum';
+import {
+  crearDispositivoBase,
+  obtenerTipoPanelAlarma,
+  validarFksDispositivo,
+} from './crear-dispositivo.util';
+import {
+  mapDispositivoPlano,
+  RELACIONES_DISPOSITIVO_BASE,
+} from './map-relaciones.util';
 
 @Injectable()
 export class DispositivosService {
   constructor(
     @InjectRepository(Dispositivos)
     private readonly repository: Repository<Dispositivos>,
-    @InjectRepository(CatModelos)
-    private readonly catModelosRepo: Repository<CatModelos>,
-    @InjectRepository(CatMarcas)
-    private readonly catMarcasRepo: Repository<CatMarcas>,
-    @InjectRepository(CatTipoDispositivo)
-    private readonly catTipoDispositivoRepo: Repository<CatTipoDispositivo>,
+    @InjectRepository(PanelAlarma)
+    private readonly panelRepo: Repository<PanelAlarma>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
-  private async validarFks(dto: {
-    idTipoDispositivo?: number;
-    idMarca?: number | null;
-    idModelo?: number | null;
-  }): Promise<void> {
-    if (dto.idTipoDispositivo !== undefined) {
-      const tipo = await this.catTipoDispositivoRepo.findOne({
-        where: { id: dto.idTipoDispositivo },
-      });
-      if (!tipo) {
-        throw new BadRequestException(
-          'IdTipoDispositivo no existe en CatTipoDispositivo',
-        );
+  private async whereTenant(
+    rol: number,
+    idClienteToken: number,
+    idTipoDispositivo?: number,
+    idClienteFiltro?: number,
+  ): Promise<{ sinAcceso: boolean; where: FindOptionsWhere<Dispositivos> }> {
+    const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+      rol,
+      idClienteToken,
+    );
+    if (tenant.sinAcceso) {
+      return { sinAcceso: true, where: {} };
+    }
+
+    let idClienteWhere = tenant.idCliente;
+    if (idClienteFiltro != null) {
+      if (tenant.idCliente === undefined) {
+        idClienteWhere = idClienteFiltro;
+      } else if (typeof tenant.idCliente === 'number') {
+        if (Number(tenant.idCliente) !== idClienteFiltro) {
+          return { sinAcceso: true, where: {} };
+        }
+        idClienteWhere = idClienteFiltro;
+      } else {
+        const ids = await this.tenantFilter.getClienteHijosIds(idClienteToken);
+        if (!ids.includes(idClienteFiltro)) {
+          return { sinAcceso: true, where: {} };
+        }
+        idClienteWhere = idClienteFiltro;
       }
     }
-    if (dto.idMarca != null) {
-      const marca = await this.catMarcasRepo.findOne({
-        where: { id: dto.idMarca },
-      });
-      if (!marca) {
-        throw new BadRequestException('IdMarca no existe en CatMarcas');
-      }
-    }
-    if (dto.idModelo != null) {
-      const model = await this.catModelosRepo.findOne({
-        where: { id: dto.idModelo },
-      });
-      if (!model) {
-        throw new BadRequestException('IdModelo no existe en CatModelos');
-      }
-      if (
-        dto.idMarca != null &&
-        Number(model.idCatMarcas) !== Number(dto.idMarca)
-      ) {
-        throw new BadRequestException(
-          'El modelo no pertenece a la marca indicada',
-        );
-      }
-    }
+
+    return {
+      sinAcceso: false,
+      where: {
+        ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
+        ...(idTipoDispositivo != null ? { idTipoDispositivo } : {}),
+      },
+    };
   }
 
   async create(
     dto: CreateDispositivosDto,
-    idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = dto.idCliente;
     try {
-      const existeNumeroSerie = await this.repository.findOne({
-        where: { numeroSerie: dto.numeroSerie },
-      });
-      if (existeNumeroSerie) {
-        throw new BadRequestException('El número de serie ya existe');
+      const tipoPanel = await obtenerTipoPanelAlarma(
+        this.repository.manager,
+      ).catch(() => null);
+      if (
+        tipoPanel &&
+        Number(dto.idTipoDispositivo) === Number(tipoPanel.id)
+      ) {
+        throw new BadRequestException(
+          'El tipo panel requiere datos extra. Use POST /dispositivos/paneles',
+        );
       }
 
-      await this.validarFks({
-        idTipoDispositivo: dto.idTipoDispositivo,
-        idMarca: dto.idMarca,
-        idModelo: dto.idModelo,
-      });
-
-      const entity = this.repository.create({
+      const saved = await crearDispositivoBase(this.repository.manager, {
         idCliente,
         idTipoDispositivo: dto.idTipoDispositivo,
         numeroSerie: dto.numeroSerie,
@@ -107,10 +108,7 @@ export class DispositivosService {
         eco: dto.eco ?? null,
         idMarca: dto.idMarca ?? null,
         idModelo: dto.idModelo ?? null,
-        estatus: dto.estatus ?? 1,
       });
-
-      const saved = await this.repository.save(entity);
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
@@ -118,7 +116,7 @@ export class DispositivosService {
         'CREATE',
         { dto, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -134,7 +132,7 @@ export class DispositivosService {
         'CREATE',
         { dto, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -146,30 +144,25 @@ export class DispositivosService {
   async findAllList(
     idCliente: number,
     rol: number,
+    idTipoDispositivo?: number,
+    idClienteFiltro?: number,
   ): Promise<ApiResponseCommon> {
     try {
-      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+      const { sinAcceso, where } = await this.whereTenant(
         rol,
         idCliente,
+        idTipoDispositivo,
+        idClienteFiltro,
       );
-      if (tenant.sinAcceso) {
+      if (sinAcceso) {
         return { data: [] };
       }
-      const where: FindOptionsWhere<Dispositivos> = {
-        estatus: 1,
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
-      };
       const data = await this.repository.find({
         where,
-        order: { id: 'ASC' },
+        relations: [...RELACIONES_DISPOSITIVO_BASE],
+        order: { id: 'DESC' },
       });
-      const dataNormalizada = data.map((item) => ({
-        ...item,
-        id: Number(item.id),
-      }));
-      return { data: dataNormalizada };
+      return { data: data.map((item) => mapDispositivoPlano(item)) };
     } catch (error) {
       throw new BadRequestException((error as Error)?.message);
     }
@@ -180,40 +173,29 @@ export class DispositivosService {
     rol: number,
     page: number,
     limit: number,
+    idTipoDispositivo?: number,
   ): Promise<ApiResponseCommon> {
     try {
-      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+      const { sinAcceso, where } = await this.whereTenant(
         rol,
         idCliente,
+        idTipoDispositivo,
       );
-      if (tenant.sinAcceso) {
+      if (sinAcceso) {
         return {
           data: [],
-          paginated: {
-            total: 0,
-            page,
-            limit,
-            totalPages: 0,
-          },
+          paginated: { total: 0, page, limit, totalPages: 0 },
         };
       }
-      const where: FindOptionsWhere<Dispositivos> = {
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
-      };
       const [data, total] = await this.repository.findAndCount({
         where,
+        relations: [...RELACIONES_DISPOSITIVO_BASE],
         skip: (page - 1) * limit,
         take: limit,
-        order: { id: 'ASC' },
+        order: { id: 'DESC' },
       });
-      const dataNormalizada = data.map((item) => ({
-        ...item,
-        id: Number(item.id),
-      }));
       return {
-        data: dataNormalizada,
+        data: data.map((item) => mapDispositivoPlano(item)),
         paginated: {
           total,
           page,
@@ -226,26 +208,19 @@ export class DispositivosService {
     }
   }
 
-  async findOne(
-    id: number,
-    idCliente: number,
-  ): Promise<{ data: Dispositivos }> {
+  async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
         where: { id, idCliente },
+        relations: [...RELACIONES_DISPOSITIVO_BASE],
       });
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
       }
-      return {
-        data: { ...entity, id: Number(entity.id) },
-      };
+      return { data: mapDispositivoPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        { message: 'Error al buscar el dispositivo' },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new BadRequestException((error as Error)?.message);
     }
   }
 
@@ -272,30 +247,30 @@ export class DispositivosService {
         }
       }
 
-      await this.validarFks({
+      await validarFksDispositivo(this.repository.manager, {
         idTipoDispositivo: dto.idTipoDispositivo,
         idMarca:
           dto.idMarca !== undefined || dto.idModelo !== undefined
-            ? (dto.idMarca !== undefined ? dto.idMarca : entity.idMarca)
+            ? dto.idMarca !== undefined
+              ? dto.idMarca
+              : entity.idMarca
             : undefined,
         idModelo:
           dto.idMarca !== undefined || dto.idModelo !== undefined
-            ? (dto.idModelo !== undefined ? dto.idModelo : entity.idModelo)
+            ? dto.idModelo !== undefined
+              ? dto.idModelo
+              : entity.idModelo
             : dto.idModelo,
       });
 
-      const updateData: Partial<Dispositivos> = {};
       if (dto.idTipoDispositivo !== undefined)
-        updateData.idTipoDispositivo = dto.idTipoDispositivo;
-      if (dto.numeroSerie !== undefined)
-        updateData.numeroSerie = dto.numeroSerie;
-      if (dto.imei !== undefined) updateData.imei = dto.imei;
-      if (dto.eco !== undefined) updateData.eco = dto.eco;
-      if (dto.idMarca !== undefined) updateData.idMarca = dto.idMarca;
-      if (dto.idModelo !== undefined) updateData.idModelo = dto.idModelo;
-      if (dto.estatus !== undefined) updateData.estatus = dto.estatus;
-
-      await this.repository.update(id, updateData);
+        entity.idTipoDispositivo = dto.idTipoDispositivo;
+      if (dto.numeroSerie !== undefined) entity.numeroSerie = dto.numeroSerie;
+      if (dto.imei !== undefined) entity.imei = dto.imei;
+      if (dto.eco !== undefined) entity.eco = dto.eco;
+      if (dto.idMarca !== undefined) entity.idMarca = dto.idMarca;
+      if (dto.idModelo !== undefined) entity.idModelo = dto.idModelo;
+      await this.repository.save(entity);
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
@@ -303,18 +278,14 @@ export class DispositivosService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
-      const updated = await this.repository.findOne({ where: { id } });
       return {
         status: 'success',
         message: 'Dispositivo actualizado correctamente',
-        data: {
-          id,
-          nombre: updated?.numeroSerie ?? entity.numeroSerie,
-        },
+        data: { id, nombre: entity.numeroSerie },
       };
     } catch (error) {
       await this.bitacoraLogger.logToBitacora(
@@ -323,7 +294,7 @@ export class DispositivosService {
         'UPDATE',
         { id, dto, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );
@@ -334,6 +305,7 @@ export class DispositivosService {
 
   async updateEstatus(
     id: number,
+    dto: UpdateDispositivoEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -345,9 +317,10 @@ export class DispositivosService {
         throw new NotFoundException('Dispositivo no encontrado');
       }
 
-      const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
-      const estatus = estatusAnterior === 1 ? 0 : 1;
-      await this.repository.update(id, { estatus });
+      const estatusAnterior = Number(entity.estatus);
+      const estatus = dto.estatus;
+      await this.repository.update({ id, idCliente }, { estatus });
+      await this.panelRepo.update({ idDispositivo: id, idCliente }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
@@ -355,7 +328,7 @@ export class DispositivosService {
         'UPDATE',
         { id, estatusAnterior, estatus, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
@@ -370,9 +343,9 @@ export class DispositivosService {
         'Dispositivos',
         `Error al actualizar estatus de dispositivo ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
-        ID_MODULO_DISPOSITIVOS,
+        EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.ERROR,
         (error as Error)?.message,
       );

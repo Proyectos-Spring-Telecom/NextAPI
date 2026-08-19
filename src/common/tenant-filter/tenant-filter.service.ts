@@ -25,6 +25,14 @@ export interface TenantFragment {
   sinAcceso: boolean;
 }
 
+export type TenantListadoResult = TenantFragment | { forbidden: true };
+
+export function isTenantForbidden(
+  result: TenantListadoResult,
+): result is { forbidden: true } {
+  return 'forbidden' in result && result.forbidden === true;
+}
+
 @Injectable()
 export class TenantFilterService {
   constructor(
@@ -116,8 +124,87 @@ export class TenantFilterService {
     );
     const rows = result?.[0] ?? [];
     return rows
-      .map((row: { Id?: unknown }) => Number(row.Id))
+      .map((row: { Id?: unknown; id?: unknown }) => Number(row.Id ?? row.id))
       .filter((id: number) => Number.isFinite(id) && id > 0);
+  }
+
+  /**
+   * Alcance de clientes para listados REST/socket.
+   * `'all'` = sin filtro (roles 1–5 y 8).
+   */
+  async idsClientePermitidos(
+    rol: number,
+    idClienteToken: number,
+  ): Promise<'all' | number[]> {
+    const rolNum = Number(rol);
+
+    if (ROLES_SIN_FILTRO.has(rolNum)) {
+      return 'all';
+    }
+
+    if (ROLES_CLIENTE_HIJOS.has(rolNum)) {
+      return this.getClienteHijosIds(idClienteToken);
+    }
+
+    const id = Number(idClienteToken);
+    return Number.isFinite(id) && id > 0 ? [id] : [];
+  }
+
+  /**
+   * Aplica `?idCliente` sobre el alcance del rol.
+   * Si el query pide un cliente fuera del set → `{ forbidden: true }` (403).
+   */
+  aplicarFiltroListado(
+    scope: 'all' | number[],
+    queryIdCliente: number | undefined,
+    alias: string,
+    columna: string = 'IdCliente',
+  ): TenantListadoResult {
+    if (scope === 'all') {
+      if (queryIdCliente != null) {
+        return {
+          sql: ` AND ${alias}.${columna} = ? `,
+          params: [queryIdCliente],
+          sinAcceso: false,
+        };
+      }
+      return { sql: '', params: [], sinAcceso: false };
+    }
+
+    if (scope.length === 0) {
+      return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
+    }
+
+    if (queryIdCliente != null) {
+      if (!scope.includes(Number(queryIdCliente))) {
+        return { forbidden: true };
+      }
+      return {
+        sql: ` AND ${alias}.${columna} = ? `,
+        params: [queryIdCliente],
+        sinAcceso: false,
+      };
+    }
+
+    const placeholders = scope.map(() => '?').join(', ');
+    return {
+      sql: ` AND ${alias}.${columna} IN (${placeholders}) `,
+      params: [...scope],
+      sinAcceso: false,
+    };
+  }
+
+  clienteVisibleEnScope(
+    scope: 'all' | number[],
+    idCliente: number | null | undefined,
+  ): boolean {
+    if (scope === 'all') {
+      return true;
+    }
+    if (idCliente == null) {
+      return false;
+    }
+    return scope.includes(Number(idCliente));
   }
 
   /**

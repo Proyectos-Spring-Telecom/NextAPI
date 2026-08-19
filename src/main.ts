@@ -2,12 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { HttpStringResponseFilter } from './utils/http-string-response.filter';
 
 async function bootstrap() {
   process.env.TZ = process.env.TZ || 'America/Mexico_City';
   console.log('TZ', process.env.TZ);
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   // Prefijo global: todas las rutas bajo /api (auth, mesas, clientes, etc.)
   app.setGlobalPrefix('api');
@@ -53,6 +55,8 @@ async function bootstrap() {
     .addTag('Catálogos - Modelos', 'Modelos de vehículos (CatModelos)')
     .addTag('Catálogos - Planes Telefonía', 'Planes de datos/telefonía por operador')
     .addTag('Catálogos - Telefonía', 'Operadores de telefonía (Telcel, AT&T, etc.)')
+    .addTag('Alarmas', 'Listados REST de paneles y eventos (JWT, filtro por rol)')
+    .addTag('Alarmas - Ingest', 'Ingest HMAC desde SpringPanel (sin JWT de usuario)')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
