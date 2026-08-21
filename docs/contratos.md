@@ -10,6 +10,8 @@ Authorization: Bearer <accessToken>
 
 Errores `HttpException`: cuerpo **texto plano** (filtro global), no JSON `{ message }`.
 
+Contexto de negocio: [contexto.md](./contexto.md).
+
 ## Respuestas comunes
 
 Alta / update / estatus:
@@ -27,9 +29,28 @@ Listado paginado (mayoría de módulos):
 }
 ```
 
-Estatus de recurso: body `{ "estatus": 0 | 1 }` en `PATCH .../estatus/:id` (o `PATCH :id/estatus` en módulos/permisos).
+### Estatus producto / dispositivo / panel
 
-JSON público de alarmas/productos/dispositivos: **nunca** exponer `idDispositivo` / `idProducto` como nombre de campo. Usar `id`, `idPanel`, `idInmueble`.
+Body en `PATCH .../estatus/:id`:
+
+```json
+{ "estatus": 0 | 1 | 2 | 3 | 4 | 5 }
+```
+
+| Valor | Significado |
+|-------|-------------|
+| 0 | Inactivo |
+| 1 | Activo / disponible |
+| 2 | Asignado |
+| 3 | Baja reemplazo |
+| 4 | Baja mantenimiento |
+| 5 | Inservible |
+
+Si el estatus **actual** del recurso es **2**, la API responde **400** con mensaje formal (*…se encuentra asignado a una instalación*).
+
+### Estatus SIM
+
+`PATCH /api/sims/estatus/:id` **sin body**: alterna `1 ↔ 0`. Si actual es **2**, **400** (mismo criterio).
 
 ---
 
@@ -72,293 +93,225 @@ JWT access: claim `type = access`. En request: `userId`, `email`, `idCliente`, `
 | Método | Ruta | Notas |
 |--------|------|--------|
 | POST | `/api/usuarios` | Multipart |
-| POST | `/api/usuarios/face-auth` | |
+| POST | `/api/usuarios/face-auth` | Registrar IdFaceAuth |
 | GET | `/api/usuarios/list` | |
 | GET | `/api/usuarios/list/cliente/:id` | |
 | GET | `/api/usuarios/:page/:limit` | |
 | GET | `/api/usuarios/:id` | |
-| PATCH | `/api/usuarios/:id` | |
 | PATCH | `/api/usuarios/estatus/:id` | |
-| PATCH | `/api/usuarios/actualizar/contrasena` | |
-| PATCH | `/api/usuarios/mi-nip` | |
+| PATCH | `/api/usuarios/actualizar/contrasena` | Contraseña del usuario autenticado |
+| PATCH | `/api/usuarios/mi-nip` | Crear / actualizar NIP |
+| PATCH | `/api/usuarios/:id` | |
 
 ---
 
-## Roles, permisos, módulos, bitácora, operadores
+## Roles / permisos / módulos / operadores / bitácora
 
-### Roles — `/api/roles`
-
-POST, GET `list`, GET `:page/:limit`, GET `:id`, PUT `:id`, PATCH `estatus/:id`.
-
-### Permisos — `/api/permisos`
-
-POST, GET `list`, GET `permisosAgrupados`, GET `:page/:limit`, GET `:id`, PUT `:id`, PATCH `:id/estatus`.
-
-### Módulos — `/api/modulos`
-
-POST, GET `list`, GET `:page/:limit`, GET `:id`, PUT `:id`, PATCH `:id/estatus`.
-
-### Bitácora — `/api/bitacora`
-
-GET `list` (obsoleto), GET `:page/:limit`, GET `:id`.
-
-### Operadores — `/api/operadores`
-
-POST, GET `list`, GET `:page/:limit`, GET `:id`, PATCH `:id`, PATCH `estatus/:id`.
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST/GET/PUT/PATCH | `/api/roles`… | CRUD + `estatus/:id` |
+| POST/GET/PUT/PATCH | `/api/permisos`… | Incluye `permisosAgrupados`; estatus `PATCH :id/estatus` |
+| POST/GET/PUT/PATCH | `/api/modulos`… | CRUD + `PATCH :id/estatus` |
+| POST/GET/PATCH | `/api/operadores`… | CRUD + `estatus/:id` |
+| GET | `/api/bitacora/:page/:limit`, `/api/bitacora/:id` | Consulta |
 
 ---
 
 ## Catálogos
 
-| Recurso | Base | Extra |
-|---------|------|--------|
-| Combustible | `/api/cat-tipo-combustible` | POST, list, `:page/:limit`, `:id`, PATCH, `estatus/:id` |
-| Telefonía | `/api/cat-telefonia` | + GET `/:idTelefonia/planes` |
-| Planes telefonía | `/api/cat-planes-telefonia` | GET `/` además de list/paginado |
-| Marcas | `/api/cat-marcas` | + GET `/:id/modelos` |
-| Modelos | `/api/cat-modelos` | POST, list, paginado, `:id`, PATCH, `estatus/:id` |
-| Registry | `/api/catalogos/:nombreCatalogo` | Solo GET lista |
-
-Nombres del registry: `cat-tipo-combustible`, `cat-telefonia`, `cat-planes-telefonia`, `cat-marcas`, `cat-modelos`.
+| Prefijo | Notas |
+|---------|--------|
+| `/api/cat-tipo-combustible` | CRUD + list / paginado / estatus |
+| `/api/cat-telefonia` | + `GET /:idTelefonia/planes` |
+| `/api/cat-planes-telefonia` | CRUD + list |
+| `/api/cat-marcas` | + `GET /:id/modelos` |
+| `/api/cat-modelos` | CRUD + list / paginado / estatus |
+| `/api/catalogos/:nombreCatalogo` | Solo GET lista (registry) |
 
 ---
 
 ## SIMs — `/api/sims`
 
-POST, GET `list`, GET `:page/:limit`, GET `:id`, PATCH `:id`, PATCH `estatus/:id`.
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/sims` | Alta; estatus inicial 1; IMEI único |
+| GET | `/api/sims/list` | Solo `estatus = 1` |
+| GET | `/api/sims/:page/:limit` | Paginado |
+| GET | `/api/sims/:id` | Detalle |
+| PATCH | `/api/sims/estatus/:id` | Toggle 1↔0; **400 si actual = 2** |
+| PATCH | `/api/sims/:id` | Update parcial (**no** estatus) |
 
 ---
 
-## Dispositivos
-
-### Padre — `/api/dispositivos`
+## Dispositivos — `/api/dispositivos`
 
 | Método | Ruta | Notas |
 |--------|------|--------|
-| POST | `/api/dispositivos` | Rastreador/AVL/teléfono. Panel → 400 |
+| POST | `/api/dispositivos` | Alta (no tipo panel) |
 | GET | `/api/dispositivos/list` | Query `idTipoDispositivo`, `idCliente` |
 | GET | `/api/dispositivos/paginado/:page/:limit` | |
-| GET | `/api/dispositivos/:id` | Plano |
+| GET | `/api/dispositivos/:id` | |
+| PATCH | `/api/dispositivos/estatus/:id` | `{ estatus: 0–5 }`; **400 si actual = 2** |
 | PATCH | `/api/dispositivos/:id` | |
-| PATCH | `/api/dispositivos/estatus/:id` | `{ estatus: 0 \| 1 }` |
-
-GET plano: `id`, `numeroSerie`, `imei`, `eco`, `estatus`, `idCliente`, `nombreCliente`, `idTipoDispositivo`, `nombreTipoDispositivo`, `codigoTipoDispositivo`, `idMarca`, `nombreMarca`, `idModelo`, `nombreModelo`, fechas.
 
 ### Paneles — `/api/dispositivos/paneles`
 
-POST (transacción dispositivo + panel), GET `list`, GET `:page/:limit`, GET `:id`, PATCH `:id`, PATCH `estatus/:id`.
-
-GET plano: `id` (= `IdDispositivo`), `nombrePanel`, `cuentaSia`, `ip`, `cifradoActivo`, `aesBits`, `ultimoHeartbeat` + campos del dispositivo. **Sin `aesKey`.**
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/dispositivos/paneles` | Dispositivo + PanelAlarma; no devuelve `aesKey` |
+| GET | `/api/dispositivos/paneles/list` | Plano |
+| GET | `/api/dispositivos/paneles/:page/:limit` | |
+| GET | `/api/dispositivos/paneles/:id` | `id` = IdDispositivo |
+| PATCH | `/api/dispositivos/paneles/estatus/:id` | 0–5; **400 si actual = 2** |
+| PATCH | `/api/dispositivos/paneles/:id` | |
 
 ---
 
-## Productos
-
-### Padre — `/api/productos`
-
-Sin POST (el alta es por subtipo).
+## Productos — `/api/productos`
 
 | Método | Ruta | Notas |
 |--------|------|--------|
-| GET | `/api/productos/list` | Query `idTipoProducto`, `idCliente` (tenant) |
-| GET | `/api/productos/paginado/:page/:limit` | Query `idTipoProducto` |
-| GET | `/api/productos/:id` | Incluye `cliente` y `tipoProducto` |
+| GET | `/api/productos/list` | Query `idTipoProducto`, `idCliente` |
+| GET | `/api/productos/paginado/:page/:limit` | |
+| GET | `/api/productos/:id` | + cliente + tipo |
+| PATCH | `/api/productos/estatus/:id` | 0–5; **400 si actual = 2** |
 | PATCH | `/api/productos/:id` | Nombre |
-| PATCH | `/api/productos/estatus/:id` | `{ estatus: 0 \| 1 }` |
 
-`EnumTipoProducto`: 1 vehículo, 2 activo, 3 inmueble, 4 persona.
+Alta solo por subtipo.
 
-### Subtipos
+### Vehículos — `/api/productos/vehiculos`
 
-Mismo patrón en cada uno: POST, GET `list`, GET `:page/:limit`, GET `:id`, PATCH `:id`, PATCH `estatus/:id`.
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/productos/vehiculos` | Multipart |
+| GET | `/api/productos/vehiculos/list` | Activos |
+| GET | `/api/productos/vehiculos/placa/:placa` | Tenant |
+| GET | `/api/productos/vehiculos/:page/:limit` | |
+| GET | `/api/productos/vehiculos/:id` | IdProducto |
+| PATCH | `/api/productos/vehiculos/estatus/:id` | 0–5; bloqueo ASIGNADO |
+| PATCH | `/api/productos/vehiculos/:id` | |
 
-| Base | Extra |
-|------|--------|
-| `/api/productos/vehiculos` | GET `placa/:placa`; multipart fotos |
-| `/api/productos/inmuebles` | |
-| `/api/productos/activos` | |
-| `/api/productos/personas` | |
+### Activos / inmuebles / personas
 
-GET de subtipo: objeto **plano**. PK en `id`. Campos de la hija prefijados (`nombreActivo`, `nombrePersona`, …). Fechas salen de `Productos`.
+Mismo patrón bajo:
+
+- `/api/productos/activos`
+- `/api/productos/inmuebles`
+- `/api/productos/personas`
+
+`POST`, `GET list`, `GET :page/:limit`, `GET :id`, `PATCH estatus/:id` (0–5 + bloqueo), `PATCH :id`.
+
+`idTipoProducto`: **1** vehículo, **2** activo, **3** inmueble, **4** persona.
 
 ---
 
 ## Instalaciones — `/api/instalaciones`
 
-POST, GET `list`, GET `:page/:limit`, GET `:id`, PATCH `:id`, PATCH `estatus/:id`.
+| Método | Ruta | Auth | Notas |
+|--------|------|------|--------|
+| POST | `/api/instalaciones` | JWT | Alta ACTIVA; componentes 1 → 2 |
+| GET | `/api/instalaciones/list` | JWT | Filas con `Estatus = 1` |
+| GET | `/api/instalaciones/historico/:id` | JWT | Cadena histórico |
+| POST | `/api/instalaciones/paginado` | JWT | Body paginado por tipo producto |
+| GET | `/api/instalaciones/:id` | JWT | Detalle completo |
+| PATCH | `/api/instalaciones/estatus/:id` | JWT | Solo **0, 1, 5**; no archiva |
+| PATCH | `/api/instalaciones/:id` | JWT | Archiva + nueva versión ACTIVA |
 
----
+### Body `POST /paginado`
 
-## S3 — `/api/s3`
-
-| Método | Ruta | Body |
-|--------|------|------|
-| POST | `/api/s3/upload` | multipart: `file`, `folder`, `idModule` |
-| PATCH | `/api/s3/update` | multipart: `file`, `folder`, `idModule`, opcional `oldUrl` |
-
-`folder`: `clientes` \| `operadores` \| `usuarios` \| `vehiculos` \| `pasajeros`.
-
----
-
-## Alarmas — ingest (SpringPanel, sin JWT)
-
-Firma (byte a byte, **raw body**):
-
-```text
-HMAC-SHA256(GATEWAY_HMAC_SECRET, `${timestamp}.${rawBody}`).digest('hex')
+```json
+{ "page": 1, "limit": 20, "idTipoProducto": 3 }
 ```
 
-| Header | Obligatorio | Valor |
-|--------|-------------|--------|
-| `Content-Type` | sí | `application/json` |
-| `X-Gateway-Timestamp` | sí | epoch ms |
-| `X-Gateway-Signature` | sí | HMAC hex 64 |
-| `Idempotency-Key` | sí | SHA-256 hex = `body.idempotencyKey` |
-| `X-Gateway-Key` | si hay `GATEWAY_API_KEY` | API key |
+`idTipoProducto`: 1–4. Respuesta: `data[]` + `paginated`.
 
-| Situación | HTTP | ¿Gateway reintenta? |
-|-----------|------|---------------------|
-| Auth / firma / body inválido | 401 / 400 | No (4xx salvo 429) |
-| Idempotencia ya procesada | 202 | No |
-| Persistido OK | 202 `{ "accepted": true }` | No |
-| Error interno / BD | 500 / 503 | Sí |
+### Orden y nomenclatura del ítem (paginado y detalle)
 
-### `POST /api/alarmas/ingest`
+1. Instalación → 2. Cliente → 3. Producto + detalle → 4. Dispositivo (+ Panel si tipo 2) → 5. SIM  
 
-Evento de negocio. **Nunca `RP`.** `tipoEventoEtiqueta` y `esHeartbeat` no se guardan.
+Sufijos: `…Dispositivo`, `…Panel`, `…Vehiculo|Activo|Inmueble|Persona`, `…Sim`. Sin `aesKey`.
 
-Campos: `cuentaSia`, `codigoSia`, `tipoEvento`, `tipoEventoEtiqueta`, `severidad` (1–3), `esRestauracion`, `esHeartbeat: false`, `zona`, `codigoUsuario`, `nombreDispositivo`, `particion`, `seq`, `recibidoEn` (ISO; **este** timestamp, no `now()`), `timestampPanel`, `ipOrigen`, `frameCrudo`, `dataDescifrada`, `idDispositivo` (= `IdPanel`), `idCliente`, `idempotencyKey`.
+**Detalle** incluye además: `idHistoricoInstalacion`, `dispositivoActivo`, `simActivo`, fechas de producto/dispositivo/panel/SIM, plan telefonía, fotos extra de vehículo, etc.
 
-Flujo: resolver panel por `idDispositivo` o `CuentaSia` → INSERT `EventoAlarma` → si hay panel UPSERT `UltimoEventoAlarma` + socket `evento:nuevo`. Sin panel: `Estatus = 0`, sin upsert ni socket. Si el UPSERT falla, el INSERT **no** se revierte.
+### `PATCH /estatus/:id` — body
 
-### `POST /api/alarmas/ingest/heartbeat`
+```json
+{ "estatus": 0 | 1 | 5 }
+```
 
-Solo `RP`. Body: `cuentaSia`, `idDispositivo`, `idCliente`, `ultimoHeartbeat`, `seq`, `ipOrigen`, `idempotencyKey`.
+| Valor | Efecto |
+|-------|--------|
+| 0 o 5 | `EstatusInstalacion` = valor; fila `Estatus = 0`; componentes → 1 |
+| 1 | Componentes deben estar en 1; instalación activa; componentes → 2 |
 
-Prohibido: INSERT evento, UPSERT último, emitir `evento:nuevo`. Sin panel: 202 + log (no 4xx).
+### `PATCH /:id` (update) — reglas
+
+- Archiva vigente → histórico; inserta nueva ACTIVA.
+- Body incluye `estatusInstalacion` (contexto histórico; allowlist 0,1,3,4,5).
+- Si cambia producto/dispositivo/SIM saliente: enviar `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5).
+- Entrantes: deben estar en estatus **1** y mismo `idCliente`; pasan a **2**.
+
+### Alta — body (campos principales)
+
+- `idCliente`, `idProducto` (obligatorios)
+- `idDispositivo`, `idSim` (opcionales)
+- Componentes en 1 al asignar.
 
 ---
 
-## Alarmas — REST (JWT)
+## Alarmas — `/api/alarmas`
 
-Filtro de rol § tenant. `?idCliente` fuera de alcance → **403**. Detalle: 404 si `Estatus != 1`; 403 si el cliente no entra en el set.
+### Consulta (JWT)
 
 | Método | Ruta | Notas |
 |--------|------|--------|
-| GET | `/api/alarmas/paneles` | `Estatus=1`, `Nombre ASC`. Inmueble **completo** |
-| GET | `/api/alarmas/paneles/:id` | `:id` = `IdDispositivo` |
-| GET | `/api/alarmas/ultimos-eventos` | Un item por panel; `ultimoEvento` puede ser `null`. Inmueble **corto** |
-| GET | `/api/alarmas/eventos` | Query abajo |
-| GET | `/api/alarmas/eventos/:id` | |
+| GET | `/api/alarmas/paneles` | Paneles activos; tenant |
+| GET | `/api/alarmas/paneles/:id` | `id` = IdDispositivo |
+| GET | `/api/alarmas/ultimos-eventos` | Último por panel |
+| GET | `/api/alarmas/eventos` | Historial (filtros query) |
+| GET | `/api/alarmas/eventos/:id` | Detalle |
 
-Query de eventos:
+### Ingest (HMAC, sin JWT)
 
-| Query | Default | Reglas |
-|-------|---------|--------|
-| `idCliente` | — | Según rol |
-| `idPanel` | — | = `IdDispositivo` |
-| `codigoSia` | — | Uppercase |
-| `desde` / `hasta` | — | ISO sobre `RecibidoEn` |
-| `page` | 1 | ≥ 1 |
-| `limit` | 20 | 1–100 |
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/alarmas/ingest` | Evento SIA |
+| POST | `/api/alarmas/ingest/heartbeat` | Heartbeat RP |
 
-Listado eventos:
+Headers típicos de gateway: timestamp + firma HMAC (`GATEWAY_HMAC_SECRET`); opcional `X-Gateway-Key` si `GATEWAY_API_KEY` está definida.
 
-```json
-{
-  "data": [
-    {
-      "id": 130,
-      "idPanel": 1000002,
-      "idCliente": 10,
-      "codigoSia": "PA",
-      "tipoEvento": "panico",
-      "tipoEventoEtiqueta": "Pánico",
-      "zona": 2,
-      "codigoUsuario": null,
-      "nombreDispositivo": "Cocina",
-      "severidad": 3,
-      "recibidoEn": "2026-08-18T22:00:00.000Z",
-      "esRestauracion": false,
-      "panel": {
-        "id": 1000002,
-        "cuentaSia": "1002",
-        "nombre": "Panel Sede Norte",
-        "inmueble": { "id": 1000002, "inmueble": "Edificio", "lat": 19.43, "lng": -99.13 }
-      }
-    }
-  ],
-  "paginated": { "total": 130, "page": 1, "limit": 20, "totalPages": 7 }
-}
-```
-
-Ítem `GET /ultimos-eventos`:
-
-```json
-{
-  "panel": {
-    "id": 1000001,
-    "cuentaSia": "1001",
-    "nombre": "AX PRO Oficina Central",
-    "idCliente": 13,
-    "idInmueble": 1000001,
-    "ultimoHeartbeat": "2026-08-18T22:00:00.000Z",
-    "online": true,
-    "estatus": 1,
-    "cliente": { "id": 13, "nombre": "Cliente Demo" },
-    "inmueble": { "id": 1000001, "inmueble": "Oficina", "lat": 19.43, "lng": -99.13 }
-  },
-  "ultimoEvento": {
-    "id": 6,
-    "codigoSia": "NL",
-    "tipoEvento": "armado_casa",
-    "zona": null,
-    "codigoUsuario": 622,
-    "nombreDispositivo": "Oficina",
-    "severidad": 1,
-    "recibidoEn": "2026-08-18T22:00:00.000Z",
-    "esRestauracion": false
-  }
-}
-```
-
-`online = (now - UltimoHeartbeat) < SIA_OFFLINE_THRESHOLD_MS`.
-
-Panel en `GET /paneles`: inmueble completo (`id`, `inmueble`, `direccionFiscal`, representante, correo, tel, `lat`, `lng`). En últimos eventos y `evento.panel`: inmueble corto.
-
-Etiquetas `tipoEvento` → `tipoEventoEtiqueta` (mapa en `src/alarmas/sia/sia-codes.map.ts`): intrusion, panico, panico_asalto, desarmado, armado_total, armado_casa, sabotaje, perdida_conexion, restauracion_conexion, desconocido. Fallback: reemplazar `_` por espacio.
+Socket.IO: eventos de alarma hacia clientes autenticados (mismo proceso Nest).
 
 ---
 
-## Alarmas — Socket.IO
+## S3
 
-- URL: mismo host; **namespace** `/alarmas` (no pasa por el prefijo `/api`).
-- Auth: `handshake.auth.token` (access JWT; se acepta `Bearer …`).
-- Rooms: `panel:{idPanel}` con `idPanel` = `IdDispositivo` de paneles `Estatus=1` visibles al rol.
-- Al conectar: `conexion:lista` → `{ idsPaneles: number[] }`.
-- El cliente **solo escucha**.
-
-| Evento | Cuándo | Payload |
-|--------|--------|---------|
-| `evento:nuevo` | Tras persistir evento con panel | Mismo JSON que `GET /api/alarmas/eventos/:id` |
-| `panel:heartbeat` | Tras heartbeat | `{ idPanel, ultimoHeartbeat }` |
-| `panel:estado` | Cada ~5 min si cambió | `{ idPanel, online }` |
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/s3` (upload) | Archivo → bucket |
+| PATCH | `/api/s3` (update) | Reemplazo |
 
 ---
 
-## Webhooks salientes (Next → suscriptores)
+## Webhooks salientes
 
-POST a cada URL de `WEBHOOK_SUBSCRIBERS`. Firma HMAC-SHA256 de `JSON.stringify` con orden fijo: `event`, `timestamp`, `tenantId`, `entityId`, `data`.
+Config: `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`.  
+Emisión HMAC hacia suscriptores (p. ej. baja de vehículo). No es un endpoint de entrada de Next.
 
-```json
-{
-  "event": "vehiculo.created",
-  "timestamp": "2026-08-18T22:00:00.000Z",
-  "tenantId": 13,
-  "entityId": 1000001,
-  "data": {},
-  "signature": "hex..."
-}
-```
+---
 
-Eventos: `vehiculo.created` \| `vehiculo.updated` \| `vehiculo.deleted` \| `cliente.created` \| `cliente.updated`.
+## Mail
+
+Servicio SMTP interno. Controller `/api/mail` sin rutas de negocio expuestas.
+
+---
+
+## Códigos de error frecuentes
+
+| HTTP | Cuándo |
+|------|--------|
+| 400 | Validación DTO; estatus ASIGNADO al PATCH; reglas de instalación |
+| 401 | Sin / JWT inválido |
+| 403 | Tenant fuera de alcance (p. ej. alarmas + `idCliente`) |
+| 404 | Recurso no encontrado o fuera de tenant |
+| 409 | Conflictos de unicidad (IMEI, cuenta SIA, etc.) |

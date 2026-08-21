@@ -23,11 +23,14 @@ export class UpdateDispositivosDto {
   @MaxLength(100)
   numeroSerie?: string;
 
-  @ApiPropertyOptional({ description: 'IMEI', maxLength: 20 })
+  @ApiPropertyOptional({
+    description: 'IMEI del equipo (bigint, clave de telemetría)',
+    example: 353456789012345,
+    nullable: true,
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  imei?: string | null;
+  @IsInt()
+  imei?: number | null;
 
   @ApiPropertyOptional({ description: 'Número económico', maxLength: 50 })
   @IsOptional()

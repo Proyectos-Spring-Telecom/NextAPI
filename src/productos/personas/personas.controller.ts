@@ -95,12 +95,17 @@ export class PersonasController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto. Body requerido: `{ "estatus": 0 | 1 }`.',
+      'Establece el estatus del producto. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
+      'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
   @ApiParam({ name: 'id', description: 'ID del producto / persona' })
   @ApiBody({ type: UpdateProductoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
-  @ApiResponse({ status: 400, description: 'estatus inválido' })
+  @ApiResponse({
+    status: 400,
+    description: 'estatus inválido o producto asignado a una instalación',
+  })
   @ApiResponse({ status: 404, description: 'Persona no encontrada' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(

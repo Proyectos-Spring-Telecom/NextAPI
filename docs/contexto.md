@@ -21,12 +21,12 @@ AX PRO ──SIA TCP──► SpringPanel ──────┘  POST HMAC /api/
 | Validación | `ValidationPipe`: whitelist, forbidNonWhitelisted, transform |
 | ORM | `synchronize: false` — el DDL se aplica en la BD, no desde entidades |
 | JSON | camelCase; PKs bigint como **número** (`bigNumberStrings: false`) |
-| Estatus típico | `1` activo, `0` inactivo (salvo ciclo de recurso SIM/dispositivo) |
 | Bitácora | altas/cambios relevantes con `EnumModulos` |
+| Fechas de negocio | Utilidades México (`nowMexicoCityMysql` / `nowMexicoCityAsUtcDate`) en auth, instalaciones, bitácora, etc. |
 | Zona horaria proceso | `America/Mexico_City` (salvo `TZ` en entorno) |
 | Puerto local | `PORT` o `3004` |
 
-Swagger UI: ruta HTTP `/docs` (no es esta carpeta). Contratos HTTP detallados: [contratos.md](./contratos.md).
+Swagger UI: ruta HTTP `/docs` (no es esta carpeta). Contratos HTTP: [contratos.md](./contratos.md).
 
 ## Tenant (filtro por rol)
 
@@ -64,91 +64,192 @@ Implementación: `src/common/tenant-filter/tenant-filter.service.ts`.
 | 24 | Activos | Sí (`productos/activos`) |
 | 25 | Personas | Sí (`productos/personas`) |
 
-No hay módulo “Productos” en el catálogo. El alta va por el subtipo (vehículo, inmueble, activo, persona).
+No hay módulo “Productos” en el catálogo de bitácora como alta genérica. El alta va por el subtipo (vehículo, inmueble, activo, persona). Existe CRUD genérico de lectura/estatus/nombre en `/api/productos`.
+
+---
+
+## Estatus operativos
+
+### Productos / dispositivos / paneles — `EnumEstatusProductoDispositivo`
+
+| Valor | Nombre |
+|-------|--------|
+| 0 | INACTIVO |
+| 1 | ACTIVO (disponible) |
+| 2 | ASIGNADO |
+| 3 | BAJA_REMPLAZO |
+| 4 | BAJA_MANTENIMIENTO |
+| 5 | INSERVIBLE |
+
+- `PATCH .../estatus/:id` acepta **0–5**.
+- Si el estatus **actual** es **2 (ASIGNADO)**, se rechaza con 400: el componente está en una instalación. Helper: `assertEstatusNoAsignado` (`src/common/assert-estatus-no-asignado.util.ts`).
+- Aplica a: productos, vehículos, inmuebles, activos, personas, dispositivos, paneles y SIMs.
+
+### SIMs — `EnumEstatusRecurso`
+
+| Valor | Nombre |
+|-------|--------|
+| 0 | BAJA |
+| 1 | DISPONIBLE |
+| 2 | ASIGNADO |
+| 3 | REVISION |
+| 4 | REMOVIDO |
+
+`PATCH /api/sims/estatus/:id` alterna **1 ↔ 0** (sin body). Si actual es **2**, se bloquea igual que arriba.
+
+### Instalaciones — `EnumEstatusInstalacion`
+
+| Valor | Nombre |
+|-------|--------|
+| 0 | INACTIVO |
+| 1 | ACTIVA |
+| 2 | ASIGNADO |
+| 3 | BAJA_REMPLAZO |
+| 4 | BAJA_MANTENIMIENTO |
+| 5 | INSERVIBLE |
+
+- Columna de negocio: `EstatusInstalacion`.
+- Columna de fila `Estatus` (tinyint): controla columnas generadas `DispositivoActivo` / `SimActivo` (únicas por cliente cuando la fila está activa).
+
+---
 
 ## Funcionalidades implementadas
 
-### Autenticación
+### Autenticación (`/api/login`, `/api/auth`)
 
-- Login usuario/contraseña (`POST /api/login`, query opcional `Nombres` de solución; default `NXT`).
-- Login operador por NIP (`POST /api/login/operador/accesso/nip`).
+- Login usuario/contraseña; query opcional de solución (`Nombres`, default `NXT`).
+- Login operador por NIP.
 - Refresh y logout de sesión (`refreshToken`).
 - Perfil `GET /api/login/me`.
 - Cambio de contraseña autenticado.
 - Verificación de código (`PATCH /api/login/verify`).
 - Recuperación de contraseña (solicitud + confirmación) con correo.
-- Login facial `POST /api/auth/validateFace` (proxy BehaviorIQ; `idCliente` fijo en servidor).
-- Throttling por endpoint de auth (límites en env).
-- JWT access con `type: 'access'`. En `req.user`: `userId`, `email`, `idCliente`, `rol`, `idOperador`, opcional `face`.
+- Login facial `POST /api/auth/validateFace` (proxy BehaviorIQ; credenciales solo en servidor).
+- Throttling por endpoint (límites vía `THROTTLE_*`).
 
-### Administración
+### Clientes, usuarios, IAM
 
-- **Clientes:** alta (multipart), listados, jerarquía, GET, PATCH, estatus.
-- **Usuarios:** alta (multipart), listados (global y por cliente), GET, PATCH, estatus, contraseña, NIP propio, face-auth.
-- **Roles, permisos, módulos:** alta, listados, GET, PUT, estatus; permisos agrupados.
-- **Operadores:** alta, listados, GET, PATCH, estatus.
-- **Bitácora:** consulta paginada y por id (`GET list` obsoleto).
+- Clientes: alta multipart, lista, jerarquía, paginado, estatus.
+- Usuarios: alta multipart, face-auth, lista por cliente, paginado, contraseña propia, NIP (`mi-nip`), estatus.
+- Roles, permisos (incl. agrupados), módulos: CRUD + estatus.
+- Operadores: CRUD + estatus (NIP).
+- Bitácora: consulta paginada / por id.
 
 ### Catálogos
 
-CRUD (y estatus) para combustible, telefonía, planes de telefonía, marcas y modelos.
+- Tipo combustible, telefonía (+ planes por telefonía), planes de telefonía, marcas (+ modelos por marca), modelos.
+- Registry genérico `GET /api/catalogos/:nombreCatalogo`.
 
-- Telefonía: `GET /:idTelefonia/planes`.
-- Marcas: `GET /:id/modelos`.
-- Registry: `GET /api/catalogos/:nombreCatalogo` (`cat-tipo-combustible`, `cat-telefonia`, `cat-planes-telefonia`, `cat-marcas`, `cat-modelos`).
+### SIMs
 
-### Inventario operativo
+- Alta con estatus inicial disponible (1); IMEI único.
+- Lista solo disponibles; paginado con todos los estatus visibles según reglas del servicio.
+- Toggle estatus 1↔0; bloqueo si ASIGNADO (2).
+- Update parcial (sin cambiar estatus por ese endpoint).
 
-- **SIMs:** alta, listados, GET, PATCH, estatus.
-- **Dispositivos (padre):** rastreador / AVL / teléfono. `POST` exige `idCliente` + `idTipoDispositivo`. Tipo panel → 400 (usar paneles). Listado `GET /list`, paginado `GET /paginado/:page/:limit`. GET plano (`id`, `idX` + `nombreX`). `PATCH` y `PATCH estatus/:id` con `{ estatus: 0 \| 1 }`.
-- **Paneles:** `POST /api/dispositivos/paneles` crea `Dispositivos` + `PanelAlarma` (1:1, PK `IdDispositivo`) en transacción. Tipo por `CatTipoDispositivo.codigo` `PANEL` \| `PANEL_ALARMA` \| `PAN`. GET plano; **`aesKey` no se expone**.
-- **Productos (padre):** sin POST. List / paginado / GET / PATCH nombre / PATCH estatus. Query `idTipoProducto` e `idCliente` (el de cliente respeta tenant, no es bypass).
-- **Subtipos de producto:** vehículos, inmuebles, activos, personas. Cada POST crea cabecera `Productos` + detalle. GET: JSON **plano**, `id` (no `idProducto` como nombre de campo), campos de hija prefijados. Vehículos: multipart; interceptor quita campos `foto` vacíos de Swagger.
-- **Instalaciones:** alta, listados, GET, PATCH, estatus. Cruce dispositivo / producto / SIM.
+### Dispositivos y paneles
 
-### Archivos y correo
+- Dispositivos (GPS/AVL/teléfono): CRUD; `imei` bigint nullable único; no crear tipo panel por esta ruta.
+- Paneles: transacción `Dispositivos` + `PanelAlarma` (PK = `IdDispositivo`); `cuentaSia` única; **`aesKey` nunca en GET**.
+- Tipo panel: `CatTipoDispositivo` con código `PANEL` / `PANEL_ALARMA` / `PAN` (`EnumTipoDispositivo.PANEL_ALARMA = 2`).
+- Estatus 0–5 en dispositivo (y panel); bloqueo si ASIGNADO (2).
 
-- **S3:** `POST /api/s3/upload`, `PATCH /api/s3/update` (sube nuevo y opcionalmente borra `oldUrl`). JWT. Carpetas: `clientes`, `operadores`, `usuarios`, `vehiculos`, `pasajeros`. Tipos PNG, JPEG, PDF.
-- **Mail:** servicio interno (recuperación, etc.). El controller `mail` no expone rutas.
+### Productos y subtipos
+
+- Lectura/estatus/nombre en `/api/productos`.
+- Alta y detalle por subtipo:
+  - **Vehículos** (multipart fotos/documentos; búsqueda por placa).
+  - **Activos**, **Inmuebles**, **Personas**.
+- Estatus 0–5; bloqueo si ASIGNADO (2). Bajas de vehículo pueden emitir webhook de borrado.
+
+### Instalaciones (vinculación producto ↔ dispositivo ↔ SIM)
+
+- **Alta:** producto obligatorio (estatus 1 + mismo cliente); dispositivo/SIM opcionales (estatus 1). Tras insertar, componentes → **ASIGNADO (2)**.
+- **Update (`PATCH /:id`):** archiva vigente en `HistoricoInstalaciones`, elimina fila actual, inserta nueva ACTIVA. Requiere `estatusInstalacion` (histórico). Al cambiar recursos salientes: body `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5). Entrantes deben estar en 1 y pasan a 2.
+- **PATCH estatus (`/:estatus/:id`):** solo **0, 1, 5**. No archiva.
+  - **0 / 5:** instalación a ese estatus; fila `Estatus=0` (libera activos); componentes → disponible (1).
+  - **1:** componentes deben estar en 1; instalación activa (`Estatus=1`); componentes → ASIGNADO (2).
+- **List** instalaciones con fila activa.
+- **Histórico** por id (cadena reciente → antiguo).
+- **Paginado** `POST /paginado` por `idTipoProducto` (1–4).
+- **Detalle** `GET /:id` con mismos bloques y más campos que el paginado.
+
+Helpers: `src/instalaciones/helpers/instalaciones-paginado.helpers.ts`, `instalaciones-detalle.helpers.ts`.
+
+#### Nomenclatura y orden del JSON (paginado / detalle)
+
+Orden fijo, plano (sin anidar):
+
+1. Instalación  
+2. Cliente  
+3. Producto + detalle del tipo  
+4. Dispositivo (+ Panel si tipo 2)  
+5. SIM  
+
+Sufijos: `…Dispositivo`, `…Panel`, `…Vehiculo` / `…Activo` / `…Inmueble` / `…Persona`, `…Sim`.  
+Panel: nunca `aesKey`.
 
 ### Alarmas SIA
 
-- Ingest HMAC: evento de negocio e heartbeat `RP` (el heartbeat **no** escribe historial).
-- Idempotencia `GatewayIngestLog` por `idempotencyKey` (64 hex).
-- `EventoAlarma` + UPSERT `UltimoEventoAlarma` si hay panel. Huérfanos `Estatus = 0`, sin socket.
-- Heartbeat: `UPDATE PanelAlarma.UltimoHeartbeat`. Online = `(now - UltimoHeartbeat) < SIA_OFFLINE_THRESHOLD_MS` (default 10 min).
-- REST de paneles, últimos eventos e historial con filtro de rol.
-- Socket.IO namespace `/alarmas`, rooms `panel:{IdDispositivo}`.
-- Job ~5 min: `panel:estado` si cambió online/offline.
-- Next **no** re-parsea SIA; copia `tipoEvento`, `severidad`, zona vs `codigoUsuario` del gateway.
+- Consulta JWT: paneles, últimos eventos, historial, detalle.
+- Ingest HMAC (sin JWT): `POST /api/alarmas/ingest`, `.../ingest/heartbeat`.
+- Gateway: `GATEWAY_HMAC_SECRET`, opcional `GATEWAY_API_KEY`.
+- Socket.IO para push a front (mismo origen Nest).
+- Offline de paneles por umbral `SIA_OFFLINE_THRESHOLD_MS` / scheduler.
 
-### Webhooks salientes
+### Telemetría (entidades)
 
-Emisor HMAC a URLs de `WEBHOOK_SUBSCRIBERS`:
+- `Posiciones`: histórico GPS por IMEI.
+- `UltimaPosicion`: snapshot 1:1 por IMEI.
 
-- `vehiculo.created` / `updated` / `deleted`
-- `cliente.created` / `updated`
+### Infra transversal
 
-## Modelo de datos (alarmas)
+- S3: upload / update de archivos.
+- Mail: SMTP (servicio; controller sin rutas de negocio).
+- Webhooks salientes HMAC (`WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`) — p. ej. baja de vehículo.
 
-- `PanelAlarma.IdDispositivo` = `Dispositivos.Id` = `EventoAlarma.IdPanel` = room socket.
-- `UltimoEventoAlarma.IdPanel` unique, mismo id.
-- `GatewayIngestLog`: PK `IdempotencyKey`. Tabla creada en BD (entidad TypeORM solo mapea).
+---
+
+## Entidades clave
+
+| Entidad | Rol |
+|---------|-----|
+| `Instalaciones` | Versión vigente; `EstatusInstalacion` + `Estatus`; `DispositivoActivo` / `SimActivo` generadas |
+| `HistoricoInstalaciones` | Versiones archivadas en update |
+| `Productos` + `Vehiculos` / `Activos` / `Inmuebles` / `Personas` | Producto tipado |
+| `Dispositivos` + `PanelAlarma` | Equipo; panel 1:1 |
+| `Sims` | Línea / ICC |
+| `Posiciones` / `UltimaPosicion` | Telemetría por IMEI |
+| `EventoAlarma` / `UltimoEventoAlarma` / `GatewayIngestLog` | Flujo SIA |
+| `CatEstatusInstalacion`, `CatTipoProducto`, `CatTipoDispositivo` | Tipificación |
+
+---
 
 ## Variables de entorno (nombres)
 
-No versionar valores. Archivo local `.env` (gitignored).
+| Grupo | Variables |
+|-------|-----------|
+| Runtime | `PORT`, `TZ`, `DATABASE_URL` |
+| MySQL | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE`, `DB_TZ` |
+| JWT | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_CONFIRMACION`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` |
+| Throttle | `THROTTLE_LOGIN_*`, `THROTTLE_PIN_*`, `THROTTLE_VERIFY_*`, `THROTTLE_RECUPERACION_*`, `THROTTLE_REFRESH_*`, `THROTTLE_LOGOUT_*`, `THROTTLE_VALIDATE_FACE_*` |
+| AWS S3 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` |
+| Mail | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD`, `MAIL_FRONTEND_URL` |
+| Gateway | `GATEWAY_HMAC_SECRET`, `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` |
+| Webhooks | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET` |
+| BehaviorIQ | `BEHAVIORIQ_BASE_URL`, `BEHAVIORIQ_USER_NAME`, `BEHAVIORIQ_PASSWORD`, `BEHAVIORIQ_LOGIN_TIMEOUT_MS`, `BEHAVIORIQ_VALIDATE_TIMEOUT_MS` |
 
-Típicas: `DB_*`, `JWT_*`, throttles de auth, `AWS_*`, `UPLOAD_MAX_SIZE`, SMTP (`HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD`).
+`.env` **no se versiona** (ver `.gitignore`).
 
-Alarmas / gateway:
+---
 
-- `GATEWAY_HMAC_SECRET` (≥16) igual a `NEXT_INGEST_HMAC_SECRET` en SpringPanel
-- `GATEWAY_API_KEY` opcional; si tiene valor, el gateway envía `X-Gateway-Key`
-- `SIA_OFFLINE_THRESHOLD_MS` (default `600000`)
+## Documentación relacionada
 
-Opcionales: `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`, `BEHAVIORIQ_*`.
+| Archivo | Uso |
+|---------|-----|
+| [contratos.md](./contratos.md) | Contratos HTTP (rutas, bodies, auth) |
+| [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md) | Contexto técnico ampliado (legacy / detalle) |
+| [CONTEXTO-PROYECTO.md](./CONTEXTO-PROYECTO.md) | Visión de producto |
+| [CONTRATO-PROYECTO-NEXTAPI.md](./CONTRATO-PROYECTO-NEXTAPI.md) | Alcance / entregables de proyecto |
 
-## Seguridad al versionar
-
-`.env` está en `.gitignore`. El código solo usa **nombres** de variables. No hacer `git add -f .env`.
+Fuente de verdad operativa para el día a día: **este archivo** + **contratos.md** + Swagger `/docs`.

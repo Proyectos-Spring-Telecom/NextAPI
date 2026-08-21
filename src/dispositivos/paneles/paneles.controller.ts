@@ -96,12 +96,17 @@ export class PanelesController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del dispositivo y del panel. Body: `{ "estatus": 0 | 1 }`.',
+      'Establece el estatus del dispositivo y del panel. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
+      'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
   @ApiParam({ name: 'id', description: 'ID del dispositivo / panel' })
   @ApiBody({ type: UpdateDispositivoEstatusDto })
   @ApiResponse({ status: 200, description: 'Estatus actualizado' })
-  @ApiResponse({ status: 400, description: 'estatus inválido' })
+  @ApiResponse({
+    status: 400,
+    description: 'estatus inválido o dispositivo asignado a una instalación',
+  })
   @ApiResponse({ status: 404, description: 'Panel no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(

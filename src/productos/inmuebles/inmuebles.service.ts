@@ -23,6 +23,7 @@ import {
   EnumModulos,
   EnumTipoProducto,
 } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import { crearProductoBase } from '../crear-producto.util';
 import {
   nombreCliente,
@@ -328,6 +329,8 @@ export class InmueblesService {
       if (!producto) {
         throw new NotFoundException('Producto del inmueble no encontrado');
       }
+
+      assertEstatusNoAsignado(Number(producto.estatus), 'producto');
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;

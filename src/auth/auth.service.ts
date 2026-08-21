@@ -28,6 +28,7 @@ import {
 } from 'src/common/estatus.enum';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { Soluciones } from 'src/entities/Soluciones';
+import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { BehaviorIqAuthService } from './behavior-iq-auth.service';
 import { ValidateFaceDto } from './dto/validate-face.dto';
@@ -78,7 +79,7 @@ export class AuthService {
   async revokeAllRefreshSessionsForUser(userId: number): Promise<void> {
     await this.refreshSessionsRepository.update(
       { idUsuario: userId, revokedAt: IsNull() },
-      { revokedAt: new Date() },
+      { revokedAt: nowMexicoCityAsUtcDate() },
     );
   }
 
@@ -110,7 +111,7 @@ export class AuthService {
     await this.refreshSessionsRepository.save(session);
 
     await this.usuariosRepository.update(user.id, {
-      ultimoLogin: new Date(),
+      ultimoLogin: nowMexicoCityAsUtcDate(),
     });
 
     return { token, refreshToken, expiresIn };
@@ -545,7 +546,7 @@ export class AuthService {
       }
 
       await this.refreshSessionsRepository.update(session.id, {
-        revokedAt: new Date(),
+        revokedAt: nowMexicoCityAsUtcDate(),
       });
       this.logger.log(`Auth: logout correcto (userId=${userId})`);
       return { message: MSG_LOGOUT_OK };
@@ -617,7 +618,7 @@ export class AuthService {
               ? {
                   usado: EstatusEnum.INACTIVO,
                   estatus: EstatusEnum.INACTIVO,
-                  fechaUso: new Date(),
+                  fechaUso: nowMexicoCityAsUtcDate(),
                 }
               : {}),
           });
@@ -628,7 +629,7 @@ export class AuthService {
         throw new BadRequestException('Código inválido o ya usado');
       }
 
-      const ahora = new Date();
+      const ahora = nowMexicoCityAsUtcDate();
       if (ahora > codigoValido.fechaExpiracion) {
         await this.codigoAutenticacioRepository.update(codigoValido.id, {
           usado: EstatusEnum.INACTIVO,
@@ -739,7 +740,7 @@ export class AuthService {
 
   async generarCodigo(idUsuario: number, tipo: number): Promise<string> {
     const codigo = (100000 + Math.floor(Math.random() * 900000)).toString();
-    const ahora = new Date();
+    const ahora = nowMexicoCityAsUtcDate();
     const expiracionMin = tipo === TipoCodigoAutenticacion.CONFIRMACION_CORREO ? 5 : 15;
     const expiracion = new Date(ahora.getTime() + expiracionMin * 60 * 1000);
 

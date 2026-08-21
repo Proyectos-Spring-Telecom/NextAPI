@@ -20,6 +20,7 @@ import {
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
@@ -265,6 +266,17 @@ export class PanelesService {
             throw new BadRequestException('El número de serie ya existe');
           }
         }
+        if (
+          dto.imei != null &&
+          Number(dto.imei) !== Number(dispositivo.imei ?? NaN)
+        ) {
+          const existeImei = await this.dispositivosRepo.findOne({
+            where: { imei: dto.imei },
+          });
+          if (existeImei) {
+            throw new BadRequestException('El IMEI ya está registrado');
+          }
+        }
         await validarFksDispositivo(this.dispositivosRepo.manager, {
           idMarca:
             dto.idMarca !== undefined
@@ -334,6 +346,8 @@ export class PanelesService {
       if (!dispositivo) {
         throw new NotFoundException('Dispositivo del panel no encontrado');
       }
+
+      assertEstatusNoAsignado(Number(dispositivo.estatus), 'dispositivo');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;

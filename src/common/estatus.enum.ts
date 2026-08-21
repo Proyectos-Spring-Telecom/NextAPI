@@ -12,6 +12,32 @@ export enum EnumEstatusRecurso {
   REMOVIDO = 4,
 }
 
+/**
+ * Estatus de Productos / Dispositivos (columna Estatus).
+ *
+ * 0 INACTIVO | 1 ACTIVO (disponible) | 2 ASIGNADO |
+ * 3 BAJA_REMPLAZO | 4 BAJA_MANTENIMIENTO | 5 INSERVIBLE
+ */
+export enum EnumEstatusProductoDispositivo {
+  INACTIVO = 0,
+  ACTIVO = 1,
+  ASIGNADO = 2,
+  BAJA_REMPLAZO = 3,
+  BAJA_MANTENIMIENTO = 4,
+  INSERVIBLE = 5,
+}
+
+/** Permitidos en PATCH .../estatus/:id de productos y dispositivos */
+export const ESTATUS_PRODUCTO_DISPOSITIVO_PATCH: readonly EnumEstatusProductoDispositivo[] =
+  [
+    EnumEstatusProductoDispositivo.INACTIVO,
+    EnumEstatusProductoDispositivo.ACTIVO,
+    EnumEstatusProductoDispositivo.ASIGNADO,
+    EnumEstatusProductoDispositivo.BAJA_REMPLAZO,
+    EnumEstatusProductoDispositivo.BAJA_MANTENIMIENTO,
+    EnumEstatusProductoDispositivo.INSERVIBLE,
+  ] as const;
+
 export enum TipoCodigoAutenticacion {
   CONFIRMACION_CORREO = 0,
   RECUPERACION_CONTRASENA = 1,
@@ -46,6 +72,15 @@ export enum EnumTipoProducto {
   PERSONA = 4,
 }
 
+/**
+ * Valores relevantes de CatTipoDispositivo.Id para el paginado.
+ * 1, 3, 4 → solo campos de Dispositivos.
+ * 2 → Dispositivos + PanelAlarma.
+ */
+export enum EnumTipoDispositivo {
+  PANEL_ALARMA = 2,
+}
+
 /** Valores de CatProductos.Id (categoría de marcas) */
 export enum EnumCatProducto {
   DISPOSITIVO = 1,
@@ -55,5 +90,55 @@ export enum EnumCatProducto {
   PANEL = 5,
 }
 
+/**
+ * Valores de CatEstatusInstalacion.Id / Instalaciones.EstatusInstalacion.
+ *
+ * 0 INACTIVO | 1 ACTIVA | 2 ASIGNADO | 3 BAJA_REMPLAZO | 4 BAJA_MANTENIMIENTO | 5 INSERVIBLE
+ */
+export enum EnumEstatusInstalacion {
+  INACTIVO = 0,
+  ACTIVA = 1,
+  ASIGNADO = 2,
+  BAJA_REMPLAZO = 3,
+  BAJA_MANTENIMIENTO = 4,
+  INSERVIBLE = 5,
+}
 
+/** Permitidos en PATCH /instalaciones/estatus/:id */
+export const ESTATUS_INSTALACION_PATCH: readonly EnumEstatusInstalacion[] = [
+  EnumEstatusInstalacion.INACTIVO,
+  EnumEstatusInstalacion.ACTIVA,
+  EnumEstatusInstalacion.INSERVIBLE,
+] as const;
 
+/**
+ * Estatus permitidos en el body de PATCH /instalaciones/:id
+ * (contexto archivado en HistoricoInstalaciones).
+ */
+export const ESTATUS_INSTALACION_UPDATE_HISTORICO: readonly EnumEstatusInstalacion[] =
+  [
+    EnumEstatusInstalacion.INACTIVO,
+    EnumEstatusInstalacion.ACTIVA,
+    EnumEstatusInstalacion.BAJA_REMPLAZO,
+    EnumEstatusInstalacion.BAJA_MANTENIMIENTO,
+    EnumEstatusInstalacion.INSERVIBLE,
+  ] as const;
+
+/**
+ * @deprecated El PATCH estatus ya no archiva; se conserva por compatibilidad.
+ * Preferir ESTATUS_INSTALACION_PATCH (0, 1, 5).
+ */
+export const ESTATUS_INSTALACION_BAJA: readonly EnumEstatusInstalacion[] = [
+  EnumEstatusInstalacion.INACTIVO,
+  EnumEstatusInstalacion.INSERVIBLE,
+] as const;
+
+/** Acciones registradas en HistoricoInstalaciones.Accion */
+export enum EnumAccionHistoricoInstalacion {
+  ALTA = 'Alta',
+  CAMBIO_PRODUCTO = 'Cambio de producto',
+  CAMBIO_DISPOSITIVO = 'Cambio de dispositivo',
+  CAMBIO_SIM = 'Cambio de SIM',
+  BAJA = 'Baja',
+  SUSPENSION = 'Suspensión',
+}

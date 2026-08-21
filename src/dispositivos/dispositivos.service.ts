@@ -20,6 +20,7 @@ import {
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { EnumModulos } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
@@ -247,6 +248,18 @@ export class DispositivosService {
         }
       }
 
+      if (
+        dto.imei != null &&
+        Number(dto.imei) !== Number(entity.imei ?? NaN)
+      ) {
+        const existeImei = await this.repository.findOne({
+          where: { imei: dto.imei },
+        });
+        if (existeImei) {
+          throw new BadRequestException('El IMEI ya está registrado');
+        }
+      }
+
       await validarFksDispositivo(this.repository.manager, {
         idTipoDispositivo: dto.idTipoDispositivo,
         idMarca:
@@ -316,6 +329,8 @@ export class DispositivosService {
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
       }
+
+      assertEstatusNoAsignado(Number(entity.estatus), 'dispositivo');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

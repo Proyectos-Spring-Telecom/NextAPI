@@ -18,6 +18,7 @@ import {
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { EnumModulos } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   mapClienteRelacion,
   mapTipoProductoRelacion,
@@ -234,6 +235,8 @@ export class ProductosService {
       if (!entity) {
         throw new NotFoundException('Producto no encontrado');
       }
+
+      assertEstatusNoAsignado(Number(entity.estatus), 'producto');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

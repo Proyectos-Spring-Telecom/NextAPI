@@ -200,7 +200,9 @@ export class SimsController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
-    description: 'Alterna el estatus 1 ↔ 0. No requiere body.',
+    description:
+      'Alterna el estatus 1 ↔ 0. No requiere body. ' +
+      'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
   @ApiParam({ name: 'id', description: 'ID del SIM', example: 5 })
   @ApiOkResponse({
@@ -213,6 +215,9 @@ export class SimsController {
         data: { id: 5, nombre: '5512345678' },
       },
     },
+  })
+  @ApiBadRequestResponse({
+    description: 'SIM asignado a una instalación',
   })
   @ApiNotFoundResponse({ description: 'SIM no encontrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })

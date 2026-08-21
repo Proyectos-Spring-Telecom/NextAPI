@@ -26,6 +26,7 @@ import {
   EnumEstatusRecurso,
   EnumModulos,
 } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 
 @Injectable()
 export class SimsService {
@@ -338,6 +339,8 @@ export class SimsService {
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
       }
+
+      assertEstatusNoAsignado(Number(entity.estatus), 'SIM');
 
       const estatusAnterior =
         Number(entity.estatus) === EnumEstatusRecurso.DISPONIBLE
