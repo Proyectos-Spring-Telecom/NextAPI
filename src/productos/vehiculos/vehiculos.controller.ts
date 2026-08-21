@@ -88,11 +88,48 @@ export class VehiculosController {
   @ApiOperation({
     summary: 'Obtener vehículo por placa',
     description:
-      'Solo vehículos activos (Estatus=1). Misma regla de tenant que el resto de listados: roles 1–2 sin filtro IdCliente; 3–4 IdCliente en jerarquía (spGetClientes); 5–6 solo token. Si en el ámbito hay más de un registro con la misma placa, responde 400.',
+      'Solo vehículos activos (`Productos.Estatus=1`). Tenant: roles 1–5 y 8 sin filtro de cliente; ' +
+      'rol 6 = cliente del token + descendientes; rol 7 (u otro) = solo `idCliente` del token. ' +
+      'Si en el ámbito hay más de un registro con la misma placa, responde 400. ' +
+      'Respuesta plana incluye `numeroEconomico`, `fotoFrente`, marca, modelo y combustible.',
   })
-  @ApiParam({ name: 'placa', description: 'Placa del vehículo' })
-  @ApiResponse({ status: 200, description: 'Vehículo encontrado' })
-  @ApiResponse({ status: 400, description: 'Placa inválida' })
+  @ApiParam({
+    name: 'placa',
+    description: 'Placa del vehículo (se hace trim; respetar mayúsculas/guiones)',
+    example: 'A-06104-E',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Vehículo encontrado',
+    schema: {
+      example: {
+        data: {
+          id: 1,
+          placa: 'A-06104-E',
+          numeroEconomico: '1',
+          anio: 2019,
+          color: 'Rojo',
+          fotoFrente: null,
+          km: null,
+          capacidadLitros: null,
+          estatus: 1,
+          fechaCreacion: '2026-04-13T20:26:00.000Z',
+          idCliente: 11,
+          nombreCompleto: 'transporterapido',
+          modeloId: 16,
+          modeloNombre: 'Virtus',
+          marcaId: 3,
+          marcaNombre: 'Volkswagen',
+          combustibleId: null,
+          combustibleNombre: null,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Placa vacía o más de un vehículo con esa placa en el ámbito del rol',
+  })
   @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOneByPlaca(@Param('placa') placa: string, @Request() req) {

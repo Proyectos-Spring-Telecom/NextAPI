@@ -5,6 +5,7 @@ Fuente de verdad del día a día:
 - [Contexto](./contexto.md) — arquitectura, módulos, estatus, funcionalidades implementadas, env.
 - [Contratos](./contratos.md) — rutas HTTP, bodies, auth JWT/HMAC, instalaciones paginado/detalle.
 - [Webhook → ShiftControl](./webhook-shiftcontrol.md) — envelope, eventos, HMAC y checklist de alineación.
+- [Consumo vehículo por placa](./consumo-vehiculo-por-placa.md) — guía / prompt productivo `GET .../vehiculos/placa/:placa`.
 
 Ampliaciones / legado de proyecto:
 

@@ -185,7 +185,7 @@ Alta solo por subtipo.
 |--------|------|--------|
 | POST | `/api/productos/vehiculos` | Multipart |
 | GET | `/api/productos/vehiculos/list` | Activos |
-| GET | `/api/productos/vehiculos/placa/:placa` | Tenant |
+| GET | `/api/productos/vehiculos/placa/:placa` | Solo activos; data con `numeroEconomico`, `fotoFrente`, marca/modelo/combustible. Guía: [consumo-vehiculo-por-placa.md](./consumo-vehiculo-por-placa.md) |
 | GET | `/api/productos/vehiculos/:page/:limit` | |
 | GET | `/api/productos/vehiculos/:id` | IdProducto |
 | PATCH | `/api/productos/vehiculos/estatus/:id` | 0–5; bloqueo ASIGNADO |
