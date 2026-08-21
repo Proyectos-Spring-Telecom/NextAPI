@@ -35,11 +35,13 @@ export class CreateDispositivosDto {
   @MaxLength(100)
   numeroSerie!: string;
 
-  @ApiPropertyOptional({ description: 'IMEI', maxLength: 20 })
+  @ApiPropertyOptional({
+    description: 'IMEI del equipo (bigint, clave de telemetría)',
+    example: 353456789012345,
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  imei?: string;
+  @IsInt()
+  imei?: number;
 
   @ApiPropertyOptional({ description: 'Número económico', maxLength: 50 })
   @IsOptional()

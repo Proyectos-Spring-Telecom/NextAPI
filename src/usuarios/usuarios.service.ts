@@ -35,6 +35,7 @@ import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { S3Service } from 'src/s3/s3.service';
 import { AuthService } from 'src/auth/auth.service';
+import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 
 @Injectable()
 export class UsuariosService {
@@ -593,7 +594,7 @@ ORDER BY u.Id DESC`,
       }
 
       const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
-      const fechaActual = new Date();
+      const fechaActual = nowMexicoCityAsUtcDate();
 
       await this.usuarioRepository.update(idUser, {
         passwordHash: hashedPassword,
@@ -656,7 +657,7 @@ ORDER BY u.Id DESC`,
       }
 
       const hashedPin = await bcrypt.hash(dto.pinHash, 10);
-      const fechaActual = new Date();
+      const fechaActual = nowMexicoCityAsUtcDate();
 
       await this.usuarioRepository.update(idUser, {
         pinHash: hashedPin,

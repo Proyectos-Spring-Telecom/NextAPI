@@ -1,6 +1,14 @@
 # Documentación NextAPI
 
-- [Contexto](./contexto.md) — arquitectura, módulos, tenant, lo implementado.
-- [Contratos](./contratos.md) — rutas HTTP, ingest HMAC, Socket.IO, webhooks.
+Fuente de verdad del día a día:
 
-Swagger en caliente: `/docs` (no es esta carpeta).
+- [Contexto](./contexto.md) — arquitectura, módulos, estatus, funcionalidades implementadas, env.
+- [Contratos](./contratos.md) — rutas HTTP, bodies, auth JWT/HMAC, instalaciones paginado/detalle.
+
+Ampliaciones / legado de proyecto:
+
+- [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md)
+- [CONTEXTO-PROYECTO.md](./CONTEXTO-PROYECTO.md)
+- [CONTRATO-PROYECTO-NEXTAPI.md](./CONTRATO-PROYECTO-NEXTAPI.md)
+
+Swagger en caliente: ruta HTTP **`/docs`** (no es esta carpeta).

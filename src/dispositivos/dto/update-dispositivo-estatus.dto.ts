@@ -1,17 +1,23 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsNotEmpty } from 'class-validator';
-import { EstatusEnum } from 'src/common/estatus.enum';
+import {
+  EnumEstatusProductoDispositivo,
+  ESTATUS_PRODUCTO_DISPOSITIVO_PATCH,
+} from 'src/common/estatus.enum';
 
 export class UpdateDispositivoEstatusDto {
   @ApiProperty({
-    description: 'Estatus destino: 1 = activo, 0 = inactivo',
-    enum: [EstatusEnum.INACTIVO, EstatusEnum.ACTIVO],
-    example: EstatusEnum.INACTIVO,
+    description:
+      'Estatus destino: 0=inactivo, 1=activo (disponible), 2=asignado, ' +
+      '3=baja_remplazo, 4=baja_mantenimiento, 5=inservible',
+    enum: ESTATUS_PRODUCTO_DISPOSITIVO_PATCH,
+    example: EnumEstatusProductoDispositivo.INACTIVO,
   })
   @IsInt()
   @IsNotEmpty()
-  @IsIn([EstatusEnum.INACTIVO, EstatusEnum.ACTIVO], {
-    message: 'estatus debe ser 0 (inactivo) o 1 (activo)',
+  @IsIn([...ESTATUS_PRODUCTO_DISPOSITIVO_PATCH], {
+    message:
+      'estatus debe ser 0 (inactivo), 1 (activo), 2 (asignado), 3 (baja_remplazo), 4 (baja_mantenimiento) o 5 (inservible)',
   })
-  estatus!: number;
+  estatus!: EnumEstatusProductoDispositivo;
 }

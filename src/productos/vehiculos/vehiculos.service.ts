@@ -28,9 +28,11 @@ import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.inter
 import { S3Service } from 'src/s3/s3.service';
 import {
   EnumModulos,
+  EnumEstatusProductoDispositivo,
   EnumTipoProducto,
   EstatusEnum,
 } from 'src/common/estatus.enum';
+import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import { crearProductoBase } from '../crear-producto.util';
 import {
   nombreCliente,
@@ -711,6 +713,8 @@ LIMIT ${limit}
         throw new NotFoundException('Producto del vehículo no encontrado');
       }
 
+      assertEstatusNoAsignado(Number(producto.estatus), 'producto');
+
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
       await this.productosRepo.update(
@@ -728,7 +732,12 @@ LIMIT ${limit}
         EstatusEnumBitcora.SUCCESS,
       );
 
-      if (estatus === EstatusEnum.INACTIVO) {
+      if (
+        estatus === EnumEstatusProductoDispositivo.INACTIVO ||
+        estatus === EnumEstatusProductoDispositivo.BAJA_REMPLAZO ||
+        estatus === EnumEstatusProductoDispositivo.BAJA_MANTENIMIENTO ||
+        estatus === EnumEstatusProductoDispositivo.INSERVIBLE
+      ) {
         this.webhookEmitter.emit(
           WebhookEvent.VEHICULO_DELETED,
           idCliente,

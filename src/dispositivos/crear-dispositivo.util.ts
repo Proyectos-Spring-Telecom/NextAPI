@@ -87,7 +87,7 @@ export async function crearDispositivoBase(
     idCliente: number;
     idTipoDispositivo: number;
     numeroSerie: string;
-    imei?: string | null;
+    imei?: number | null;
     eco?: string | null;
     idMarca?: number | null;
     idModelo?: number | null;
@@ -105,6 +105,15 @@ export async function crearDispositivoBase(
   });
   if (existeNumeroSerie) {
     throw new BadRequestException('El número de serie ya existe');
+  }
+
+  if (params.imei != null) {
+    const existeImei = await manager.findOne(Dispositivos, {
+      where: { imei: params.imei },
+    });
+    if (existeImei) {
+      throw new BadRequestException('El IMEI ya está registrado');
+    }
   }
 
   const dispositivo = manager.create(Dispositivos, {

@@ -15,6 +15,7 @@ import { CatTipoDispositivo } from './CatTipoDispositivo';
 @applySchema
 @Index('UQ_Dispositivos_Cliente_Id', ['idCliente', 'id'], { unique: true })
 @Index('UQ_Dispositivos_NumeroSerie', ['numeroSerie'], { unique: true })
+@Index('UQ_Dispositivos_Imei', ['imei'], { unique: true })
 @Index('IX_Dispositivos_Cliente_Tipo', [
   'idCliente',
   'idTipoDispositivo',
@@ -37,8 +38,12 @@ export class Dispositivos {
   @Column('varchar', { name: 'NumeroSerie', length: 100 })
   numeroSerie: string;
 
-  @Column('varchar', { name: 'Imei', length: 20, nullable: true })
-  imei: string | null;
+  @Column('bigint', {
+    name: 'Imei',
+    nullable: true,
+    comment: 'IMEI del equipo (clave de telemetría)',
+  })
+  imei: number | null;
 
   @Column('varchar', {
     name: 'Eco',

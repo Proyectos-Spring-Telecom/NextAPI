@@ -1,23 +1,26 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
+  IsString,
+  MaxLength,
   ValidateIf,
 } from 'class-validator';
 
 export class CreateInstalacionesDto {
-  @ApiProperty({
-    description: 'ID de producto (obligatorio)',
-  })
+  @ApiProperty({ description: 'ID del cliente (tenant)' })
+  @IsInt()
+  @IsNotEmpty()
+  idCliente: number;
+
+  @ApiProperty({ description: 'ID de producto (obligatorio)' })
   @IsInt()
   @IsNotEmpty()
   idProducto: number;
 
-  @ApiProperty({
-    description: 'ID dispositivo (debe pertenecer al mismo cliente)',
-    required: false,
+  @ApiPropertyOptional({
+    description: 'ID dispositivo (mismo cliente)',
     nullable: true,
   })
   @IsOptional()
@@ -25,9 +28,8 @@ export class CreateInstalacionesDto {
   @IsInt()
   idDispositivo?: number | null;
 
-  @ApiProperty({
-    description: 'ID SIM (debe pertenecer al mismo cliente)',
-    required: false,
+  @ApiPropertyOptional({
+    description: 'ID SIM (mismo cliente)',
     nullable: true,
   })
   @IsOptional()
@@ -35,22 +37,12 @@ export class CreateInstalacionesDto {
   @IsInt()
   idSim?: number | null;
 
-  @ApiProperty({
-    description: 'Estatus de instalación (valor numérico)',
-    default: 1,
-    required: false,
+  @ApiPropertyOptional({
+    description: 'Observaciones del alta',
+    maxLength: 2000,
   })
   @IsOptional()
-  @IsInt()
-  estatusInstalacion?: number = 1;
-
-  @ApiProperty({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
+  @IsString()
+  @MaxLength(2000)
+  comentario?: string;
 }

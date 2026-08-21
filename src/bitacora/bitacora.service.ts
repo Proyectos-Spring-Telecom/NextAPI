@@ -10,6 +10,7 @@ import { Bitacora } from 'src/entities/Bitacora';
 import { Repository } from 'typeorm';
 import { ApiResponseCommon } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { nowMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 
 @Injectable()
 export class BitacoraLoggerService {
@@ -236,11 +237,7 @@ ORDER BY b.FechaCreacion DESC;
     estatus?: string,
     error?: string,
   ) {
-    function pad(n: number) {
-      return n < 10 ? '0' + n : n;
-    }
-    const ahora = new Date();
-    const FechaActual = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(ahora.getDate())} ${pad(ahora.getHours())}:${pad(ahora.getMinutes())}:${pad(ahora.getSeconds())}`;
+    const FechaActual = nowMexicoCityMysql();
 
     const registro = this.bitacoraRepository.create({
       modulo: modulo,

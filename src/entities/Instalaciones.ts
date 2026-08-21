@@ -12,6 +12,8 @@ import { Dispositivos } from './Dispositivos';
 import { Sims } from './Sims';
 import { CatEstatusInstalacion } from './CatEstatusInstalacion';
 import { Productos } from './Productos';
+import { HistoricoInstalaciones } from './HistoricoInstalaciones';
+import { Usuarios } from './Usuarios';
 
 @applySchema
 @Index('UQ_Instalaciones_Cliente_Id', ['idCliente', 'id'], { unique: true })
@@ -27,6 +29,8 @@ import { Productos } from './Productos';
 @Index('FK_Inst_Dispositivo_idx', ['idCliente', 'idDispositivo'])
 @Index('FK_Inst_Sim_idx', ['idCliente', 'idSim'])
 @Index('FK_Inst_Estatus', ['estatusInstalacion'])
+@Index('FK_Inst_Historico_idx', ['idCliente', 'idHistoricoInstalacion'])
+@Index('FK_Inst_Usuario_idx', ['idUsuario'])
 @Entity('Instalaciones')
 export class Instalaciones {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -60,6 +64,27 @@ export class Instalaciones {
     default: () => "'1'",
   })
   estatusInstalacion: number;
+
+  @Column('bigint', {
+    name: 'IdHistoricoInstalacion',
+    nullable: true,
+    comment: 'Último histórico de esta instalación (NULL = alta sin historia)',
+  })
+  idHistoricoInstalacion: number | null;
+
+  @Column('datetime', {
+    name: 'VigenteDesde',
+    default: () => 'CURRENT_TIMESTAMP',
+    comment: 'Desde cuándo está vigente esta versión de la instalación',
+  })
+  vigenteDesde: Date;
+
+  @Column('bigint', {
+    name: 'IdUsuario',
+    nullable: true,
+    comment: 'Usuario que realizó la última acción (NULL = sistema)',
+  })
+  idUsuario: number | null;
 
   @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
@@ -142,4 +167,23 @@ export class Instalaciones {
     { name: 'EstatusInstalacion', referencedColumnName: 'id' },
   ])
   estatusInstalacion2: CatEstatusInstalacion;
+
+  @ManyToOne(() => HistoricoInstalaciones, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+    nullable: true,
+  })
+  @JoinColumn([
+    { name: 'IdCliente', referencedColumnName: 'idCliente' },
+    { name: 'IdHistoricoInstalacion', referencedColumnName: 'id' },
+  ])
+  idHistoricoInstalacion2: HistoricoInstalaciones | null;
+
+  @ManyToOne(() => Usuarios, {
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+    nullable: true,
+  })
+  @JoinColumn([{ name: 'IdUsuario', referencedColumnName: 'id' }])
+  idUsuario2: Usuarios | null;
 }

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
+import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Sims } from 'src/entities/Sims';
+import { Productos } from 'src/entities/Productos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
@@ -13,8 +15,10 @@ import { InstalacionesService } from './instalaciones.service';
   imports: [
     TypeOrmModule.forFeature([
       Instalaciones,
+      HistoricoInstalaciones,
       Dispositivos,
       Sims,
+      Productos,
       CatEstatusInstalacion,
     ]),
     BitacoraModule,
