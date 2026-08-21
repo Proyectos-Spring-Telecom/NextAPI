@@ -191,13 +191,17 @@ export class VehiculosService {
     }
   }
 
-  private buildVehiculoWebhookData(
-    placa: string,
-    marcaNombre?: string | null,
-  ): Record<string, unknown> {
+  private buildVehiculoWebhookData(input: {
+    placa: string;
+    marcaNombre?: string | null;
+    modeloNombre?: string | null;
+    fotoFrente?: string | null;
+  }): Record<string, unknown> {
     return {
-      placa,
-      marcaNombre: marcaNombre ?? '',
+      placa: input.placa,
+      marcaNombre: input.marcaNombre ?? '',
+      modeloNombre: input.modeloNombre ?? '',
+      fotoFrente: input.fotoFrente ?? null,
     };
   }
 
@@ -211,6 +215,18 @@ export class VehiculosService {
       where: { id: idMarcaVehiculo },
     });
     return marca?.nombre ?? '';
+  }
+
+  private async resolveModeloNombre(
+    idModeloVehiculo: number | null,
+  ): Promise<string> {
+    if (idModeloVehiculo == null) {
+      return '';
+    }
+    const modelo = await this.catModelosRepo.findOne({
+      where: { id: idModeloVehiculo },
+    });
+    return modelo?.nombre ?? '';
   }
 
   async create(
@@ -284,10 +300,12 @@ export class VehiculosService {
         WebhookEvent.VEHICULO_CREATED,
         idCliente,
         Number(saved.idProducto),
-        this.buildVehiculoWebhookData(
-          saved.placa,
-          await this.resolveMarcaNombre(saved.idMarcaVehiculo),
-        ),
+        this.buildVehiculoWebhookData({
+          placa: saved.placa,
+          marcaNombre: await this.resolveMarcaNombre(saved.idMarcaVehiculo),
+          modeloNombre: await this.resolveModeloNombre(saved.idModeloVehiculo),
+          fotoFrente: saved.fotoFrente,
+        }),
       );
 
       return {
@@ -653,20 +671,27 @@ LIMIT ${limit}
 
       const updated = await this.repository.findOne({
         where: { idProducto: id },
-        relations: { idMarcaVehiculo2: true },
+        relations: { idMarcaVehiculo2: true, idModeloVehiculo2: true },
       });
 
       this.webhookEmitter.emit(
         WebhookEvent.VEHICULO_UPDATED,
         idCliente,
         id,
-        this.buildVehiculoWebhookData(
-          updated?.placa ?? entity.placa,
-          updated?.idMarcaVehiculo2?.nombre ??
+        this.buildVehiculoWebhookData({
+          placa: updated?.placa ?? entity.placa,
+          marcaNombre:
+            updated?.idMarcaVehiculo2?.nombre ??
             (await this.resolveMarcaNombre(
               updated?.idMarcaVehiculo ?? entity.idMarcaVehiculo,
             )),
-        ),
+          modeloNombre:
+            updated?.idModeloVehiculo2?.nombre ??
+            (await this.resolveModeloNombre(
+              updated?.idModeloVehiculo ?? entity.idModeloVehiculo,
+            )),
+          fotoFrente: updated?.fotoFrente ?? entity.fotoFrente,
+        }),
       );
 
       return {
@@ -742,10 +767,14 @@ LIMIT ${limit}
           WebhookEvent.VEHICULO_DELETED,
           idCliente,
           id,
-          this.buildVehiculoWebhookData(
-            entity.placa,
-            await this.resolveMarcaNombre(entity.idMarcaVehiculo),
-          ),
+          this.buildVehiculoWebhookData({
+            placa: entity.placa,
+            marcaNombre: await this.resolveMarcaNombre(entity.idMarcaVehiculo),
+            modeloNombre: await this.resolveModeloNombre(
+              entity.idModeloVehiculo,
+            ),
+            fotoFrente: entity.fotoFrente,
+          }),
         );
       }
 

@@ -26,7 +26,7 @@ AX PRO ──SIA TCP──► SpringPanel ──────┘  POST HMAC /api/
 | Zona horaria proceso | `America/Mexico_City` (salvo `TZ` en entorno) |
 | Puerto local | `PORT` o `3004` |
 
-Swagger UI: ruta HTTP `/docs` (no es esta carpeta). Contratos HTTP: [contratos.md](./contratos.md).
+Swagger UI: ruta HTTP `/docs` (no es esta carpeta). Contratos HTTP: [contratos.md](./contratos.md). Webhooks Shift: [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
 
 ## Tenant (filtro por rol)
 
@@ -160,7 +160,8 @@ No hay módulo “Productos” en el catálogo de bitácora como alta genérica.
 - Alta y detalle por subtipo:
   - **Vehículos** (multipart fotos/documentos; búsqueda por placa).
   - **Activos**, **Inmuebles**, **Personas**.
-- Estatus 0–5; bloqueo si ASIGNADO (2). Bajas de vehículo pueden emitir webhook de borrado.
+- Estatus 0–5; bloqueo si ASIGNADO (2).
+- Webhooks de vehículo: `vehiculo.created` / `vehiculo.updated` / `vehiculo.deleted` (baja lógica con estatus 0, 3, 4 o 5).
 
 ### Instalaciones (vinculación producto ↔ dispositivo ↔ SIM)
 
@@ -206,7 +207,24 @@ Panel: nunca `aesKey`.
 
 - S3: upload / update de archivos.
 - Mail: SMTP (servicio; controller sin rutas de negocio).
-- Webhooks salientes HMAC (`WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`) — p. ej. baja de vehículo.
+- **Webhooks salientes** hacia ShiftControl (y otros suscriptores): HMAC-SHA256 con `WEBHOOK_SECRET`; destinos en `WEBHOOK_SUBSCRIBERS` (URLs separadas por coma).
+
+#### Webhooks implementados
+
+| Evento | Origen |
+|--------|--------|
+| `vehiculo.created` | Alta de vehículo |
+| `vehiculo.updated` | Update de vehículo |
+| `vehiculo.deleted` | PATCH estatus vehículo → 0, 3, 4 o 5 |
+| `cliente.created` | Alta de cliente |
+| `cliente.updated` | Update de cliente |
+
+Envelope: `event`, `timestamp`, `tenantId`, `entityId`, `data`, `signature`.
+
+`data` vehículo: `placa`, `marcaNombre`, `modeloNombre`, `fotoFrente`.  
+`data` cliente: `idPadre`.
+
+Detalle y checklist para Shift: [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
 
 ---
 
@@ -248,8 +266,9 @@ Panel: nunca `aesKey`.
 | Archivo | Uso |
 |---------|-----|
 | [contratos.md](./contratos.md) | Contratos HTTP (rutas, bodies, auth) |
+| [webhook-shiftcontrol.md](./webhook-shiftcontrol.md) | Contrato webhook Next → ShiftControl |
 | [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md) | Contexto técnico ampliado (legacy / detalle) |
 | [CONTEXTO-PROYECTO.md](./CONTEXTO-PROYECTO.md) | Visión de producto |
 | [CONTRATO-PROYECTO-NEXTAPI.md](./CONTRATO-PROYECTO-NEXTAPI.md) | Alcance / entregables de proyecto |
 
-Fuente de verdad operativa para el día a día: **este archivo** + **contratos.md** + Swagger `/docs`.
+Fuente de verdad operativa: **este archivo** + **contratos.md** + **webhook-shiftcontrol.md** + Swagger `/docs`.
