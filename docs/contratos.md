@@ -293,10 +293,60 @@ Socket.IO: eventos de alarma hacia clientes autenticados (mismo proceso Nest).
 
 ---
 
-## Webhooks salientes
+## Webhooks salientes (Next → suscriptores)
 
-Config: `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`.  
-Emisión HMAC hacia suscriptores (p. ej. baja de vehículo). No es un endpoint de entrada de Next.
+No es un endpoint de entrada de Next. Emisión `POST` JSON firmado.
+
+| Variable | Uso |
+|----------|-----|
+| `WEBHOOK_SUBSCRIBERS` | URLs destino, separadas por coma |
+| `WEBHOOK_SECRET` | Secreto HMAC-SHA256 compartido con el receptor |
+
+### Eventos
+
+| `event` | Cuándo |
+|---------|--------|
+| `vehiculo.created` | `POST /api/productos/vehiculos` |
+| `vehiculo.updated` | `PATCH /api/productos/vehiculos/:id` |
+| `vehiculo.deleted` | `PATCH .../vehiculos/estatus/:id` con estatus **0, 3, 4 o 5** |
+| `cliente.created` | `POST /api/clientes` |
+| `cliente.updated` | `PATCH /api/clientes/:id` |
+
+### Envelope
+
+```json
+{
+  "event": "vehiculo.created",
+  "timestamp": "2026-08-21T15:30:00.123Z",
+  "tenantId": 13,
+  "entityId": 1000042,
+  "data": { },
+  "signature": "<hmac-sha256-hex>"
+}
+```
+
+Orden firmado (sin `signature`): `event` → `timestamp` → `tenantId` → `entityId` → `data`.
+
+### `data` vehículo
+
+```json
+{
+  "placa": "ABC1234",
+  "marcaNombre": "Toyota",
+  "modeloNombre": "Hilux",
+  "fotoFrente": "https://…/frente.jpg"
+}
+```
+
+`marcaNombre` / `modeloNombre`: string (`""` si vacío). `fotoFrente`: URL o `null`.
+
+### `data` cliente
+
+```json
+{ "idPadre": 1 }
+```
+
+Contrato completo (HMAC, checklist ShiftControl): [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
 
 ---
 
