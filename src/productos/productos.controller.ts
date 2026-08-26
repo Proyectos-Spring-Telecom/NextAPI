@@ -39,7 +39,7 @@ export class ProductosController {
   @ApiOperation({
     summary: 'Lista completa de productos',
     description:
-      'Lista productos. Opcionalmente filtra por `idTipoProducto` y `idCliente`. ' +
+      'Lista productos disponibles (`estatus = 1`). Opcionalmente filtra por `idTipoProducto` y `idCliente`. ' +
       'El filtro de cliente respeta el alcance del rol del token.',
   })
   @ApiQuery({

@@ -58,7 +58,8 @@ export class DispositivosController {
   @ApiOperation({
     summary: 'Lista completa de dispositivos',
     description:
-      'Lista plana de todos los tipos (rastreador, AVL, teléfono, panel). ' +
+      'Lista plana de dispositivos disponibles (`estatus = 1`). ' +
+      'Incluye todos los tipos (rastreador, AVL, teléfono, panel). ' +
       'Opcionalmente filtra por `idTipoDispositivo` y `idCliente`.',
   })
   @ApiQuery({

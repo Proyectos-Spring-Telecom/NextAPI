@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Query,
   Request,
   ParseIntPipe,
   UseGuards,
@@ -14,6 +15,7 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -119,7 +121,14 @@ export class SimsController {
     summary: 'Lista completa de SIMs',
     description:
       'Devuelve únicamente los SIMs disponibles (`estatus = EnumEstatusRecurso.DISPONIBLE`). ' +
-      'El alcance depende del rol y del cliente del token.',
+      'Opcionalmente filtra por `idCliente`. Si se omite, aplica el alcance del rol del token.',
+  })
+  @ApiQuery({
+    name: 'idCliente',
+    required: false,
+    type: Number,
+    description:
+      'Filtrar por cliente. Si se omite, aplica el alcance del rol del token.',
   })
   @ApiOkResponse({
     description: 'Lista obtenida correctamente',
@@ -128,10 +137,16 @@ export class SimsController {
     },
   })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  async findAllList(@Request() req): Promise<ApiResponseCommon> {
-    const idCliente = req.user.idCliente;
-    const rol = req.user.rol;
-    return this.simsService.findAllList(idCliente, rol);
+  async findAllList(
+    @Request() req,
+    @Query('idCliente') idCliente?: string,
+  ): Promise<ApiResponseCommon> {
+    const clienteFiltro = idCliente ? Number(idCliente) : undefined;
+    return this.simsService.findAllList(
+      req.user.idCliente,
+      req.user.rol,
+      Number.isFinite(clienteFiltro) ? clienteFiltro : undefined,
+    );
   }
 
   @Get(':page/:limit')

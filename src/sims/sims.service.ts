@@ -150,22 +150,40 @@ export class SimsService {
   }
 
   async findAllList(
-    idCliente: number,
+    idClienteToken: number,
     rol: number,
+    idClienteFiltro?: number,
   ): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(
         rol,
-        idCliente,
+        idClienteToken,
       );
       if (tenant.sinAcceso) {
         return { data: [] };
       }
+
+      let idClienteWhere = tenant.idCliente;
+      if (idClienteFiltro != null) {
+        if (tenant.idCliente === undefined) {
+          idClienteWhere = idClienteFiltro;
+        } else if (typeof tenant.idCliente === 'number') {
+          if (Number(tenant.idCliente) !== idClienteFiltro) {
+            return { data: [] };
+          }
+          idClienteWhere = idClienteFiltro;
+        } else {
+          const ids = await this.tenantFilter.getClienteHijosIds(idClienteToken);
+          if (!ids.includes(idClienteFiltro)) {
+            return { data: [] };
+          }
+          idClienteWhere = idClienteFiltro;
+        }
+      }
+
       const where: FindOptionsWhere<Sims> = {
         estatus: EnumEstatusRecurso.DISPONIBLE,
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
+        ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
       };
       const data = await this.repository.find({
         where,
