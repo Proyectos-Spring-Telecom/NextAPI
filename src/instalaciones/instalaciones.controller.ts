@@ -94,7 +94,8 @@ export class InstalacionesController {
   @ApiOperation({
     summary: 'Lista paginada de instalaciones por tipo de producto',
     description:
-      'Body: `page`, `limit`, `idTipoProducto` (1=vehículo, 2=activo, 3=inmueble, 4=persona). ' +
+      'Body: `page`, `limit`, y opcionalmente `idTipoProducto` (1=vehículo, 2=activo, 3=inmueble, 4=persona). ' +
+      'Si no envías `idTipoProducto`, se listan instalaciones de **todos** los tipos. ' +
       'Orden del JSON: instalación → cliente → producto+detalle → dispositivo(+panel si tipo 2) → SIM. ' +
       'Nomenclatura: nombre real + sufijo de origen (`…Dispositivo`, `…Panel`, `…Vehiculo`/`…Activo`/`…Inmueble`/`…Persona`, `…Sim`). ' +
       'Respeta el alcance del rol.',

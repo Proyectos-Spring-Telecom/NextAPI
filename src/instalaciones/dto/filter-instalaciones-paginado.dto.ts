@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { EnumTipoProducto } from 'src/common/estatus.enum';
 
 export class FilterInstalacionesPaginadoDto {
@@ -17,9 +17,10 @@ export class FilterInstalacionesPaginadoDto {
   @Max(200)
   limit!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Tipo de producto a listar: 1=vehículo, 2=activo, 3=inmueble, 4=persona',
+      'Opcional. Tipo de producto: 1=vehículo, 2=activo, 3=inmueble, 4=persona. ' +
+      'Si se omite, se listan instalaciones de todos los tipos.',
     enum: [
       EnumTipoProducto.VEHICULO,
       EnumTipoProducto.ACTIVO,
@@ -28,15 +29,20 @@ export class FilterInstalacionesPaginadoDto {
     ],
     example: EnumTipoProducto.VEHICULO,
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @IsIn([
-    EnumTipoProducto.VEHICULO,
-    EnumTipoProducto.ACTIVO,
-    EnumTipoProducto.INMUEBLE,
-    EnumTipoProducto.PERSONA,
-  ], {
-    message: 'idTipoProducto debe ser 1 (vehículo), 2 (activo), 3 (inmueble) o 4 (persona)',
-  })
-  idTipoProducto!: EnumTipoProducto;
+  @IsIn(
+    [
+      EnumTipoProducto.VEHICULO,
+      EnumTipoProducto.ACTIVO,
+      EnumTipoProducto.INMUEBLE,
+      EnumTipoProducto.PERSONA,
+    ],
+    {
+      message:
+        'idTipoProducto debe ser 1 (vehículo), 2 (activo), 3 (inmueble) o 4 (persona)',
+    },
+  )
+  idTipoProducto?: EnumTipoProducto;
 }
