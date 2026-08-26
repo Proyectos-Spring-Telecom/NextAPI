@@ -109,7 +109,48 @@ export function applyPaginadoSelectBase(
   ]);
 }
 
-/** Joins + select extra según tipo de producto. */
+const SELECT_VEHICULO: string[] = [
+  'v.placa AS placaVehiculo',
+  'v.numeroEconomico AS ecoVehiculo',
+  'v.idMarcaVehiculo AS idMarcaVehiculo',
+  'marVeh.nombre AS nombreMarcaVehiculo',
+  'v.idModeloVehiculo AS idModeloVehiculo',
+  'modVeh.nombre AS nombreModeloVehiculo',
+  'v.anio AS anioVehiculo',
+  'v.color AS colorVehiculo',
+  'v.numeroSerie AS numeroSerieVehiculo',
+  'v.foto AS fotoVehiculo',
+  'v.fotoFrente AS fotoFrenteVehiculo',
+  'v.tarjetaCirculacion AS tarjetaCirculacionVehiculo',
+  'v.polizaSeguro AS polizaSeguroVehiculo',
+  'v.permisoCarga AS permisoCargaVehiculo',
+  'v.idCombustible AS idCombustibleVehiculo',
+  'tc.nombre AS nombreCombustibleVehiculo',
+  'v.km AS kmVehiculo',
+  'v.capacidadLitros AS capacidadLitrosVehiculo',
+];
+
+const SELECT_ACTIVO: string[] = [
+  'a.nombre AS nombreActivo',
+  'a.descripcion AS descripcionActivo',
+];
+
+const SELECT_INMUEBLE: string[] = [
+  'inm.inmueble AS inmueble',
+  'inm.direccionFiscal AS direccionFiscalInmueble',
+  'inm.nombreRepresentante AS nombreRepresentanteInmueble',
+  'inm.telefonoRepresentante AS telefonoRepresentanteInmueble',
+  'inm.correoRepresentante AS correoRepresentanteInmueble',
+  'inm.lat AS latInmueble',
+  'inm.lng AS lngInmueble',
+];
+
+const SELECT_PERSONA: string[] = [
+  'per.nombre AS nombrePersona',
+  'per.telefono AS telefonoPersona',
+];
+
+/** Joins + select extra según tipo de producto (filtro único → INNER). */
 export function applyPaginadoPorTipoProducto(
   qb: SelectQueryBuilder<Instalaciones>,
   idTipoProducto: EnumTipoProducto,
@@ -124,67 +165,72 @@ export function applyPaginadoPorTipoProducto(
         .leftJoin(CatMarcas, 'marVeh', 'marVeh.id = v.idMarcaVehiculo')
         .leftJoin(CatModelos, 'modVeh', 'modVeh.id = v.idModeloVehiculo')
         .leftJoin(CatTipoCombustible, 'tc', 'tc.id = v.idCombustible')
-        .addSelect([
-          'v.placa AS placaVehiculo',
-          'v.numeroEconomico AS ecoVehiculo',
-          'v.idMarcaVehiculo AS idMarcaVehiculo',
-          'marVeh.nombre AS nombreMarcaVehiculo',
-          'v.idModeloVehiculo AS idModeloVehiculo',
-          'modVeh.nombre AS nombreModeloVehiculo',
-          'v.anio AS anioVehiculo',
-          'v.color AS colorVehiculo',
-          'v.numeroSerie AS numeroSerieVehiculo',
-          'v.foto AS fotoVehiculo',
-          'v.fotoFrente AS fotoFrenteVehiculo',
-          'v.tarjetaCirculacion AS tarjetaCirculacionVehiculo',
-          'v.polizaSeguro AS polizaSeguroVehiculo',
-          'v.permisoCarga AS permisoCargaVehiculo',
-          'v.idCombustible AS idCombustibleVehiculo',
-          'tc.nombre AS nombreCombustibleVehiculo',
-          'v.km AS kmVehiculo',
-          'v.capacidadLitros AS capacidadLitrosVehiculo',
-        ]);
+        .addSelect(SELECT_VEHICULO);
       break;
     case EnumTipoProducto.ACTIVO:
       qb.innerJoin(
         Activos,
         'a',
         'a.idProducto = i.idProducto AND a.idCliente = i.idCliente',
-      ).addSelect([
-        'a.nombre AS nombreActivo',
-        'a.descripcion AS descripcionActivo',
-      ]);
+      ).addSelect(SELECT_ACTIVO);
       break;
     case EnumTipoProducto.INMUEBLE:
       qb.innerJoin(
         Inmuebles,
         'inm',
         'inm.idProducto = i.idProducto AND inm.idCliente = i.idCliente',
-      ).addSelect([
-        'inm.inmueble AS inmueble',
-        'inm.direccionFiscal AS direccionFiscalInmueble',
-        'inm.nombreRepresentante AS nombreRepresentanteInmueble',
-        'inm.telefonoRepresentante AS telefonoRepresentanteInmueble',
-        'inm.correoRepresentante AS correoRepresentanteInmueble',
-        'inm.lat AS latInmueble',
-        'inm.lng AS lngInmueble',
-      ]);
+      ).addSelect(SELECT_INMUEBLE);
       break;
     case EnumTipoProducto.PERSONA:
       qb.innerJoin(
         Personas,
         'per',
         'per.idProducto = i.idProducto AND per.idCliente = i.idCliente',
-      ).addSelect([
-        'per.nombre AS nombrePersona',
-        'per.telefono AS telefonoPersona',
-      ]);
+      ).addSelect(SELECT_PERSONA);
       break;
     default:
       throw new BadRequestException(
         'idTipoProducto debe ser 1 (vehículo), 2 (activo), 3 (inmueble) o 4 (persona)',
       );
   }
+}
+
+/**
+ * Sin filtro de tipo: LEFT JOIN de todos los detalles de producto
+ * para poder mapear cada fila según `p.idTipoProducto`.
+ */
+export function applyPaginadoTodosTiposProducto(
+  qb: SelectQueryBuilder<Instalaciones>,
+): void {
+  qb.leftJoin(
+    Vehiculos,
+    'v',
+    'v.idProducto = i.idProducto AND v.idCliente = i.idCliente',
+  )
+    .leftJoin(CatMarcas, 'marVeh', 'marVeh.id = v.idMarcaVehiculo')
+    .leftJoin(CatModelos, 'modVeh', 'modVeh.id = v.idModeloVehiculo')
+    .leftJoin(CatTipoCombustible, 'tc', 'tc.id = v.idCombustible')
+    .leftJoin(
+      Activos,
+      'a',
+      'a.idProducto = i.idProducto AND a.idCliente = i.idCliente',
+    )
+    .leftJoin(
+      Inmuebles,
+      'inm',
+      'inm.idProducto = i.idProducto AND inm.idCliente = i.idCliente',
+    )
+    .leftJoin(
+      Personas,
+      'per',
+      'per.idProducto = i.idProducto AND per.idCliente = i.idCliente',
+    )
+    .addSelect([
+      ...SELECT_VEHICULO,
+      ...SELECT_ACTIVO,
+      ...SELECT_INMUEBLE,
+      ...SELECT_PERSONA,
+    ]);
 }
 
 /** Bloque 1: instalación */
@@ -326,15 +372,18 @@ function mapBloqueSim(row: Record<string, unknown>) {
 /**
  * Orden fijo y coherente:
  * 1) instalación → 2) cliente → 3) producto+detalle → 4) dispositivo(+panel) → 5) SIM
+ * Si no se pasa `idTipoProducto`, se toma de la fila (`p.idTipoProducto`).
  */
 export function mapInstalacionPaginadaPlana(
   row: Record<string, unknown>,
-  idTipoProducto: EnumTipoProducto,
+  idTipoProducto?: EnumTipoProducto,
 ) {
+  const tipo = (idTipoProducto ??
+    Number(row.idTipoProducto)) as EnumTipoProducto;
   return {
     ...mapBloqueInstalacion(row),
     ...mapBloqueCliente(row),
-    ...mapBloqueProducto(row, idTipoProducto),
+    ...mapBloqueProducto(row, tipo),
     ...mapBloqueDispositivo(row),
     ...mapBloqueSim(row),
   };

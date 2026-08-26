@@ -6,6 +6,7 @@ Fuente de verdad del día a día:
 - [Contratos](./contratos.md) — rutas HTTP, bodies, auth JWT/HMAC, instalaciones paginado/detalle.
 - [Webhook → ShiftControl](./webhook-shiftcontrol.md) — envelope, eventos, HMAC y checklist de alineación.
 - [Consumo vehículo por placa](./consumo-vehiculo-por-placa.md) — guía / prompt productivo `GET .../vehiculos/placa/:placa`.
+- [Consumo instalaciones paginado (Angular)](./consumo-instalaciones-paginado-angular.md) — prompt + ejemplos reales `POST .../instalaciones/paginado`.
 
 Ampliaciones / legado de proyecto:
 

@@ -43,6 +43,7 @@ import {
   applyPaginadoBaseJoins,
   applyPaginadoPorTipoProducto,
   applyPaginadoSelectBase,
+  applyPaginadoTodosTiposProducto,
   mapInstalacionPaginadaPlana,
 } from './helpers/instalaciones-paginado.helpers';
 import {
@@ -447,12 +448,15 @@ export class InstalacionesService {
 
       applyPaginadoBaseJoins(qb);
       applyPaginadoSelectBase(qb);
-      applyPaginadoPorTipoProducto(qb, idTipoProducto);
 
-      qb.where('p.idTipoProducto = :idTipoProducto', { idTipoProducto }).orderBy(
-        'i.id',
-        'ASC',
-      );
+      if (idTipoProducto != null) {
+        applyPaginadoPorTipoProducto(qb, idTipoProducto);
+        qb.andWhere('p.idTipoProducto = :idTipoProducto', { idTipoProducto });
+      } else {
+        applyPaginadoTodosTiposProducto(qb);
+      }
+
+      qb.orderBy('i.id', 'ASC');
 
       if (tenant.idCliente !== undefined) {
         if (typeof tenant.idCliente === 'number') {
