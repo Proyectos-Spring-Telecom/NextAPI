@@ -17,7 +17,7 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumModulos } from 'src/common/estatus.enum';
+import { EnumModulos, EnumEstatusProductoDispositivo } from 'src/common/estatus.enum';
 import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   mapClienteRelacion,
@@ -104,7 +104,10 @@ export class ProductosService {
         return { data: [] };
       }
       const data = await this.repository.find({
-        where,
+        where: {
+          ...where,
+          estatus: EnumEstatusProductoDispositivo.ACTIVO,
+        },
         relations: [...RELACIONES_PRODUCTO_BASE],
         order: { id: 'DESC' },
       });
