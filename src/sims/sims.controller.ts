@@ -27,6 +27,7 @@ import {
 import { SimsService } from './sims.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
 import { UpdateSimsDto } from './dto/update-sims.dto';
+import { UpdateSimEstatusDto } from './dto/update-sim-estatus.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -231,33 +232,39 @@ export class SimsController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Alterna el estatus 1 ↔ 0. No requiere body. ' +
+      'Establece el estatus del SIM. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      '(0=inactivo, 1=activo/disponible, 2=asignado, 3=revision, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
   @ApiParam({ name: 'id', description: 'ID del SIM', example: 5 })
+  @ApiBody({ type: UpdateSimEstatusDto })
   @ApiOkResponse({
     description: 'Estatus actualizado',
     schema: {
       example: {
         status: 'success',
         message: 'Estatus actualizado correctamente',
-        estatus: { estatus: EnumEstatusRecurso.BAJA },
+        estatus: { estatus: EnumEstatusRecurso.INACTIVO },
         data: { id: 5, nombre: '5512345678' },
       },
     },
   })
   @ApiBadRequestResponse({
-    description: 'SIM asignado a una instalación',
+    description: 'estatus inválido o SIM asignado a una instalación',
   })
   @ApiNotFoundResponse({ description: 'SIM no encontrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSimEstatusDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
-    const idUser = req.user.userId;
-    return this.simsService.updateEstatus(id, idCliente, idUser);
+    return this.simsService.updateEstatus(
+      id,
+      dto,
+      req.user.idCliente,
+      req.user.userId,
+    );
   }
 
   @Patch(':id')
@@ -273,7 +280,7 @@ export class SimsController {
       '- `idPlanTelefonia` — FK a `CatPlanesTelefonia`.\n' +
       '- `notas` — string, máx. 500.\n\n' +
       '**No incluido:** `estatus`. Para cambiarlo usa `PATCH /api/sims/estatus/{id}` ' +
-      '(toggle `DISPONIBLE` ↔ `BAJA`, sin body).\n\n' +
+      'con body `{ "estatus": 0|1|2|3|4|5 }`.\n\n' +
       '**Validaciones:** FKs enviadas deben existir; si cambia `imei`, no puede estar duplicado.',
   })
   @ApiParam({

@@ -3,15 +3,33 @@ export enum EstatusEnum {
   INACTIVO = 0, //inactivo usado
 }
 
-/** Ciclo operativo de recursos (SIM, dispositivo, etc.). */
+/** Ciclo operativo de recursos (SIM, etc.). */
 export enum EnumEstatusRecurso {
+  /** 0 — inactivo */
+  INACTIVO = 0,
+  /** @deprecated Preferir INACTIVO */
   BAJA = 0,
+  /** 1 — activo / disponible */
+  ACTIVO = 1,
+  /** @deprecated Preferir ACTIVO */
   DISPONIBLE = 1,
   ASIGNADO = 2,
   REVISION = 3,
+  BAJA_MANTENIMIENTO = 4,
+  /** @deprecated Preferir BAJA_MANTENIMIENTO */
   REMOVIDO = 4,
   INSERVIBLE = 5,
 }
+
+/** Permitidos en PATCH .../estatus/:id de SIMs */
+export const ESTATUS_SIM_PATCH: readonly EnumEstatusRecurso[] = [
+  EnumEstatusRecurso.INACTIVO,
+  EnumEstatusRecurso.ACTIVO,
+  EnumEstatusRecurso.ASIGNADO,
+  EnumEstatusRecurso.REVISION,
+  EnumEstatusRecurso.BAJA_MANTENIMIENTO,
+  EnumEstatusRecurso.INSERVIBLE,
+] as const;
 
 /**
  * Estatus de Productos / Dispositivos (columna Estatus).
