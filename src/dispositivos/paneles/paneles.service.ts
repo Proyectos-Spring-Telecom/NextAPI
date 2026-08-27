@@ -335,13 +335,13 @@ export class PanelesService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');
       }
       const dispositivo = await this.dispositivosRepo.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!dispositivo) {
         throw new NotFoundException('Dispositivo del panel no encontrado');
@@ -351,17 +351,20 @@ export class PanelesService {
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;
-      await this.dispositivosRepo.update({ id, idCliente }, { estatus });
-      await this.repository.update(
-        { idDispositivo: id, idCliente },
-        { estatus },
-      );
+      await this.dispositivosRepo.update({ id }, { estatus });
+      await this.repository.update({ idDispositivo: id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'PanelAlarma',
         `Se actualizó estatus de panel ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.PANELES,
         EstatusEnumBitcora.SUCCESS,

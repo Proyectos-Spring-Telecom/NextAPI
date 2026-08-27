@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
@@ -19,7 +19,11 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumModulos, EnumEstatusProductoDispositivo } from 'src/common/estatus.enum';
+import {
+  EnumModulos,
+  EnumEstatusProductoDispositivo,
+  EstatusEnum,
+} from 'src/common/estatus.enum';
 import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   crearDispositivoBase,
@@ -178,6 +182,7 @@ export class DispositivosService {
     page: number,
     limit: number,
     idTipoDispositivo?: number,
+    obtenerTodos?: EstatusEnum,
   ): Promise<ApiResponseCommon> {
     try {
       const { sinAcceso, where } = await this.whereTenant(
@@ -191,8 +196,14 @@ export class DispositivosService {
           paginated: { total: 0, page, limit, totalPages: 0 },
         };
       }
+      const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const [data, total] = await this.repository.findAndCount({
-        where,
+        where: {
+          ...where,
+          ...(incluirInservibles
+            ? {}
+            : { estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE) }),
+        },
         relations: [...RELACIONES_DISPOSITIVO_BASE],
         skip: (page - 1) * limit,
         take: limit,
@@ -327,7 +338,7 @@ export class DispositivosService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
@@ -337,14 +348,20 @@ export class DispositivosService {
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;
-      await this.repository.update({ id, idCliente }, { estatus });
-      await this.panelRepo.update({ idDispositivo: id, idCliente }, { estatus });
+      await this.repository.update({ id }, { estatus });
+      await this.panelRepo.update({ idDispositivo: id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
         `Se actualizó estatus de dispositivo ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,

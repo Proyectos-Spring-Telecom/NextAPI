@@ -25,6 +25,7 @@ import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.serv
 import {
   EnumEstatusRecurso,
   EnumModulos,
+  EstatusEnum,
 } from 'src/common/estatus.enum';
 import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 
@@ -204,6 +205,7 @@ export class SimsService {
     rol: number,
     page: number,
     limit: number,
+    obtenerTodos?: EstatusEnum,
   ): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(
@@ -221,10 +223,14 @@ export class SimsService {
           },
         };
       }
+      const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<Sims> = {
         ...(tenant.idCliente !== undefined
           ? { idCliente: tenant.idCliente }
           : {}),
+        ...(incluirInservibles
+          ? {}
+          : { estatus: Not(EnumEstatusRecurso.INSERVIBLE) }),
       };
       const [data, total] = await this.repository.findAndCount({
         where,

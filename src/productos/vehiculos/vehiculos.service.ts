@@ -104,7 +104,7 @@ export class VehiculosService {
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
     private readonly s3Service: S3Service,
-  ) {}
+  ) { }
 
   private async uploadFiles(
     files: VehiculosUploadFiles,
@@ -411,7 +411,7 @@ export class VehiculosService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
         relations: RELACIONES_VEHICULO,
       });
       if (!entity) {
@@ -619,14 +619,14 @@ LIMIT ${limit}
         idMarcaVehiculo:
           dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
             ? (dto.idMarcaVehiculo !== undefined
-                ? dto.idMarcaVehiculo
-                : entity.idMarcaVehiculo)
+              ? dto.idMarcaVehiculo
+              : entity.idMarcaVehiculo)
             : undefined,
         idModeloVehiculo:
           dto.idMarcaVehiculo !== undefined || dto.idModeloVehiculo !== undefined
             ? (dto.idModeloVehiculo !== undefined
-                ? dto.idModeloVehiculo
-                : entity.idModeloVehiculo)
+              ? dto.idModeloVehiculo
+              : entity.idModeloVehiculo)
             : dto.idModeloVehiculo,
         idCombustible: dto.idCombustible,
       });
@@ -726,13 +726,13 @@ LIMIT ${limit}
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
       const producto = await this.productosRepo.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!producto) {
         throw new NotFoundException('Producto del vehículo no encontrado');
@@ -742,16 +742,19 @@ LIMIT ${limit}
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
-      await this.productosRepo.update(
-        { id, idCliente },
-        { estatus },
-      );
+      await this.productosRepo.update({ id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',
         `Se actualizó estatus de vehículo ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.VEHICULOS,
         EstatusEnumBitcora.SUCCESS,
@@ -765,7 +768,7 @@ LIMIT ${limit}
       ) {
         this.webhookEmitter.emit(
           WebhookEvent.VEHICULO_DELETED,
-          idCliente,
+          entity.idCliente,
           id,
           this.buildVehiculoWebhookData({
             placa: entity.placa,

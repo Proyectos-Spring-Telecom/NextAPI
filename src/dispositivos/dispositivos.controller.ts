@@ -27,6 +27,7 @@ import { DispositivosService } from './dispositivos.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
 import { UpdateDispositivoEstatusDto } from './dto/update-dispositivo-estatus.dto';
+import { DispositivosPaginadoQueryDto } from './dto/dispositivos-paginado-query.dto';
 
 @ApiTags('Dispositivos')
 @ApiBearerAuth('bearer-token')
@@ -95,30 +96,27 @@ export class DispositivosController {
   @Get('paginado/:page/:limit')
   @ApiOperation({
     summary: 'Lista paginada de dispositivos',
-    description: 'Lista paginada. Alcance según rol del token.',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
-  @ApiQuery({
-    name: 'idTipoDispositivo',
-    required: false,
-    type: Number,
-  })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
-    @Query('idTipoDispositivo') idTipoDispositivo?: string,
+    @Query() query: DispositivosPaginadoQueryDto,
   ): Promise<ApiResponseCommon> {
-    const tipo = idTipoDispositivo ? Number(idTipoDispositivo) : undefined;
     return this.dispositivosService.findAll(
       req.user.idCliente,
       req.user.rol,
       page,
       limit,
-      Number.isFinite(tipo) ? tipo : undefined,
+      query.idTipoDispositivo,
+      query.obtenerTodos,
     );
   }
 

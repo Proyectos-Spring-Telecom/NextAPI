@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { UpdateProductosDto } from './dto/update-productos.dto';
@@ -17,7 +17,7 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumModulos, EnumEstatusProductoDispositivo } from 'src/common/estatus.enum';
+import { EnumModulos, EnumEstatusProductoDispositivo, EstatusEnum } from 'src/common/estatus.enum';
 import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
 import {
   mapClienteRelacion,
@@ -123,6 +123,7 @@ export class ProductosService {
     page: number,
     limit: number,
     idTipoProducto?: number,
+    obtenerTodos?: EstatusEnum,
   ): Promise<ApiResponseCommon> {
     try {
       const { sinAcceso, where } = await this.whereTenant(
@@ -136,8 +137,14 @@ export class ProductosService {
           paginated: { total: 0, page, limit, totalPages: 0 },
         };
       }
+      const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const [data, total] = await this.repository.findAndCount({
-        where,
+        where: {
+          ...where,
+          ...(incluirInservibles
+            ? {}
+            : { estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE) }),
+        },
         relations: [...RELACIONES_PRODUCTO_BASE],
         skip: (page - 1) * limit,
         take: limit,
@@ -233,7 +240,7 @@ export class ProductosService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('Producto no encontrado');
@@ -243,13 +250,19 @@ export class ProductosService {
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;
-      await this.repository.update({ id, idCliente }, { estatus });
+      await this.repository.update({ id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Productos',
         `Se actualizó estatus de producto ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.MODULOS,
         EstatusEnumBitcora.SUCCESS,

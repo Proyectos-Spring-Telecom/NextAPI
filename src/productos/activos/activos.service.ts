@@ -41,7 +41,7 @@ export class ActivosService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private nombreDisplay(entity: Activos): string {
     return entity.nombre?.trim() || `Activo ${entity.idProducto}`;
@@ -207,7 +207,7 @@ export class ActivosService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
         relations: RELACIONES_DETALLE_PRODUCTO,
       });
       if (!entity) {
@@ -287,13 +287,13 @@ export class ActivosService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Activo no encontrado');
       }
       const producto = await this.productosRepo.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!producto) {
         throw new NotFoundException('Producto del activo no encontrado');
@@ -303,13 +303,19 @@ export class ActivosService {
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
-      await this.productosRepo.update({ id, idCliente }, { estatus });
+      await this.productosRepo.update({ id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Activos',
         `Se actualizó estatus de activo ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.ACTIVOS,
         EstatusEnumBitcora.SUCCESS,
