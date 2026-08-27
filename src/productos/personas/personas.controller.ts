@@ -15,6 +15,7 @@ import {
   ApiBody,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -26,7 +27,10 @@ import { PersonasService } from './personas.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
-import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
+import {
+  OBTENER_TODOS_API_QUERY,
+  ObtenerTodosQueryDto,
+} from 'src/common/dto/obtener-todos-query.dto';
 
 @ApiTags('Productos - Personas')
 @ApiBearerAuth('bearer-token')
@@ -71,8 +75,9 @@ export class PersonasController {
       'Lista paginada. Alcance según rol del token. ' +
       'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
-  @ApiParam({ name: 'page', description: 'Número de página' })
+  @ApiParam({ name: 'page', description: 'Número de página (base 1)' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
+  @ApiQuery(OBTENER_TODOS_API_QUERY)
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
@@ -104,7 +109,7 @@ export class PersonasController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del producto por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })

@@ -28,6 +28,7 @@ import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
 import { UpdateDispositivoEstatusDto } from './dto/update-dispositivo-estatus.dto';
 import { DispositivosPaginadoQueryDto } from './dto/dispositivos-paginado-query.dto';
+import { OBTENER_TODOS_API_QUERY } from 'src/common/dto/obtener-todos-query.dto';
 
 @ApiTags('Dispositivos')
 @ApiBearerAuth('bearer-token')
@@ -97,11 +98,18 @@ export class DispositivosController {
   @ApiOperation({
     summary: 'Lista paginada de dispositivos',
     description:
-      'Lista paginada. Alcance según rol del token. ' +
+      'Lista paginada plana con cliente, tipo, marca y modelo. Alcance según rol del token. ' +
       'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
-  @ApiParam({ name: 'page', description: 'Número de página' })
+  @ApiParam({ name: 'page', description: 'Número de página (base 1)' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
+  @ApiQuery({
+    name: 'idTipoDispositivo',
+    required: false,
+    type: Number,
+    description: 'Filtrar por CatTipoDispositivo.Id',
+  })
+  @ApiQuery(OBTENER_TODOS_API_QUERY)
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
@@ -134,7 +142,7 @@ export class DispositivosController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del dispositivo. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del dispositivo por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })

@@ -32,8 +32,11 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { EnumEstatusRecurso, EstatusEnum } from 'src/common/estatus.enum';
-import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
+import { EnumEstatusRecurso } from 'src/common/estatus.enum';
+import {
+  OBTENER_TODOS_API_QUERY,
+  ObtenerTodosQueryDto,
+} from 'src/common/dto/obtener-todos-query.dto';
 
 const SIM_ITEM_EXAMPLE = {
   id: 5,
@@ -77,7 +80,7 @@ const UPDATE_BODY_EXAMPLE: UpdateSimsDto = {
 @Roles()
 @Controller('sims')
 export class SimsController {
-  constructor(private readonly simsService: SimsService) {}
+  constructor(private readonly simsService: SimsService) { }
 
   @Post()
   @ApiOperation({
@@ -175,13 +178,7 @@ export class SimsController {
     description: 'Registros por página',
     example: 10,
   })
-  @ApiQuery({
-    name: 'obtenerTodos',
-    required: false,
-    enum: EstatusEnum,
-    description:
-      '`0` (INACTIVO) u omitido: excluye INSERVIBLE. `1` (ACTIVO): todos los estatus.',
-  })
+  @ApiQuery(OBTENER_TODOS_API_QUERY)
   @ApiOkResponse({
     description: 'Lista paginada obtenida',
     schema: {
@@ -213,10 +210,8 @@ export class SimsController {
   @ApiOperation({
     summary: 'Obtener SIM por ID',
     description:
-      'Recupera un SIM del cliente autenticado por su identificador. ' +
-      'Campos de respuesta: `id`, `imei`, `numeroTelefono`, `idTelefonia`, ' +
-      '`idPlanTelefonia`, `idCliente`, `notas`, `fechaCreacion`, ' +
-      '`fechaActualizacion`, `estatus`.',
+      'Recupera un SIM por su identificador con relaciones en campos planos (camelCase). ' +
+      'Incluye `nombreCliente`, `nombreTelefonia`, `descripcionPlanTelefonia`, `datosPlanTelefonia` y `costoMensualPlanTelefonia`.',
   })
   @ApiParam({ name: 'id', description: 'ID del SIM', example: 5 })
   @ApiOkResponse({
@@ -239,7 +234,7 @@ export class SimsController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del SIM. Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del SIM por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=revision, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })

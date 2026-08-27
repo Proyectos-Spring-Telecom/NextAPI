@@ -44,7 +44,7 @@ export class DispositivosService {
     private readonly panelRepo: Repository<PanelAlarma>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-  ) {}
+  ) { }
 
   private async whereTenant(
     rol: number,
