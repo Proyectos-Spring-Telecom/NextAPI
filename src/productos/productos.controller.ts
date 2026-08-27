@@ -26,6 +26,7 @@ import { EnumTipoProducto } from 'src/common/estatus.enum';
 import { ProductosService } from './productos.service';
 import { UpdateProductosDto } from './dto/update-productos.dto';
 import { UpdateProductoEstatusDto } from './dto/update-producto-estatus.dto';
+import { ProductosPaginadoQueryDto } from './dto/productos-paginado-query.dto';
 
 @ApiTags('Productos')
 @ApiBearerAuth('bearer-token')
@@ -75,30 +76,27 @@ export class ProductosController {
   @Get('paginado/:page/:limit')
   @ApiOperation({
     summary: 'Lista paginada de productos',
-    description: 'Lista paginada. Alcance según rol del token.',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
-  @ApiQuery({
-    name: 'idTipoProducto',
-    required: false,
-    enum: EnumTipoProducto,
-  })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findAll(
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
-    @Query('idTipoProducto') idTipoProducto?: string,
+    @Query() query: ProductosPaginadoQueryDto,
   ): Promise<ApiResponseCommon> {
-    const tipo = idTipoProducto ? Number(idTipoProducto) : undefined;
     return this.productosService.findAll(
       req.user.idCliente,
       req.user.rol,
       page,
       limit,
-      Number.isFinite(tipo) ? tipo : undefined,
+      query.idTipoProducto,
+      query.obtenerTodos,
     );
   }
 

@@ -31,7 +31,8 @@ import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { EnumEstatusRecurso } from 'src/common/estatus.enum';
+import { EnumEstatusRecurso, EstatusEnum } from 'src/common/estatus.enum';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 
 const SIM_ITEM_EXAMPLE = {
   id: 5,
@@ -153,8 +154,8 @@ export class SimsController {
   @ApiOperation({
     summary: 'Lista paginada de SIMs',
     description:
-      'Devuelve SIMs activos e inactivos de forma paginada. ' +
-      'El alcance depende del rol y del cliente del token.',
+      'Devuelve SIMs de forma paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({
     name: 'page',
@@ -165,6 +166,13 @@ export class SimsController {
     name: 'limit',
     description: 'Registros por página',
     example: 10,
+  })
+  @ApiQuery({
+    name: 'obtenerTodos',
+    required: false,
+    enum: EstatusEnum,
+    description:
+      '`0` (INACTIVO) u omitido: excluye INSERVIBLE. `1` (ACTIVO): todos los estatus.',
   })
   @ApiOkResponse({
     description: 'Lista paginada obtenida',
@@ -180,10 +188,17 @@ export class SimsController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
     const rol = req.user.rol;
-    return this.simsService.findAll(idCliente, rol, page, limit);
+    return this.simsService.findAll(
+      idCliente,
+      rol,
+      page,
+      limit,
+      query.obtenerTodos,
+    );
   }
 
   @Get(':id')

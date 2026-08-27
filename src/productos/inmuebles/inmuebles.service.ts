@@ -318,13 +318,13 @@ export class InmueblesService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
       }
       const producto = await this.productosRepo.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!producto) {
         throw new NotFoundException('Producto del inmueble no encontrado');
@@ -334,13 +334,19 @@ export class InmueblesService {
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
-      await this.productosRepo.update({ id, idCliente }, { estatus });
+      await this.productosRepo.update({ id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Inmuebles',
         `Se actualizó estatus de inmueble ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.INMUEBLES,
         EstatusEnumBitcora.SUCCESS,

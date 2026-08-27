@@ -10,6 +10,7 @@ export enum EnumEstatusRecurso {
   ASIGNADO = 2,
   REVISION = 3,
   REMOVIDO = 4,
+  INSERVIBLE = 5,
 }
 
 /**

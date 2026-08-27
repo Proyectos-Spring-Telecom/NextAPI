@@ -286,13 +286,13 @@ export class PersonasService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Persona no encontrada');
       }
       const producto = await this.productosRepo.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!producto) {
         throw new NotFoundException('Producto de la persona no encontrado');
@@ -302,13 +302,19 @@ export class PersonasService {
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
-      await this.productosRepo.update({ id, idCliente }, { estatus });
+      await this.productosRepo.update({ id }, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
         'Personas',
         `Se actualizó estatus de persona ID: ${id} a ${estatus}`,
         'UPDATE',
-        { id, estatusAnterior, estatus, idCliente },
+        {
+          id,
+          estatusAnterior,
+          estatus,
+          idCliente,
+          idClienteRecurso: entity.idCliente,
+        },
         idUser,
         EnumModulos.PERSONAS,
         EstatusEnumBitcora.SUCCESS,
