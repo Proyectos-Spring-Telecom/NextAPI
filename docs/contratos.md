@@ -246,8 +246,8 @@ Sufijos: `…Dispositivo`, `…Panel`, `…Vehiculo|Activo|Inmueble|Persona`, `�
 
 ### `PATCH /:id` (update) — reglas
 
-- Archiva vigente → histórico; inserta nueva ACTIVA.
-- Body incluye `estatusInstalacion` (contexto histórico; allowlist 0,1,3,4,5).
+- Archiva vigente → histórico; inserta nueva ACTIVA; migra `UsuariosInstalaciones` al nuevo id; elimina fila anterior.
+- Body incluye `estatusInstalacionAnterior` (contexto histórico; allowlist 0,1,3,4,5).
 - Si cambia producto/dispositivo/SIM saliente: enviar `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5).
 - Entrantes: deben estar en estatus **1** y mismo `idCliente`; pasan a **2**.
 

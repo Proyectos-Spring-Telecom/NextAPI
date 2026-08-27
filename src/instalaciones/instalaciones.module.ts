@@ -6,6 +6,8 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { Sims } from 'src/entities/Sims';
 import { Productos } from 'src/entities/Productos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
+import { Usuarios } from 'src/entities/Usuarios';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { InstalacionesController } from './instalaciones.controller';
@@ -20,6 +22,8 @@ import { InstalacionesService } from './instalaciones.service';
       Sims,
       Productos,
       CatEstatusInstalacion,
+      Usuarios,
+      UsuariosInstalaciones,
     ]),
     BitacoraModule,
     TenantFilterModule,

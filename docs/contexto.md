@@ -166,7 +166,7 @@ No hay módulo “Productos” en el catálogo de bitácora como alta genérica.
 ### Instalaciones (vinculación producto ↔ dispositivo ↔ SIM)
 
 - **Alta:** producto obligatorio (estatus 1 + mismo cliente); dispositivo/SIM opcionales (estatus 1). Tras insertar, componentes → **ASIGNADO (2)**.
-- **Update (`PATCH /:id`):** archiva vigente en `HistoricoInstalaciones`, elimina fila actual, inserta nueva ACTIVA. Requiere `estatusInstalacion` (histórico). Al cambiar recursos salientes: body `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5). Entrantes deben estar en 1 y pasan a 2.
+- **Update (`PATCH /:id`):** archiva vigente en `HistoricoInstalaciones`, crea nueva ACTIVA, migra `UsuariosInstalaciones` al nuevo id y elimina la fila anterior. Requiere `estatusInstalacionAnterior` (histórico). Al cambiar recursos salientes: body `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5). Entrantes deben estar en 1 y pasan a 2.
 - **PATCH estatus (`/:estatus/:id`):** solo **0, 1, 5**. No archiva.
   - **0 / 5:** instalación a ese estatus; fila `Estatus=0` (libera activos); componentes → disponible (1).
   - **1:** componentes deben estar en 1; instalación activa (`Estatus=1`); componentes → ASIGNADO (2).

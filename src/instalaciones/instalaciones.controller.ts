@@ -41,7 +41,9 @@ export class InstalacionesController {
     description:
       'Alta vigente con `estatusInstalacion = ACTIVA (1)`, `VigenteDesde = ahora` e `IdUsuario` del token. ' +
       'Producto (y dispositivo/SIM si se envían) deben pertenecer al mismo `idCliente` y tener `estatus = 1` ' +
-      '(activo/disponible); tras el alta pasan a `ASIGNADO (2)`. Sin histórico.',
+      '(activo/disponible); tras el alta pasan a `ASIGNADO (2)`. Sin histórico. ' +
+      'Además se asigna automáticamente en `UsuariosInstalaciones` a usuarios activos con rol SA (1) ' +
+      'y a usuarios activos con rol cliente (6) del mismo `idCliente`.',
   })
   @ApiResponse({ status: 201, description: 'Instalación creada correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -174,11 +176,12 @@ export class InstalacionesController {
     summary: 'Actualizar instalación (archiva + nueva versión)',
     description:
       'En una transacción: archiva la vigente en `HistoricoInstalaciones` con el ' +
-      '`estatusInstalacion` enviado, elimina la fila y crea una nueva ACTIVA (1). ' +
+      '`estatusInstalacionAnterior` enviado, crea una nueva ACTIVA (1), migra ' +
+      '`UsuariosInstalaciones` al nuevo id, elimina la fila anterior. ' +
       'Si cambia producto/dispositivo/SIM: el recurso nuevo debe tener estatus=1 ' +
       '(disponible) y mismo idCliente; el que sale recibe `estatus*Anterior` (0–5); ' +
       'el que entra queda en ASIGNADO (2). ' +
-      'Campos: estatusProductoAnterior, estatusDispositivoAnterior, estatusSimAnterior.',
+      'Campos: estatusInstalacionAnterior, estatusProductoAnterior, estatusDispositivoAnterior, estatusSimAnterior.',
   })
   @ApiParam({ name: 'id', description: 'ID de la instalación vigente' })
   @ApiResponse({ status: 200, description: 'Instalación actualizada (nuevo Id)' })

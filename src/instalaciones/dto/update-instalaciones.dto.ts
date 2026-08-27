@@ -30,9 +30,9 @@ export class UpdateInstalacionesDto {
   })
   @IsIn([...ESTATUS_INSTALACION_UPDATE_HISTORICO], {
     message:
-      'estatusInstalacion debe ser 0 (INACTIVO), 1 (ACTIVA), 3 (BAJA_REMPLAZO), 4 (BAJA_MANTENIMIENTO) o 5 (INSERVIBLE)',
+      'estatusInstalacionAnterior debe ser 0 (INACTIVO), 1 (ACTIVA), 3 (BAJA_REMPLAZO), 4 (BAJA_MANTENIMIENTO) o 5 (INSERVIBLE)',
   })
-  estatusInstalacion: EnumEstatusInstalacion;
+  estatusInstalacionAnterior!: EnumEstatusInstalacion;
 
   @ApiPropertyOptional({ description: 'Nuevo producto' })
   @IsOptional()
