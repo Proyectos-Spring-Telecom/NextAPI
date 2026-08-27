@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import { PersonasService } from './personas.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 
 @ApiTags('Productos - Personas')
 @ApiBearerAuth('bearer-token')
@@ -63,7 +65,12 @@ export class PersonasController {
   }
 
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de personas' })
+  @ApiOperation({
+    summary: 'Lista paginada de personas',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
+  })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
@@ -72,12 +79,14 @@ export class PersonasController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     return this.personasService.findAll(
       req.user.idCliente,
       req.user.rol,
       page,
       limit,
+      query.obtenerTodos,
     );
   }
 

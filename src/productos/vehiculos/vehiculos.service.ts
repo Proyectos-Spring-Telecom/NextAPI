@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatMarcas } from 'src/entities/CatMarcas';
@@ -366,6 +366,7 @@ export class VehiculosService {
     rol: number,
     page: number,
     limit: number,
+    obtenerTodos?: EstatusEnum,
   ): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(rol, idCliente);
@@ -381,8 +382,16 @@ export class VehiculosService {
         };
       }
 
+      const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<Vehiculos> = {
         ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+        ...(incluirInservibles
+          ? {}
+          : {
+              idProducto2: {
+                estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
+              },
+            }),
       };
       const [data, total] = await this.repository.findAndCount({
         where,

@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Query,
   Request,
   ParseIntPipe,
   UseGuards,
@@ -24,6 +25,7 @@ import { VehiculosService } from './vehiculos.service';
 import { CreateVehiculosDto } from './dto/create-vehiculos.dto';
 import { UpdateVehiculosDto } from './dto/update-vehiculos.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -142,7 +144,8 @@ export class VehiculosController {
   @ApiOperation({
     summary: 'Lista paginada de vehículos',
     description:
-      'Lista plana de vehículos (activos e inactivos), sin JSON anidados.',
+      'Lista plana de vehículos, sin JSON anidados. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
@@ -152,10 +155,17 @@ export class VehiculosController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
     const rol = req.user.rol;
-    return this.vehiculosService.findAll(idCliente, rol, page, limit);
+    return this.vehiculosService.findAll(
+      idCliente,
+      rol,
+      page,
+      limit,
+      query.obtenerTodos,
+    );
   }
 
   @Get(':id')
