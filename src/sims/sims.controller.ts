@@ -40,8 +40,13 @@ const SIM_ITEM_EXAMPLE = {
   imei: '356938035643809',
   numeroTelefono: '5512345678',
   idTelefonia: 1,
+  nombreTelefonia: 'Telcel',
   idPlanTelefonia: 3,
+  descripcionPlanTelefonia: 'Plan empresarial 10 GB',
+  datosPlanTelefonia: '10240',
+  costoMensualPlanTelefonia: '499.90',
   idCliente: 11,
+  nombreCliente: 'Osmar Martínez',
   notas: 'SIM asignada a unidad 45',
   fechaCreacion: '2026-01-15T18:30:00.000Z',
   fechaActualizacion: '2026-01-15T18:30:00.000Z',
@@ -155,7 +160,9 @@ export class SimsController {
   @ApiOperation({
     summary: 'Lista paginada de SIMs',
     description:
-      'Devuelve SIMs de forma paginada. Alcance según rol del token. ' +
+      'Devuelve SIMs de forma paginada con relaciones en campos planos (camelCase). ' +
+      'Incluye `nombreCliente`, `nombreTelefonia` y datos del plan sin JSON anidados. ' +
+      'Alcance según rol del token. ' +
       'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({
