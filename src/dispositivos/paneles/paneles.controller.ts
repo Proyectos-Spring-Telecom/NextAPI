@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import { PanelesService } from './paneles.service';
 import { CreatePanelAlarmaDto } from './dto/create-panel-alarma.dto';
 import { UpdatePanelAlarmaDto } from './dto/update-panel-alarma.dto';
 import { UpdateDispositivoEstatusDto } from '../dto/update-dispositivo-estatus.dto';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 
 @ApiTags('Dispositivos - Paneles')
 @ApiBearerAuth('bearer-token')
@@ -64,7 +66,12 @@ export class PanelesController {
   }
 
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de paneles' })
+  @ApiOperation({
+    summary: 'Lista paginada de paneles',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
+  })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
@@ -73,12 +80,14 @@ export class PanelesController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     return this.panelesService.findAll(
       req.user.idCliente,
       req.user.rol,
       page,
       limit,
+      query.obtenerTodos,
     );
   }
 

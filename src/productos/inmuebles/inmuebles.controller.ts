@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Query,
   Request,
   ParseIntPipe,
   UseGuards,
@@ -21,6 +22,7 @@ import { InmueblesService } from './inmuebles.service';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
@@ -67,7 +69,9 @@ export class InmueblesController {
   @Get(':page/:limit')
   @ApiOperation({
     summary: 'Lista paginada de inmuebles',
-    description: 'Lista paginada. Alcance según rol.',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
   })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
@@ -77,10 +81,17 @@ export class InmueblesController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     const idCliente = req.user.idCliente;
     const rol = req.user.rol;
-    return this.inmueblesService.findAll(idCliente, rol, page, limit);
+    return this.inmueblesService.findAll(
+      idCliente,
+      rol,
+      page,
+      limit,
+      query.obtenerTodos,
+    );
   }
 
   @Get(':id')

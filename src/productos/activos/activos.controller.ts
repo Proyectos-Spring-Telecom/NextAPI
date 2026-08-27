@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import { ActivosService } from './activos.service';
 import { CreateActivosDto } from './dto/create-activos.dto';
 import { UpdateActivosDto } from './dto/update-activos.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
+import { ObtenerTodosQueryDto } from 'src/common/dto/obtener-todos-query.dto';
 
 @ApiTags('Productos - Activos')
 @ApiBearerAuth('bearer-token')
@@ -63,7 +65,12 @@ export class ActivosController {
   }
 
   @Get(':page/:limit')
-  @ApiOperation({ summary: 'Lista paginada de activos' })
+  @ApiOperation({
+    summary: 'Lista paginada de activos',
+    description:
+      'Lista paginada. Alcance según rol del token. ' +
+      'Por defecto (u `obtenerTodos=0`) excluye INSERVIBLE; con `obtenerTodos=1` incluye todos los estatus.',
+  })
   @ApiParam({ name: 'page', description: 'Número de página' })
   @ApiParam({ name: 'limit', description: 'Registros por página' })
   @ApiResponse({ status: 200, description: 'Lista paginada obtenida' })
@@ -72,12 +79,14 @@ export class ActivosController {
     @Param('page', ParseIntPipe) page: number,
     @Param('limit', ParseIntPipe) limit: number,
     @Request() req,
+    @Query() query: ObtenerTodosQueryDto,
   ): Promise<ApiResponseCommon> {
     return this.activosService.findAll(
       req.user.idCliente,
       req.user.rol,
       page,
       limit,
+      query.obtenerTodos,
     );
   }
 

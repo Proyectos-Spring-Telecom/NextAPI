@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Personas } from 'src/entities/Personas';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
@@ -20,6 +20,7 @@ import {
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import {
+  EnumEstatusProductoDispositivo,
   EnumModulos,
   EnumTipoProducto,
   EstatusEnum,
@@ -165,6 +166,7 @@ export class PersonasService {
     rol: number,
     page: number,
     limit: number,
+    obtenerTodos?: EstatusEnum,
   ): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(
@@ -177,10 +179,18 @@ export class PersonasService {
           paginated: { total: 0, page, limit, totalPages: 0 },
         };
       }
+      const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<Personas> = {
         ...(tenant.idCliente !== undefined
           ? { idCliente: tenant.idCliente }
           : {}),
+        ...(incluirInservibles
+          ? {}
+          : {
+              idProducto2: {
+                estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
+              },
+            }),
       };
       const [data, total] = await this.repository.findAndCount({
         where,
