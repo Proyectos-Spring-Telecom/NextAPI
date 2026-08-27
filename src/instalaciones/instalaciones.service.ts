@@ -13,6 +13,8 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { Sims } from 'src/entities/Sims';
 import { Productos } from 'src/entities/Productos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
+import { Usuarios } from 'src/entities/Usuarios';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
@@ -29,6 +31,7 @@ import {
   EnumEstatusInstalacion,
   EnumEstatusProductoDispositivo,
   EnumModulos,
+  EnumRoles,
   EnumTipoProducto,
   EstatusEnum,
   ESTATUS_INSTALACION_PATCH,
@@ -270,6 +273,125 @@ export class InstalacionesService {
     }
   }
 
+  /**
+   * Asigna la instalación a usuarios activos:
+   * - rol SA (1), sin filtro de cliente
+   * - rol cliente (6) del mismo idCliente de la instalación
+   * Evita duplicados si ya existe la relación usuario-instalación.
+   */
+  private async asignarInstalacionUsuariosPorDefecto(
+    manager: EntityManager,
+    idInstalacion: number,
+    idCliente: number,
+  ): Promise<void> {
+    try {
+      const usuarios = await manager.find(Usuarios, {
+        where: [
+          { idRol: EnumRoles.SA, estatus: EstatusEnum.ACTIVO },
+          {
+            idRol: EnumRoles.CLIENTE,
+            idCliente,
+            estatus: EstatusEnum.ACTIVO,
+          },
+        ],
+        select: { id: true },
+      });
+
+      if (usuarios.length === 0) {
+        return;
+      }
+
+      const idsUsuario = [
+        ...new Set(usuarios.map((u) => Number(u.id)).filter((id) => Number.isFinite(id))),
+      ];
+
+      const existentes = await manager.find(UsuariosInstalaciones, {
+        where: {
+          idInstalacion,
+          idUsuario: In(idsUsuario),
+        },
+        select: { idUsuario: true },
+      });
+      const yaAsignados = new Set(
+        existentes.map((r) => Number(r.idUsuario)),
+      );
+
+      const pendientes = idsUsuario.filter((idUsuario) => !yaAsignados.has(idUsuario));
+      if (pendientes.length === 0) {
+        return;
+      }
+
+      await manager.save(
+        UsuariosInstalaciones,
+        pendientes.map((idUsuario) =>
+          manager.create(UsuariosInstalaciones, {
+            idUsuario,
+            idInstalacion,
+            estatus: EstatusEnum.ACTIVO,
+          }),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException(
+        'No fue posible asignar la instalación a los usuarios correspondientes. La operación no se completó.',
+      );
+    }
+  }
+
+  /**
+   * Migra todas las filas de UsuariosInstalaciones del id anterior al nuevo.
+   * Si el usuario ya tiene relación con la instalación nueva, elimina la del id anterior.
+   */
+  private async migrarUsuariosInstalaciones(
+    manager: EntityManager,
+    idInstalacionAnterior: number,
+    idInstalacionNueva: number,
+  ): Promise<void> {
+    try {
+      const relaciones = await manager.find(UsuariosInstalaciones, {
+        where: { idInstalacion: idInstalacionAnterior },
+      });
+
+      if (relaciones.length === 0) {
+        return;
+      }
+
+      const idsUsuario = [
+        ...new Set(relaciones.map((r) => Number(r.idUsuario))),
+      ];
+      const existentesNueva = await manager.find(UsuariosInstalaciones, {
+        where: {
+          idInstalacion: idInstalacionNueva,
+          idUsuario: In(idsUsuario),
+        },
+        select: { idUsuario: true },
+      });
+      const yaEnNueva = new Set(
+        existentesNueva.map((r) => Number(r.idUsuario)),
+      );
+
+      for (const rel of relaciones) {
+        const idUsuario = Number(rel.idUsuario);
+        if (yaEnNueva.has(idUsuario)) {
+          await manager.delete(UsuariosInstalaciones, { id: rel.id });
+        } else {
+          await manager.update(
+            UsuariosInstalaciones,
+            { id: rel.id },
+            { idInstalacion: idInstalacionNueva },
+          );
+          yaEnNueva.add(idUsuario);
+        }
+      }
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException(
+        'No fue posible actualizar las asignaciones de usuarios de la instalación. La operación no se completó.',
+      );
+    }
+  }
+
   private resolverAccionCambio(
     actual: Instalaciones,
     dto: UpdateInstalacionesDto,
@@ -357,6 +479,12 @@ export class InstalacionesService {
         );
       }
 
+      await this.asignarInstalacionUsuariosPorDefecto(
+        qr.manager,
+        Number(saved.id),
+        idCliente,
+      );
+
       await qr.commitTransaction();
 
       await this.bitacoraLogger.logToBitacora(
@@ -392,7 +520,9 @@ export class InstalacionesService {
         (error as Error)?.message,
       );
       if (error instanceof HttpException) throw error;
-      throw new BadRequestException((error as Error)?.message);
+      throw new BadRequestException(
+        'No fue posible crear la instalación. Verifique los datos e intente nuevamente.',
+      );
     } finally {
       await qr.release();
     }
@@ -700,14 +830,14 @@ export class InstalacionesService {
 
       if (
         !ESTATUS_INSTALACION_UPDATE_HISTORICO.includes(
-          dto.estatusInstalacion as (typeof ESTATUS_INSTALACION_UPDATE_HISTORICO)[number],
+          dto.estatusInstalacionAnterior as (typeof ESTATUS_INSTALACION_UPDATE_HISTORICO)[number],
         )
       ) {
         throw new BadRequestException(
-          'estatusInstalacion debe ser 0, 1, 3, 4 o 5',
+          'estatusInstalacionAnterior debe ser 0, 1, 3, 4 o 5',
         );
       }
-      await this.validarEstatusEnCatalogo(dto.estatusInstalacion);
+      await this.validarEstatusEnCatalogo(dto.estatusInstalacionAnterior);
 
       const idCliente = Number(actual.idCliente);
       const idProducto =
@@ -811,7 +941,7 @@ export class InstalacionesService {
           idProducto: idProductoAnterior,
           idDispositivo: idDispositivoAnterior,
           idSim: idSimAnterior,
-          estatusInstalacion: dto.estatusInstalacion,
+          estatusInstalacion: dto.estatusInstalacionAnterior,
           idInstalacionOriginal: Number(actual.id),
           vigenteDesde: actual.vigenteDesde,
           vigenteHasta: ahora,
@@ -827,8 +957,6 @@ export class InstalacionesService {
         }),
       );
 
-      await qr.manager.delete(Instalaciones, { id: actual.id, idCliente });
-
       const nueva = await qr.manager.save(
         qr.manager.create(Instalaciones, {
           idCliente,
@@ -842,6 +970,14 @@ export class InstalacionesService {
           estatus: EstatusEnum.ACTIVO,
         }),
       );
+
+      await this.migrarUsuariosInstalaciones(
+        qr.manager,
+        Number(actual.id),
+        Number(nueva.id),
+      );
+
+      await qr.manager.delete(Instalaciones, { id: actual.id, idCliente });
 
       if (cambiaProducto && estatusProductoSaliente != null) {
         await qr.manager.update(

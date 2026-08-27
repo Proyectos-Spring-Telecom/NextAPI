@@ -62,6 +62,12 @@ export enum TipoCodigoAutenticacion {
   RECUPERACION_CONTRASENA = 1,
 }
 
+/** Valores de Roles.Id */
+export enum EnumRoles {
+  SA = 1,
+  CLIENTE = 6,
+}
+
 /** Valores de Modulos.Id */
 export enum EnumModulos {
   CLIENTES = 1,
