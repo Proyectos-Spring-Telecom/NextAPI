@@ -16,6 +16,7 @@ import { Clientes } from 'src/entities/Clientes';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
 import { UpdateSimsDto } from './dto/update-sims.dto';
+import { UpdateSimEstatusDto } from './dto/update-sim-estatus.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -353,6 +354,7 @@ export class SimsService {
 
   async updateEstatus(
     id: number,
+    dto: UpdateSimEstatusDto,
     idCliente: number,
     idUser: number,
   ): Promise<ApiCrudResponse> {
@@ -366,14 +368,8 @@ export class SimsService {
 
       assertEstatusNoAsignado(Number(entity.estatus), 'SIM');
 
-      const estatusAnterior =
-        Number(entity.estatus) === EnumEstatusRecurso.DISPONIBLE
-          ? EnumEstatusRecurso.DISPONIBLE
-          : EnumEstatusRecurso.BAJA;
-      const estatus =
-        estatusAnterior === EnumEstatusRecurso.DISPONIBLE
-          ? EnumEstatusRecurso.BAJA
-          : EnumEstatusRecurso.DISPONIBLE;
+      const estatusAnterior = Number(entity.estatus);
+      const estatus = dto.estatus;
       await this.repository.update(id, { estatus });
 
       await this.bitacoraLogger.logToBitacora(
@@ -401,7 +397,7 @@ export class SimsService {
         'Sims',
         `Error al actualizar estatus de SIM ID: ${id}`,
         'UPDATE',
-        { id, idCliente },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.SIMS,
         EstatusEnumBitcora.ERROR,
