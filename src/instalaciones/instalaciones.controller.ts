@@ -184,6 +184,7 @@ export class InstalacionesController {
       'Campos: estatusInstalacionAnterior, estatusProductoAnterior, estatusDispositivoAnterior, estatusSimAnterior.',
   })
   @ApiParam({ name: 'id', description: 'ID de la instalación vigente' })
+  @ApiBody({ type: UpdateInstalacionesDto })
   @ApiResponse({ status: 200, description: 'Instalación actualizada (nuevo Id)' })
   @ApiResponse({ status: 400, description: 'Sin cambios o datos inválidos' })
   @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
