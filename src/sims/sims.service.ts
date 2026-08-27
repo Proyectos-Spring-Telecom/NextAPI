@@ -29,6 +29,7 @@ import {
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
+import { mapSimPlano, RELACIONES_SIM_LISTADO } from './map-sims.util';
 
 @Injectable()
 export class SimsService {
@@ -235,16 +236,13 @@ export class SimsService {
       };
       const [data, total] = await this.repository.findAndCount({
         where,
+        relations: [...RELACIONES_SIM_LISTADO],
         skip: (page - 1) * limit,
         take: limit,
         order: { id: 'ASC' },
       });
-      const dataNormalizada = data.map((item) => ({
-        ...item,
-        id: Number(item.id),
-      }));
       return {
-        data: dataNormalizada,
+        data: data.map((item) => mapSimPlano(item)),
         paginated: {
           total,
           page,
