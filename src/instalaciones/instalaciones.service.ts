@@ -957,6 +957,14 @@ export class InstalacionesService {
         }),
       );
 
+      // Libera UQ_Inst_SimActivo / UQ_Inst_DispositivoActivo antes del INSERT
+      // (columnas generadas = NULL cuando Estatus != 1).
+      await qr.manager.update(
+        Instalaciones,
+        { id: actual.id, idCliente },
+        { estatus: EstatusEnum.INACTIVO },
+      );
+
       const nueva = await qr.manager.save(
         qr.manager.create(Instalaciones, {
           idCliente,
