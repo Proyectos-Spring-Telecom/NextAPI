@@ -41,6 +41,7 @@ import {
 import {
   mapHistoricoPlano,
   mapInstalacionPlana,
+  RELACIONES_INSTALACION_HISTORICO,
 } from './map-instalaciones.util';
 import {
   applyPaginadoBaseJoins,
@@ -735,7 +736,10 @@ export class InstalacionesService {
           ? { idCliente: tenant.idCliente }
           : {}),
       };
-      const vigente = await this.repository.findOne({ where: whereInst });
+      const vigente = await this.repository.findOne({
+        where: whereInst,
+        relations: [...RELACIONES_INSTALACION_HISTORICO],
+      });
 
       const cadena: HistoricoInstalaciones[] = [];
       const visitados = new Set<number>();
@@ -767,6 +771,7 @@ export class InstalacionesService {
               ? { idCliente: tenant.idCliente as number }
               : {}),
           },
+          relations: [...RELACIONES_INSTALACION_HISTORICO],
         });
         if (!hist) break;
         cadena.push(hist);

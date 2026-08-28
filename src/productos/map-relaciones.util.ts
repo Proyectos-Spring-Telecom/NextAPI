@@ -1,6 +1,7 @@
 import { CatTipoProducto } from 'src/entities/CatTipoProducto';
 import { Clientes } from 'src/entities/Clientes';
 import { Productos } from 'src/entities/Productos';
+import { Usuarios } from 'src/entities/Usuarios';
 
 export function nombreCliente(cliente?: Clientes | null): string | null {
   if (!cliente) return null;
@@ -8,6 +9,16 @@ export function nombreCliente(cliente?: Clientes | null): string | null {
     cliente.nombre,
     cliente.apellidoPaterno,
     cliente.apellidoMaterno,
+  ].filter((parte) => parte?.trim());
+  return partes.length > 0 ? partes.join(' ') : null;
+}
+
+export function nombreUsuario(usuario?: Usuarios | null): string | null {
+  if (!usuario) return null;
+  const partes = [
+    usuario.nombre,
+    usuario.apellidoPaterno,
+    usuario.apellidoMaterno,
   ].filter((parte) => parte?.trim());
   return partes.length > 0 ? partes.join(' ') : null;
 }
