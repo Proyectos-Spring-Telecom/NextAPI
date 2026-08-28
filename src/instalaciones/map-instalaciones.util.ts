@@ -1,5 +1,11 @@
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
+import { nombreCliente, nombreUsuario } from 'src/productos/map-relaciones.util';
+
+export const RELACIONES_INSTALACION_HISTORICO = [
+  'idCliente2',
+  'idUsuario2',
+] as const;
 
 export function num(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -22,6 +28,8 @@ export function mapInstalacionPlana(entity: Instalaciones) {
         : null,
     vigenteDesde: entity.vigenteDesde,
     idUsuario: entity.idUsuario != null ? Number(entity.idUsuario) : null,
+    nombreCliente: nombreCliente(entity.idCliente2),
+    nombreUsuario: nombreUsuario(entity.idUsuario2),
     estatus: Number(entity.estatus),
     fechaCreacion: entity.fechaCreacion,
     fechaActualizacion: entity.fechaActualizacion,
@@ -48,6 +56,8 @@ export function mapHistoricoPlano(entity: HistoricoInstalaciones) {
         ? Number(entity.idHistoricoInstalacion)
         : null,
     idUsuario: entity.idUsuario != null ? Number(entity.idUsuario) : null,
+    nombreCliente: nombreCliente(entity.idCliente2),
+    nombreUsuario: nombreUsuario(entity.idUsuario2),
     accion: entity.accion,
     comentario: entity.comentario,
     fhArchivado: entity.fhArchivado,

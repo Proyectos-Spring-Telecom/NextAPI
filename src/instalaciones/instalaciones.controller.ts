@@ -73,7 +73,8 @@ export class InstalacionesController {
   @ApiOperation({
     summary: 'Histórico de una instalación',
     description:
-      'Devuelve la versión vigente (si existe) y la cadena de `HistoricoInstalaciones` de lo más reciente a lo más antiguo.',
+      'Devuelve la versión vigente (si existe) y la cadena de `HistoricoInstalaciones` de lo más reciente a lo más antiguo. ' +
+      'Cada elemento incluye `nombreCliente` y `nombreUsuario` en camelCase, sin JSON anidados.',
   })
   @ApiParam({
     name: 'id',
