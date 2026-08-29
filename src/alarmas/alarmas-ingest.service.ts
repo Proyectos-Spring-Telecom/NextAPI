@@ -50,8 +50,9 @@ export class AlarmasIngestService {
   async ingestEvento(
     dto: IngestEventoDto,
     idempotencyHeader: string | null,
+    options?: { origen?: 'http' | 'rabbitmq' },
   ): Promise<{ accepted: true }> {
-    this.assertIdempotencyKey(dto.idempotencyKey, idempotencyHeader);
+    this.assertIdempotencyKey(dto.idempotencyKey, idempotencyHeader, options);
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -176,8 +177,9 @@ export class AlarmasIngestService {
   async ingestHeartbeat(
     dto: IngestHeartbeatDto,
     idempotencyHeader: string | null,
+    options?: { origen?: 'http' | 'rabbitmq' },
   ): Promise<{ accepted: true }> {
-    this.assertIdempotencyKey(dto.idempotencyKey, idempotencyHeader);
+    this.assertIdempotencyKey(dto.idempotencyKey, idempotencyHeader, options);
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -228,7 +230,14 @@ export class AlarmasIngestService {
     }
   }
 
-  private assertIdempotencyKey(bodyKey: string, headerKey: string | null) {
+  private assertIdempotencyKey(
+    bodyKey: string,
+    headerKey: string | null,
+    options?: { origen?: 'http' | 'rabbitmq' },
+  ) {
+    if (options?.origen === 'rabbitmq') {
+      return;
+    }
     if (!headerKey) {
       throw new BadRequestException('Falta header Idempotency-Key');
     }
@@ -251,11 +260,13 @@ export class AlarmasIngestService {
     let panel: PanelAlarma | null = null;
     if (idDispositivo != null) {
       panel = await this.panelRepo.findOne({
-        where: { idDispositivo: Number(idDispositivo) },
+        where: { idDispositivo: Number(idDispositivo), estatus: 1 },
       });
     }
     if (!panel && cuentaSia) {
-      panel = await this.panelRepo.findOne({ where: { cuentaSia } });
+      panel = await this.panelRepo.findOne({
+        where: { cuentaSia, estatus: 1 },
+      });
     }
 
     const idPanel = panel ? Number(panel.idDispositivo) : null;

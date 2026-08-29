@@ -33,5 +33,6 @@ import { PanelOnlineScheduler } from './panel-online.scheduler';
     GatewayHmacGuard,
     PanelOnlineScheduler,
   ],
+  exports: [AlarmasIngestService],
 })
 export class AlarmasModule {}
