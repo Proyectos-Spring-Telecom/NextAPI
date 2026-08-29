@@ -13,6 +13,7 @@ import { IngestEventoDto } from './dto/ingest-evento.dto';
 import { IngestHeartbeatDto } from './dto/ingest-heartbeat.dto';
 import { AlarmasGateway } from './alarmas.gateway';
 import { mapEventoItem } from './alarmas-mapper';
+import { isoUtcToMexicoCityAsUtcDate, isoUtcToMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 
 const UPSERT_ULTIMO_SQL = `
 INSERT INTO UltimoEventoAlarma (
@@ -62,7 +63,7 @@ export class AlarmasIngestService {
         await qr.manager.insert(GatewayIngestLog, {
           idempotencyKey: dto.idempotencyKey,
           tipo: 'evento',
-          recibidoEn: new Date(dto.recibidoEn),
+          recibidoEn: isoUtcToMexicoCityAsUtcDate(dto.recibidoEn),
         });
       } catch (error) {
         if (isDuplicateKey(error)) {
@@ -95,8 +96,8 @@ export class AlarmasIngestService {
           frameCrudo: dto.frameCrudo ?? '',
           dataDescifrada: dto.dataDescifrada ?? null,
           ipOrigen: dto.ipOrigen ?? null,
-          recibidoEn: new Date(dto.recibidoEn),
-          timestampPanel: dto.timestampPanel ?? null,
+          recibidoEn: isoUtcToMexicoCityAsUtcDate(dto.recibidoEn),
+          timestampPanel: this.formatTimestampPanelIngest(dto.timestampPanel),
           estatus,
         }),
       );
@@ -189,7 +190,7 @@ export class AlarmasIngestService {
         await qr.manager.insert(GatewayIngestLog, {
           idempotencyKey: dto.idempotencyKey,
           tipo: 'heartbeat',
-          recibidoEn: new Date(dto.ultimoHeartbeat),
+          recibidoEn: isoUtcToMexicoCityAsUtcDate(dto.ultimoHeartbeat),
         });
       } catch (error) {
         if (isDuplicateKey(error)) {
@@ -211,14 +212,16 @@ export class AlarmasIngestService {
         return { accepted: true };
       }
 
+      const ultimoHeartbeat = isoUtcToMexicoCityAsUtcDate(dto.ultimoHeartbeat);
+
       await qr.manager.update(
         PanelAlarma,
         { idDispositivo: idPanel, estatus: 1 },
-        { ultimoHeartbeat: new Date(dto.ultimoHeartbeat) },
+        { ultimoHeartbeat },
       );
       await qr.commitTransaction();
 
-      this.gateway.emitHeartbeat(idPanel, dto.ultimoHeartbeat);
+      this.gateway.emitHeartbeat(idPanel, ultimoHeartbeat);
       return { accepted: true };
     } catch (error) {
       if (qr.isTransactionActive) {
@@ -228,6 +231,22 @@ export class AlarmasIngestService {
     } finally {
       await qr.release();
     }
+  }
+
+  private formatTimestampPanelIngest(
+    value: string | null | undefined,
+  ): string | null {
+    if (!value?.trim()) {
+      return null;
+    }
+    if (/T.*(Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+      try {
+        return isoUtcToMexicoCityMysql(value);
+      } catch {
+        return value;
+      }
+    }
+    return value;
   }
 
   private assertIdempotencyKey(
