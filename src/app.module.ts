@@ -17,6 +17,7 @@ import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { ProductosModule } from './productos/productos.module';
 import { AlarmasModule } from './alarmas/alarmas.module';
+import { MessagingModule } from './messaging/messaging.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -98,6 +99,23 @@ import * as jwt from 'jsonwebtoken';
         GATEWAY_HMAC_SECRET: Joi.string().min(16).required(),
         GATEWAY_API_KEY: Joi.string().allow('').optional(),
         SIA_OFFLINE_THRESHOLD_MS: Joi.number().default(600000),
+        RABBITMQ_ENABLED: Joi.boolean().default(false),
+        RABBITMQ_HOST: Joi.string().default('127.0.0.1'),
+        RABBITMQ_PORT: Joi.number().default(5672),
+        RABBITMQ_USERNAME: Joi.string().default('backend'),
+        RABBITMQ_PASSWORD: Joi.string().allow('').default(''),
+        RABBITMQ_VHOST: Joi.string().default('/'),
+        RABBITMQ_EXCHANGE: Joi.string().default('telemetry'),
+        RABBITMQ_DLX: Joi.string().default('telemetry.dlx'),
+        RABBITMQ_QUEUE_AXPRO_EVENTS: Joi.string().default(
+          'telemetry.axpro.events',
+        ),
+        RABBITMQ_QUEUE_AXPRO_HEARTBEATS: Joi.string().default(
+          'telemetry.axpro.heartbeats',
+        ),
+        RABBITMQ_QUEUE_AXPRO_DLQ: Joi.string().default('telemetry.axpro.dlq'),
+        RABBITMQ_PREFETCH_EVENTS: Joi.number().default(10),
+        RABBITMQ_PREFETCH_HEARTBEATS: Joi.number().default(50),
       }),
     }),
 
@@ -156,6 +174,8 @@ import * as jwt from 'jsonwebtoken';
     ProductosModule,
 
     AlarmasModule,
+
+    MessagingModule,
 
     WebhookEmitterModule,
   ],
