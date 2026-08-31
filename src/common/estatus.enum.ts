@@ -57,6 +57,13 @@ export const ESTATUS_PRODUCTO_DISPOSITIVO_PATCH: readonly EnumEstatusProductoDis
     EnumEstatusProductoDispositivo.INSERVIBLE,
   ] as const;
 
+/** Dispositivos que pueden recibir telemetría JT808 (inventario o instalados). */
+export const ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA: readonly EnumEstatusProductoDispositivo[] =
+  [
+    EnumEstatusProductoDispositivo.ACTIVO,
+    EnumEstatusProductoDispositivo.ASIGNADO,
+  ] as const;
+
 export enum TipoCodigoAutenticacion {
   CONFIRMACION_CORREO = 0,
   RECUPERACION_CONTRASENA = 1,
