@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { Posiciones } from 'src/entities/Posiciones';
+import { EnumCatEventos } from '../../common/cat-eventos.enum';
+import { Posiciones } from '../../entities/Posiciones';
 import {
   AcometidasPayload,
   Jt808Kind,
@@ -71,8 +72,10 @@ function assertAcometidasPayload(payload: AcometidasPayload, kind: Jt808Kind) {
   if (typeof payload.IdEvento !== 'number') {
     throw new BadRequestException('payload IdEvento requerido');
   }
-  if (kind === 'photo' && payload.IdEvento !== 10) {
-    throw new BadRequestException('photo debe traer IdEvento=10');
+  if (kind === 'photo' && payload.IdEvento !== EnumCatEventos.CAMERA) {
+    throw new BadRequestException(
+      `photo debe traer IdEvento=${EnumCatEventos.CAMERA} (Camera)`,
+    );
   }
 }
 

@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Dispositivos } from 'src/entities/Dispositivos';
+import { In, Repository } from 'typeorm';
+import { ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA } from '../../common/estatus.enum';
+import { Dispositivos } from '../../entities/Dispositivos';
 
 export interface DeviceResolved {
   imei: number;
@@ -52,7 +53,10 @@ export class DeviceLookupService {
     }
 
     const row = await this.dispositivoRepo.findOne({
-      where: { numeroSerie: deviceId, estatus: 1 },
+      where: {
+        numeroSerie: deviceId,
+        estatus: In([...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA]),
+      },
       select: ['imei', 'idCliente'],
     });
 

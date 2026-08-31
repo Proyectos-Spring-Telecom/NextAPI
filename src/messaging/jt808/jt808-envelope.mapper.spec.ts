@@ -1,3 +1,4 @@
+import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import {
   assertJt808Envelope,
   mapAcometidasToPosicion,
@@ -28,7 +29,7 @@ describe('jt808-envelope.mapper', () => {
         Alarma1: null,
         Alarma2: null,
         Energia: null,
-        IdEvento: 9,
+        IdEvento: EnumCatEventos.TRANSMISION,
         IdFoto: null,
         Bateria: null,
         Alimentacion: null,
@@ -52,7 +53,7 @@ describe('jt808-envelope.mapper', () => {
     const pos = mapAcometidasToPosicion(867806072429049, envelope.payload);
     expect(pos.imei).toBe(867806072429049);
     expect(pos.lat).toBe(19.432608);
-    expect(pos.idEvento).toBe(9);
+    expect(pos.idEvento).toBe(EnumCatEventos.TRANSMISION);
     expect(pos.estado).toBeNull();
     expect(pos.ignicion).toBeNull();
     expect((pos as Record<string, unknown>).jt808).toBeUndefined();
@@ -70,7 +71,7 @@ describe('jt808-envelope.mapper', () => {
         Lng: -99.1305,
         FechaHora: '2026-08-31 16:20:01',
         Velocidad: 62,
-        IdEvento: 24,
+        IdEvento: EnumCatEventos.DSM_DISTRACCION,
         Alarma1: 4,
         Alarma2: 1,
         Estado: null,
@@ -101,12 +102,12 @@ describe('jt808-envelope.mapper', () => {
     });
 
     const pos = mapAcometidasToPosicion(867806072429049, envelope.payload);
-    expect(pos.idEvento).toBe(24);
+    expect(pos.idEvento).toBe(EnumCatEventos.DSM_DISTRACCION);
     expect(pos.alarma1).toBe(4);
     expect(pos.alarma2).toBe(1);
   });
 
-  it('rechaza photo sin IdEvento=10', () => {
+  it('rechaza photo sin IdEvento Camera', () => {
     expect(() =>
       assertJt808Envelope({
         eventId,
@@ -118,7 +119,7 @@ describe('jt808-envelope.mapper', () => {
           Lat: 19.4326,
           Lng: -99.1332,
           FechaHora: '2026-08-31 16:25:08',
-          IdEvento: 9,
+          IdEvento: EnumCatEventos.TRANSMISION,
           Velocidad: 0,
           Direccion: 0,
           Estado: null,
@@ -126,6 +127,6 @@ describe('jt808-envelope.mapper', () => {
           Imei: null,
         },
       }),
-    ).toThrow('photo debe traer IdEvento=10');
+    ).toThrow(`photo debe traer IdEvento=${EnumCatEventos.CAMERA}`);
   });
 });

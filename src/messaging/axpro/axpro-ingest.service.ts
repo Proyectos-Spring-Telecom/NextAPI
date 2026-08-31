@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { AlarmasIngestService } from '../../alarmas/alarmas-ingest.service';
 import { decryptSiaAes } from '../../alarmas/sia/sia-dcs.aes';
 import { PanelAlarma } from '../../entities/PanelAlarma';
+import { EstatusEnum } from '../../common/estatus.enum';
 import {
   mapAxproEventToIngestDto,
   mapAxproHeartbeatToIngestDto,
@@ -64,7 +65,7 @@ export class AxproIngestService {
     cuentaSia: string,
   ): Promise<PanelAlarma | null> {
     return this.panelRepo.findOne({
-      where: { cuentaSia, estatus: 1 },
+      where: { cuentaSia, estatus: EstatusEnum.ACTIVO },
     });
   }
 
