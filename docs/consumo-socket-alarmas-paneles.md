@@ -200,6 +200,8 @@ socket.on('disconnect', (reason) => {
 
 ---
 
+> **Guía Angular completa:** [consumo-socket-alarmas-angular.md](./consumo-socket-alarmas-angular.md) (servicio, dashboard, reconexión, checklist prod).
+
 ## 7. Ejemplo — Angular (servicio)
 
 ```typescript

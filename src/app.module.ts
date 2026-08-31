@@ -116,6 +116,19 @@ import * as jwt from 'jsonwebtoken';
         RABBITMQ_QUEUE_AXPRO_DLQ: Joi.string().default('telemetry.axpro.dlq'),
         RABBITMQ_PREFETCH_EVENTS: Joi.number().default(10),
         RABBITMQ_PREFETCH_HEARTBEATS: Joi.number().default(50),
+        RABBITMQ_QUEUE_JT808_EVENTS: Joi.string().default(
+          'telemetry.jt808.events',
+        ),
+        RABBITMQ_QUEUE_JT808_MEDIA: Joi.string().default(
+          'telemetry.jt808.media',
+        ),
+        RABBITMQ_QUEUE_JT808_DLQ: Joi.string().default('telemetry.jt808.dlq'),
+        RABBITMQ_PREFETCH_JT808: Joi.number().default(20),
+        REDIS_ENABLED: Joi.boolean().default(false),
+        REDIS_HOST: Joi.string().default('127.0.0.1'),
+        REDIS_PORT: Joi.number().default(6379),
+        REDIS_PASSWORD: Joi.string().allow('').default(''),
+        REDIS_DEVICE_CACHE_TTL_SEC: Joi.number().default(600),
       }),
     }),
 

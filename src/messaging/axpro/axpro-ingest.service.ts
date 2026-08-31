@@ -5,9 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AlarmasIngestService } from 'src/alarmas/alarmas-ingest.service';
-import { decryptSiaAes } from 'src/alarmas/sia/sia-dcs.aes';
-import { PanelAlarma } from 'src/entities/PanelAlarma';
+import { AlarmasIngestService } from '../../alarmas/alarmas-ingest.service';
+import { decryptSiaAes } from '../../alarmas/sia/sia-dcs.aes';
+import { PanelAlarma } from '../../entities/PanelAlarma';
 import {
   mapAxproEventToIngestDto,
   mapAxproHeartbeatToIngestDto,
@@ -16,7 +16,7 @@ import {
   AxproEventPayload,
   AxproHeartbeatPayload,
   AxproTelemetryEnvelope,
-} from './axpro-envelope.types';
+} from './axpro.types';
 
 @Injectable()
 export class AxproIngestService {
