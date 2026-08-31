@@ -1,12 +1,6 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
 
@@ -29,10 +23,15 @@ export class DeviceImeiMissingError extends Error {
   }
 }
 
+interface CacheEntry {
+  value: DeviceResolved;
+  expiresAt: number;
+}
+
 @Injectable()
-export class DeviceLookupService implements OnModuleInit, OnModuleDestroy {
+export class DeviceLookupService {
   private readonly logger = new Logger(DeviceLookupService.name);
-  private redis?: Redis;
+  private readonly cache = new Map<string, CacheEntry>();
 
   constructor(
     private readonly config: ConfigService,
@@ -40,43 +39,13 @@ export class DeviceLookupService implements OnModuleInit, OnModuleDestroy {
     private readonly dispositivoRepo: Repository<Dispositivos>,
   ) {}
 
-  onModuleInit() {
-    const enabled =
-      String(this.config.get('REDIS_ENABLED') ?? 'false').toLowerCase() ===
-      'true';
-    if (!enabled) {
-      return;
-    }
-    const host = this.config.get<string>('REDIS_HOST') ?? '127.0.0.1';
-    const port = Number(this.config.get('REDIS_PORT') ?? 6379) || 6379;
-    const password = this.config.get<string>('REDIS_PASSWORD');
-    this.redis = new Redis({
-      host,
-      port,
-      password: password || undefined,
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
-    });
-    this.redis.connect().catch((err) => {
-      this.logger.warn(
-        `Redis no disponible — lookup solo MySQL: ${(err as Error).message}`,
-      );
-      this.redis?.disconnect();
-      this.redis = undefined;
-    });
-  }
-
-  async onModuleDestroy() {
-    await this.redis?.quit().catch(() => undefined);
-  }
-
   async resolve(numeroSerie: string): Promise<DeviceResolved> {
     const deviceId = numeroSerie.trim();
     if (!deviceId) {
       throw new DeviceNotFoundError(numeroSerie);
     }
 
-    const cached = await this.readCache(deviceId);
+    const cached = this.readCache(deviceId);
     if (cached) {
       this.logger.debug(`cache hit device:ns:${deviceId}`);
       return cached;
@@ -98,64 +67,32 @@ export class DeviceLookupService implements OnModuleInit, OnModuleDestroy {
       imei: Number(row.imei),
       idCliente: Number(row.idCliente),
     };
-    await this.writeCache(deviceId, resolved);
+    this.writeCache(deviceId, resolved);
     return resolved;
   }
 
-  private cacheKey(deviceId: string): string {
-    return `device:ns:${deviceId}`;
+  private ttlMs(): number {
+    const sec =
+      Number(this.config.get('DEVICE_LOOKUP_CACHE_TTL_SEC') ?? 600) || 600;
+    return sec * 1000;
   }
 
-  private ttlSec(): number {
-    return Number(this.config.get('REDIS_DEVICE_CACHE_TTL_SEC') ?? 600) || 600;
-  }
-
-  private async readCache(deviceId: string): Promise<DeviceResolved | null> {
-    if (!this.redis) {
+  private readCache(deviceId: string): DeviceResolved | null {
+    const entry = this.cache.get(deviceId);
+    if (!entry) {
       return null;
     }
-    try {
-      const raw = await this.redis.get(this.cacheKey(deviceId));
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw) as DeviceResolved;
-      if (
-        parsed?.imei != null &&
-        Number.isFinite(Number(parsed.imei)) &&
-        parsed.idCliente != null
-      ) {
-        return {
-          imei: Number(parsed.imei),
-          idCliente: Number(parsed.idCliente),
-        };
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Redis read falló device:ns:${deviceId}: ${(error as Error).message}`,
-      );
+    if (Date.now() >= entry.expiresAt) {
+      this.cache.delete(deviceId);
+      return null;
     }
-    return null;
+    return entry.value;
   }
 
-  private async writeCache(
-    deviceId: string,
-    value: DeviceResolved,
-  ): Promise<void> {
-    if (!this.redis) {
-      return;
-    }
-    try {
-      await this.redis.set(
-        this.cacheKey(deviceId),
-        JSON.stringify(value),
-        'EX',
-        this.ttlSec(),
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Redis write falló device:ns:${deviceId}: ${(error as Error).message}`,
-      );
-    }
+  private writeCache(deviceId: string, value: DeviceResolved): void {
+    this.cache.set(deviceId, {
+      value,
+      expiresAt: Date.now() + this.ttlMs(),
+    });
   }
 }
