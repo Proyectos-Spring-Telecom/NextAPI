@@ -2,7 +2,7 @@ import {
   mapAxproEventToIngestDto,
   mapAxproHeartbeatToIngestDto,
 } from './axpro-envelope.mapper';
-import { AxproTelemetryEnvelope } from './axpro-envelope.types';
+import { AxproTelemetryEnvelope } from './axpro.types';
 
 describe('axpro-envelope.mapper', () => {
   const eventId =

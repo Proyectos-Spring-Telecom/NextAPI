@@ -1,13 +1,10 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AlarmasModule } from 'src/alarmas/alarmas.module';
-import { PanelAlarma } from 'src/entities/PanelAlarma';
-import { AxproIngestService } from './axpro-ingest.service';
-import { RabbitMqConnectionService } from './rabbitmq.connection.service';
+import { AxproModule } from './axpro/axpro.module';
+import { RabbitMqModule } from './core/rabbitmq.module';
+import { Jt808Module } from './jt808/jt808.module';
 
 @Module({
-  imports: [AlarmasModule, TypeOrmModule.forFeature([PanelAlarma])],
-  providers: [AxproIngestService, RabbitMqConnectionService],
-  exports: [AxproIngestService],
+  imports: [RabbitMqModule, AxproModule, Jt808Module],
+  exports: [AxproModule, Jt808Module],
 })
 export class MessagingModule {}

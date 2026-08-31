@@ -1,12 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { IngestEventoDto } from 'src/alarmas/dto/ingest-evento.dto';
-import { IngestHeartbeatDto } from 'src/alarmas/dto/ingest-heartbeat.dto';
-import { etiquetaTipoEvento } from '../alarmas/sia/sia-codes.map';
+import { IngestEventoDto } from '../../alarmas/dto/ingest-evento.dto';
+import { IngestHeartbeatDto } from '../../alarmas/dto/ingest-heartbeat.dto';
+import { etiquetaTipoEvento } from '../../alarmas/sia/sia-codes.map';
 import {
   AxproEventPayload,
   AxproHeartbeatPayload,
   AxproTelemetryEnvelope,
-} from './axpro-envelope.types';
+} from './axpro.types';
 
 const EVENT_ID_RE = /^[a-fA-F0-9]{64}$/;
 
@@ -93,8 +93,7 @@ export function mapAxproEventToIngestDto(
     timestampPanel: payload.timestampPanel ?? null,
     ipOrigen: payload.ipOrigen ?? null,
     frameCrudo: payload.frameCrudo ?? '',
-    dataDescifrada:
-      dataDescifrada ?? payload.dataDescifrada ?? null,
+    dataDescifrada: dataDescifrada ?? payload.dataDescifrada ?? null,
     idDispositivo: payload.idDispositivo ?? null,
     idCliente: payload.idCliente ?? null,
     idempotencyKey: envelope.eventId.toLowerCase(),
@@ -117,17 +116,4 @@ export function mapAxproHeartbeatToIngestDto(
     ipOrigen: payload.ipOrigen ?? null,
     idempotencyKey: envelope.eventId.toLowerCase(),
   };
-}
-
-export function isPermanentIngestError(error: unknown): boolean {
-  if (error instanceof BadRequestException) {
-    return true;
-  }
-  if (error instanceof SyntaxError) {
-    return true;
-  }
-  if (error instanceof Error && /incoherente|inválido/i.test(error.message)) {
-    return true;
-  }
-  return false;
 }

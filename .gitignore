@@ -5,6 +5,9 @@
 
 # Documentación interna (Markdown en /docs sí se versiona)
 /document 
+.docs
+.docs/*
+/docs
 
 # Logs
 logs
