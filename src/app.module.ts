@@ -114,6 +114,7 @@ import * as jwt from 'jsonwebtoken';
           'telemetry.axpro.heartbeats',
         ),
         RABBITMQ_QUEUE_AXPRO_DLQ: Joi.string().default('telemetry.axpro.dlq'),
+        RABBITMQ_PREFETCH: Joi.number().default(10),
         RABBITMQ_PREFETCH_EVENTS: Joi.number().default(10),
         RABBITMQ_PREFETCH_HEARTBEATS: Joi.number().default(50),
         RABBITMQ_QUEUE_JT808_EVENTS: Joi.string().default(
@@ -123,7 +124,14 @@ import * as jwt from 'jsonwebtoken';
           'telemetry.jt808.media',
         ),
         RABBITMQ_QUEUE_JT808_DLQ: Joi.string().default('telemetry.jt808.dlq'),
-        RABBITMQ_PREFETCH_JT808: Joi.number().default(20),
+        RABBITMQ_PREFETCH_JT808: Joi.number().default(10),
+        RABBITMQ_MAX_RETRIES: Joi.number().default(3),
+        RABBITMQ_HEARTBEAT: Joi.number().default(60),
+        RABBITMQ_RECONNECT_MAX_DELAY: Joi.number().default(30000),
+        RABBITMQ_MAX_CONCURRENT_DB: Joi.number().default(5),
+        CONSUMER_WATCHDOG_MINUTES: Joi.number().default(15),
+        DB_CONNECTION_LIMIT: Joi.number().default(10),
+        DB_LOGGING: Joi.boolean().default(false),
         DEVICE_LOOKUP_CACHE_TTL_SEC: Joi.number().default(600),
       }),
     }),
@@ -144,10 +152,12 @@ import * as jwt from 'jsonwebtoken';
         dateStrings: false,
         timezone: config.get<string>('DB_TZ'),
         bigNumberStrings: false,
-        logging: true,
+        logging:
+          config.get<boolean>('DB_LOGGING') === true ||
+          process.env.NODE_ENV !== 'production',
         extra: {
-          // Evita que bigint se devuelvan como string
           decimalNumbers: true,
+          connectionLimit: config.get<number>('DB_CONNECTION_LIMIT') ?? 10,
         },
       }),
     }),
