@@ -111,32 +111,6 @@ export class UpdateUsuarioDto {
     type: Number,
     isArray: true,
     description:
-      'Lista definitiva de instalaciones activas. Omitir o vacío = no modificar. Enviar [] para desactivar todas.',
-    example: [1, 4],
-  })
-  instalacionesIds?: number[];
-
-  @IsOptional()
-  @Transform(transformOptionalNumberArray)
-  @IsArray()
-  @IsNumber({}, { each: true })
-  @ApiPropertyOptional({
-    type: Number,
-    isArray: true,
-    description:
-      'Lista definitiva de paneles activos. Omitir o vacío = no modificar. Enviar [] para desactivar todos.',
-    example: [2, 5],
-  })
-  panelesAlarmaIds?: number[];
-
-  @IsOptional()
-  @Transform(transformOptionalNumberArray)
-  @IsArray()
-  @IsNumber({}, { each: true })
-  @ApiPropertyOptional({
-    type: Number,
-    isArray: true,
-    description:
       'Lista definitiva de soluciones activas. Omitir o vacío = no modificar. Enviar [] para desactivar todas.',
     example: [1, 3],
   })

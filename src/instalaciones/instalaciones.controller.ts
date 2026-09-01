@@ -69,6 +69,34 @@ export class InstalacionesController {
     );
   }
 
+  @Get('list/tipo/:idTipoProducto')
+  @ApiOperation({
+    summary: 'Lista completa de instalaciones activas por tipo de producto',
+    description:
+      'Solo `Estatus = 1`. Mismo formato que el paginado (instalación → cliente → producto+detalle → dispositivo → SIM). ' +
+      'Alcance por rol vía tenant (`IdCliente`). ' +
+      'Rol **Usuario (9)**: solo instalaciones con relación activa en `UsuariosInstalaciones` para el usuario del token.',
+  })
+  @ApiParam({
+    name: 'idTipoProducto',
+    description: '1=vehículo, 2=activo, 3=inmueble, 4=persona',
+    example: 1,
+  })
+  @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
+  @ApiResponse({ status: 400, description: 'Tipo de producto inválido' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async findAllListByTipoProducto(
+    @Param('idTipoProducto', ParseIntPipe) idTipoProducto: number,
+    @Request() req,
+  ): Promise<ApiResponseCommon> {
+    return this.instalacionesService.findAllListByTipoProducto(
+      req.user.idCliente,
+      req.user.rol,
+      req.user.userId,
+      idTipoProducto,
+    );
+  }
+
   @Get('historico/:id')
   @ApiOperation({
     summary: 'Histórico de una instalación',

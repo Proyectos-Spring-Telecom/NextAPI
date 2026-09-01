@@ -19,22 +19,28 @@ import {
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { ClientesService } from 'src/clientes/clientes.service';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
-import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
-import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
-import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { Soluciones } from 'src/entities/Soluciones';
-import { Instalaciones } from 'src/entities/Instalaciones';
 import { Clientes } from 'src/entities/Clientes';
 import { UpdateUsuarioContrasena } from './dto/update-usuario-contrasena.dto';
+import { ResetUsuarioContrasenaDto } from './dto/reset-usuario-contrasena.dto';
 import { UpdateMiPinDto } from './dto/update-mi-pin.dto';
 import { SetFaceAuthDto } from './dto/set-face-auth.dto';
+import { AsignarUsuarioInstalacionesDto } from './dto/asignar-usuario-instalaciones.dto';
 import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
-import { EnumModulos, EstatusEnum } from 'src/common/estatus.enum';
+import { EnumModulos, EstatusEnum, esRolAccesoGlobal, EnumRoles } from 'src/common/estatus.enum';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { S3Service } from 'src/s3/s3.service';
 import { AuthService } from 'src/auth/auth.service';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import {
+  applyPaginadoBaseJoins,
+  applyPaginadoSelectBase,
+  applyPaginadoTodosTiposProducto,
+  mapInstalacionPaginadaPlana,
+} from 'src/instalaciones/helpers/instalaciones-paginado.helpers';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 
 @Injectable()
@@ -52,6 +58,8 @@ export class UsuariosService {
     private readonly tenantFilter: TenantFilterService,
     private readonly s3Service: S3Service,
     private readonly authService: AuthService,
+    @InjectRepository(Instalaciones)
+    private readonly instalacionesRepository: Repository<Instalaciones>,
   ) {}
 
   // ========================================
@@ -79,7 +87,7 @@ export class UsuariosService {
           },
         };
       }
-      const excludeSelf = rolNum === 1 || rolNum === 2 ? '' : ' AND u.Id != ? ';
+      const excludeSelf = esRolAccesoGlobal(rolNum) ? '' : ' AND u.Id != ? ';
       const usuariosSql = `
 SELECT
   u.Id AS Id,
@@ -303,7 +311,7 @@ FROM Usuarios u
 INNER JOIN Roles r ON u.IdRol = r.Id
 LEFT JOIN Clientes c ON u.IdCliente = c.Id`;
 
-      if (rolNum === 1 || rolNum === 2) {
+      if (esRolAccesoGlobal(rolNum)) {
         usuarioData = await this.usuarioRepository.query(
           `${selectUsuario}
 WHERE u.Id = ?
@@ -360,12 +368,200 @@ ORDER BY u.Id DESC`,
   }
 
   // ========================================
+  // 🔹 INSTALACIONES ASIGNADAS AL USUARIO (UsuariosInstalaciones)
+  // ========================================
+  async getInstalacionesByUsuario(
+    idUsuario: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ApiResponseCommon> {
+    try {
+      await this.getUsuarioByID(idUsuario, idClienteToken, rol);
+
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+        rol,
+        idClienteToken,
+      );
+      if (tenant.sinAcceso) {
+        return { data: [] };
+      }
+
+      const qb = this.instalacionesRepository.createQueryBuilder('i');
+      applyPaginadoBaseJoins(qb);
+      applyPaginadoSelectBase(qb);
+      applyPaginadoTodosTiposProducto(qb);
+
+      qb.innerJoin(
+        UsuariosInstalaciones,
+        'ui',
+        'ui.idInstalacion = i.id AND ui.idUsuario = :idUsuario AND ui.estatus = :uiEstatus',
+        { idUsuario, uiEstatus: EstatusEnum.ACTIVO },
+      ).orderBy('i.id', 'ASC');
+
+      if (tenant.idCliente !== undefined) {
+        if (typeof tenant.idCliente === 'number') {
+          qb.andWhere('i.idCliente = :tenantIdCliente', {
+            tenantIdCliente: tenant.idCliente,
+          });
+        } else {
+          const ids = this.extractInValues(tenant.idCliente);
+          qb.andWhere('i.idCliente IN (:...tenantIds)', { tenantIds: ids });
+        }
+      }
+
+      const rows = await qb.getRawMany();
+
+      return {
+        data: rows.map((row) => mapInstalacionPaginadaPlana(row)),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al obtener las instalaciones del usuario.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  private extractInValues(op: ReturnType<typeof In>): number[] {
+    const anyOp = op as unknown as { value?: unknown };
+    const raw = anyOp.value;
+    if (Array.isArray(raw)) {
+      return raw.map(Number);
+    }
+    return [];
+  }
+
+  // ========================================
+  // 🔹 ASIGNAR INSTALACIONES A USUARIO (UsuariosInstalaciones)
+  // ========================================
+  async asignarInstalacionesUsuario(
+    dto: AsignarUsuarioInstalacionesDto,
+    idClienteToken: number,
+    rol: number,
+    idActor: number,
+  ): Promise<ApiCrudResponse> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const usuarioRepo = queryRunner.manager.getRepository(Usuarios);
+    const usuariosInstalacionesRepo =
+      queryRunner.manager.getRepository(UsuariosInstalaciones);
+    const instalacionesRepo = queryRunner.manager.getRepository(Instalaciones);
+
+    try {
+      await this.getUsuarioByID(dto.idUsuario, idClienteToken, rol);
+
+      const usuario = await usuarioRepo.findOne({
+        where: { id: dto.idUsuario },
+      });
+      if (!usuario) {
+        throw new NotFoundException(
+          `No se encontró un usuario con ID: ${dto.idUsuario}.`,
+        );
+      }
+
+      const instalacionesIdsUnicos = [
+        ...new Set((dto.instalacionesIds ?? []).map(Number)),
+      ];
+      const idClienteUsuario = Number(usuario.idCliente);
+
+      if (instalacionesIdsUnicos.length > 0) {
+        const instalaciones = await instalacionesRepo.find({
+          where: {
+            id: In(instalacionesIdsUnicos),
+            idCliente: idClienteUsuario,
+            estatus: EstatusEnum.ACTIVO,
+          },
+        });
+
+        if (instalaciones.length !== instalacionesIdsUnicos.length) {
+          throw new BadRequestException(
+            'Una o más instalaciones no existen, no están activas o no pertenecen al cliente del usuario.',
+          );
+        }
+      }
+
+      await this.sincronizarRelacionesEstatus(
+        usuariosInstalacionesRepo as Repository<{
+          id: number;
+          estatus: number;
+          idUsuario: number;
+        }>,
+        dto.idUsuario,
+        instalacionesIdsUnicos,
+        (relacion) =>
+          Number((relacion as UsuariosInstalaciones).idInstalacion),
+        (idInstalacion) => ({
+          idUsuario: dto.idUsuario,
+          idInstalacion,
+          estatus: 1,
+        }),
+      );
+
+      await queryRunner.commitTransaction();
+
+      const querylogger = {
+        idUsuario: dto.idUsuario,
+        instalacionesIds: instalacionesIdsUnicos,
+      };
+      await this.bitacoraLogger.logToBitacora(
+        'Usuarios',
+        `Se asignaron instalaciones al usuario con ID: ${dto.idUsuario}.`,
+        'UPDATE',
+        querylogger,
+        idActor,
+        EnumModulos.USUARIOS,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      return {
+        status: 'success',
+        message: 'Instalaciones asignadas correctamente',
+        data: {
+          id: dto.idUsuario,
+          nombre: `${usuario.nombre} ${usuario.apellidoPaterno}`.trim() || '',
+        },
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      const querylogger = {
+        idUsuario: dto.idUsuario,
+        instalacionesIds: dto.instalacionesIds,
+      };
+      await this.bitacoraLogger.logToBitacora(
+        'Usuarios',
+        `Error al asignar instalaciones al usuario con ID: ${dto.idUsuario}.`,
+        'UPDATE',
+        querylogger,
+        idActor,
+        EnumModulos.USUARIOS,
+        EstatusEnumBitcora.ERROR,
+        (error as Error)?.message,
+      );
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al asignar las instalaciones al usuario.',
+        error: (error as Error)?.message,
+      });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // ========================================
   // 🔹 CREACION DE USUARIOS (transacción)
   // ========================================
   async createUsuario(
     createUsuarioDto: CreateUsuarioDto,
     idUser: string,
     fileFotoPerfil?: Express.Multer.File,
+    creatorRol?: number,
   ): Promise<ApiCrudResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -373,9 +569,6 @@ ORDER BY u.Id DESC`,
 
     const usuarioRepo = queryRunner.manager.getRepository(Usuarios);
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
-    const usuariosInstalacionesRepo =
-      queryRunner.manager.getRepository(UsuariosInstalaciones);
-    const usuarioPanelAlarmaRepo = queryRunner.manager.getRepository(UsuarioPanelAlarma);
     const asignacionSolucionesRepo =
       queryRunner.manager.getRepository(AsignacionSoluciones);
 
@@ -397,16 +590,14 @@ ORDER BY u.Id DESC`,
 
       const {
         permisosIds,
-        instalacionesIds = [],
-        panelesAlarmaIds = [],
         solucionesIds = [],
+        idRol: idRolBody,
         fotoPerfil: dtoFotoPerfil,
         ...usuarioData
       } = createUsuarioDto;
 
+      const idRol = this.resolveIdRolOnCreate(idRolBody, creatorRol);
       const permisosIdsUnicos = [...new Set(permisosIds ?? [])];
-      const instalacionesIdsUnicos = [...new Set(instalacionesIds ?? [])];
-      const panelesAlarmaIdsUnicos = [...new Set(panelesAlarmaIds ?? [])];
       const solucionesIdsUnicos = [...new Set(solucionesIds ?? [])];
 
       const urlFromBody = (v: string | null | undefined) =>
@@ -428,6 +619,7 @@ ORDER BY u.Id DESC`,
 
       const newUser = usuarioRepo.create({
         ...usuarioData,
+        idRol,
         ...(fotoPerfil != null ? { fotoPerfil } : {}),
         passwordHash: hashedPassword,
         emailConfirmado: 1,
@@ -444,48 +636,6 @@ ORDER BY u.Id DESC`,
           }),
         );
         await permisosRepo.save(usuariosPermisos);
-      }
-
-      if (instalacionesIdsUnicos.length > 0) {
-        const instalacionesRepo = queryRunner.manager.getRepository(Instalaciones);
-        const instalaciones = await instalacionesRepo.find({
-          where: { id: In(instalacionesIdsUnicos) },
-        });
-
-        if (instalaciones.length !== instalacionesIdsUnicos.length) {
-          throw new BadRequestException(
-            'Una o más instalaciones proporcionadas no existen.',
-          );
-        }
-
-        const usuariosInstalaciones = instalacionesIdsUnicos.map((idInstalacion) =>
-          usuariosInstalacionesRepo.create({
-            idUsuario: userSave.id,
-            idInstalacion,
-          }),
-        );
-        await usuariosInstalacionesRepo.save(usuariosInstalaciones);
-      }
-
-      if (panelesAlarmaIdsUnicos.length > 0) {
-        const panelRepo = queryRunner.manager.getRepository(PanelAlarma);
-        const paneles = await panelRepo.find({
-          where: { idDispositivo: In(panelesAlarmaIdsUnicos) },
-        });
-
-        if (paneles.length !== panelesAlarmaIdsUnicos.length) {
-          throw new BadRequestException(
-            'Uno o más paneles de alarma proporcionados no existen.',
-          );
-        }
-
-        const usuariosPanelesAlarma = panelesAlarmaIdsUnicos.map((idPanelAlarma) =>
-          usuarioPanelAlarmaRepo.create({
-            idUsuario: userSave.id,
-            idPanelAlarma,
-          }),
-        );
-        await usuarioPanelAlarmaRepo.save(usuariosPanelesAlarma);
       }
 
       if (solucionesIdsUnicos.length > 0) {
@@ -514,9 +664,8 @@ ORDER BY u.Id DESC`,
       const { passwordHash: _passwordHash, ...payloadBitacora } = createUsuarioDto;
       const querylogger = {
         ...payloadBitacora,
+        idRol,
         permisosIds: permisosIdsUnicos,
-        instalacionesIds: instalacionesIdsUnicos,
-        panelesAlarmaIds: panelesAlarmaIdsUnicos,
         solucionesIds: solucionesIdsUnicos,
       };
       await this.bitacoraLogger.logToBitacora(
@@ -563,6 +712,38 @@ ORDER BY u.Id DESC`,
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private resolveIdRolOnCreate(
+    idRolBody: number | undefined,
+    creatorRol?: number,
+  ): number {
+    if (
+      creatorRol === EnumRoles.CLIENTE ||
+      creatorRol === EnumRoles.USUARIO
+    ) {
+      return EnumRoles.USUARIO;
+    }
+    if (idRolBody == null || !Number.isFinite(Number(idRolBody))) {
+      throw new BadRequestException('idRol es obligatorio.');
+    }
+    return Number(idRolBody);
+  }
+
+  private resolveIdRolOnUpdate(
+    idRolBody: number | undefined,
+    creatorRol?: number,
+  ): number | undefined {
+    if (idRolBody === undefined) {
+      return undefined;
+    }
+    if (
+      creatorRol === EnumRoles.CLIENTE ||
+      creatorRol === EnumRoles.USUARIO
+    ) {
+      return EnumRoles.USUARIO;
+    }
+    return Number(idRolBody);
   }
 
   // ========================================
@@ -639,6 +820,70 @@ ORDER BY u.Id DESC`,
       }
       throw new InternalServerErrorException({
         message: 'Error al actualizar la contraseña.',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  // ========================================
+  // 🔹 CAMBIAR CONTRASEÑA SIN CONTRASEÑA ACTUAL (usuario autenticado por token)
+  // ========================================
+  async resetContrasena(
+    targetUserId: number,
+    actorUserId: number,
+    dto: ResetUsuarioContrasenaDto,
+  ): Promise<string> {
+    try {
+      const usuario = await this.usuarioRepository
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .where('u.id = :id', { id: targetUserId })
+        .getOne();
+
+      if (!usuario) {
+        throw new BadRequestException('Usuario no encontrado');
+      }
+
+      if (dto.passwordNueva !== dto.passwordConfirmacion) {
+        throw new BadRequestException(
+          'La contraseña y la confirmación deben coincidir.',
+        );
+      }
+
+      const isSamePassword = await bcrypt.compare(
+        dto.passwordNueva,
+        usuario.passwordHash,
+      );
+      if (isSamePassword) {
+        throw new BadRequestException(
+          'La nueva contraseña no puede ser igual a la anterior.',
+        );
+      }
+
+      const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
+      await this.usuarioRepository.update(usuario.id, {
+        passwordHash: hashedPassword,
+        tokenRevocado: 1,
+      });
+      await this.authService.revokeAllRefreshSessionsForUser(usuario.id);
+
+      await this.bitacoraLogger.logToBitacora(
+        'Usuarios',
+        `Se ha actualizado la contraseña del usuario con ID: ${usuario.id}.`,
+        'UPDATE',
+        { id: usuario.id },
+        actorUserId,
+        EnumModulos.USUARIOS,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      return `La contraseña del usuario ${usuario.nombre} ha sido actualizada exitosamente.`;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Ocurrió un error al actualizar contraseña del usuario.',
         error: (error as Error)?.message,
       });
     }
@@ -809,6 +1054,7 @@ ORDER BY u.Id DESC`,
     updateUsuarioDto: UpdateUsuarioDto,
     idUser: string,
     fileFotoPerfil?: Express.Multer.File,
+    creatorRol?: number,
   ): Promise<ApiCrudResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -816,9 +1062,6 @@ ORDER BY u.Id DESC`,
 
     const usuarioRepo = queryRunner.manager.getRepository(Usuarios);
     const permisosRepo = queryRunner.manager.getRepository(UsuariosPermisos);
-    const usuariosInstalacionesRepo =
-      queryRunner.manager.getRepository(UsuariosInstalaciones);
-    const usuarioPanelAlarmaRepo = queryRunner.manager.getRepository(UsuarioPanelAlarma);
     const asignacionSolucionesRepo =
       queryRunner.manager.getRepository(AsignacionSoluciones);
 
@@ -838,15 +1081,17 @@ ORDER BY u.Id DESC`,
 
       const {
         permisosIds,
-        instalacionesIds,
-        panelesAlarmaIds,
         solucionesIds,
+        idRol: idRolBody,
         fotoPerfil: dtoFotoPerfil,
         ...restUpdate
       } = updateUsuarioDto;
 
+      const idRolResolved = this.resolveIdRolOnUpdate(idRolBody, creatorRol);
+
       const usuarioData: Record<string, unknown> = {
         ...restUpdate,
+        ...(idRolResolved !== undefined ? { idRol: idRolResolved } : {}),
         emailConfirmado: EstatusEnum.ACTIVO,
       };
 
@@ -883,34 +1128,6 @@ ORDER BY u.Id DESC`,
           permisosIds,
           (relacion) => Number((relacion as UsuariosPermisos).idPermiso),
           (idPermiso) => ({ idUsuario: id, idPermiso, estatus: 1 }),
-        );
-      }
-
-      if (Array.isArray(instalacionesIds)) {
-        await this.sincronizarRelacionesEstatus(
-          usuariosInstalacionesRepo as Repository<{
-            id: number;
-            estatus: number;
-            idUsuario: number;
-          }>,
-          id,
-          instalacionesIds,
-          (relacion) => Number((relacion as UsuariosInstalaciones).idInstalacion),
-          (idInstalacion) => ({ idUsuario: id, idInstalacion, estatus: 1 }),
-        );
-      }
-
-      if (Array.isArray(panelesAlarmaIds)) {
-        await this.sincronizarRelacionesEstatus(
-          usuarioPanelAlarmaRepo as Repository<{
-            id: number;
-            estatus: number;
-            idUsuario: number;
-          }>,
-          id,
-          panelesAlarmaIds,
-          (relacion) => Number((relacion as UsuarioPanelAlarma).idPanelAlarma),
-          (idPanelAlarma) => ({ idUsuario: id, idPanelAlarma, estatus: 1 }),
         );
       }
 

@@ -90,14 +90,16 @@ export class CreateUsuarioDto {
   @IsString()
   fotoPerfil?: string;
 
-  @ApiProperty({
-    description: 'ID del rol asignado al usuario',
+  @ApiPropertyOptional({
+    description:
+      'ID del rol asignado al usuario. Obligatorio salvo si quien crea tiene rol Cliente (6) o Usuario (9); en ese caso se asigna Usuario (9) automáticamente.',
     example: 3,
     type: 'integer',
   })
   @Type(() => Number)
+  @IsOptional()
   @IsInt()
-  idRol: number;
+  idRol?: number;
 
   @ApiProperty({
     description: 'ID del cliente al que pertenece el usuario',
@@ -121,34 +123,6 @@ export class CreateUsuarioDto {
   @IsArray()
   @IsNumber({}, { each: true })
   permisosIds: number[];
-
-  @ApiPropertyOptional({
-    description:
-      'IDs de instalaciones a asignar en UsuariosInstalaciones. Si se omite, no se crean relaciones.',
-    example: [1, 4, 6],
-    type: Number,
-    isArray: true,
-    default: [],
-  })
-  @Transform(transformNumberArray)
-  @IsOptional()
-  @IsArray()
-  @IsNumber({}, { each: true })
-  instalacionesIds?: number[];
-
-  @ApiPropertyOptional({
-    description:
-      'IDs de paneles de alarma a asignar en UsuarioPanelAlarma. Si se omite, no se crean relaciones.',
-    example: [2, 5],
-    type: Number,
-    isArray: true,
-    default: [],
-  })
-  @Transform(transformNumberArray)
-  @IsOptional()
-  @IsArray()
-  @IsNumber({}, { each: true })
-  panelesAlarmaIds?: number[];
 
   @ApiPropertyOptional({
     description:
@@ -177,7 +151,5 @@ export const CREATE_USUARIO_SWAGGER_EXAMPLE = {
   idRol: 3,
   idCliente: 6,
   permisosIds: [3, 7, 15],
-  instalacionesIds: [1, 4, 6],
-  panelesAlarmaIds: [2, 5],
   solucionesIds: [1, 4],
 } as const;

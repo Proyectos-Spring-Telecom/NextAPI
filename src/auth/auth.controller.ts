@@ -14,7 +14,6 @@ import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
-import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
@@ -119,21 +118,6 @@ export class AuthController {
   async getProfile(@Request() req: { user: { userId: number } }) {
     this.logger.log(`HTTP GET login/me (userId=${req.user.userId})`);
     return this.authService.getProfileByToken(req.user.userId);
-  }
-
-  // ========================================
-  // 🔹 PATCH ROUTES - Rutas específicas primero
-  // ========================================
-
-  @Post('cambiar/accesso')
-  @UseGuards(JwtAuthGuard)
-  async resetPassword(
-    @Body() loginAuthResetDto: LoginAuthResetDto,
-    @Request() req: { user: { userId: number } },
-  ) {
-    const idUser = req.user.userId;
-    this.logger.log(`HTTP POST login/cambiar/accesso (userId=${idUser})`);
-    return await this.authService.resetPassword(+idUser, loginAuthResetDto);
   }
 
   @Patch('verify')

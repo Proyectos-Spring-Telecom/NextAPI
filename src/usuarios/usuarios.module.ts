@@ -9,6 +9,7 @@ import { ClientesModule } from 'src/clientes/clientes.module';
 import { PermisosModule } from 'src/permisos/permisos.module';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import { Instalaciones } from 'src/entities/Instalaciones';
 import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 import { MailModule } from 'src/mail/mail.module';
@@ -22,6 +23,7 @@ import { S3Module } from 'src/s3/s3.module';
       Usuarios,
       UsuariosPermisos,
       UsuariosInstalaciones,
+      Instalaciones,
       UsuarioPanelAlarma,
       AsignacionSoluciones,
     ]),
