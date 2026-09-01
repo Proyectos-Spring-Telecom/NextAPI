@@ -17,7 +17,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { EnumModulos } from 'src/common/estatus.enum';
+import { EnumModulos, esRolAccesoGlobal } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
@@ -45,7 +45,7 @@ export class ClientesService {
   ): Promise<ApiResponseCommon> {
     try {
       const rolNum = Number(rol);
-      const puedeElegirRaiz = rolNum === 1 || rolNum === 2;
+      const puedeElegirRaiz = esRolAccesoGlobal(rolNum);
       if (idClienteRaizOpcional !== undefined && !puedeElegirRaiz) {
         throw new ForbiddenException(
           'Solo roles autorizados pueden indicar idClienteRaiz',

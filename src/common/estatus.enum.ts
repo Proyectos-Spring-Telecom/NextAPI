@@ -69,10 +69,52 @@ export enum TipoCodigoAutenticacion {
   RECUPERACION_CONTRASENA = 1,
 }
 
-/** Valores de Roles.Id */
+/**
+ * Valores de Roles.Id (tabla Roles en BD Next).
+ * Nombre corto en BD → clave del enum.
+ */
 export enum EnumRoles {
+  /** SA — Supér Administrador */
   SA = 1,
+  /** Dev — Desarrollador */
+  DEV = 2,
+  /** Admin — Administrador De Sistema */
+  ADMIN = 3,
+  /** JefeMonitoreo — Encargado Area Monitoreo */
+  JEFE_MONITOREO = 4,
+  /** Monitoreo — Monitorista */
+  MONITOREO = 5,
+  /** Cliente — Cliente Del Sistema */
   CLIENTE = 6,
+  /** Operador — Operador De Unidades */
+  OPERADOR = 7,
+  /** Técnico */
+  TECNICO = 8,
+  /** Usuario */
+  USUARIO = 9,
+}
+
+/** Roles con visibilidad global (sin restricción por cliente en listados). */
+export const ROLES_ACCESO_GLOBAL: readonly EnumRoles[] = [
+  EnumRoles.SA,
+  EnumRoles.DEV,
+];
+
+export function esRolAccesoGlobal(rol: number): boolean {
+  return (ROLES_ACCESO_GLOBAL as readonly number[]).includes(rol);
+}
+
+/** Roles que pueden cambiar la contraseña de otro usuario (campo idUsuario en el body). */
+export const ROLES_CAMBIO_CONTRASENA_OTRO_USUARIO: readonly EnumRoles[] = [
+  EnumRoles.SA,
+  EnumRoles.ADMIN,
+  EnumRoles.JEFE_MONITOREO,
+];
+
+export function esRolCambioContrasenaOtroUsuario(rol: number): boolean {
+  return (ROLES_CAMBIO_CONTRASENA_OTRO_USUARIO as readonly number[]).includes(
+    rol,
+  );
 }
 
 /** Valores de Modulos.Id */

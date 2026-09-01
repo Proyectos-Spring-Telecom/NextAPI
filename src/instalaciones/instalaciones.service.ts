@@ -557,6 +557,84 @@ export class InstalacionesService {
     }
   }
 
+  async findAllListByTipoProducto(
+    idClienteToken: number,
+    rol: number,
+    idUsuarioToken: number,
+    idTipoProducto: number,
+  ): Promise<ApiResponseCommon> {
+    const tipoProducto = Number(idTipoProducto) as EnumTipoProducto;
+    if (
+      ![
+        EnumTipoProducto.VEHICULO,
+        EnumTipoProducto.ACTIVO,
+        EnumTipoProducto.INMUEBLE,
+        EnumTipoProducto.PERSONA,
+      ].includes(tipoProducto)
+    ) {
+      throw new BadRequestException(
+        'idTipoProducto debe ser 1 (vehículo), 2 (activo), 3 (inmueble) o 4 (persona)',
+      );
+    }
+
+    try {
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+        rol,
+        idClienteToken,
+      );
+      if (tenant.sinAcceso) {
+        return { data: [] };
+      }
+
+      const qb = this.repository.createQueryBuilder('i');
+      applyPaginadoBaseJoins(qb);
+      applyPaginadoSelectBase(qb);
+      applyPaginadoPorTipoProducto(qb, tipoProducto);
+
+      qb.andWhere('p.idTipoProducto = :idTipoProducto', {
+        idTipoProducto: tipoProducto,
+      })
+        .andWhere('i.estatus = :estatusInstalacion', {
+          estatusInstalacion: EstatusEnum.ACTIVO,
+        })
+        .orderBy('i.id', 'ASC');
+
+      if (Number(rol) === EnumRoles.USUARIO) {
+        qb.innerJoin(
+          UsuariosInstalaciones,
+          'ui',
+          'ui.idInstalacion = i.id AND ui.idUsuario = :idUsuario AND ui.estatus = :uiEstatus',
+          {
+            idUsuario: Number(idUsuarioToken),
+            uiEstatus: EstatusEnum.ACTIVO,
+          },
+        );
+      }
+
+      if (tenant.idCliente !== undefined) {
+        if (typeof tenant.idCliente === 'number') {
+          qb.andWhere('i.idCliente = :tenantIdCliente', {
+            tenantIdCliente: tenant.idCliente,
+          });
+        } else {
+          const ids = this.extractInValues(tenant.idCliente);
+          qb.andWhere('i.idCliente IN (:...tenantIds)', { tenantIds: ids });
+        }
+      }
+
+      const rows = await qb.getRawMany();
+
+      return {
+        data: rows.map((row) =>
+          mapInstalacionPaginadaPlana(row, tipoProducto),
+        ),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
   async findAllPaginado(
     idClienteToken: number,
     rol: number,

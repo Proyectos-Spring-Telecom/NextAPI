@@ -12,7 +12,6 @@ export const usuariosCreateMultipartApiBody = {
       'passwordHash',
       'nombre',
       'apellidoPaterno',
-      'idRol',
       'idCliente',
       'permisosIds',
     ],
@@ -32,7 +31,8 @@ export const usuariosCreateMultipartApiBody = {
       telefono: { type: 'string', example: '5512345678' },
       idRol: {
         type: 'string',
-        description: 'ID del rol (número como texto en form-data)',
+        description:
+          'ID del rol (número como texto). Opcional si quien crea es Cliente o Usuario; en ese caso se asigna Usuario (9).',
         example: '3',
       },
       idCliente: {
@@ -45,20 +45,10 @@ export const usuariosCreateMultipartApiBody = {
         description: 'IDs separados por coma, JSON "[3,7,15]" o un solo ID "3"',
         example: '1,2,3,4,5',
       },
-      instalacionesIds: {
-        type: 'string',
-        description: 'Opcional. Coma-separado, JSON o un ID. Vacío = omitir',
-        example: '1,4',
-      },
-      panelesAlarmaIds: {
-        type: 'string',
-        description: 'Opcional. Coma-separado, JSON o un ID',
-        example: '2',
-      },
       solucionesIds: {
         type: 'string',
         description: 'Opcional. Coma-separado, JSON o un ID',
-        example: '2',
+        example: '1,4',
       },
       fotoPerfil: {
         type: 'string',
@@ -94,7 +84,8 @@ export const usuariosUpdateMultipartApiBody = {
       },
       idRol: {
         type: 'string',
-        description: 'ID del rol. Omitir o vacío = no modificar',
+        description:
+          'ID del rol. Omitir o vacío = no modificar. Si quien actualiza es Cliente o Usuario, se fuerza Usuario (9).',
       },
       idCliente: {
         type: 'string',
@@ -104,16 +95,6 @@ export const usuariosUpdateMultipartApiBody = {
         type: 'string',
         description:
           'Omitir o vacío = no modificar. [] = desactivar todos. Ej: 1,2,3 o [1,2,3]',
-      },
-      instalacionesIds: {
-        type: 'string',
-        description:
-          'Omitir o vacío = no modificar. [] = desactivar todas.',
-      },
-      panelesAlarmaIds: {
-        type: 'string',
-        description:
-          'Omitir o vacío = no modificar. [] = desactivar todos.',
       },
       solucionesIds: {
         type: 'string',

@@ -17,7 +17,6 @@ import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { MailService } from 'src/mail/mail.service';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
-import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { EstatusEnumBitcora } from 'src/common/ApiResponse';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
@@ -808,68 +807,6 @@ export class AuthService {
       );
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al confirmar el usuario.',
-        error: (error as Error)?.message,
-      });
-    }
-  }
-
-  async resetPassword(idUser: number, dto: LoginAuthResetDto) {
-    try {
-      this.logger.log(`Auth: cambio de contraseña autenticado (userId=${idUser})`);
-      const user = await this.usuariosRepository
-        .createQueryBuilder('u')
-        .addSelect('u.passwordHash')
-        .where('u.id = :id', { id: idUser })
-        .getOne();
-
-      if (!user) {
-        this.logger.warn(
-          `Auth: cambio contraseña — usuario no encontrado (userId=${idUser})`,
-        );
-        throw new BadRequestException('Usuario no encontrado');
-      }
-      if (dto.passwordNueva !== dto.passwordConfirmacion) {
-        this.logger.warn(
-          `Auth: cambio contraseña — confirmación no coincide (userId=${idUser})`,
-        );
-        throw new BadRequestException('La contraseña y la confirmación deben coincidir.');
-      }
-      const isSamePassword = await bcrypt.compare(dto.passwordNueva, user.passwordHash);
-      if (isSamePassword) {
-        this.logger.warn(
-          `Auth: cambio contraseña — misma que la anterior (userId=${idUser})`,
-        );
-        throw new BadRequestException(
-          'La nueva contraseña no puede ser igual a la anterior.',
-        );
-      }
-      const hashedPassword = await bcrypt.hash(dto.passwordNueva, 10);
-      await this.usuariosRepository.update(user.id, {
-        passwordHash: hashedPassword,
-        tokenRevocado: 1,
-      });
-      await this.revokeAllRefreshSessionsForUser(user.id);
-      await this.bitacoraLogger.logToBitacora(
-        'Usuarios',
-        `Se ha actualizado la contraseña del usuario con ID: ${user.id}.`,
-        'UPDATE',
-        { id: user.id },
-        idUser,
-        EnumModulos.USUARIOS,
-        EstatusEnumBitcora.SUCCESS,
-      );
-      this.logger.log(
-        `Auth: contraseña actualizada y sesiones refresh invalidadas (userId=${user.id})`,
-      );
-      return `La contraseña del usuario ${user.nombre} ha sido actualizada exitosamente.`;
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      this.logger.error(
-        `Auth: error no controlado en resetPassword — ${(error as Error)?.message}`,
-        (error as Error)?.stack,
-      );
-      throw new InternalServerErrorException({
-        message: 'Ocurrió un error al actualizar contraseña del usuario.',
         error: (error as Error)?.message,
       });
     }
