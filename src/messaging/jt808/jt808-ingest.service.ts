@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
+import { UltimaPosicion } from 'src/entities/UltimaPosicion';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import {
   DeviceImeiMissingError,
   DeviceLookupService,
@@ -21,6 +23,7 @@ export class Jt808IngestService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly deviceLookup: DeviceLookupService,
+    private readonly monitoreoGateway: MonitoreoGateway,
   ) {}
 
   async handleEnvelope(
@@ -44,7 +47,7 @@ export class Jt808IngestService {
     const auditPayload = extractJt808Audit(envelope.payload);
     const posicionData = mapAcometidasToPosicion(imei, envelope.payload);
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       try {
         await manager.insert(TelemetryIngestLog, {
           eventId: envelope.eventId,
@@ -56,7 +59,7 @@ export class Jt808IngestService {
         });
       } catch (error) {
         if (isDuplicateKeyError(error)) {
-          return { duplicate: true };
+          return { duplicate: true as const };
         }
         throw error;
       }
@@ -70,11 +73,58 @@ export class Jt808IngestService {
         { posicionId },
       );
 
+      await this.upsertUltimaPosicion(manager, imei, posicionData);
+
       this.logger.log(
         `[Jt808Ingest] ${envelope.kind} eventId=${envelope.eventId} deviceId=${envelope.deviceId} → PosicionId=${posicionId}`,
       );
 
       return { posicionId };
     });
+
+    if (!result.duplicate && result.posicionId != null) {
+      void this.monitoreoGateway.notificarImei(imei);
+    }
+
+    return result;
+  }
+
+  private async upsertUltimaPosicion(
+    manager: EntityManager,
+    imei: number,
+    posicionData: Partial<Posiciones>,
+  ): Promise<void> {
+    await manager.upsert(
+      UltimaPosicion,
+      {
+        imei,
+        lat: posicionData.lat,
+        lng: posicionData.lng,
+        estado: posicionData.estado ?? null,
+        fechaHora: posicionData.fechaHora,
+        velocidad: posicionData.velocidad ?? 0,
+        direccion: posicionData.direccion ?? 0,
+        odometro: posicionData.odometro ?? null,
+        ignicion: posicionData.ignicion ?? null,
+        alarma1: posicionData.alarma1 ?? null,
+        alarma2: posicionData.alarma2 ?? null,
+        energia: posicionData.energia ?? null,
+        idEvento: posicionData.idEvento ?? null,
+        idFoto: posicionData.idFoto ?? null,
+        bateria: posicionData.bateria ?? null,
+        alimentacion: posicionData.alimentacion ?? null,
+        gps: posicionData.gps ?? null,
+        gsm: posicionData.gsm ?? null,
+        movimiento: posicionData.movimiento ?? null,
+        combustible: posicionData.combustible ?? null,
+        foto1: posicionData.foto1 ?? null,
+        foto2: posicionData.foto2 ?? null,
+        foto3: posicionData.foto3 ?? null,
+        video1: posicionData.video1 ?? null,
+        video2: posicionData.video2 ?? null,
+        video3: posicionData.video3 ?? null,
+      },
+      ['imei'],
+    );
   }
 }
