@@ -39,6 +39,7 @@ export type MonitoreoVehiculoItem = MonitoreoBase & {
   modelo: string | null;
   ignicion: number | null;
   velocidad: number | null;
+  direccion: number | null;
   fechaHora: string | null;
   nivelCombustible: number | null;
   odometro: number | null;
@@ -57,6 +58,7 @@ export type MonitoreoDispositivoItem = MonitoreoBase & {
   odometro: number | null;
   gps: number | null;
   gsm: number | null;
+  direccion: number | null;
   modelo: string | null;
   marca: string | null;
   fechaHora: string | null;
@@ -114,6 +116,7 @@ function mapTelemetria(row: Record<string, unknown>) {
     odometro: num(row.odometro),
     gps: num(row.gps),
     gsm: num(row.gsm),
+    direccion: num(row.direccion),
     lat: num(row.latitud),
     lng: num(row.longitud),
   };
@@ -142,6 +145,7 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     modelo: str(row.modeloVehiculo),
     ignicion: num(row.ignicion),
     velocidad: num(row.velocidad),
+    direccion: num(row.direccion),
     fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
     nivelCombustible: num(row.nivelCombustible),
     odometro: num(row.odometro),

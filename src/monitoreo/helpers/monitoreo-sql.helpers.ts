@@ -85,6 +85,7 @@ export function applyMonitoreoListSelect(
     'up.lat AS latitud',
     'up.lng AS longitud',
     'up.velocidad AS velocidad',
+    'up.direccion AS direccion',
     'up.ignicion AS ignicion',
     'up.combustible AS nivelCombustible',
     'up.odometro AS odometro',
