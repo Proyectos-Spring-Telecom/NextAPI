@@ -117,6 +117,33 @@ export function esRolCambioContrasenaOtroUsuario(rol: number): boolean {
   );
 }
 
+/**
+ * Roles visibles en listados de Roles según el rol del solicitante.
+ * SA ve todos; el resto solo los IDs indicados.
+ */
+export const ROLES_VISIBLES_EN_LISTADO: Readonly<
+  Partial<Record<EnumRoles, readonly number[]>>
+> = {
+  [EnumRoles.DEV]: [2, 3, 4, 5, 6, 7, 8, 9],
+  [EnumRoles.ADMIN]: [3, 4, 5, 6, 7, 8, 9],
+  [EnumRoles.JEFE_MONITOREO]: [4, 5, 6, 7, 8, 9],
+  [EnumRoles.MONITOREO]: [5, 6, 7, 8, 9],
+  [EnumRoles.CLIENTE]: [6, 9],
+  [EnumRoles.OPERADOR]: [7],
+  [EnumRoles.TECNICO]: [6, 9],
+  [EnumRoles.USUARIO]: [9],
+};
+
+export function idsRolesVisiblesEnListado(
+  rol: number,
+): readonly number[] | 'all' {
+  const rolNum = Number(rol);
+  if (rolNum === EnumRoles.SA) {
+    return 'all';
+  }
+  return ROLES_VISIBLES_EN_LISTADO[rolNum as EnumRoles] ?? [];
+}
+
 /** Valores de Modulos.Id */
 export enum EnumModulos {
   CLIENTES = 1,

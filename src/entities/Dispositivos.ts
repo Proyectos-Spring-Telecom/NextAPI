@@ -4,6 +4,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
@@ -11,6 +12,7 @@ import { Clientes } from './Clientes';
 import { CatMarcas } from './CatMarcas';
 import { CatModelos } from './CatModelos';
 import { CatTipoDispositivo } from './CatTipoDispositivo';
+import { UltimaPosicion } from './UltimaPosicion';
 
 @applySchema
 @Index('UQ_Dispositivos_Cliente_Id', ['idCliente', 'id'], { unique: true })
@@ -102,4 +104,7 @@ export class Dispositivos {
   })
   @JoinColumn([{ name: 'IdTipoDispositivo', referencedColumnName: 'id' }])
   idTipoDispositivo2: CatTipoDispositivo;
+
+  @OneToOne(() => UltimaPosicion, (up) => up.imei2)
+  ultimaPosicion: UltimaPosicion | null;
 }

@@ -9,7 +9,7 @@ import {
 import { CreateRolDto } from './dto/create-rol.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { Roles } from 'src/entities/Roles';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import {
@@ -17,6 +17,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
+import { idsRolesVisiblesEnListado } from 'src/common/estatus.enum';
 import { Response } from 'express';
 
 @Injectable()
@@ -84,26 +85,23 @@ export class RolesService {
   }
 
   async findAll(rol: number, page: number, limit: number): Promise<ApiResponseCommon> {
-    let data;
-    let total;
-    switch (rol) {
-      case 1:
-        [data, total] = await this.rolesRepository.findAndCount({
-          skip: (page - 1) * limit,
-          take: limit,
-        });
-        break;
-
-      default:
-        [data, total] = await this.rolesRepository.findAndCount({
-          skip: (page - 1) * limit,
-          take: limit,
-          where: {
-            id: Not(1),
-          },
-        });
-        break;
+    const visibles = idsRolesVisiblesEnListado(rol);
+    if (visibles !== 'all' && visibles.length === 0) {
+      return {
+        data: [],
+        paginated: { total: 0, page, limit, totalPages: 0 },
+      };
     }
+
+    const where: FindOptionsWhere<Roles> =
+      visibles === 'all' ? {} : { id: In([...visibles]) };
+
+    const [data, total] = await this.rolesRepository.findAndCount({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { id: 'ASC' },
+    });
 
     const result: ApiResponseCommon = {
       data: data,
@@ -111,7 +109,7 @@ export class RolesService {
         total: total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 0,
       },
     };
 
@@ -119,24 +117,23 @@ export class RolesService {
   }
 
   async findAllList(rol: number): Promise<ApiResponseCommon> {
-    let permisos;
-    switch (rol) {
-      case 1:
-        permisos = await this.rolesRepository.find({ where: { estatus: 1 } });
-        break;
-
-      default:
-        permisos = await this.rolesRepository.find({
-          where: {
-            estatus: 1,
-            id: Not(1),
-          },
-        });
-        break;
+    const visibles = idsRolesVisiblesEnListado(rol);
+    if (visibles !== 'all' && visibles.length === 0) {
+      return { data: [] };
     }
 
+    const where: FindOptionsWhere<Roles> =
+      visibles === 'all'
+        ? { estatus: 1 }
+        : { estatus: 1, id: In([...visibles]) };
+
+    const data = await this.rolesRepository.find({
+      where,
+      order: { id: 'ASC' },
+    });
+
     const result: ApiResponseCommon = {
-      data: permisos,
+      data,
     };
     return result;
   }

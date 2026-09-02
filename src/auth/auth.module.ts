@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { AuthRecuperarAccesoService } from './auth-recuperar-acceso.service';
 import { AuthController } from './auth.controller';
 import { AuthFaceController } from './auth-face.controller';
 import { BehaviorIqAuthService } from './behavior-iq-auth.service';
@@ -43,7 +44,13 @@ import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
     ]),
   ],
   controllers: [AuthController, AuthFaceController],
-  providers: [AuthService, AuthTokensService, JwtStrategy, BehaviorIqAuthService],
+  providers: [
+    AuthService,
+    AuthRecuperarAccesoService,
+    AuthTokensService,
+    JwtStrategy,
+    BehaviorIqAuthService,
+  ],
   exports: [JwtModule, AuthService, AuthTokensService],
 })
 export class AuthModule {}
