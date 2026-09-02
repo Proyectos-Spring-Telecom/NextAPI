@@ -35,6 +35,11 @@ export class MonitoreoController {
       '- **Inmueble / panel (3):** cliente, imei, inmueble, economico, numeroSerie, estatus, modelo, marca, lat, lng, ultimoHeartbeat, fechaHora (último evento), ultimoEventoAlarma (`UltimoEventoAlarma`; no usa `UltimaPosicion`).',
       '- **Persona / teléfono (4):** cliente, imei, persona, economico, numeroSerie, estatus, gps, modelo, marca, fechaHora, ultimaPosicion, lat, lng.',
       '',
+      '**Socket.IO** namespace `/monitoreo`:',
+      '- Conexión con JWT (`auth.token`).',
+      '- `conexion:lista` → `{ idsInstalaciones: number[] }` según rol.',
+      '- `monitoreo:actualizacion` → mismo shape que un ítem de `posicion[]`.',
+      '',
       'Respuesta: `{ posicion: [...] }` (sin wrapper `data`).',
     ].join('\n'),
   })

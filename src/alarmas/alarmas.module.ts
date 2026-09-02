@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from 'src/auth/auth.module';
+import { MonitoreoModule } from 'src/monitoreo/monitoreo.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
 import { GatewayIngestLog } from 'src/entities/GatewayIngestLog';
@@ -23,6 +24,7 @@ import { PanelOnlineScheduler } from './panel-online.scheduler';
       GatewayIngestLog,
     ]),
     AuthModule,
+    MonitoreoModule,
     TenantFilterModule,
   ],
   controllers: [AlarmasIngestController, AlarmasController],

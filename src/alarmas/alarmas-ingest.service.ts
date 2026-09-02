@@ -13,6 +13,7 @@ import { IngestEventoDto } from './dto/ingest-evento.dto';
 import { IngestHeartbeatDto } from './dto/ingest-heartbeat.dto';
 import { AlarmasGateway } from './alarmas.gateway';
 import { mapEventoItem } from './alarmas-mapper';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { isoUtcToMexicoCityAsUtcDate, isoUtcToMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 
 const UPSERT_ULTIMO_SQL = `
@@ -46,6 +47,7 @@ export class AlarmasIngestService {
     @InjectRepository(PanelAlarma)
     private readonly panelRepo: Repository<PanelAlarma>,
     private readonly gateway: AlarmasGateway,
+    private readonly monitoreoGateway: MonitoreoGateway,
   ) {}
 
   async ingestEvento(
@@ -163,6 +165,7 @@ export class AlarmasIngestService {
           Lng: inmueble?.Lng ?? null,
         }),
       );
+      void this.monitoreoGateway.notificarDispositivo(idPanel);
 
       return { accepted: true };
     } catch (error) {
@@ -222,6 +225,7 @@ export class AlarmasIngestService {
       await qr.commitTransaction();
 
       this.gateway.emitHeartbeat(idPanel, ultimoHeartbeat);
+      void this.monitoreoGateway.notificarDispositivo(idPanel);
       return { accepted: true };
     } catch (error) {
       if (qr.isTransactionActive) {
