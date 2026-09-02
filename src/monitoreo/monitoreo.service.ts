@@ -97,8 +97,8 @@ export class MonitoreoService {
     fechaFinalRaw: string,
   ): Promise<HistoricoMonitoreoResponse> {
     try {
-      let fechaInicio: Date;
-      let fechaFinal: Date;
+      let fechaInicio: string;
+      let fechaFinal: string;
       try {
         fechaInicio = parseFechaHistorico(fechaInicioRaw);
         fechaFinal = parseFechaHistorico(fechaFinalRaw);
@@ -108,7 +108,7 @@ export class MonitoreoService {
         );
       }
 
-      if (fechaInicio.getTime() > fechaFinal.getTime()) {
+      if (fechaInicio > fechaFinal) {
         throw new BadRequestException(
           'fechaInicio no puede ser posterior a fechaFinal',
         );
