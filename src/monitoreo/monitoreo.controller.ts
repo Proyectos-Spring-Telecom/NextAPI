@@ -75,6 +75,7 @@ export class MonitoreoController {
     summary: 'Histórico de posiciones por instalación',
     description: [
       'Resuelve el IMEI del dispositivo de la instalación y consulta `Posiciones` entre `fechaInicio` y `fechaFinal` (inclusive).',
+      'Las fechas del query se interpretan como **hora de pared** (`YYYY-MM-DD HH:mm:ss`), alineadas a `Posiciones.FechaHora` (sin conversión UTC).',
       'No aplica filtro por cliente del token; solo requiere JWT válido.',
       '',
       '**Respuesta:** `{ totalDistancia, posiciones: [...] }` (sin wrapper `data`).',

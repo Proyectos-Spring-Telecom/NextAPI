@@ -117,14 +117,21 @@ export function formatFechaPosicion(
   return m ? `${m[1]}T${m[2]}` : null;
 }
 
-export function parseFechaHistorico(raw: string): Date {
+/**
+ * Normaliza `fechaInicio` / `fechaFinal` a `YYYY-MM-DD HH:mm:ss` (hora de pared,
+ * misma convención que columnas MySQL DATETIME / `Posiciones.FechaHora`).
+ * Sin zona horaria en el query param → no se convierte a UTC al consultar.
+ */
+export function parseFechaHistorico(raw: string): string {
   const normalized = raw.trim().replace(' ', 'T');
-  // Sin zona → interpretar como fecha local del servidor (TZ app = America/Mexico_City)
-  const d = new Date(normalized);
-  if (!Number.isFinite(d.getTime())) {
+  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)
+    ? `${normalized}:00`
+    : normalized;
+  const m = withSeconds.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (!m) {
     throw new Error(`Fecha inválida: ${raw}`);
   }
-  return d;
+  return `${m[1]} ${m[2]}`;
 }
 
 export function mapContextoDesdeRow(row: Record<string, unknown>): ContextoProducto {

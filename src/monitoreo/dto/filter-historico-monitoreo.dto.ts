@@ -9,7 +9,8 @@ const FECHA_HISTORICO_RE =
 
 export class FilterHistoricoMonitoreoDto {
   @ApiProperty({
-    description: 'Inicio del rango (inclusive)',
+    description:
+      'Inicio del rango (inclusive). Hora de pared, sin zona horaria (ej. hora México = `Posiciones.FechaHora`).',
     example: '2026-09-02 13:28:00',
   })
   @IsString()
@@ -21,7 +22,8 @@ export class FilterHistoricoMonitoreoDto {
   fechaInicio!: string;
 
   @ApiProperty({
-    description: 'Fin del rango (inclusive). Alias legacy: fechaFinal',
+    description:
+      'Fin del rango (inclusive). Hora de pared, sin zona horaria (ej. hora México = `Posiciones.FechaHora`).',
     example: '2026-09-02 14:29:00',
   })
   @IsString()
