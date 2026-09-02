@@ -134,6 +134,14 @@ import * as jwt from 'jsonwebtoken';
         DB_CONNECTION_LIMIT: Joi.number().default(10),
         DB_LOGGING: Joi.boolean().default(false),
         DEVICE_LOOKUP_CACHE_TTL_SEC: Joi.number().default(600),
+        MONITOREO_SALTO_GPS_METROS: Joi.number()
+          .integer()
+          .min(1)
+          .default(5000),
+        MONITOREO_DRIFT_DETENIDO_METROS: Joi.number()
+          .integer()
+          .min(0)
+          .default(20),
       }),
     }),
 

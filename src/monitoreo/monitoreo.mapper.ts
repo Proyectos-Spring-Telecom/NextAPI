@@ -41,6 +41,9 @@ export type MonitoreoVehiculoItem = MonitoreoBase & {
   velocidad: number | null;
   fechaHora: string | null;
   nivelCombustible: number | null;
+  odometro: number | null;
+  gps: number | null;
+  gsm: number | null;
   lat: number | null;
   lng: number | null;
 };
@@ -51,7 +54,9 @@ export type MonitoreoDispositivoItem = MonitoreoBase & {
   economico: string | null;
   numeroSerie: string | null;
   estatus: number | null;
+  odometro: number | null;
   gps: number | null;
+  gsm: number | null;
   modelo: string | null;
   marca: string | null;
   fechaHora: string | null;
@@ -106,6 +111,9 @@ function mapTelemetria(row: Record<string, unknown>) {
   return {
     fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
     ultimaPosicion: num(row.ultimaPosicion),
+    odometro: num(row.odometro),
+    gps: num(row.gps),
+    gsm: num(row.gsm),
     lat: num(row.latitud),
     lng: num(row.longitud),
   };
@@ -118,7 +126,6 @@ function mapDispositivoComun(row: Record<string, unknown>) {
     economico: str(row.ecoDispositivo),
     numeroSerie: str(row.numeroSerieDispositivo),
     estatus: num(row.estatusProducto),
-    gps: num(row.gps),
     modelo: str(row.modeloDispositivo),
     marca: str(row.marcaDispositivo),
     ...mapTelemetria(row),
@@ -137,6 +144,9 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     velocidad: num(row.velocidad),
     fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
     nivelCombustible: num(row.nivelCombustible),
+    odometro: num(row.odometro),
+    gps: num(row.gps),
+    gsm: num(row.gsm),
     lat: num(row.latitud),
     lng: num(row.longitud),
   };

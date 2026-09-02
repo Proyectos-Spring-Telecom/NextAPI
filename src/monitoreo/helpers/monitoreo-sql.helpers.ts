@@ -87,7 +87,9 @@ export function applyMonitoreoListSelect(
     'up.velocidad AS velocidad',
     'up.ignicion AS ignicion',
     'up.combustible AS nivelCombustible',
+    'up.odometro AS odometro',
     'up.gps AS gps',
+    'up.gsm AS gsm',
     'up.estado AS ultimaPosicion',
     'up.fechaHora AS fechaHora',
 
