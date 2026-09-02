@@ -34,7 +34,7 @@ export class MailService {
     });
   }
 
-  
+
 
   async sendConfirmationEmail(
     to: string,
@@ -44,14 +44,14 @@ export class MailService {
   ): Promise<void> {
     try {
       const dominio =
-        process.env.MAIL_FRONTEND_URL || 'https://transmovi.mx/transmoviDev';
+        process.env.MAIL_FRONTEND_URL || '';
       const url = `${dominio}/#/account/verify?token=${token}`;
 
       await this.transporter.sendMail({
         from: `<${this.mailUser}>`,
-      to,
-      subject: '¡Bienvenido!',
-      html: `
+        to,
+        subject: '¡Bienvenido!',
+        html: `
 <!DOCTYPE html>
 <html lang="en">
 
@@ -172,9 +172,9 @@ export class MailService {
 
       await this.transporter.sendMail({
         from: ` <${this.mailUser}>`,
-      to,
-      subject: 'Restablecer Contraseña',
-      html: `
+        to,
+        subject: 'Restablecer Contraseña',
+        html: `
     <!DOCTYPE html>
     <html lang="en">
     <head>

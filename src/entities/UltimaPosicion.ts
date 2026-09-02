@@ -3,7 +3,7 @@ import {
   Entity,
   Index,
   JoinColumn,
-  ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
@@ -101,7 +101,7 @@ export class UltimaPosicion {
   @Column('varchar', { name: 'Video3', length: 500, nullable: true })
   video3: string | null;
 
-  @ManyToOne(() => Dispositivos, {
+  @OneToOne(() => Dispositivos, (d) => d.ultimaPosicion, {
     onDelete: 'NO ACTION',
     onUpdate: 'CASCADE',
   })

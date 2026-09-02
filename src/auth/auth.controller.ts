@@ -11,6 +11,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { AuthRecuperarAccesoService } from './auth-recuperar-acceso.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
@@ -47,7 +48,25 @@ const THROTTLE_LOGOUT_TTL_MS = Number(process.env.THROTTLE_LOGOUT_TTL_MS ?? 6000
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly authRecuperarAccesoService: AuthRecuperarAccesoService,
+  ) { }
+
+  @Post('usuario/recuperar/acceso')
+  @Throttle({
+    default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS },
+  })
+  async recuperarAcceso(
+    @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
+  ) {
+    this.logger.log(
+      `HTTP POST login/usuario/recuperar/acceso (userName=${loginAuthConfirmacionDto.userName})`,
+    );
+    return await this.authRecuperarAccesoService.recuperarAcceso(
+      loginAuthConfirmacionDto,
+    );
+  }
 
   @Post('usuario/solicitud/recuperacion')
   @Throttle({

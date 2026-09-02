@@ -38,6 +38,18 @@ export class RolesController {
     return this.rolesService.create(idUser, createRoleDto);
   }
 
+  @Get('list')
+  @Roles()
+  @ApiOperation({
+    summary: 'Lista de roles activos según visibilidad del rol del token',
+    description:
+      'SA ve todos. Dev: 2–9. Admin: 3–9. JefeMonitoreo: 4–9. Monitoreo: 5–9. Cliente/Técnico: 6,9. Operador: 7. Usuario: 9.',
+  })
+  async findAllList(@Request() req): Promise<ApiResponseCommon> {
+    const rol = req.user.rol;
+    return await this.rolesService.findAllList(+rol);
+  }
+
   @Get(':page/:limit')
   async findAll(
     @Param('page', ParseIntPipe) page: number,
@@ -48,14 +60,6 @@ export class RolesController {
     const cliente = req.user.cliente;
     const rol = req.user.rol;
     return await this.rolesService.findAll(+rol, page, limit);
-  }
-
-  @Get('list')
-  async findAllList(@Request() req): Promise<ApiResponseCommon> {
-    const idUser = req.user.userId;
-    const cliente = req.user.cliente;
-    const rol = req.user.rol;
-    return await this.rolesService.findAllList(+rol);
   }
 
   @Get(':id')

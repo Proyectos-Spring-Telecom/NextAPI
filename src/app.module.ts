@@ -17,6 +17,7 @@ import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { ProductosModule } from './productos/productos.module';
 import { AlarmasModule } from './alarmas/alarmas.module';
+import { MonitoreoModule } from './monitoreo/monitoreo.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -193,6 +194,8 @@ import * as jwt from 'jsonwebtoken';
     ProductosModule,
 
     AlarmasModule,
+
+    MonitoreoModule,
 
     MessagingModule,
 
