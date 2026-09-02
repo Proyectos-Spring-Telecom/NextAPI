@@ -61,7 +61,9 @@ export function mapHistoricoPosicionItem(
     id: idPosicion,
     idInstalacion: ctx.idInstalacion,
     vehiculo: ctx.idProducto,
-    fecha: formatFechaLocal(row.fechaHora as string | Date | null | undefined),
+    fecha: formatFechaPosicion(
+      (row.fecha ?? row.fechaHora) as string | Date | null | undefined,
+    ),
     cliente: ctx.cliente,
     anio: ctx.anio,
     placas: ctx.placas,
@@ -88,25 +90,31 @@ export function mapHistoricoPosicionItem(
   };
 }
 
-/** Fecha estilo legacy: `2026-09-02T13:30:12` (sin Z / sin ms). */
-function formatFechaLocal(value: string | Date | null | undefined): string | null {
+/** `Posiciones.FechaHora` → `2026-09-02T13:30:12` (hora de pared MySQL, sin desfase TZ). */
+export function formatFechaPosicion(
+  value: string | Date | null | undefined,
+): string | null {
   if (value == null) {
     return null;
   }
+
   if (typeof value === 'string') {
-    const s = value.trim().replace(' ', 'T');
-    // Si ya viene sin timezone, recortar a segundos
-    const m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+    const s = value.trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
     if (m) {
-      return m[1];
+      return `${m[1]}T${m[2]}`;
     }
   }
-  const d = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(d.getTime())) {
-    return null;
+
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    // mysql2 serializa DATETIME con la hora de pared en componentes UTC del Date
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}T${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
   }
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+  const s = String(value).trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+  return m ? `${m[1]}T${m[2]}` : null;
 }
 
 export function parseFechaHistorico(raw: string): Date {

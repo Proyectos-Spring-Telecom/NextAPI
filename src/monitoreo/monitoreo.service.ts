@@ -136,6 +136,7 @@ export class MonitoreoService {
           'p.lat AS lat',
           'p.lng AS lng',
           'p.estado AS estado',
+          `DATE_FORMAT(p.fechaHora, '%Y-%m-%dT%H:%i:%s') AS fecha`,
           'p.fechaHora AS fechaHora',
           'p.velocidad AS velocidad',
           'p.direccion AS direccion',
