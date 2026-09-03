@@ -28,6 +28,7 @@ import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.u
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
+  obtenerTipoTrackcam,
   validarFksDispositivo,
 } from './crear-dispositivo.util';
 import {
@@ -102,6 +103,18 @@ export class DispositivosService {
       ) {
         throw new BadRequestException(
           'El tipo panel requiere datos extra. Use POST /dispositivos/paneles',
+        );
+      }
+
+      const tipoTrackcam = await obtenerTipoTrackcam(
+        this.repository.manager,
+      ).catch(() => null);
+      if (
+        tipoTrackcam &&
+        Number(dto.idTipoDispositivo) === Number(tipoTrackcam.id)
+      ) {
+        throw new BadRequestException(
+          'El tipo Trackcam requiere configuración operativa. Use POST /dispositivos/trackcam',
         );
       }
 

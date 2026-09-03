@@ -1,6 +1,11 @@
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
+import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import { nombreCliente } from 'src/productos/map-relaciones.util';
+import {
+  TRACKCAM_CONFIG_KEYS,
+  TrackcamConfigKey,
+} from './trackcam/trackcam-config.keys';
 
 export { nombreCliente };
 
@@ -19,6 +24,21 @@ export const RELACIONES_DETALLE_PANEL = {
     idModelo2: true,
   },
 } as const;
+
+export const RELACIONES_DETALLE_TRACKCAM = RELACIONES_DETALLE_PANEL;
+
+export function pickTrackcamConfig(
+  source: Partial<Record<TrackcamConfigKey, unknown>>,
+): Partial<Record<TrackcamConfigKey, number | null>> {
+  const out: Partial<Record<TrackcamConfigKey, number | null>> = {};
+  for (const key of TRACKCAM_CONFIG_KEYS) {
+    if (source[key] !== undefined) {
+      const value = source[key];
+      out[key] = value == null ? null : Number(value);
+    }
+  }
+  return out;
+}
 
 export function mapDispositivoPlano(item: Dispositivos) {
   const cliente = item.idCliente2;
@@ -52,23 +72,23 @@ export function mapPanelAlarmaPlano(item: PanelAlarma) {
   const plano = dispositivo
     ? mapDispositivoPlano(dispositivo)
     : {
-        id: Number(item.idDispositivo),
-        numeroSerie: null,
-        imei: null,
-        eco: null,
-        estatus: item.estatus != null ? Number(item.estatus) : null,
-        idCliente: Number(item.idCliente),
-        nombreCliente: null,
-        idTipoDispositivo: null,
-        nombreTipoDispositivo: null,
-        codigoTipoDispositivo: null,
-        idMarca: null,
-        nombreMarca: null,
-        idModelo: null,
-        nombreModelo: null,
-        fechaCreacion: item.fechaCreacion ?? null,
-        fechaActualizacion: item.fechaActualizacion ?? null,
-      };
+      id: Number(item.idDispositivo),
+      numeroSerie: null,
+      imei: null,
+      eco: null,
+      estatus: item.estatus != null ? Number(item.estatus) : null,
+      idCliente: Number(item.idCliente),
+      nombreCliente: null,
+      idTipoDispositivo: null,
+      nombreTipoDispositivo: null,
+      codigoTipoDispositivo: null,
+      idMarca: null,
+      nombreMarca: null,
+      idModelo: null,
+      nombreModelo: null,
+      fechaCreacion: item.fechaCreacion ?? null,
+      fechaActualizacion: item.fechaActualizacion ?? null,
+    };
 
   return {
     id: Number(item.idDispositivo),
@@ -94,4 +114,99 @@ export function mapPanelAlarmaPlano(item: PanelAlarma) {
     fechaCreacion: plano.fechaCreacion,
     fechaActualizacion: plano.fechaActualizacion,
   };
+}
+
+export function mapTrackcamPlano(item: TrackcamConfig) {
+  const dispositivo = item.idDispositivo2;
+  const plano = dispositivo
+    ? mapDispositivoPlano(dispositivo)
+    : {
+        id: Number(item.idDispositivo),
+        numeroSerie: null,
+        imei: null,
+        eco: null,
+        estatus: null,
+        idCliente: Number(item.idCliente),
+        nombreCliente: null,
+        idTipoDispositivo: null,
+        nombreTipoDispositivo: null,
+        codigoTipoDispositivo: null,
+        idMarca: null,
+        nombreMarca: null,
+        idModelo: null,
+        nombreModelo: null,
+        fechaCreacion: item.fechaCreacion ?? null,
+        fechaActualizacion: item.fechaActualizacion ?? null,
+      };
+
+  return {
+    ...plano,
+    ...pickTrackcamConfig(item),
+    id: Number(item.idDispositivo),
+    idCliente: Number(item.idCliente),
+    fechaCreacion: item.fechaCreacion ?? plano.fechaCreacion,
+    fechaActualizacion: item.fechaActualizacion ?? plano.fechaActualizacion,
+  };
+}
+
+/** Payload webhook: tablas `Dispositivos` + `TrackcamConfig` separadas. */
+export function buildTrackcamWebhookData(item: TrackcamConfig): {
+  dispositivo: Record<string, unknown>;
+  config: Record<string, number | string | Date | null>;
+  terminalId: string | null;
+} {
+  const dispositivo: Record<string, unknown> = item.idDispositivo2
+    ? mapDispositivoPlano(item.idDispositivo2)
+    : {
+        id: Number(item.idDispositivo),
+        numeroSerie: null,
+        imei: null,
+        eco: null,
+        estatus: null,
+        idCliente: Number(item.idCliente),
+        nombreCliente: null,
+        idTipoDispositivo: null,
+        nombreTipoDispositivo: null,
+        codigoTipoDispositivo: null,
+        idMarca: null,
+        nombreMarca: null,
+        idModelo: null,
+        nombreModelo: null,
+        fechaCreacion: null,
+        fechaActualizacion: null,
+      };
+
+  const config: Record<string, number | string | Date | null> = {
+    idDispositivo: Number(item.idDispositivo),
+    idCliente: Number(item.idCliente),
+  };
+  for (const key of TRACKCAM_CONFIG_KEYS) {
+    const value = item[key];
+    config[key] = value == null ? null : Number(value);
+  }
+  config.fechaCreacion = item.fechaCreacion ?? null;
+  config.fechaActualizacion = item.fechaActualizacion ?? null;
+
+  const imeiRaw = dispositivo.imei;
+  const imei =
+    imeiRaw == null || imeiRaw === '' ? null : Number(imeiRaw);
+
+  return {
+    dispositivo,
+    config,
+    terminalId: imeiToTerminalId(
+      imei != null && Number.isFinite(imei) ? imei : null,
+    ),
+  };
+}
+
+export function imeiToTerminalId(imei: number | null): string | null {
+  if (imei == null || !Number.isFinite(imei)) {
+    return null;
+  }
+  const digits = String(imei).replace(/\D/g, '');
+  if (!digits) {
+    return null;
+  }
+  return digits.slice(-12).padStart(12, '0');
 }
