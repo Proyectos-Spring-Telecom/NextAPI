@@ -21,6 +21,14 @@ export class TrackcamConfigDto {
   intervaloPosicionDetenidoSegundos?: number | null;
 
   @ApiPropertyOptional({
+    description: 'Cada cuántos segundos captura/envía imágenes',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  intervaloImagenSegundos?: number | null;
+
+  @ApiPropertyOptional({
     description:
       'Velocidad (km/h) a partir de la cual se evalúan alarmas ADAS/DSM',
   })

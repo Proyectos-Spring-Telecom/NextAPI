@@ -34,6 +34,13 @@ export class TrackcamConfig {
   intervaloPosicionDetenidoSegundos: number | null;
 
   @Column('int', {
+    name: 'IntervaloImagenSegundos',
+    nullable: true,
+    comment: 'Cada cuántos seg captura/envía imágenes',
+  })
+  intervaloImagenSegundos: number | null;
+
+  @Column('int', {
     name: 'VelocidadMinimaAlarmasKmh',
     nullable: true,
     comment:
