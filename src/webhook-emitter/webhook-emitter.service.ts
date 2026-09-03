@@ -17,6 +17,7 @@ export class WebhookEmitterService {
   private readonly logger = new Logger(WebhookEmitterService.name);
   private readonly subscribers: string[];
   private readonly webhookSecret: string;
+  private readonly trackcamWebhookUrl: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -29,6 +30,8 @@ export class WebhookEmitterService {
       .map((url) => url.trim())
       .filter(Boolean);
     this.webhookSecret = this.configService.get<string>('WEBHOOK_SECRET', '') ?? '';
+    this.trackcamWebhookUrl =
+      this.configService.get<string>('TRACKCAM_WEBHOOK_URL', '')?.trim() ?? '';
   }
 
   emit(
@@ -37,7 +40,8 @@ export class WebhookEmitterService {
     entityId: number,
     data: Record<string, unknown>,
   ): void {
-    if (this.subscribers.length === 0) {
+    const urls = this.resolveUrls(event);
+    if (urls.length === 0) {
       return;
     }
     if (!this.webhookSecret) {
@@ -51,9 +55,19 @@ export class WebhookEmitterService {
     const signature = this.signPayload(unsigned);
     const signed: WebhookPayloadSigned = { ...unsigned, signature };
 
-    for (const url of this.subscribers) {
+    for (const url of urls) {
       void this.dispatch(url, signed);
     }
+  }
+
+  private resolveUrls(event: WebhookEvent): string[] {
+    if (
+      event === WebhookEvent.TRACKCAM_CREATED ||
+      event === WebhookEvent.TRACKCAM_UPDATED
+    ) {
+      return this.trackcamWebhookUrl ? [this.trackcamWebhookUrl] : [];
+    }
+    return this.subscribers;
   }
 
   /**

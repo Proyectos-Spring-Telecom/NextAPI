@@ -19,7 +19,8 @@ export class CreateDispositivosDto {
   @ApiProperty({
     description:
       'ID del tipo (CatTipoDispositivo): rastreador, AVL, teléfono, etc. ' +
-      'No usar el tipo panel aquí; el alta de paneles es POST /dispositivos/paneles.',
+      'No usar el tipo panel aquí; el alta de paneles es POST /dispositivos/paneles. ' +
+      'No usar TRACKCAM aquí; el alta es POST /dispositivos/trackcam.',
   })
   @IsInt()
   @IsNotEmpty()

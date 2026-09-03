@@ -8,6 +8,7 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { EstatusEnum } from 'src/common/estatus.enum';
 
 const CODIGOS_TIPO_PANEL = ['PANEL', 'PANEL_ALARMA', 'PAN'];
+const CODIGOS_TIPO_TRACKCAM = ['TRACKCAM'];
 
 export async function assertClienteExiste(
   manager: EntityManager,
@@ -32,6 +33,24 @@ export async function obtenerTipoPanelAlarma(
   if (!tipo) {
     throw new BadRequestException(
       'No hay CatTipoDispositivo con codigo PANEL / PANEL_ALARMA',
+    );
+  }
+  return tipo;
+}
+
+export async function obtenerTipoTrackcam(
+  manager: EntityManager,
+): Promise<CatTipoDispositivo> {
+  const tipo = await manager
+    .getRepository(CatTipoDispositivo)
+    .createQueryBuilder('t')
+    .where('UPPER(t.codigo) IN (:...codigos)', {
+      codigos: CODIGOS_TIPO_TRACKCAM,
+    })
+    .getOne();
+  if (!tipo) {
+    throw new BadRequestException(
+      'No hay CatTipoDispositivo con codigo TRACKCAM',
     );
   }
   return tipo;

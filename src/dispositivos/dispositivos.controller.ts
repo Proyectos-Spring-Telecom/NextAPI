@@ -44,7 +44,8 @@ export class DispositivosController {
     description:
       'Alta de rastreador, AVL o teléfono (datos comunes en `Dispositivos`). ' +
       'Requiere `idCliente` e `idTipoDispositivo`. ' +
-      'Los paneles de alarma se crean en POST /dispositivos/paneles porque necesitan datos extra.',
+      'Los paneles de alarma se crean en POST /dispositivos/paneles porque necesitan datos extra. ' +
+      'Los Trackcam se crean en POST /dispositivos/trackcam porque necesitan TrackcamConfig.',
   })
   @ApiResponse({ status: 201, description: 'Dispositivo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })

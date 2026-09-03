@@ -7,6 +7,7 @@ import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.modul
 import { DispositivosController } from './dispositivos.controller';
 import { DispositivosService } from './dispositivos.service';
 import { PanelesModule } from './paneles/paneles.module';
+import { TrackcamModule } from './trackcam/trackcam.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PanelesModule } from './paneles/paneles.module';
     BitacoraModule,
     TenantFilterModule,
     PanelesModule,
+    TrackcamModule,
   ],
   controllers: [DispositivosController],
   providers: [DispositivosService],

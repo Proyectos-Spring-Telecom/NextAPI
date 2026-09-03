@@ -177,6 +177,7 @@ export enum EnumTipoProducto {
  * Valores relevantes de CatTipoDispositivo.Id para el paginado.
  * 1, 3, 4 → solo campos de Dispositivos.
  * 2 → Dispositivos + PanelAlarma.
+ * TRACKCAM (por codigo, no por Id fijo) → Dispositivos + TrackcamConfig.
  */
 export enum EnumTipoDispositivo {
   PANEL_ALARMA = 2,
