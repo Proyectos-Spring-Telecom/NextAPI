@@ -1,6 +1,7 @@
 export const TRACKCAM_CONFIG_KEYS = [
   'intervaloPosicionSegundos',
   'intervaloPosicionDetenidoSegundos',
+  'intervaloImagenSegundos',
   'velocidadMinimaAlarmasKmh',
   'canal1Activo',
   'canal2Activo',
