@@ -6,13 +6,11 @@ import { Inmuebles } from 'src/entities/Inmuebles';
 import { Personas } from 'src/entities/Personas';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { UltimoEventoAlarma } from 'src/entities/UltimoEventoAlarma';
-import { Fotos } from 'src/entities/Fotos';
-import { Videos } from 'src/entities/Videos';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
 
 /**
- * GPS: Instalación → Dispositivo → UltimaPosicion (+ Fotos/Videos.Ruta).
+ * GPS: Instalación → Dispositivo → UltimaPosicion.
  * Paneles: PanelAlarma + UltimoEventoAlarma (sin telemetría UltimaPosicion).
  */
 export function applyMonitoreoListJoins(
@@ -24,13 +22,6 @@ export function applyMonitoreoListJoins(
     .leftJoin('d.idMarca2', 'marDisp')
     .leftJoin('d.idModelo2', 'modDisp')
     .leftJoin('d.ultimaPosicion', 'up')
-    .leftJoin(Fotos, 'f0', 'f0.id = up.idFoto')
-    .leftJoin(Fotos, 'f1', 'f1.id = up.idFoto1')
-    .leftJoin(Fotos, 'f2', 'f2.id = up.idFoto2')
-    .leftJoin(Fotos, 'f3', 'f3.id = up.idFoto3')
-    .leftJoin(Videos, 'vid1', 'vid1.id = up.idVideo1')
-    .leftJoin(Videos, 'vid2', 'vid2.id = up.idVideo2')
-    .leftJoin(Videos, 'vid3', 'vid3.id = up.idVideo3')
     .leftJoin(
       PanelAlarma,
       'pa',
@@ -113,20 +104,6 @@ export function applyMonitoreoListSelect(
     'up.gsm AS upGsm',
     'up.movimiento AS upMovimiento',
     'up.combustible AS upCombustible',
-    'up.idFoto1 AS upIdFoto1',
-    'up.idFoto2 AS upIdFoto2',
-    'up.idFoto3 AS upIdFoto3',
-    'up.idVideo1 AS upIdVideo1',
-    'up.idVideo2 AS upIdVideo2',
-    'up.idVideo3 AS upIdVideo3',
-
-    'f0.ruta AS rutaFoto',
-    'f1.ruta AS rutaFoto1',
-    'f2.ruta AS rutaFoto2',
-    'f3.ruta AS rutaFoto3',
-    'vid1.ruta AS rutaVideo1',
-    'vid2.ruta AS rutaVideo2',
-    'vid3.ruta AS rutaVideo3',
 
     'uea.id AS ueaId',
     'uea.idEventoAlarma AS ueaIdEventoAlarma',

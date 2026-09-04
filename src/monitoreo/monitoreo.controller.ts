@@ -1,10 +1,14 @@
 import {
+  Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseIntPipe,
+  Post,
   Query,
   Request,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -20,6 +24,8 @@ import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { FilterHistoricoMonitoreoDto } from './dto/filter-historico-monitoreo.dto';
+import { CaptureVideoMonitoreoDto } from './dto/capture-video-monitoreo.dto';
+import { CaptureFotoMonitoreoDto } from './dto/capture-foto-monitoreo.dto';
 import {
   MONITOREO_DISTANCIA_DEFAULTS,
   MONITOREO_DISTANCIA_ENV,
@@ -45,8 +51,7 @@ export class MonitoreoController {
       '**Operador (7) y Usuario (9):** solo instalaciones asignadas en `UsuariosInstalaciones` (activas).',
       '',
       '**GPS (vehículo 1, activo 2, persona 4):** un solo objeto plano = contexto del producto +',
-      'todos los campos de `UltimaPosicion` (null si no hay fila) + `rutaFoto` / `rutaFoto1..3` / `rutaVideo1..3`',
-      '(solo `Fotos.Ruta` / `Videos.Ruta`). Sin JSON anidados de telemetría.',
+      'campos de `UltimaPosicion` (null si no hay fila). Sin JSON anidados.',
       '',
       '**Inmueble / panel (3):** no usa UltimaPosicion ni rutas de foto/video.',
       'Campos: cliente, imei, inmueble, economico, numeroSerie, estatus, modelo, marca,',
@@ -70,6 +75,64 @@ export class MonitoreoController {
     );
   }
 
+  @Post(':idInstalacion/foto')
+  @ApiOperation({
+    summary: 'Capturar foto Trackcam (proxy gateway)',
+    description: [
+      'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/photo/start`.',
+      'Reenvía el JWT del usuario. Body opcional: `{ "channelId": 1 }` (1–5).',
+      'Sin `channelId` → todos los canales activos del registry (máx. 3).',
+      'Timeout ≥ 90 s. Persistencia vía AMQP `jt808.position` (no duplica INSERT).',
+    ].join('\n'),
+  })
+  @ApiParam({ name: 'idInstalacion', type: Number })
+  @ApiResponse({ status: 200, description: 'Foto(s) capturada(s) en el gateway' })
+  @ApiResponse({ status: 400, description: 'No es TRACKCAM / canal inactivo / datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
+  @ApiResponse({ status: 409, description: 'Cámara offline (gateway)' })
+  @ApiResponse({ status: 504, description: 'Timeout gateway' })
+  async capturarFoto(
+    @Param('idInstalacion', ParseIntPipe) idInstalacion: number,
+    @Body() body: CaptureFotoMonitoreoDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.monitoreoService.capturarFoto(
+      idInstalacion,
+      extractBearerToken(authorization),
+      body?.channelId,
+    );
+  }
+
+  @Post(':idInstalacion/video')
+  @ApiOperation({
+    summary: 'Capturar video Trackcam (proxy gateway)',
+    description: [
+      'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/video/capture`.',
+      'Body: `{ "durationSeconds"?: 15, "channelId"?: 1 }` (`channelId` 1–5 opcional).',
+      'Sin `channelId` → paralelo en canales activos. Con `channelId` → un solo stream.',
+      'Timeout: ~90 s (1 canal) / ~150 s (multi). Persistencia vía AMQP.',
+    ].join('\n'),
+  })
+  @ApiParam({ name: 'idInstalacion', type: Number })
+  @ApiResponse({ status: 200, description: 'Video(s) capturado(s) en el gateway' })
+  @ApiResponse({ status: 400, description: 'No es TRACKCAM / canal inactivo / datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
+  @ApiResponse({ status: 409, description: 'Cámara offline (gateway)' })
+  @ApiResponse({ status: 504, description: 'Timeout gateway' })
+  async capturarVideo(
+    @Param('idInstalacion', ParseIntPipe) idInstalacion: number,
+    @Body() body: CaptureVideoMonitoreoDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.monitoreoService.capturarVideo(
+      idInstalacion,
+      extractBearerToken(authorization),
+      {
+        durationSeconds: body?.durationSeconds,
+        channelId: body?.channelId,
+      },
+    );
+  }
 
   @Get(':idInstalacion/historico')
   @ApiOperation({
@@ -134,4 +197,14 @@ export class MonitoreoController {
       query.fechaFinal,
     );
   }
+}
+
+function extractBearerToken(authorization?: string): string {
+  const token = String(authorization ?? '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+  if (!token) {
+    throw new UnauthorizedException('Falta Authorization Bearer');
+  }
+  return token;
 }
