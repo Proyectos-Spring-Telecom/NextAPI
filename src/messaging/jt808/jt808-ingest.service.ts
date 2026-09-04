@@ -39,7 +39,7 @@ export class Jt808IngestService {
     envelope: Jt808TelemetryEnvelope,
     routingKey: string,
   ): Promise<{ posicionId?: number; duplicate?: boolean }> {
-    let imei: number;
+    let imei: string;
     try {
       ({ imei } = await this.deviceLookup.resolve(envelope.deviceId));
     } catch (error) {
@@ -105,7 +105,7 @@ export class Jt808IngestService {
    */
   private async attachMediaIds(
     manager: EntityManager,
-    imei: number,
+    imei: string,
     payload: AcometidasPayload,
     posicionData: Partial<Posiciones>,
   ): Promise<void> {
@@ -177,7 +177,7 @@ export class Jt808IngestService {
   private async insertFotoIfUrl(
     manager: EntityManager,
     args: {
-      imei: number;
+      imei: string;
       url: string | null | undefined;
       fechaHora: Date | null;
       idFotoJt808: number | null;
@@ -200,7 +200,7 @@ export class Jt808IngestService {
   private async insertVideoIfUrl(
     manager: EntityManager,
     args: {
-      imei: number;
+      imei: string;
       url: string | null | undefined;
       fechaHora: Date | null;
       rutaServidor: string | null;

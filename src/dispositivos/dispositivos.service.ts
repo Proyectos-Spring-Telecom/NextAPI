@@ -19,6 +19,7 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { imeiToString } from 'src/common/imei.util';
 import {
   EnumModulos,
   EnumEstatusProductoDispositivo,
@@ -277,7 +278,7 @@ export class DispositivosService {
 
       if (
         dto.imei != null &&
-        Number(dto.imei) !== Number(entity.imei ?? NaN)
+        imeiToString(dto.imei) !== imeiToString(entity.imei)
       ) {
         const existeImei = await this.repository.findOne({
           where: { imei: dto.imei },

@@ -100,7 +100,7 @@ export class MonitoreoGateway
     }
   }
 
-  async notificarImei(imei: number): Promise<void> {
+  async notificarImei(imei: string): Promise<void> {
     try {
       const item = await this.monitoreoService.obtenerPorImei(imei);
       if (item) {

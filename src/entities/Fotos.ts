@@ -7,8 +7,16 @@ export class Fotos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @Column('bigint', { name: 'Imei', nullable: true })
-  imei: number | null;
+  @Column('bigint', {
+    name: 'Imei',
+    nullable: true,
+    transformer: {
+      to: (value: string | null) => value,
+      from: (value: string | number | null) =>
+        value == null || value === '' ? null : String(value),
+    },
+  })
+  imei: string | null;
 
   /** ID multimedia JT808 (opcional; no es Fotos.Id) */
   @Column('bigint', { name: 'IdFoto', nullable: true })

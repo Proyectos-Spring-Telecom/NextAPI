@@ -162,7 +162,8 @@ import * as jwt from 'jsonwebtoken';
         synchronize: false, //Nunca poner en true
         dateStrings: false,
         timezone: config.get<string>('DB_TZ'),
-        bigNumberStrings: false,
+        // true: bigint fuera de MAX_SAFE_INTEGER (p. ej. IMEI/ICCID) llega como string
+        bigNumberStrings: true,
         logging:
           config.get<boolean>('DB_LOGGING') === true ||
           process.env.NODE_ENV !== 'production',

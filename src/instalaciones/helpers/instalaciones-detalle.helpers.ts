@@ -62,7 +62,7 @@ export function applyDetalleSelectBase(
     // dispositivo
     'i.idDispositivo AS idDispositivo',
     'd.numeroSerie AS numeroSerieDispositivo',
-    'd.imei AS imeiDispositivo',
+    'CAST(d.imei AS CHAR) AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
     'd.idTipoDispositivo AS idTipoDispositivo',
     'td.nombre AS nombreTipoDispositivo',
@@ -219,7 +219,7 @@ function mapBloqueDispositivo(row: Record<string, unknown>) {
   const base = {
     idDispositivo,
     numeroSerieDispositivo: str(row.numeroSerieDispositivo),
-    imeiDispositivo: num(row.imeiDispositivo),
+    imeiDispositivo: str(row.imeiDispositivo),
     ecoDispositivo: str(row.ecoDispositivo),
     idTipoDispositivo,
     nombreTipoDispositivo: str(row.nombreTipoDispositivo),

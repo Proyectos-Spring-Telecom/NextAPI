@@ -66,7 +66,7 @@ export function applyMonitoreoListSelect(
     'marVeh.nombre AS marcaVehiculo',
     'modVeh.nombre AS modeloVehiculo',
 
-    'd.imei AS imeiDispositivo',
+    'CAST(d.imei AS CHAR) AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
     'd.numeroSerie AS numeroSerieDispositivo',
     'marDisp.nombre AS marcaDispositivo',
@@ -83,7 +83,7 @@ export function applyMonitoreoListSelect(
     'inm.lng AS lngInmueble',
 
     'up.id AS upId',
-    'up.imei AS upImei',
+    'CAST(up.imei AS CHAR) AS upImei',
     'up.lat AS upLat',
     'up.lng AS upLng',
     'up.estado AS upEstado',

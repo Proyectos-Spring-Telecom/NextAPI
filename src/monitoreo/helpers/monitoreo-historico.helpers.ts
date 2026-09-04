@@ -1,4 +1,5 @@
 import { num, str, toIso } from '../monitoreo.mapper';
+import { imeiToString } from 'src/common/imei.util';
 
 export type HistoricoPosicionItem = {
   id: number;
@@ -16,7 +17,7 @@ export type HistoricoPosicionItem = {
   marca: string | null;
   modelo: string | null;
   estatus: number | null;
-  imei: number | null;
+  imei: string | null;
   lat: number;
   lng: number;
   estado: number | null;
@@ -103,7 +104,7 @@ export function mapHistoricoPosicionItem(
     marca: ctx.marca,
     modelo: ctx.modelo,
     estatus: ctx.estatus,
-    imei: num(row.imei),
+    imei: imeiToString(row.imei),
     lat: Number(row.lat),
     lng: Number(row.lng),
     estado: num(row.estado),
