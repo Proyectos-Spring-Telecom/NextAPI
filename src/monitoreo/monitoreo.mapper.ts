@@ -25,47 +25,145 @@ export function toIso(value: Date | string | null | undefined): string | null {
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
+/**
+ * Fila completa de `UltimaPosicion` (única fuente de telemetría en list/socket).
+ * Si no hay fila, todos los campos van en null.
+ */
+export type UltimaPosicionPayload = {
+  id: number | null;
+  imei: number | null;
+  lat: number | null;
+  lng: number | null;
+  estado: number | null;
+  fechaHora: string | null;
+  velocidad: number | null;
+  direccion: number | null;
+  odometro: number | null;
+  ignicion: number | null;
+  alarma1: number | null;
+  alarma2: number | null;
+  energia: number | null;
+  idEvento: number | null;
+  idFoto: number | null;
+  fhRegistro: string | null;
+  bateria: number | null;
+  alimentacion: number | null;
+  gps: number | null;
+  gsm: number | null;
+  movimiento: number | null;
+  combustible: number | null;
+  idFoto1: number | null;
+  idFoto2: number | null;
+  idFoto3: number | null;
+  idVideo1: number | null;
+  idVideo2: number | null;
+  idVideo3: number | null;
+};
+
+const ULTIMA_POSICION_VACIA: UltimaPosicionPayload = {
+  id: null,
+  imei: null,
+  lat: null,
+  lng: null,
+  estado: null,
+  fechaHora: null,
+  velocidad: null,
+  direccion: null,
+  odometro: null,
+  ignicion: null,
+  alarma1: null,
+  alarma2: null,
+  energia: null,
+  idEvento: null,
+  idFoto: null,
+  fhRegistro: null,
+  bateria: null,
+  alimentacion: null,
+  gps: null,
+  gsm: null,
+  movimiento: null,
+  combustible: null,
+  idFoto1: null,
+  idFoto2: null,
+  idFoto3: null,
+  idVideo1: null,
+  idVideo2: null,
+  idVideo3: null,
+};
+
+export function mapUltimaPosicionPayload(
+  row: Record<string, unknown>,
+): UltimaPosicionPayload {
+  if (row.upId == null) {
+    return { ...ULTIMA_POSICION_VACIA };
+  }
+
+  return {
+    id: num(row.upId),
+    imei: num(row.upImei),
+    lat: num(row.upLat),
+    lng: num(row.upLng),
+    estado: num(row.upEstado),
+    fechaHora: toIso(row.upFechaHora as string | Date | null | undefined),
+    velocidad: num(row.upVelocidad),
+    direccion: num(row.upDireccion),
+    odometro: num(row.upOdometro),
+    ignicion: num(row.upIgnicion),
+    alarma1: num(row.upAlarma1),
+    alarma2: num(row.upAlarma2),
+    energia: num(row.upEnergia),
+    idEvento: num(row.upIdEvento),
+    idFoto: num(row.upIdFoto),
+    fhRegistro: toIso(row.upFhRegistro as string | Date | null | undefined),
+    bateria: num(row.upBateria),
+    alimentacion: num(row.upAlimentacion),
+    gps: num(row.upGps),
+    gsm: num(row.upGsm),
+    movimiento: num(row.upMovimiento),
+    combustible: num(row.upCombustible),
+    idFoto1: num(row.upIdFoto1),
+    idFoto2: num(row.upIdFoto2),
+    idFoto3: num(row.upIdFoto3),
+    idVideo1: num(row.upIdVideo1),
+    idVideo2: num(row.upIdVideo2),
+    idVideo3: num(row.upIdVideo3),
+  };
+}
+
 type MonitoreoBase = {
   idInstalacion: number;
   idCliente: number;
   idTipoProducto: number;
 };
 
-export type MonitoreoVehiculoItem = MonitoreoBase & {
-  cliente: string | null;
-  placa: string | null;
-  economico: string | null;
-  marca: string | null;
-  modelo: string | null;
-  ignicion: number | null;
-  velocidad: number | null;
-  direccion: number | null;
-  fechaHora: string | null;
+/** Contexto de instalación + telemetría = campos de UltimaPosicion en raíz. */
+type ConTelemetriaUltimaPosicion = UltimaPosicionPayload & {
+  /** Alias de `combustible` (compat UI vehículos). */
   nivelCombustible: number | null;
-  odometro: number | null;
-  gps: number | null;
-  gsm: number | null;
-  lat: number | null;
-  lng: number | null;
+  /** Copia anidada idéntica a los campos de telemetría en raíz. */
+  ultimaPosicion: UltimaPosicionPayload;
 };
 
-export type MonitoreoDispositivoItem = MonitoreoBase & {
-  cliente: string | null;
-  imei: number | null;
-  economico: string | null;
-  numeroSerie: string | null;
-  estatus: number | null;
-  odometro: number | null;
-  gps: number | null;
-  gsm: number | null;
-  direccion: number | null;
-  modelo: string | null;
-  marca: string | null;
-  fechaHora: string | null;
-  ultimaPosicion: number | null;
-  lat: number | null;
-  lng: number | null;
-};
+export type MonitoreoVehiculoItem = MonitoreoBase &
+  ConTelemetriaUltimaPosicion & {
+    cliente: string | null;
+    placa: string | null;
+    economico: string | null;
+    marca: string | null;
+    modelo: string | null;
+  };
+
+export type MonitoreoDispositivoItem = MonitoreoBase &
+  ConTelemetriaUltimaPosicion & {
+    cliente: string | null;
+    /** IMEI del dispositivo (catálogo); la telemetría usa `imei` de UltimaPosicion. */
+    imeiDispositivo: number | null;
+    economico: string | null;
+    numeroSerie: string | null;
+    estatus: number | null;
+    modelo: string | null;
+    marca: string | null;
+  };
 
 export type MonitoreoActivoItem = MonitoreoDispositivoItem & {
   descripcion: string | null;
@@ -109,29 +207,27 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
   };
 }
 
-function mapTelemetria(row: Record<string, unknown>) {
+/** Telemetría únicamente desde UltimaPosicion (aplanada + anidada). */
+function mapTelemetriaDesdeUltimaPosicion(
+  row: Record<string, unknown>,
+): ConTelemetriaUltimaPosicion {
+  const ultimaPosicion = mapUltimaPosicionPayload(row);
   return {
-    fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
-    ultimaPosicion: num(row.ultimaPosicion),
-    odometro: num(row.odometro),
-    gps: num(row.gps),
-    gsm: num(row.gsm),
-    direccion: num(row.direccion),
-    lat: num(row.latitud),
-    lng: num(row.longitud),
+    ...ultimaPosicion,
+    nivelCombustible: ultimaPosicion.combustible,
+    ultimaPosicion,
   };
 }
 
-function mapDispositivoComun(row: Record<string, unknown>) {
+function mapDispositivoContexto(row: Record<string, unknown>) {
   return {
     cliente: str(row.nombreCompletoCliente),
-    imei: num(row.imei),
+    imeiDispositivo: num(row.imeiDispositivo),
     economico: str(row.ecoDispositivo),
     numeroSerie: str(row.numeroSerieDispositivo),
     estatus: num(row.estatusProducto),
     modelo: str(row.modeloDispositivo),
     marca: str(row.marcaDispositivo),
-    ...mapTelemetria(row),
   };
 }
 
@@ -143,32 +239,25 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     economico: str(row.ecoVehiculo),
     marca: str(row.marcaVehiculo),
     modelo: str(row.modeloVehiculo),
-    ignicion: num(row.ignicion),
-    velocidad: num(row.velocidad),
-    direccion: num(row.direccion),
-    fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
-    nivelCombustible: num(row.nivelCombustible),
-    odometro: num(row.odometro),
-    gps: num(row.gps),
-    gsm: num(row.gsm),
-    lat: num(row.latitud),
-    lng: num(row.longitud),
+    ...mapTelemetriaDesdeUltimaPosicion(row),
   };
 }
 
 function mapMonitoreoActivo(row: Record<string, unknown>): MonitoreoActivoItem {
   return {
     ...mapBase(row),
-    ...mapDispositivoComun(row),
+    ...mapDispositivoContexto(row),
     descripcion: str(row.descripcionActivo),
+    ...mapTelemetriaDesdeUltimaPosicion(row),
   };
 }
 
 function mapMonitoreoPersona(row: Record<string, unknown>): MonitoreoPersonaItem {
   return {
     ...mapBase(row),
-    ...mapDispositivoComun(row),
+    ...mapDispositivoContexto(row),
     persona: str(row.nombrePersona),
+    ...mapTelemetriaDesdeUltimaPosicion(row),
   };
 }
 
@@ -199,7 +288,7 @@ function mapMonitoreoInmueble(row: Record<string, unknown>): MonitoreoInmuebleIt
   return {
     ...mapBase(row),
     cliente: str(row.nombreCompletoCliente),
-    imei: num(row.imei),
+    imei: num(row.imeiDispositivo),
     inmueble: str(row.inmueble),
     economico: str(row.ecoDispositivo),
     numeroSerie: str(row.numeroSerieDispositivo),
@@ -233,8 +322,9 @@ export function mapMonitoreoPosicionItem(
     default:
       return {
         ...mapBase(row),
-        ...mapDispositivoComun(row),
+        ...mapDispositivoContexto(row),
         descripcion: null,
+        ...mapTelemetriaDesdeUltimaPosicion(row),
       } as MonitoreoActivoItem;
   }
 }

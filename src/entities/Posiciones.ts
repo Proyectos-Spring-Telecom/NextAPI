@@ -4,6 +4,13 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 @applySchema
 @Index('IX_Posiciones_Imei_Fecha', ['imei', 'fechaHora'])
 @Index('IX_Posiciones_Fecha', ['fechaHora'])
+@Index('FK_Posiciones_Foto', ['idFoto'])
+@Index('FK_Posiciones_Foto1', ['idFoto1'])
+@Index('FK_Posiciones_Foto2', ['idFoto2'])
+@Index('FK_Posiciones_Foto3', ['idFoto3'])
+@Index('FK_Posiciones_Video1', ['idVideo1'])
+@Index('FK_Posiciones_Video2', ['idVideo2'])
+@Index('FK_Posiciones_Video3', ['idVideo3'])
 @Entity('Posiciones')
 export class Posiciones {
   @PrimaryGeneratedColumn({ type: 'int', name: 'Id' })
@@ -76,21 +83,21 @@ export class Posiciones {
   @Column('int', { name: 'Combustible', nullable: true })
   combustible: number | null;
 
-  @Column('varchar', { name: 'Foto1', length: 500, nullable: true })
-  foto1: string | null;
+  @Column('bigint', { name: 'IdFoto1', nullable: true })
+  idFoto1: number | null;
 
-  @Column('varchar', { name: 'Foto2', length: 500, nullable: true })
-  foto2: string | null;
+  @Column('bigint', { name: 'IdFoto2', nullable: true })
+  idFoto2: number | null;
 
-  @Column('varchar', { name: 'Foto3', length: 500, nullable: true })
-  foto3: string | null;
+  @Column('bigint', { name: 'IdFoto3', nullable: true })
+  idFoto3: number | null;
 
-  @Column('varchar', { name: 'Video1', length: 500, nullable: true })
-  video1: string | null;
+  @Column('bigint', { name: 'IdVideo1', nullable: true })
+  idVideo1: number | null;
 
-  @Column('varchar', { name: 'Video2', length: 500, nullable: true })
-  video2: string | null;
+  @Column('bigint', { name: 'IdVideo2', nullable: true })
+  idVideo2: number | null;
 
-  @Column('varchar', { name: 'Video3', length: 500, nullable: true })
-  video3: string | null;
+  @Column('bigint', { name: 'IdVideo3', nullable: true })
+  idVideo3: number | null;
 }

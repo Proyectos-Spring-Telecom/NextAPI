@@ -9,14 +9,18 @@ export interface Jt808AlarmExtension {
 export interface Jt808PhotoExtension {
   multimediaId?: number;
   channelId?: number;
+  channelIds?: number[];
+  mediaType?: 'photo' | 'photo_batch' | 'video';
+  trigger?: string;
   filePath?: string;
+  filePaths?: string[];
   fileBytes?: number;
   jpegMagic?: boolean;
   locationSource?: string;
   locationId?: number | null;
 }
 
-/** Tabla 4 Acometidas — columnas Posiciones / UltimaPosicion */
+/** Tabla 4 Acometidas — payload AMQP (URLs en Foto1..3 / Video1..3; IDs al persistir) */
 export interface AcometidasPayload {
   Imei: number | null;
   Lat: number;
@@ -31,6 +35,7 @@ export interface AcometidasPayload {
   Alarma2: number | null;
   Energia: number | null;
   IdEvento: number;
+  /** ID multimedia JT808 (opcional); no es Fotos.Id */
   IdFoto: number | null;
   Bateria: number | null;
   Alimentacion: number | null;
@@ -38,9 +43,11 @@ export interface AcometidasPayload {
   GSM: number | null;
   Movimiento: number | null;
   Combustible: number | null;
+  /** URLs públicas → INSERT Fotos → IdFoto1..3 */
   Foto1: string | null;
   Foto2: string | null;
   Foto3: string | null;
+  /** URLs públicas → INSERT Videos → IdVideo1..3 */
   Video1: string | null;
   Video2: string | null;
   Video3: string | null;

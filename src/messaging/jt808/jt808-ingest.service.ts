@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { Fotos } from 'src/entities/Fotos';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
-import { UltimaPosicion } from 'src/entities/UltimaPosicion';
+import { Videos } from 'src/entities/Videos';
 import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import {
   DeviceImeiMissingError,
@@ -14,8 +15,16 @@ import {
   extractJt808Audit,
   mapAcometidasToPosicion,
 } from './jt808-envelope.mapper';
-import { Jt808TelemetryEnvelope } from './jt808.types';
+import {
+  AcometidasPayload,
+  Jt808PhotoExtension,
+  Jt808TelemetryEnvelope,
+} from './jt808.types';
 
+/**
+ * Consume telemetría JT808 → INSERT Posiciones (Estado NULL).
+ * UltimaPosicion / Estado / Ignicion (si NULL) los deriva el trigger de BD.
+ */
 @Injectable()
 export class Jt808IngestService {
   private readonly logger = new Logger(Jt808IngestService.name);
@@ -64,6 +73,8 @@ export class Jt808IngestService {
         throw error;
       }
 
+      await this.attachMediaIds(manager, imei, envelope.payload, posicionData);
+
       const insertResult = await manager.insert(Posiciones, posicionData);
       const posicionId = Number(insertResult.identifiers[0]?.id);
 
@@ -72,8 +83,6 @@ export class Jt808IngestService {
         { eventId: envelope.eventId },
         { posicionId },
       );
-
-      await this.upsertUltimaPosicion(manager, imei, posicionData);
 
       this.logger.log(
         `[Jt808Ingest] ${envelope.kind} eventId=${envelope.eventId} deviceId=${envelope.deviceId} → PosicionId=${posicionId}`,
@@ -89,42 +98,121 @@ export class Jt808IngestService {
     return result;
   }
 
-  private async upsertUltimaPosicion(
+  /**
+   * Orden FK: INSERT Fotos/Videos → rellenar IdFoto1..3 / IdVideo1..3 (y IdFoto = IdFoto1).
+   * AMQP trae URLs en Foto1..3 / Video1..3; no van a columnas FK.
+   */
+  private async attachMediaIds(
     manager: EntityManager,
     imei: number,
+    payload: AcometidasPayload,
     posicionData: Partial<Posiciones>,
   ): Promise<void> {
-    await manager.upsert(
-      UltimaPosicion,
-      {
-        imei,
-        lat: posicionData.lat,
-        lng: posicionData.lng,
-        estado: posicionData.estado ?? null,
-        fechaHora: posicionData.fechaHora,
-        velocidad: posicionData.velocidad ?? 0,
-        direccion: posicionData.direccion ?? 0,
-        odometro: posicionData.odometro ?? null,
-        ignicion: posicionData.ignicion ?? null,
-        alarma1: posicionData.alarma1 ?? null,
-        alarma2: posicionData.alarma2 ?? null,
-        energia: posicionData.energia ?? null,
-        idEvento: posicionData.idEvento ?? null,
-        idFoto: posicionData.idFoto ?? null,
-        bateria: posicionData.bateria ?? null,
-        alimentacion: posicionData.alimentacion ?? null,
-        gps: posicionData.gps ?? null,
-        gsm: posicionData.gsm ?? null,
-        movimiento: posicionData.movimiento ?? null,
-        combustible: posicionData.combustible ?? null,
-        foto1: posicionData.foto1 ?? null,
-        foto2: posicionData.foto2 ?? null,
-        foto3: posicionData.foto3 ?? null,
-        video1: posicionData.video1 ?? null,
-        video2: posicionData.video2 ?? null,
-        video3: posicionData.video3 ?? null,
-      },
-      ['imei'],
-    );
+    const fechaHora = posicionData.fechaHora ?? null;
+    const jt808 = payload.jt808 as Jt808PhotoExtension | undefined;
+    const filePaths = jt808?.filePaths ?? [];
+    const singlePath = jt808?.filePath ?? null;
+    const multimediaId =
+      payload.IdFoto != null
+        ? Number(payload.IdFoto)
+        : jt808?.multimediaId != null
+          ? Number(jt808.multimediaId)
+          : null;
+
+    const idFoto1 = await this.insertFotoIfUrl(manager, {
+      imei,
+      url: payload.Foto1,
+      fechaHora,
+      idFotoJt808: multimediaId,
+      rutaServidor: filePaths[0] ?? singlePath,
+    });
+    const idFoto2 = await this.insertFotoIfUrl(manager, {
+      imei,
+      url: payload.Foto2,
+      fechaHora,
+      idFotoJt808: null,
+      rutaServidor: filePaths[1] ?? null,
+    });
+    const idFoto3 = await this.insertFotoIfUrl(manager, {
+      imei,
+      url: payload.Foto3,
+      fechaHora,
+      idFotoJt808: null,
+      rutaServidor: filePaths[2] ?? null,
+    });
+
+    const idVideo1 = await this.insertVideoIfUrl(manager, {
+      imei,
+      url: payload.Video1,
+      fechaHora,
+      rutaServidor:
+        !payload.Foto1 && !payload.Foto2 && !payload.Foto3
+          ? (filePaths[0] ?? singlePath)
+          : null,
+    });
+    const idVideo2 = await this.insertVideoIfUrl(manager, {
+      imei,
+      url: payload.Video2,
+      fechaHora,
+      rutaServidor: filePaths[1] ?? null,
+    });
+    const idVideo3 = await this.insertVideoIfUrl(manager, {
+      imei,
+      url: payload.Video3,
+      fechaHora,
+      rutaServidor: filePaths[2] ?? null,
+    });
+
+    posicionData.idFoto1 = idFoto1;
+    posicionData.idFoto2 = idFoto2;
+    posicionData.idFoto3 = idFoto3;
+    posicionData.idVideo1 = idVideo1;
+    posicionData.idVideo2 = idVideo2;
+    posicionData.idVideo3 = idVideo3;
+    posicionData.idFoto = idFoto1;
+  }
+
+  private async insertFotoIfUrl(
+    manager: EntityManager,
+    args: {
+      imei: number;
+      url: string | null | undefined;
+      fechaHora: Date | null;
+      idFotoJt808: number | null;
+      rutaServidor: string | null;
+    },
+  ): Promise<number | null> {
+    const ruta = args.url?.trim();
+    if (!ruta) return null;
+
+    const result = await manager.insert(Fotos, {
+      imei: args.imei,
+      idFoto: args.idFotoJt808,
+      ruta,
+      rutaServidor: args.rutaServidor,
+      fechaHora: args.fechaHora,
+    });
+    return Number(result.identifiers[0]?.id);
+  }
+
+  private async insertVideoIfUrl(
+    manager: EntityManager,
+    args: {
+      imei: number;
+      url: string | null | undefined;
+      fechaHora: Date | null;
+      rutaServidor: string | null;
+    },
+  ): Promise<number | null> {
+    const ruta = args.url?.trim();
+    if (!ruta) return null;
+
+    const result = await manager.insert(Videos, {
+      imei: args.imei,
+      ruta,
+      rutaServidor: args.rutaServidor,
+      fechaHora: args.fechaHora,
+    });
+    return Number(result.identifiers[0]?.id);
   }
 }

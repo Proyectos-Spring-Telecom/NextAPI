@@ -56,7 +56,53 @@ describe('jt808-envelope.mapper', () => {
     expect(pos.idEvento).toBe(EnumCatEventos.TRANSMISION);
     expect(pos.estado).toBeNull();
     expect(pos.ignicion).toBeNull();
+    expect(pos.idFoto1).toBeNull();
+    expect(pos.idVideo1).toBeNull();
     expect((pos as Record<string, unknown>).jt808).toBeUndefined();
+    expect((pos as Record<string, unknown>).foto1).toBeUndefined();
+  });
+
+  it('deja FKs media en null aunque el payload traiga URLs (persistencia en ingest)', () => {
+    const envelope = assertJt808Envelope({
+      eventId,
+      protocol: 'jt808',
+      kind: 'position',
+      deviceId: '007773050481',
+      receivedAt: '2026-09-03T23:30:00.000Z',
+      payload: {
+        Imei: null,
+        Lat: 18.953172,
+        Lng: -99.235769,
+        Estado: null,
+        FechaHora: '2026-09-03 17:19:29',
+        Velocidad: 0,
+        Direccion: 175,
+        Odometro: null,
+        Ignicion: 1,
+        Alarma1: null,
+        Alarma2: null,
+        Energia: null,
+        IdEvento: EnumCatEventos.CAMERA,
+        IdFoto: null,
+        Bateria: null,
+        Alimentacion: null,
+        GPS: null,
+        GSM: null,
+        Movimiento: null,
+        Combustible: null,
+        Foto1: 'https://example.com/a.jpg',
+        Foto2: null,
+        Foto3: null,
+        Video1: 'https://example.com/a.mp4',
+        Video2: null,
+        Video3: null,
+      },
+    });
+
+    const pos = mapAcometidasToPosicion(1, envelope.payload);
+    expect(pos.idFoto).toBeNull();
+    expect(pos.idFoto1).toBeNull();
+    expect(pos.idVideo1).toBeNull();
   });
 
   it('parsea alarm DSM con bloque jt808', () => {

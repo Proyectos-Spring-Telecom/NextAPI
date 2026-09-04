@@ -79,7 +79,12 @@ function assertAcometidasPayload(payload: AcometidasPayload, kind: Jt808Kind) {
   }
 }
 
-/** Omite Imei, jt808 y FHRegistro — resuelve Imei vía lookup */
+/**
+ * Mapea telemetría GPS/evento a Posiciones.
+ * - Estado siempre NULL (lo deriva el trigger → UltimaPosicion).
+ * - Ignicion: 0|1 si el gateway lo conoce; NULL → el trigger completa.
+ * - IdFoto1..3 / IdVideo1..3: el ingest inserta Fotos/Videos y rellena FKs.
+ */
 export function mapAcometidasToPosicion(
   imei: number,
   aco: AcometidasPayload,
@@ -88,7 +93,7 @@ export function mapAcometidasToPosicion(
     imei,
     lat: aco.Lat,
     lng: aco.Lng,
-    estado: aco.Estado,
+    estado: null,
     fechaHora: aco.FechaHora as unknown as Date,
     velocidad: Math.round(Number(aco.Velocidad)) || 0,
     direccion: Math.round(Number(aco.Direccion)) || 0,
@@ -98,19 +103,19 @@ export function mapAcometidasToPosicion(
     alarma2: aco.Alarma2,
     energia: aco.Energia,
     idEvento: aco.IdEvento,
-    idFoto: aco.IdFoto != null ? Number(aco.IdFoto) : null,
+    idFoto: null,
     bateria: aco.Bateria,
     alimentacion: aco.Alimentacion,
     gps: aco.GPS != null ? Math.round(Number(aco.GPS)) : null,
     gsm: aco.GSM != null ? Math.round(Number(aco.GSM)) : null,
     movimiento: aco.Movimiento,
     combustible: aco.Combustible,
-    foto1: aco.Foto1,
-    foto2: aco.Foto2,
-    foto3: aco.Foto3,
-    video1: aco.Video1,
-    video2: aco.Video2,
-    video3: aco.Video3,
+    idFoto1: null,
+    idFoto2: null,
+    idFoto3: null,
+    idVideo1: null,
+    idVideo2: null,
+    idVideo3: null,
   };
 }
 

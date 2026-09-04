@@ -1,0 +1,27 @@
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { applySchema } from 'src/common/apply-schema.decorator';
+
+@applySchema
+@Entity('Fotos')
+export class Fotos {
+  @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
+  id: number;
+
+  @Column('bigint', { name: 'Imei', nullable: true })
+  imei: number | null;
+
+  /** ID multimedia JT808 (opcional; no es Fotos.Id) */
+  @Column('bigint', { name: 'IdFoto', nullable: true })
+  idFoto: number | null;
+
+  /** URL pública */
+  @Column('varchar', { name: 'Ruta', length: 500, nullable: true })
+  ruta: string | null;
+
+  /** Ruta física en disco (ops; no usar en UI) */
+  @Column('varchar', { name: 'RutaServidor', length: 500, nullable: true })
+  rutaServidor: string | null;
+
+  @Column('datetime', { name: 'FechaHora', nullable: true })
+  fechaHora: Date | null;
+}
