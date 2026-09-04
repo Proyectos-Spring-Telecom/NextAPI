@@ -1,4 +1,4 @@
-import { num, str } from '../monitoreo.mapper';
+import { num, str, toIso } from '../monitoreo.mapper';
 
 export type HistoricoPosicionItem = {
   id: number;
@@ -28,6 +28,33 @@ export type HistoricoPosicionItem = {
   combustible: number | null;
   idPosicion: number | null;
   totalDistancia: number | null;
+  /** Campos adicionales de Posiciones (plano, mismo criterio que listado/socket) */
+  fechaHora: string | null;
+  alarma1: number | null;
+  alarma2: number | null;
+  energia: number | null;
+  idEvento: number | null;
+  idFoto: number | null;
+  fhRegistro: string | null;
+  bateria: number | null;
+  alimentacion: number | null;
+  gps: number | null;
+  gsm: number | null;
+  movimiento: number | null;
+  nivelCombustible: number | null;
+  idFoto1: number | null;
+  idFoto2: number | null;
+  idFoto3: number | null;
+  idVideo1: number | null;
+  idVideo2: number | null;
+  idVideo3: number | null;
+  rutaFoto: string | null;
+  rutaFoto1: string | null;
+  rutaFoto2: string | null;
+  rutaFoto3: string | null;
+  rutaVideo1: string | null;
+  rutaVideo2: string | null;
+  rutaVideo3: string | null;
 };
 
 export type HistoricoMonitoreoResponse = {
@@ -57,6 +84,7 @@ export function mapHistoricoPosicionItem(
   ctx: ContextoProducto,
 ): HistoricoPosicionItem {
   const idPosicion = Number(row.id);
+  const combustible = num(row.combustible);
   return {
     id: idPosicion,
     idInstalacion: ctx.idInstalacion,
@@ -84,9 +112,35 @@ export function mapHistoricoPosicionItem(
     direccion: num(row.direccion),
     odometro: num(row.odometro),
     estaEnMovimiento: num(row.movimiento) === 1,
-    combustible: num(row.combustible),
+    combustible,
     idPosicion,
     totalDistancia: null,
+    fechaHora: toIso(row.fechaHora as string | Date | null | undefined),
+    alarma1: num(row.alarma1),
+    alarma2: num(row.alarma2),
+    energia: num(row.energia),
+    idEvento: num(row.idEvento),
+    idFoto: num(row.idFoto),
+    fhRegistro: toIso(row.fhRegistro as string | Date | null | undefined),
+    bateria: num(row.bateria),
+    alimentacion: num(row.alimentacion),
+    gps: num(row.gps),
+    gsm: num(row.gsm),
+    movimiento: num(row.movimiento),
+    nivelCombustible: combustible,
+    idFoto1: num(row.idFoto1),
+    idFoto2: num(row.idFoto2),
+    idFoto3: num(row.idFoto3),
+    idVideo1: num(row.idVideo1),
+    idVideo2: num(row.idVideo2),
+    idVideo3: num(row.idVideo3),
+    rutaFoto: str(row.rutaFoto),
+    rutaFoto1: str(row.rutaFoto1),
+    rutaFoto2: str(row.rutaFoto2),
+    rutaFoto3: str(row.rutaFoto3),
+    rutaVideo1: str(row.rutaVideo1),
+    rutaVideo2: str(row.rutaVideo2),
+    rutaVideo3: str(row.rutaVideo3),
   };
 }
 
