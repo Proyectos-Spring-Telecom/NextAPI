@@ -51,6 +51,7 @@ export class MonitoreoController {
       '',
       '**GPS (vehículo 1, activo 2, persona 4):** un solo objeto plano = contexto del producto +',
       'campos de `UltimaPosicion` (null si no hay fila). Sin JSON anidados.',
+      'Vehículo (1) además: `colorVehiculo`, `numeroSerieVehiculo` (planos).',
       '',
       '**Inmueble / panel (3):** no usa UltimaPosicion ni rutas de foto/video.',
       'Campos: cliente, imei, inmueble, economico, numeroSerie, estatus, modelo, marca,',
