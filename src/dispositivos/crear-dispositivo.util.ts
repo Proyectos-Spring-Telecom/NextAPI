@@ -106,7 +106,7 @@ export async function crearDispositivoBase(
     idCliente: number;
     idTipoDispositivo: number;
     numeroSerie: string;
-    imei?: number | null;
+    imei?: string | null;
     eco?: string | null;
     idMarca?: number | null;
     idModelo?: number | null;

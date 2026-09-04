@@ -1,4 +1,5 @@
 import { EnumTipoProducto } from 'src/common/estatus.enum';
+import { imeiToString } from 'src/common/imei.util';
 import { mapUltimoEvento } from 'src/alarmas/alarmas-mapper';
 
 export function num(value: unknown): number | null {
@@ -31,7 +32,7 @@ export function toIso(value: Date | string | null | undefined): string | null {
  */
 export type TelemetriaUltimaPosicion = {
   id: number | null;
-  imei: number | null;
+  imei: string | null;
   lat: number | null;
   lng: number | null;
   estado: number | null;
@@ -61,7 +62,7 @@ export function mapTelemetriaUltimaPosicion(
   const combustible = num(row.upCombustible);
   return {
     id: num(row.upId),
-    imei: num(row.upImei) ?? num(row.imeiDispositivo),
+    imei: imeiToString(row.upImei) ?? imeiToString(row.imeiDispositivo),
     lat: num(row.upLat),
     lng: num(row.upLng),
     estado: num(row.upEstado),
@@ -125,7 +126,7 @@ export type MonitoreoUltimoEventoAlarma = NonNullable<
 
 export type MonitoreoInmuebleItem = MonitoreoBase & {
   cliente: string | null;
-  imei: number | null;
+  imei: string | null;
   inmueble: string | null;
   economico: string | null;
   numeroSerie: string | null;
@@ -220,7 +221,7 @@ function mapMonitoreoInmueble(row: Record<string, unknown>): MonitoreoInmuebleIt
   return {
     ...mapBase(row),
     cliente: str(row.nombreCompletoCliente),
-    imei: num(row.imeiDispositivo),
+    imei: imeiToString(row.imeiDispositivo),
     inmueble: str(row.inmueble),
     economico: str(row.ecoDispositivo),
     numeroSerie: str(row.numeroSerieDispositivo),

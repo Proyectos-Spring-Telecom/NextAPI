@@ -3,7 +3,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateDispositivosDto {
@@ -24,13 +26,18 @@ export class UpdateDispositivosDto {
   numeroSerie?: string;
 
   @ApiPropertyOptional({
-    description: 'IMEI del equipo (bigint, clave de telemetría)',
-    example: 353456789012345,
+    description:
+      'IMEI del equipo. String para no perder dígitos (bigint en BD). null para limpiar.',
+    example: '8952020027196604527',
     nullable: true,
   })
   @IsOptional()
-  @IsInt()
-  imei?: number | null;
+  @ValidateIf((_, v) => v != null)
+  @IsString()
+  @Matches(/^\d{1,20}$/, {
+    message: 'imei debe ser numérico de 1 a 20 dígitos',
+  })
+  imei?: string | null;
 
   @ApiPropertyOptional({ description: 'Número económico', maxLength: 50 })
   @IsOptional()

@@ -86,7 +86,7 @@ function assertAcometidasPayload(payload: AcometidasPayload, kind: Jt808Kind) {
  * - IdFoto1..3 / IdVideo1..3: el ingest inserta Fotos/Videos y rellena FKs.
  */
 export function mapAcometidasToPosicion(
-  imei: number,
+  imei: string,
   aco: AcometidasPayload,
 ): Partial<Posiciones> {
   return {

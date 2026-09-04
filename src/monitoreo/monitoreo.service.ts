@@ -15,6 +15,7 @@ import {
   EnumTipoProducto,
   EstatusEnum,
 } from 'src/common/estatus.enum';
+import { imeiToString } from 'src/common/imei.util';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { Fotos } from 'src/entities/Fotos';
@@ -116,7 +117,7 @@ export class MonitoreoService {
       .select([
         'i.id AS idInstalacion',
         'd.id AS idDispositivo',
-        'd.imei AS imei',
+        'CAST(d.imei AS CHAR) AS imei',
         'd.numeroSerie AS numeroSerie',
         'd.idTipoDispositivo AS idTipoDispositivo',
       ])
@@ -151,8 +152,8 @@ export class MonitoreoService {
       );
     }
 
-    const imeiNum = Number(row.imei);
-    if (!Number.isFinite(imeiNum) || imeiNum <= 0) {
+    const imei = imeiToString(row.imei);
+    if (!imei) {
       throw new BadRequestException(
         'El dispositivo TRACKCAM no tiene IMEI válido',
       );
@@ -162,7 +163,7 @@ export class MonitoreoService {
       idInstalacion: Number(row.idInstalacion),
       idDispositivo: Number(row.idDispositivo),
       terminalId: toJt808TerminalId(numeroSerie),
-      imei: String(imeiNum),
+      imei,
     };
   }
 
@@ -243,8 +244,8 @@ export class MonitoreoService {
         );
       }
 
-      const imei = Number(ctxRow.imei);
-      if (!Number.isFinite(imei) || imei <= 0) {
+      const imei = imeiToString(ctxRow.imei);
+      if (!imei) {
         throw new BadRequestException(
           'La instalación no tiene un dispositivo con IMEI asignado',
         );
@@ -263,7 +264,7 @@ export class MonitoreoService {
         .leftJoin(Videos, 'vid3', 'vid3.id = p.idVideo3')
         .select([
           'p.id AS id',
-          'p.imei AS imei',
+          'CAST(p.imei AS CHAR) AS imei',
           'p.lat AS lat',
           'p.lng AS lng',
           'p.estado AS estado',
@@ -386,7 +387,7 @@ export class MonitoreoService {
     return row ? mapMonitoreoPosicionItem(row) : null;
   }
 
-  async obtenerPorImei(imei: number): Promise<MonitoreoPosicionItem | null> {
+  async obtenerPorImei(imei: string): Promise<MonitoreoPosicionItem | null> {
     const qb = this.createListadoQueryBuilder();
     qb.andWhere('d.imei = :imei', { imei });
     const row = await qb.getRawOne<Record<string, unknown>>();
@@ -427,7 +428,7 @@ export class MonitoreoService {
         'p.idTipoProducto AS idTipoProducto',
         'p.nombre AS nombreProducto',
         'p.estatus AS estatusProducto',
-        'd.imei AS imei',
+        'CAST(d.imei AS CHAR) AS imei',
         'd.eco AS ecoDispositivo',
         'd.numeroSerie AS numeroSerieDispositivo',
         'marDisp.nombre AS marcaDispositivo',

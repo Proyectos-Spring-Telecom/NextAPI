@@ -23,8 +23,14 @@ export class UltimaPosicion {
   @PrimaryGeneratedColumn({ type: 'int', name: 'Id' })
   id: number;
 
-  @Column('bigint', { name: 'Imei' })
-  imei: number;
+  @Column('bigint', {
+    name: 'Imei',
+    transformer: {
+      to: (value: string | number) => value,
+      from: (value: string | number) => String(value),
+    },
+  })
+  imei: string;
 
   @Column('double', { name: 'Lat' })
   lat: number;

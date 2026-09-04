@@ -1,6 +1,7 @@
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
+import { imeiToString } from 'src/common/imei.util';
 import { nombreCliente } from 'src/productos/map-relaciones.util';
 import {
   TRACKCAM_CONFIG_KEYS,
@@ -49,7 +50,7 @@ export function mapDispositivoPlano(item: Dispositivos) {
   return {
     id: Number(item.id),
     numeroSerie: item.numeroSerie,
-    imei: item.imei,
+    imei: imeiToString(item.imei),
     eco: item.eco,
     estatus: item.estatus != null ? Number(item.estatus) : null,
     idCliente: Number(item.idCliente),
@@ -187,21 +188,17 @@ export function buildTrackcamWebhookData(item: TrackcamConfig): {
   config.fechaCreacion = item.fechaCreacion ?? null;
   config.fechaActualizacion = item.fechaActualizacion ?? null;
 
-  const imeiRaw = dispositivo.imei;
-  const imei =
-    imeiRaw == null || imeiRaw === '' ? null : Number(imeiRaw);
+  const imei = imeiToString(dispositivo.imei);
 
   return {
     dispositivo,
     config,
-    terminalId: imeiToTerminalId(
-      imei != null && Number.isFinite(imei) ? imei : null,
-    ),
+    terminalId: imeiToTerminalId(imei),
   };
 }
 
-export function imeiToTerminalId(imei: number | null): string | null {
-  if (imei == null || !Number.isFinite(imei)) {
+export function imeiToTerminalId(imei: string | null): string | null {
+  if (imei == null) {
     return null;
   }
   const digits = String(imei).replace(/\D/g, '');

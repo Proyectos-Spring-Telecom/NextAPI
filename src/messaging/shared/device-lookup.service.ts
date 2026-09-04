@@ -3,10 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA } from '../../common/estatus.enum';
+import { imeiToString } from '../../common/imei.util';
 import { Dispositivos } from '../../entities/Dispositivos';
 
 export interface DeviceResolved {
-  imei: number;
+  /** IMEI como string (bigint BD; evita redondeo JS) */
+  imei: string;
   idCliente: number;
 }
 
@@ -52,23 +54,26 @@ export class DeviceLookupService {
       return cached;
     }
 
-    const row = await this.dispositivoRepo.findOne({
-      where: {
-        numeroSerie: deviceId,
-        estatus: In([...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA]),
-      },
-      select: ['imei', 'idCliente'],
-    });
+    const row = await this.dispositivoRepo
+      .createQueryBuilder('d')
+      .select('CAST(d.imei AS CHAR)', 'imei')
+      .addSelect('d.idCliente', 'idCliente')
+      .where('d.numeroSerie = :deviceId', { deviceId })
+      .andWhere('d.estatus IN (:...estatus)', {
+        estatus: [...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA],
+      })
+      .getRawOne<{ imei: string | null; idCliente: string | number }>();
 
     if (!row) {
       throw new DeviceNotFoundError(deviceId);
     }
-    if (row.imei == null) {
+    const imei = imeiToString(row.imei);
+    if (!imei) {
       throw new DeviceImeiMissingError(deviceId);
     }
 
     const resolved: DeviceResolved = {
-      imei: Number(row.imei),
+      imei,
       idCliente: Number(row.idCliente),
     };
     this.writeCache(deviceId, resolved);

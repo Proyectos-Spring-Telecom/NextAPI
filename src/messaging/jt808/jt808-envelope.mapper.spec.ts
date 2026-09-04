@@ -50,8 +50,8 @@ describe('jt808-envelope.mapper', () => {
     expect(envelope.kind).toBe('position');
     expect(envelope.deviceId).toBe('007773050481');
 
-    const pos = mapAcometidasToPosicion(867806072429049, envelope.payload);
-    expect(pos.imei).toBe(867806072429049);
+    const pos = mapAcometidasToPosicion('867806072429049', envelope.payload);
+    expect(pos.imei).toBe('867806072429049');
     expect(pos.lat).toBe(19.432608);
     expect(pos.idEvento).toBe(EnumCatEventos.TRANSMISION);
     expect(pos.estado).toBeNull();
@@ -99,7 +99,7 @@ describe('jt808-envelope.mapper', () => {
       },
     });
 
-    const pos = mapAcometidasToPosicion(1, envelope.payload);
+    const pos = mapAcometidasToPosicion('1', envelope.payload);
     expect(pos.idFoto).toBeNull();
     expect(pos.idFoto1).toBeNull();
     expect(pos.idVideo1).toBeNull();
@@ -147,7 +147,7 @@ describe('jt808-envelope.mapper', () => {
       },
     });
 
-    const pos = mapAcometidasToPosicion(867806072429049, envelope.payload);
+    const pos = mapAcometidasToPosicion('867806072429049', envelope.payload);
     expect(pos.idEvento).toBe(EnumCatEventos.DSM_DISTRACCION);
     expect(pos.alarma1).toBe(4);
     expect(pos.alarma2).toBe(1);

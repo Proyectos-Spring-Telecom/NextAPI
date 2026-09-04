@@ -22,7 +22,7 @@ export interface Jt808PhotoExtension {
 
 /** Tabla 4 Acometidas — payload AMQP (URLs en Foto1..3 / Video1..3; IDs al persistir) */
 export interface AcometidasPayload {
-  Imei: number | null;
+  Imei: string | number | null;
   Lat: number;
   Lng: number;
   Estado: number | null;

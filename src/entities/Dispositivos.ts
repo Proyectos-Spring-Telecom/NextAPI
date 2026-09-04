@@ -43,9 +43,14 @@ export class Dispositivos {
   @Column('bigint', {
     name: 'Imei',
     nullable: true,
-    comment: 'IMEI del equipo (clave de telemetría)',
+    comment: 'IMEI del equipo (clave de telemetría); string en app para no perder precisión',
+    transformer: {
+      to: (value: string | null) => value,
+      from: (value: string | number | null) =>
+        value == null || value === '' ? null : String(value),
+    },
   })
-  imei: number | null;
+  imei: string | null;
 
   @Column('varchar', {
     name: 'Eco',
