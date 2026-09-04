@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumRoles, EstatusEnum } from 'src/common/estatus.enum';
+import { EnumRoles, EnumTipoProducto, EstatusEnum } from 'src/common/estatus.enum';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
@@ -117,6 +117,13 @@ export class MonitoreoService {
       const ctxRow = await this.cargarContextoInstalacion(idInstalacion);
       if (!ctxRow) {
         throw new NotFoundException('Instalación no encontrada');
+      }
+
+      const idTipoProducto = Number(ctxRow.idTipoProducto);
+      if (idTipoProducto === EnumTipoProducto.INMUEBLE) {
+        throw new BadRequestException(
+          'El histórico GPS no aplica a inmuebles / paneles',
+        );
       }
 
       const imei = Number(ctxRow.imei);
@@ -270,6 +277,7 @@ export class MonitoreoService {
         'i.id AS idInstalacion',
         'i.idCliente AS idCliente',
         'i.idProducto AS idProducto',
+        'p.idTipoProducto AS idTipoProducto',
         'p.nombre AS nombreProducto',
         'p.estatus AS estatusProducto',
         'd.imei AS imei',

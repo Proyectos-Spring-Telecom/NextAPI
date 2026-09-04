@@ -11,7 +11,7 @@ import { CatModelos } from 'src/entities/CatModelos';
 
 /**
  * GPS: Instalación → Dispositivo → UltimaPosicion (IMEI).
- * Paneles: Instalación → Dispositivo → PanelAlarma + UltimoEventoAlarma (IdPanel).
+ * Paneles: + PanelAlarma / UltimoEventoAlarma (metadatos de alarma; telemetría sigue siendo UltimaPosicion).
  */
 export function applyMonitoreoListJoins(
   qb: SelectQueryBuilder<Instalaciones>,
@@ -52,6 +52,7 @@ export function applyMonitoreoListJoins(
     );
 }
 
+/** Columnas de contexto (instalación / producto) + UltimaPosicion completa (alias up*). */
 export function applyMonitoreoListSelect(
   qb: SelectQueryBuilder<Instalaciones>,
 ): void {
@@ -66,7 +67,7 @@ export function applyMonitoreoListSelect(
     'marVeh.nombre AS marcaVehiculo',
     'modVeh.nombre AS modeloVehiculo',
 
-    'd.imei AS imei',
+    'd.imei AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
     'd.numeroSerie AS numeroSerieDispositivo',
     'marDisp.nombre AS marcaDispositivo',
@@ -82,17 +83,35 @@ export function applyMonitoreoListSelect(
     'inm.lat AS latInmueble',
     'inm.lng AS lngInmueble',
 
-    'up.lat AS latitud',
-    'up.lng AS longitud',
-    'up.velocidad AS velocidad',
-    'up.direccion AS direccion',
-    'up.ignicion AS ignicion',
-    'up.combustible AS nivelCombustible',
-    'up.odometro AS odometro',
-    'up.gps AS gps',
-    'up.gsm AS gsm',
-    'up.estado AS ultimaPosicion',
-    'up.fechaHora AS fechaHora',
+    // UltimaPosicion — telemetría GPS (vehículo / activo / persona)
+    'up.id AS upId',
+    'up.imei AS upImei',
+    'up.lat AS upLat',
+    'up.lng AS upLng',
+    'up.estado AS upEstado',
+    'up.fechaHora AS upFechaHora',
+    'up.velocidad AS upVelocidad',
+    'up.direccion AS upDireccion',
+    'up.odometro AS upOdometro',
+    'up.ignicion AS upIgnicion',
+    'up.alarma1 AS upAlarma1',
+    'up.alarma2 AS upAlarma2',
+    'up.energia AS upEnergia',
+    'up.idEvento AS upIdEvento',
+    'up.idFoto AS upIdFoto',
+    'up.fhRegistro AS upFhRegistro',
+    'up.bateria AS upBateria',
+    'up.alimentacion AS upAlimentacion',
+    'up.gps AS upGps',
+    'up.gsm AS upGsm',
+    'up.movimiento AS upMovimiento',
+    'up.combustible AS upCombustible',
+    'up.idFoto1 AS upIdFoto1',
+    'up.idFoto2 AS upIdFoto2',
+    'up.idFoto3 AS upIdFoto3',
+    'up.idVideo1 AS upIdVideo1',
+    'up.idVideo2 AS upIdVideo2',
+    'up.idVideo3 AS upIdVideo3',
 
     'uea.id AS ueaId',
     'uea.idEventoAlarma AS ueaIdEventoAlarma',
