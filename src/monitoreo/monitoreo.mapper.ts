@@ -26,10 +26,10 @@ export function toIso(value: Date | string | null | undefined): string | null {
 }
 
 /**
- * Fila completa de `UltimaPosicion` (única fuente de telemetría en list/socket).
- * Si no hay fila, todos los campos van en null.
+ * Telemetría plana desde UltimaPosicion + Ruta de Fotos/Videos.
+ * Sin fila UP → todos null. No aplica a inmueble/panel.
  */
-export type UltimaPosicionPayload = {
+export type TelemetriaUltimaPosicion = {
   id: number | null;
   imei: number | null;
   lat: number | null;
@@ -52,55 +52,30 @@ export type UltimaPosicionPayload = {
   gsm: number | null;
   movimiento: number | null;
   combustible: number | null;
+  nivelCombustible: number | null;
   idFoto1: number | null;
   idFoto2: number | null;
   idFoto3: number | null;
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
+  /** Fotos.Ruta / Videos.Ruta */
+  rutaFoto: string | null;
+  rutaFoto1: string | null;
+  rutaFoto2: string | null;
+  rutaFoto3: string | null;
+  rutaVideo1: string | null;
+  rutaVideo2: string | null;
+  rutaVideo3: string | null;
 };
 
-const ULTIMA_POSICION_VACIA: UltimaPosicionPayload = {
-  id: null,
-  imei: null,
-  lat: null,
-  lng: null,
-  estado: null,
-  fechaHora: null,
-  velocidad: null,
-  direccion: null,
-  odometro: null,
-  ignicion: null,
-  alarma1: null,
-  alarma2: null,
-  energia: null,
-  idEvento: null,
-  idFoto: null,
-  fhRegistro: null,
-  bateria: null,
-  alimentacion: null,
-  gps: null,
-  gsm: null,
-  movimiento: null,
-  combustible: null,
-  idFoto1: null,
-  idFoto2: null,
-  idFoto3: null,
-  idVideo1: null,
-  idVideo2: null,
-  idVideo3: null,
-};
-
-export function mapUltimaPosicionPayload(
+export function mapTelemetriaUltimaPosicion(
   row: Record<string, unknown>,
-): UltimaPosicionPayload {
-  if (row.upId == null) {
-    return { ...ULTIMA_POSICION_VACIA };
-  }
-
+): TelemetriaUltimaPosicion {
+  const combustible = num(row.upCombustible);
   return {
     id: num(row.upId),
-    imei: num(row.upImei),
+    imei: num(row.upImei) ?? num(row.imeiDispositivo),
     lat: num(row.upLat),
     lng: num(row.upLng),
     estado: num(row.upEstado),
@@ -120,13 +95,21 @@ export function mapUltimaPosicionPayload(
     gps: num(row.upGps),
     gsm: num(row.upGsm),
     movimiento: num(row.upMovimiento),
-    combustible: num(row.upCombustible),
+    combustible,
+    nivelCombustible: combustible,
     idFoto1: num(row.upIdFoto1),
     idFoto2: num(row.upIdFoto2),
     idFoto3: num(row.upIdFoto3),
     idVideo1: num(row.upIdVideo1),
     idVideo2: num(row.upIdVideo2),
     idVideo3: num(row.upIdVideo3),
+    rutaFoto: str(row.rutaFoto),
+    rutaFoto1: str(row.rutaFoto1),
+    rutaFoto2: str(row.rutaFoto2),
+    rutaFoto3: str(row.rutaFoto3),
+    rutaVideo1: str(row.rutaVideo1),
+    rutaVideo2: str(row.rutaVideo2),
+    rutaVideo3: str(row.rutaVideo3),
   };
 }
 
@@ -136,16 +119,8 @@ type MonitoreoBase = {
   idTipoProducto: number;
 };
 
-/** Contexto de instalación + telemetría = campos de UltimaPosicion en raíz. */
-type ConTelemetriaUltimaPosicion = UltimaPosicionPayload & {
-  /** Alias de `combustible` (compat UI vehículos). */
-  nivelCombustible: number | null;
-  /** Copia anidada idéntica a los campos de telemetría en raíz. */
-  ultimaPosicion: UltimaPosicionPayload;
-};
-
 export type MonitoreoVehiculoItem = MonitoreoBase &
-  ConTelemetriaUltimaPosicion & {
+  TelemetriaUltimaPosicion & {
     cliente: string | null;
     placa: string | null;
     economico: string | null;
@@ -154,10 +129,8 @@ export type MonitoreoVehiculoItem = MonitoreoBase &
   };
 
 export type MonitoreoDispositivoItem = MonitoreoBase &
-  ConTelemetriaUltimaPosicion & {
+  TelemetriaUltimaPosicion & {
     cliente: string | null;
-    /** IMEI del dispositivo (catálogo); la telemetría usa `imei` de UltimaPosicion. */
-    imeiDispositivo: number | null;
     economico: string | null;
     numeroSerie: string | null;
     estatus: number | null;
@@ -207,30 +180,6 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
   };
 }
 
-/** Telemetría únicamente desde UltimaPosicion (aplanada + anidada). */
-function mapTelemetriaDesdeUltimaPosicion(
-  row: Record<string, unknown>,
-): ConTelemetriaUltimaPosicion {
-  const ultimaPosicion = mapUltimaPosicionPayload(row);
-  return {
-    ...ultimaPosicion,
-    nivelCombustible: ultimaPosicion.combustible,
-    ultimaPosicion,
-  };
-}
-
-function mapDispositivoContexto(row: Record<string, unknown>) {
-  return {
-    cliente: str(row.nombreCompletoCliente),
-    imeiDispositivo: num(row.imeiDispositivo),
-    economico: str(row.ecoDispositivo),
-    numeroSerie: str(row.numeroSerieDispositivo),
-    estatus: num(row.estatusProducto),
-    modelo: str(row.modeloDispositivo),
-    marca: str(row.marcaDispositivo),
-  };
-}
-
 function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoItem {
   return {
     ...mapBase(row),
@@ -239,25 +188,35 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     economico: str(row.ecoVehiculo),
     marca: str(row.marcaVehiculo),
     modelo: str(row.modeloVehiculo),
-    ...mapTelemetriaDesdeUltimaPosicion(row),
+    ...mapTelemetriaUltimaPosicion(row),
   };
 }
 
 function mapMonitoreoActivo(row: Record<string, unknown>): MonitoreoActivoItem {
   return {
     ...mapBase(row),
-    ...mapDispositivoContexto(row),
+    cliente: str(row.nombreCompletoCliente),
+    economico: str(row.ecoDispositivo),
+    numeroSerie: str(row.numeroSerieDispositivo),
+    estatus: num(row.estatusProducto),
+    modelo: str(row.modeloDispositivo),
+    marca: str(row.marcaDispositivo),
     descripcion: str(row.descripcionActivo),
-    ...mapTelemetriaDesdeUltimaPosicion(row),
+    ...mapTelemetriaUltimaPosicion(row),
   };
 }
 
 function mapMonitoreoPersona(row: Record<string, unknown>): MonitoreoPersonaItem {
   return {
     ...mapBase(row),
-    ...mapDispositivoContexto(row),
+    cliente: str(row.nombreCompletoCliente),
+    economico: str(row.ecoDispositivo),
+    numeroSerie: str(row.numeroSerieDispositivo),
+    estatus: num(row.estatusProducto),
+    modelo: str(row.modeloDispositivo),
+    marca: str(row.marcaDispositivo),
     persona: str(row.nombrePersona),
-    ...mapTelemetriaDesdeUltimaPosicion(row),
+    ...mapTelemetriaUltimaPosicion(row),
   };
 }
 
@@ -322,9 +281,14 @@ export function mapMonitoreoPosicionItem(
     default:
       return {
         ...mapBase(row),
-        ...mapDispositivoContexto(row),
+        cliente: str(row.nombreCompletoCliente),
+        economico: str(row.ecoDispositivo),
+        numeroSerie: str(row.numeroSerieDispositivo),
+        estatus: num(row.estatusProducto),
+        modelo: str(row.modeloDispositivo),
+        marca: str(row.marcaDispositivo),
         descripcion: null,
-        ...mapTelemetriaDesdeUltimaPosicion(row),
+        ...mapTelemetriaUltimaPosicion(row),
       } as MonitoreoActivoItem;
   }
 }

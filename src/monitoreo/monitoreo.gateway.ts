@@ -30,17 +30,28 @@ export class MonitoreoGateway
   async handleConnection(client: Socket) {
     try {
       const payload = this.verificarToken(client);
+      const idUsuario = Number(payload.id);
+      const idCliente = Number(payload.idCliente);
+      const rol = Number(payload.rol);
+
       const ids = await this.monitoreoService.idsInstalacionesVisibles(
-        Number(payload.id),
-        Number(payload.idCliente),
-        Number(payload.rol),
+        idUsuario,
+        idCliente,
+        rol,
       );
 
       for (const id of ids) {
         await client.join(this.roomInstalacion(id));
       }
 
-      client.emit('conexion:lista', { idsInstalaciones: ids });
+      const { posicion } = await this.monitoreoService.listado(
+        idUsuario,
+        idCliente,
+        rol,
+      );
+
+      // Mismo shape plano que GET /monitoreo/list
+      client.emit('conexion:lista', { idsInstalaciones: ids, posicion });
     } catch (error) {
       this.logger.warn(
         `Socket rechazado: ${(error as Error)?.message ?? 'token inválido'}`,
@@ -53,6 +64,10 @@ export class MonitoreoGateway
     // rooms se limpian solos
   }
 
+  /**
+   * Emite el mismo ítem plano que GET /monitoreo/list (UltimaPosicion + rutas).
+   * Evento: `monitoreo:actualizacion`
+   */
   emitActualizacion(idInstalacion: number, payload: MonitoreoPosicionItem) {
     this.safeEmit(idInstalacion, 'monitoreo:actualizacion', payload);
   }
