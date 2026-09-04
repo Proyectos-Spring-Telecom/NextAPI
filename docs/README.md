@@ -1,17 +1,9 @@
 # Documentación NextAPI
 
-Fuente de verdad del día a día:
+| Documento | Contenido |
+|-----------|-----------|
+| [contexto.md](./contexto.md) | Arquitectura, flujos JT808/Trackcam, tablas, triggers, módulos |
+| [contratos.md](./contratos.md) | Contratos HTTP / Socket / AMQP + checklist de funcionalidades |
+| [webhook-trackcam-springtrackcam.md](./webhook-trackcam-springtrackcam.md) | Receptor HMAC de webhooks Trackcam en SpringTrackCam |
 
-- [Contexto](./contexto.md) — arquitectura, módulos, estatus, funcionalidades implementadas, env.
-- [Contratos](./contratos.md) — rutas HTTP, bodies, auth JWT/HMAC, instalaciones paginado/detalle.
-- [Webhook → ShiftControl](./webhook-shiftcontrol.md) — envelope, eventos, HMAC y checklist de alineación.
-- [Consumo vehículo por placa](./consumo-vehiculo-por-placa.md) — guía / prompt productivo `GET .../vehiculos/placa/:placa`.
-- [Consumo instalaciones paginado (Angular)](./consumo-instalaciones-paginado-angular.md) — prompt + ejemplos reales `POST .../instalaciones/paginado`.
-
-Ampliaciones / legado de proyecto:
-
-- [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md)
-- [CONTEXTO-PROYECTO.md](./CONTEXTO-PROYECTO.md)
-- [CONTRATO-PROYECTO-NEXTAPI.md](./CONTRATO-PROYECTO-NEXTAPI.md)
-
-Swagger en caliente: ruta HTTP **`/docs`** (no es esta carpeta).
+Swagger runtime: `/docs` (o la ruta configurada en `main.ts`).

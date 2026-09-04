@@ -1,274 +1,123 @@
-# NextAPI — contexto
+# Contexto — NextAPI
 
-Backend NestJS **NextAPI** (v2.2.0). API de operación para clientes, usuarios, catálogos, SIMs, dispositivos, productos, instalaciones y **alarmas SIA**.
+Backend NestJS 11 (TypeORM + MySQL) para telemetría GPS, alarmas, catálogo de dispositivos y operación de monitoreo. Consume AMQP (JT808 / AX PRO), expone REST + Socket.IO y emite webhooks firmados hacia gateways externos (SpringTrackCam, Shift, etc.).
 
-Next es la **fuente de verdad** de negocio. SpringPanel (gateway) parsea SIA TCP, hace ACK al panel y envía JSON firmado a Next. El ACK del panel **no espera** respuesta de Next.
+---
+
+## 1. Roles del sistema
+
+| Sistema | Rol |
+|---------|-----|
+| **NextAPI** | API de negocio, persistencia, listados, sockets, proxy foto/video |
+| **springTrackCam** | Gateway JT808 (TCP cámara), captura HTTP foto/video, publica AMQP |
+| **SpringPanel / SIA** | Ingest HMAC de paneles de alarma |
+| **Frontend / BFF** | Consume REST + sockets con JWT |
+
+---
+
+## 2. Arquitectura de telemetría GPS (Trackcam / JT808)
 
 ```text
-Front (JWT) ──REST/Socket.IO──► NextAPI ──MySQL──► tablas de negocio
-                                      ▲
-AX PRO ──SIA TCP──► SpringPanel ──────┘  POST HMAC /api/alarmas/ingest*
+Cámara JT808 ──TCP──► springTrackCam ──AMQP jt808.position──► NextAPI
+                              │                                    │
+                              │ HTTP foto/video (on-demand)        ├─ INSERT Fotos/Videos (URLs)
+                              │◄── proxy NextAPI /monitoreo/*/foto │─ INSERT Posiciones (FKs)
+                              │    /video                          │─ Trigger BD → UltimaPosicion
+                              │                                    └─ Socket /monitoreo
 ```
 
-## Stack y convenciones
+**Reglas clave**
 
-| Tema | Valor |
+- `deviceId` AMQP = `NumeroSerie` JT808 (12 dígitos), **no** es IMEI.
+- IMEI se resuelve por lookup en `Dispositivos`.
+- `Estado` en INSERT de `Posiciones` va **NULL**; el trigger BD lo deriva y espeja a `UltimaPosicion`.
+- NextAPI **no** hace upsert de `UltimaPosicion` en aplicación (confía en el trigger MySQL).
+- Captura HTTP on-demand **no** persiste en NextAPI: el gateway publica AMQP y el consumer JT808 inserta.
+
+---
+
+## 3. Tablas centrales de posición / media
+
+| Tabla | Uso |
+|-------|-----|
+| `Posiciones` | Histórico por evento (IMEI, coords, IdEvento, IdFoto1..3, IdVideo1..3, …) |
+| `UltimaPosicion` | Última fila por IMEI (`UQ_UltimaPosicion_Imei`); listado + socket |
+| `Fotos` | `Ruta` (URL pública), `IdFoto` = multimedia JT808 (no es PK de Posiciones) |
+| `Videos` | `Ruta` (URL pública MP4) |
+| `TelemetryIngestLog` | Idempotencia por `eventId` (SHA-256) |
+
+### Mapeo media AMQP → BD
+
+| AMQP | Acción |
 |------|--------|
-| Runtime | NestJS 11, TypeORM, MySQL |
-| Prefijo HTTP | `/api` |
-| Auth usuario | JWT Bearer (`Authorization: Bearer`, esquema Swagger `bearer-token`) |
-| Auth gateway | HMAC-SHA256 + timestamp (±5 min); JWT de usuario **no** aplica |
-| Validación | `ValidationPipe`: whitelist, forbidNonWhitelisted, transform |
-| ORM | `synchronize: false` — el DDL se aplica en la BD, no desde entidades |
-| JSON | camelCase; PKs bigint como **número** (`bigNumberStrings: false`) |
-| Bitácora | altas/cambios relevantes con `EnumModulos` |
-| Fechas de negocio | Utilidades México (`nowMexicoCityMysql` / `nowMexicoCityAsUtcDate`) en auth, instalaciones, bitácora, etc. |
-| Zona horaria proceso | `America/Mexico_City` (salvo `TZ` en entorno) |
-| Puerto local | `PORT` o `3004` |
-
-Swagger UI: ruta HTTP `/docs` (no es esta carpeta). Contratos HTTP: [contratos.md](./contratos.md). Webhooks Shift: [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
-
-## Tenant (filtro por rol)
-
-JWT trae `userId`, `idCliente`, `rol`.
-
-| Rol | Alcance en listados |
-|-----|---------------------|
-| **1, 2, 3, 4, 5, 8** | Todo (sin filtro de cliente). `?idCliente` opcional |
-| **6** | Cliente del token **y descendientes** (`CALL spGetClientes(?)`) |
-| **7 y cualquier otro** | Solo `idCliente` del token |
-
-En **alarmas**, si `?idCliente` está fuera del set → **403**. En otros módulos el filtro de listado suele recortar el resultado (GET por id de otro cliente puede ser 404).
-
-Implementación: `src/common/tenant-filter/tenant-filter.service.ts`.
-
-## Módulos de catálogo (`EnumModulos`)
-
-| Id | Módulo | Implementado en API |
-|----|--------|---------------------|
-| 1 | Clientes | Sí |
-| 2 | Usuarios | Sí |
-| 3 | Roles | Sí |
-| 4 | Permisos | Sí |
-| 5 | Módulos | Sí |
-| 14 | SIMs | Sí |
-| 15 | Dispositivos | Sí |
-| 16 | Vehículos | Sí (`productos/vehiculos`) |
-| 17 | Instalaciones | Sí |
-| 18 | Operadores | Sí |
-| 19 | Licencias | Id de catálogo; **sin** módulo HTTP propio |
-| 20 | Inmuebles | Sí (`productos/inmuebles`) |
-| 21 | Paneles | Sí (`dispositivos/paneles`) |
-| 22 | Alarmas | Sí (REST + ingest + socket) |
-| 23 | Reportes | Id de catálogo; **sin** módulo HTTP propio |
-| 24 | Activos | Sí (`productos/activos`) |
-| 25 | Personas | Sí (`productos/personas`) |
-
-No hay módulo “Productos” en el catálogo de bitácora como alta genérica. El alta va por el subtipo (vehículo, inmueble, activo, persona). Existe CRUD genérico de lectura/estatus/nombre en `/api/productos`.
+| `Foto1..3` (URL) | `INSERT Fotos` → `Posiciones.IdFoto1..3` |
+| `Video1..3` (URL) | `INSERT Videos` → `Posiciones.IdVideo1..3` |
+| `payload.IdFoto` | Solo `Fotos.IdFoto` (multimedia cámara); **nunca** FK `Posiciones.IdFoto` |
+| `Posiciones.IdFoto` | Legacy → **NULL** |
 
 ---
 
-## Estatus operativos
+## 4. Tipos de producto vs telemetría
 
-### Productos / dispositivos / paneles — `EnumEstatusProductoDispositivo`
+| `IdTipoProducto` | Nombre | Fuente de posición en monitoreo |
+|------------------|--------|----------------------------------|
+| 1 | Vehículo | `UltimaPosicion` (plano) |
+| 2 | Activo | `UltimaPosicion` (plano) |
+| 3 | Inmueble / panel | Lat/lng del inmueble + `UltimoEventoAlarma` / heartbeat — **sin** UltimaPosicion |
+| 4 | Persona | `UltimaPosicion` (plano) |
 
-| Valor | Nombre |
-|-------|--------|
-| 0 | INACTIVO |
-| 1 | ACTIVO (disponible) |
-| 2 | ASIGNADO |
-| 3 | BAJA_REMPLAZO |
-| 4 | BAJA_MANTENIMIENTO |
-| 5 | INSERVIBLE |
-
-- `PATCH .../estatus/:id` acepta **0–5**.
-- Si el estatus **actual** es **2 (ASIGNADO)**, se rechaza con 400: el componente está en una instalación. Helper: `assertEstatusNoAsignado` (`src/common/assert-estatus-no-asignado.util.ts`).
-- Aplica a: productos, vehículos, inmuebles, activos, personas, dispositivos, paneles y SIMs.
-
-### SIMs — `EnumEstatusRecurso`
-
-| Valor | Nombre |
-|-------|--------|
-| 0 | BAJA |
-| 1 | DISPONIBLE |
-| 2 | ASIGNADO |
-| 3 | REVISION |
-| 4 | REMOVIDO |
-
-`PATCH /api/sims/estatus/:id` alterna **1 ↔ 0** (sin body). Si actual es **2**, se bloquea igual que arriba.
-
-### Instalaciones — `EnumEstatusInstalacion`
-
-| Valor | Nombre |
-|-------|--------|
-| 0 | INACTIVO |
-| 1 | ACTIVA |
-| 2 | ASIGNADO |
-| 3 | BAJA_REMPLAZO |
-| 4 | BAJA_MANTENIMIENTO |
-| 5 | INSERVIBLE |
-
-- Columna de negocio: `EstatusInstalacion`.
-- Columna de fila `Estatus` (tinyint): controla columnas generadas `DispositivoActivo` / `SimActivo` (únicas por cliente cuando la fila está activa).
+Tipo dispositivo Trackcam: `CatTipoDispositivo.Codigo = TRACKCAM` (id típico **5**).
 
 ---
 
-## Funcionalidades implementadas
+## 5. Triggers BD (MySQL)
 
-### Autenticación (`/api/login`, `/api/auth`)
+Sobre `Posiciones` (entorno Next):
 
-- Login usuario/contraseña; query opcional de solución (`Nombres`, default `NXT`).
-- Login operador por NIP.
-- Refresh y logout de sesión (`refreshToken`).
-- Perfil `GET /api/login/me`.
-- Cambio de contraseña autenticado.
-- Verificación de código (`PATCH /api/login/verify`).
-- Recuperación de contraseña (solicitud + confirmación) con correo.
-- Login facial `POST /api/auth/validateFace` (proxy BehaviorIQ; credenciales solo en servidor).
-- Throttling por endpoint (límites vía `THROTTLE_*`).
+| Trigger | Momento | Función |
+|---------|---------|---------|
+| `trg_pos_before_ins` | BEFORE INSERT | Completa `Estado` / `Ignicion` si vienen NULL |
+| `trg_pos_after_ins_ult` | AFTER INSERT | Espeja a `UltimaPosicion` por Imei |
 
-### Clientes, usuarios, IAM
-
-- Clientes: alta multipart, lista, jerarquía, paginado, estatus.
-- Usuarios: alta multipart, face-auth, lista por cliente, paginado, contraseña propia, NIP (`mi-nip`), estatus.
-- Roles, permisos (incl. agrupados), módulos: CRUD + estatus.
-- Operadores: CRUD + estatus (NIP).
-- Bitácora: consulta paginada / por id.
-
-### Catálogos
-
-- Tipo combustible, telefonía (+ planes por telefonía), planes de telefonía, marcas (+ modelos por marca), modelos.
-- Registry genérico `GET /api/catalogos/:nombreCatalogo`.
-
-### SIMs
-
-- Alta con estatus inicial disponible (1); IMEI único.
-- Lista solo disponibles; paginado con todos los estatus visibles según reglas del servicio.
-- Toggle estatus 1↔0; bloqueo si ASIGNADO (2).
-- Update parcial (sin cambiar estatus por ese endpoint).
-
-### Dispositivos y paneles
-
-- Dispositivos (GPS/AVL/teléfono): CRUD; `imei` bigint nullable único; no crear tipo panel por esta ruta.
-- Paneles: transacción `Dispositivos` + `PanelAlarma` (PK = `IdDispositivo`); `cuentaSia` única; **`aesKey` nunca en GET**.
-- Tipo panel: `CatTipoDispositivo` con código `PANEL` / `PANEL_ALARMA` / `PAN` (`EnumTipoDispositivo.PANEL_ALARMA = 2`).
-- Estatus 0–5 en dispositivo (y panel); bloqueo si ASIGNADO (2).
-
-### Productos y subtipos
-
-- Lectura/estatus/nombre en `/api/productos`.
-- Alta y detalle por subtipo:
-  - **Vehículos** (multipart fotos/documentos; búsqueda por placa).
-  - **Activos**, **Inmuebles**, **Personas**.
-- Estatus 0–5; bloqueo si ASIGNADO (2).
-- Webhooks de vehículo: `vehiculo.created` / `vehiculo.updated` / `vehiculo.deleted` (baja lógica con estatus 0, 3, 4 o 5).
-
-### Instalaciones (vinculación producto ↔ dispositivo ↔ SIM)
-
-- **Alta:** producto obligatorio (estatus 1 + mismo cliente); dispositivo/SIM opcionales (estatus 1). Tras insertar, componentes → **ASIGNADO (2)**.
-- **Update (`PATCH /:id`):** archiva vigente en `HistoricoInstalaciones`, crea nueva ACTIVA, migra `UsuariosInstalaciones` al nuevo id y elimina la fila anterior. Requiere `estatusInstalacionAnterior` (histórico). Al cambiar recursos salientes: body `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5). Entrantes deben estar en 1 y pasan a 2.
-- **PATCH estatus (`/:estatus/:id`):** solo **0, 1, 5**. No archiva.
-  - **0 / 5:** instalación a ese estatus; fila `Estatus=0` (libera activos); componentes → disponible (1).
-  - **1:** componentes deben estar en 1; instalación activa (`Estatus=1`); componentes → ASIGNADO (2).
-- **List** instalaciones con fila activa.
-- **Histórico** por id (cadena reciente → antiguo).
-- **Paginado** `POST /paginado` por `idTipoProducto` (1–4).
-- **Detalle** `GET /:id` con mismos bloques y más campos que el paginado.
-
-Helpers: `src/instalaciones/helpers/instalaciones-paginado.helpers.ts`, `instalaciones-detalle.helpers.ts`.
-
-#### Nomenclatura y orden del JSON (paginado / detalle)
-
-Orden fijo, plano (sin anidar):
-
-1. Instalación  
-2. Cliente  
-3. Producto + detalle del tipo  
-4. Dispositivo (+ Panel si tipo 2)  
-5. SIM  
-
-Sufijos: `…Dispositivo`, `…Panel`, `…Vehiculo` / `…Activo` / `…Inmueble` / `…Persona`, `…Sim`.  
-Panel: nunca `aesKey`.
-
-### Alarmas SIA
-
-- Consulta JWT: paneles, últimos eventos, historial, detalle.
-- Ingest HMAC (sin JWT): `POST /api/alarmas/ingest`, `.../ingest/heartbeat`.
-- Gateway: `GATEWAY_HMAC_SECRET`, opcional `GATEWAY_API_KEY`.
-- Socket.IO para push a front (mismo origen Nest).
-- Offline de paneles por umbral `SIA_OFFLINE_THRESHOLD_MS` / scheduler.
-
-### Telemetría (entidades)
-
-- `Posiciones`: histórico GPS por IMEI.
-- `UltimaPosicion`: snapshot 1:1 por IMEI.
-
-### Infra transversal
-
-- S3: upload / update de archivos.
-- Mail: SMTP (servicio; controller sin rutas de negocio).
-- **Webhooks salientes** hacia ShiftControl (y otros suscriptores): HMAC-SHA256 con `WEBHOOK_SECRET`; destinos en `WEBHOOK_SUBSCRIBERS` (URLs separadas por coma).
-
-#### Webhooks implementados
-
-| Evento | Origen |
-|--------|--------|
-| `vehiculo.created` | Alta de vehículo |
-| `vehiculo.updated` | Update de vehículo |
-| `vehiculo.deleted` | PATCH estatus vehículo → 0, 3, 4 o 5 |
-| `cliente.created` | Alta de cliente |
-| `cliente.updated` | Update de cliente |
-
-Envelope: `event`, `timestamp`, `tenantId`, `entityId`, `data`, `signature`.
-
-`data` vehículo: `placa`, `marcaNombre`, `modeloNombre`, `fotoFrente`.  
-`data` cliente: `idPadre`.
-
-Detalle y checklist para Shift: [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
+No recalcular `Estado` en código salvo casos excepcionales. `Estado=2` = pánico (no “en movimiento”).
 
 ---
 
-## Entidades clave
+## 6. Módulos de negocio (visión)
 
-| Entidad | Rol |
-|---------|-----|
-| `Instalaciones` | Versión vigente; `EstatusInstalacion` + `Estatus`; `DispositivoActivo` / `SimActivo` generadas |
-| `HistoricoInstalaciones` | Versiones archivadas en update |
-| `Productos` + `Vehiculos` / `Activos` / `Inmuebles` / `Personas` | Producto tipado |
-| `Dispositivos` + `PanelAlarma` | Equipo; panel 1:1 |
-| `Sims` | Línea / ICC |
-| `Posiciones` / `UltimaPosicion` | Telemetría por IMEI |
-| `EventoAlarma` / `UltimoEventoAlarma` / `GatewayIngestLog` | Flujo SIA |
-| `CatEstatusInstalacion`, `CatTipoProducto`, `CatTipoDispositivo` | Tipificación |
+| Módulo | Responsabilidad |
+|--------|-----------------|
+| `auth` | Login JWT, refresh, PIN, face, recuperación |
+| `monitoreo` | Listado, histórico, socket GPS, proxy foto/video Trackcam |
+| `messaging` | Consumers RabbitMQ JT808 + AX PRO |
+| `alarmas` | Consulta + ingest HMAC + socket paneles |
+| `dispositivos` / `trackcam` / `paneles` | CRUD dispositivos y configs |
+| `instalaciones` / `clientes` / `productos` | Catálogo operativo |
+| `webhook-emitter` | Emisión HMAC (Shift / Trackcam) |
+| `catalogos`, `usuarios`, `roles`, `sims`, `bitacora`, `s3`, `mail` | Soporte |
 
----
-
-## Variables de entorno (nombres)
-
-| Grupo | Variables |
-|-------|-----------|
-| Runtime | `PORT`, `TZ`, `DATABASE_URL` |
-| MySQL | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE`, `DB_TZ` |
-| JWT | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_CONFIRMACION`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` |
-| Throttle | `THROTTLE_LOGIN_*`, `THROTTLE_PIN_*`, `THROTTLE_VERIFY_*`, `THROTTLE_RECUPERACION_*`, `THROTTLE_REFRESH_*`, `THROTTLE_LOGOUT_*`, `THROTTLE_VALIDATE_FACE_*` |
-| AWS S3 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` |
-| Mail | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD`, `MAIL_FRONTEND_URL` |
-| Gateway | `GATEWAY_HMAC_SECRET`, `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` |
-| Webhooks | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET` |
-| BehaviorIQ | `BEHAVIORIQ_BASE_URL`, `BEHAVIORIQ_USER_NAME`, `BEHAVIORIQ_PASSWORD`, `BEHAVIORIQ_LOGIN_TIMEOUT_MS`, `BEHAVIORIQ_VALIDATE_TIMEOUT_MS` |
-
-`.env` **no se versiona** (ver `.gitignore`).
+Detalle de contratos HTTP/socket/AMQP: [`contratos.md`](./contratos.md).
 
 ---
 
-## Documentación relacionada
+## 7. Variables de entorno relevantes (telemetría / Trackcam)
 
-| Archivo | Uso |
-|---------|-----|
-| [contratos.md](./contratos.md) | Contratos HTTP (rutas, bodies, auth) |
-| [webhook-shiftcontrol.md](./webhook-shiftcontrol.md) | Contrato webhook Next → ShiftControl |
-| [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md) | Contexto técnico ampliado (legacy / detalle) |
-| [CONTEXTO-PROYECTO.md](./CONTEXTO-PROYECTO.md) | Visión de producto |
-| [CONTRATO-PROYECTO-NEXTAPI.md](./CONTRATO-PROYECTO-NEXTAPI.md) | Alcance / entregables de proyecto |
+| Variable | Uso |
+|----------|-----|
+| `TRACKCAM_GATEWAY_URL` | Base HTTP springTrackCam (foto/video) |
+| `TRACKCAM_WEBHOOK_URL` | Webhook alta/edición Trackcam |
+| `WEBHOOK_SECRET` | HMAC webhooks |
+| `RABBITMQ_*` | Broker telemetría |
+| `GATEWAY_HMAC_SECRET` | Ingest SIA / paneles |
+| `MONITOREO_SALTO_GPS_METROS` | Umbral salto GPS en histórico |
+| `MONITOREO_DRIFT_DETENIDO_METROS` | Drift estacionado en histórico |
 
-Fuente de verdad operativa: **este archivo** + **contratos.md** + **webhook-shiftcontrol.md** + Swagger `/docs`.
+Plantilla: `.env.example`.
+
+---
+
+## 8. Convenciones de API
+
+- Respuestas de monitoreo list/histórico: **sin** wrapper `data` (`{ posicion: [...] }`, `{ totalDistancia, posiciones }`).
+- Campos en **camelCase**; sin JSON anidados de telemetría en listado/socket (objeto plano).
+- Fechas de `Posiciones.FechaHora` en histórico: hora de pared (sin forzar UTC en query params).
