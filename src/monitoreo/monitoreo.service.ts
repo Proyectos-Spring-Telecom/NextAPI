@@ -9,7 +9,12 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
-import { EnumRoles, EnumTipoProducto, EstatusEnum } from 'src/common/estatus.enum';
+import {
+  EnumRoles,
+  EnumTipoDispositivo,
+  EnumTipoProducto,
+  EstatusEnum,
+} from 'src/common/estatus.enum';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { Fotos } from 'src/entities/Fotos';
@@ -20,6 +25,7 @@ import { Vehiculos } from 'src/entities/Vehiculos';
 import { Personas } from 'src/entities/Personas';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
+import { obtenerTipoTrackcam } from 'src/dispositivos/crear-dispositivo.util';
 import {
   applyMonitoreoListJoins,
   applyMonitoreoListSelect,
@@ -39,6 +45,18 @@ import {
   MonitoreoPosicionItem,
   num,
 } from './monitoreo.mapper';
+import {
+  TrackcamGatewayClient,
+  TrackcamGatewayPhotoResponse,
+  TrackcamGatewayVideoResponse,
+} from './trackcam-gateway.client';
+
+type TrackcamInstalacionDevice = {
+  idInstalacion: number;
+  idDispositivo: number;
+  terminalId: string;
+  imei: string;
+};
 
 @Injectable()
 export class MonitoreoService {
@@ -49,7 +67,104 @@ export class MonitoreoService {
     private readonly posicionesRepo: Repository<Posiciones>,
     private readonly tenantFilter: TenantFilterService,
     private readonly config: ConfigService,
+    private readonly trackcamGateway: TrackcamGatewayClient,
   ) { }
+
+  /**
+   * Proxy a springTrackCam POST /gateway/photo/start.
+   * Persistencia de Fotos/Posiciones: vía AMQP `jt808.position` (no duplicar aquí).
+   */
+  async capturarFoto(
+    idInstalacion: number,
+    accessToken: string,
+    channelId?: number,
+  ): Promise<TrackcamGatewayPhotoResponse> {
+    const device = await this.resolveTrackcamDevice(idInstalacion);
+    return this.trackcamGateway.startPhoto({
+      accessToken,
+      terminalId: device.terminalId,
+      imei: device.imei,
+      channelId,
+    });
+  }
+
+  /**
+   * Proxy a springTrackCam POST /gateway/video/capture.
+   * Persistencia de Videos/Posiciones: vía AMQP `jt808.position` (no duplicar aquí).
+   */
+  async capturarVideo(
+    idInstalacion: number,
+    accessToken: string,
+    opts?: { durationSeconds?: number; channelId?: number },
+  ): Promise<TrackcamGatewayVideoResponse> {
+    const device = await this.resolveTrackcamDevice(idInstalacion);
+    return this.trackcamGateway.captureVideo({
+      accessToken,
+      terminalId: device.terminalId,
+      imei: device.imei,
+      durationSeconds: opts?.durationSeconds,
+      channelId: opts?.channelId,
+    });
+  }
+
+  private async resolveTrackcamDevice(
+    idInstalacion: number,
+  ): Promise<TrackcamInstalacionDevice> {
+    const row = await this.instalacionesRepo
+      .createQueryBuilder('i')
+      .innerJoin('i.idDispositivo2', 'd')
+      .select([
+        'i.id AS idInstalacion',
+        'd.id AS idDispositivo',
+        'd.imei AS imei',
+        'd.numeroSerie AS numeroSerie',
+        'd.idTipoDispositivo AS idTipoDispositivo',
+      ])
+      .where('i.id = :idInstalacion', { idInstalacion })
+      .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+      .getRawOne<Record<string, unknown>>();
+
+    if (!row) {
+      throw new NotFoundException(
+        'Instalación no encontrada o sin dispositivo asignado',
+      );
+    }
+
+    const tipoTrackcam = await obtenerTipoTrackcam(
+      this.instalacionesRepo.manager,
+    );
+    const idTipo = Number(row.idTipoDispositivo);
+    const esTrackcam =
+      idTipo === Number(tipoTrackcam.id) ||
+      idTipo === EnumTipoDispositivo.TRACKCAM;
+
+    if (!esTrackcam) {
+      throw new BadRequestException(
+        `La instalación no tiene dispositivo TRACKCAM (IdTipoDispositivo=${idTipo}; se espera ${tipoTrackcam.id} / codigo TRACKCAM)`,
+      );
+    }
+
+    const numeroSerie = String(row.numeroSerie ?? '').trim();
+    if (!numeroSerie) {
+      throw new BadRequestException(
+        'El dispositivo TRACKCAM no tiene NumeroSerie (terminalId JT808)',
+      );
+    }
+
+    const imeiNum = Number(row.imei);
+    if (!Number.isFinite(imeiNum) || imeiNum <= 0) {
+      throw new BadRequestException(
+        'El dispositivo TRACKCAM no tiene IMEI válido',
+      );
+    }
+
+    return {
+      idInstalacion: Number(row.idInstalacion),
+      idDispositivo: Number(row.idDispositivo),
+      terminalId: toJt808TerminalId(numeroSerie),
+      imei: String(imeiNum),
+    };
+  }
 
   async listado(
     idUsuario: number,
@@ -400,4 +515,13 @@ export class MonitoreoService {
     }
     return [];
   }
+}
+
+/** NumeroSerie JT808 → terminalId de 12 dígitos. */
+function toJt808TerminalId(numeroSerie: string): string {
+  const s = numeroSerie.trim();
+  if (/^\d+$/.test(s) && s.length <= 12) {
+    return s.padStart(12, '0');
+  }
+  return s;
 }

@@ -26,7 +26,7 @@ export function toIso(value: Date | string | null | undefined): string | null {
 }
 
 /**
- * Telemetría plana desde UltimaPosicion + Ruta de Fotos/Videos.
+ * Telemetría plana desde UltimaPosicion.
  * Sin fila UP → todos null. No aplica a inmueble/panel.
  */
 export type TelemetriaUltimaPosicion = {
@@ -53,20 +53,6 @@ export type TelemetriaUltimaPosicion = {
   movimiento: number | null;
   combustible: number | null;
   nivelCombustible: number | null;
-  idFoto1: number | null;
-  idFoto2: number | null;
-  idFoto3: number | null;
-  idVideo1: number | null;
-  idVideo2: number | null;
-  idVideo3: number | null;
-  /** Fotos.Ruta / Videos.Ruta */
-  rutaFoto: string | null;
-  rutaFoto1: string | null;
-  rutaFoto2: string | null;
-  rutaFoto3: string | null;
-  rutaVideo1: string | null;
-  rutaVideo2: string | null;
-  rutaVideo3: string | null;
 };
 
 export function mapTelemetriaUltimaPosicion(
@@ -97,19 +83,6 @@ export function mapTelemetriaUltimaPosicion(
     movimiento: num(row.upMovimiento),
     combustible,
     nivelCombustible: combustible,
-    idFoto1: num(row.upIdFoto1),
-    idFoto2: num(row.upIdFoto2),
-    idFoto3: num(row.upIdFoto3),
-    idVideo1: num(row.upIdVideo1),
-    idVideo2: num(row.upIdVideo2),
-    idVideo3: num(row.upIdVideo3),
-    rutaFoto: str(row.rutaFoto),
-    rutaFoto1: str(row.rutaFoto1),
-    rutaFoto2: str(row.rutaFoto2),
-    rutaFoto3: str(row.rutaFoto3),
-    rutaVideo1: str(row.rutaVideo1),
-    rutaVideo2: str(row.rutaVideo2),
-    rutaVideo3: str(row.rutaVideo3),
   };
 }
 

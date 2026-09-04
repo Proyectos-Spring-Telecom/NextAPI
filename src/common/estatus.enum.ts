@@ -181,6 +181,8 @@ export enum EnumTipoProducto {
  */
 export enum EnumTipoDispositivo {
   PANEL_ALARMA = 2,
+  /** Trackcam / dashcam GPS (CatTipoDispositivo.Id típico) */
+  TRACKCAM = 5,
 }
 
 /** Valores de CatProductos.Id (categoría de marcas) */

@@ -98,6 +98,7 @@ import * as jwt from 'jsonwebtoken';
         WEBHOOK_SUBSCRIBERS: Joi.string().allow('').default(''),
         WEBHOOK_SECRET: Joi.string().allow('').default(''),
         TRACKCAM_WEBHOOK_URL: Joi.string().allow('').default(''),
+        TRACKCAM_GATEWAY_URL: Joi.string().allow('').default(''),
         GATEWAY_HMAC_SECRET: Joi.string().min(16).required(),
         GATEWAY_API_KEY: Joi.string().allow('').optional(),
         SIA_OFFLINE_THRESHOLD_MS: Joi.number().default(600000),
