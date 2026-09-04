@@ -12,6 +12,8 @@ import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.serv
 import { EnumRoles, EnumTipoProducto, EstatusEnum } from 'src/common/estatus.enum';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
+import { Fotos } from 'src/entities/Fotos';
+import { Videos } from 'src/entities/Videos';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
 import { Activos } from 'src/entities/Activos';
 import { Vehiculos } from 'src/entities/Vehiculos';
@@ -137,6 +139,13 @@ export class MonitoreoService {
 
       const posicionesRows = await this.posicionesRepo
         .createQueryBuilder('p')
+        .leftJoin(Fotos, 'f0', 'f0.id = p.idFoto')
+        .leftJoin(Fotos, 'f1', 'f1.id = p.idFoto1')
+        .leftJoin(Fotos, 'f2', 'f2.id = p.idFoto2')
+        .leftJoin(Fotos, 'f3', 'f3.id = p.idFoto3')
+        .leftJoin(Videos, 'vid1', 'vid1.id = p.idVideo1')
+        .leftJoin(Videos, 'vid2', 'vid2.id = p.idVideo2')
+        .leftJoin(Videos, 'vid3', 'vid3.id = p.idVideo3')
         .select([
           'p.id AS id',
           'p.imei AS imei',
@@ -149,8 +158,31 @@ export class MonitoreoService {
           'p.direccion AS direccion',
           'p.odometro AS odometro',
           'p.ignicion AS ignicion',
+          'p.alarma1 AS alarma1',
+          'p.alarma2 AS alarma2',
+          'p.energia AS energia',
+          'p.idEvento AS idEvento',
+          'p.idFoto AS idFoto',
+          'p.fhRegistro AS fhRegistro',
+          'p.bateria AS bateria',
+          'p.alimentacion AS alimentacion',
+          'p.gps AS gps',
+          'p.gsm AS gsm',
           'p.movimiento AS movimiento',
           'p.combustible AS combustible',
+          'p.idFoto1 AS idFoto1',
+          'p.idFoto2 AS idFoto2',
+          'p.idFoto3 AS idFoto3',
+          'p.idVideo1 AS idVideo1',
+          'p.idVideo2 AS idVideo2',
+          'p.idVideo3 AS idVideo3',
+          'f0.ruta AS rutaFoto',
+          'f1.ruta AS rutaFoto1',
+          'f2.ruta AS rutaFoto2',
+          'f3.ruta AS rutaFoto3',
+          'vid1.ruta AS rutaVideo1',
+          'vid2.ruta AS rutaVideo2',
+          'vid3.ruta AS rutaVideo3',
         ])
         .where('p.imei = :imei', { imei })
         .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
