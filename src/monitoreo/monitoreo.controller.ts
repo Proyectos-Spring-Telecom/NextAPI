@@ -58,10 +58,12 @@ export class MonitoreoController {
       'lat/lng del inmueble, ultimoHeartbeat, fechaHora, ultimoEventoAlarma.',
       '',
       '**Socket.IO** `/monitoreo` (mismo shape plano que este listado):',
-      '- `conexion:lista` → `{ idsInstalaciones, posicion }` al conectar.',
+      '- `conexion:lista` → `{ idsInstalaciones, posicion, "puntos-interes" }` al conectar.',
       '- `monitoreo:actualizacion` → un ítem de `posicion[]` (tras ingest GPS / panel).',
       '',
-      'Respuesta: `{ posicion: [...] }` (sin wrapper `data`).',
+      'Respuesta: `{ posicion: [...], "puntos-interes": [...] }` (sin wrapper `data`).',
+      '`puntos-interes`: activos de `PuntosInteres` filtrados por rol/tenant',
+      '(1–5, 8 global; 6 jerarquía; 7/9 su `idCliente`).',
     ].join('\n'),
   })
   @ApiResponse({ status: 200, description: 'Listado obtenido correctamente' })

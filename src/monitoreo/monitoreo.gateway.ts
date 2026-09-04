@@ -44,14 +44,18 @@ export class MonitoreoGateway
         await client.join(this.roomInstalacion(id));
       }
 
-      const { posicion } = await this.monitoreoService.listado(
+      const listado = await this.monitoreoService.listado(
         idUsuario,
         idCliente,
         rol,
       );
 
-      // Mismo shape plano que GET /monitoreo/list
-      client.emit('conexion:lista', { idsInstalaciones: ids, posicion });
+      // Mismo shape que GET /monitoreo/list
+      client.emit('conexion:lista', {
+        idsInstalaciones: ids,
+        posicion: listado.posicion,
+        'puntos-interes': listado['puntos-interes'],
+      });
     } catch (error) {
       this.logger.warn(
         `Socket rechazado: ${(error as Error)?.message ?? 'token inválido'}`,
