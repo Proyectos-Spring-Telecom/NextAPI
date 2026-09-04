@@ -99,8 +99,9 @@ export class Jt808IngestService {
   }
 
   /**
-   * Orden FK: INSERT Fotos/Videos → rellenar IdFoto1..3 / IdVideo1..3 (y IdFoto = IdFoto1).
-   * AMQP trae URLs en Foto1..3 / Video1..3; no van a columnas FK.
+   * Orden FK: INSERT Fotos/Videos desde URLs Foto1..3 / Video1..3 → IdFoto1..3 / IdVideo1..3.
+   * - payload.IdFoto / jt808.multimediaId = multimedia JT808 → se guarda en Fotos.IdFoto (no es FK).
+   * - Posiciones.IdFoto (legacy) se deja NULL; no copiar IdFoto1.
    */
   private async attachMediaIds(
     manager: EntityManager,
@@ -112,7 +113,8 @@ export class Jt808IngestService {
     const jt808 = payload.jt808 as Jt808PhotoExtension | undefined;
     const filePaths = jt808?.filePaths ?? [];
     const singlePath = jt808?.filePath ?? null;
-    const multimediaId =
+    /** Solo para columna Fotos.IdFoto (multimedia cámara); nunca como FK de Posiciones */
+    const multimediaJt808 =
       payload.IdFoto != null
         ? Number(payload.IdFoto)
         : jt808?.multimediaId != null
@@ -123,7 +125,7 @@ export class Jt808IngestService {
       imei,
       url: payload.Foto1,
       fechaHora,
-      idFotoJt808: multimediaId,
+      idFotoJt808: multimediaJt808,
       rutaServidor: filePaths[0] ?? singlePath,
     });
     const idFoto2 = await this.insertFotoIfUrl(manager, {
@@ -169,7 +171,7 @@ export class Jt808IngestService {
     posicionData.idVideo1 = idVideo1;
     posicionData.idVideo2 = idVideo2;
     posicionData.idVideo3 = idVideo3;
-    posicionData.idFoto = idFoto1;
+    posicionData.idFoto = null;
   }
 
   private async insertFotoIfUrl(
