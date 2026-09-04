@@ -35,7 +35,7 @@ export interface AcometidasPayload {
   Alarma2: number | null;
   Energia: number | null;
   IdEvento: number;
-  /** ID multimedia JT808 (opcional); no es Fotos.Id */
+  /** ID multimedia JT808 (opcional); NO es Fotos.Id ni FK de Posiciones — va a Fotos.IdFoto */
   IdFoto: number | null;
   Bateria: number | null;
   Alimentacion: number | null;
