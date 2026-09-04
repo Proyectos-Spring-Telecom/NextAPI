@@ -144,25 +144,44 @@ export function idsRolesVisiblesEnListado(
   return ROLES_VISIBLES_EN_LISTADO[rolNum as EnumRoles] ?? [];
 }
 
-/** Valores de Modulos.Id */
+/** Valores de Modulos.Id (tabla Modulos en BD Next) */
 export enum EnumModulos {
+  /** Cliente — Gestión de sistemas */
   CLIENTES = 1,
+  /** Usuarios — Gestión de usuarios */
   USUARIOS = 2,
+  /** Roles — Gestión de roles */
   ROLES = 3,
+  /** Permisos — Gestión de permisos */
   PERMISOS = 4,
+  /** Modulos — Gestión de módulos */
   MODULOS = 5,
+  /** Sims — Gestión de tarjetas SIM */
   SIMS = 14,
+  /** Dispositivos — Gestión de dispositivos GPS */
   DISPOSITIVOS = 15,
+  /** Vehiculos — Catálogo de vehículos de flota */
   VEHICULOS = 16,
+  /** Instalaciones — Instalaciones GPS */
   INSTALACIONES = 17,
+  /** Operadores — Operadores / conductores */
   OPERADORES = 18,
+  /** Licencias — Licencias de conducir */
   LICENCIAS = 19,
+  /** Inmuebles — Gestión de inmuebles */
   INMUEBLES = 20,
+  /** Paneles — Paneles de alarma */
   PANELES = 21,
+  /** Alarmas — Alarmas de paneles */
   ALARMAS = 22,
+  /** Reportes — Generación de reportes */
   REPORTES = 23,
+  /** Activos — Gestión de activos */
   ACTIVOS = 24,
+  /** Personas — Gestión de personas */
   PERSONAS = 25,
+  /** Puntos — Puntos de interés */
+  PUNTOS = 26,
 }
 
 /** Valores de CatTipoProducto.Id */

@@ -100,6 +100,8 @@ export type MonitoreoVehiculoItem = MonitoreoBase &
     economico: string | null;
     marca: string | null;
     modelo: string | null;
+    colorVehiculo: string | null;
+    numeroSerieVehiculo: string | null;
   };
 
 export type MonitoreoDispositivoItem = MonitoreoBase &
@@ -162,6 +164,8 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     economico: str(row.ecoVehiculo),
     marca: str(row.marcaVehiculo),
     modelo: str(row.modeloVehiculo),
+    colorVehiculo: str(row.colorVehiculo),
+    numeroSerieVehiculo: str(row.numeroSerieVehiculo),
     ...mapTelemetriaUltimaPosicion(row),
   };
 }
