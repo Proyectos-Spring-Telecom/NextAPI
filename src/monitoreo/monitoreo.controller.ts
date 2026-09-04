@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   Param,
   ParseIntPipe,
   Post,
@@ -80,7 +79,8 @@ export class MonitoreoController {
     summary: 'Capturar foto Trackcam (proxy gateway)',
     description: [
       'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/photo/start`.',
-      'Reenvía el JWT del usuario. Body opcional: `{ "channelId": 1 }` (1–5).',
+      'Reenvía al gateway el mismo JWT Bearer del usuario autenticado (Authorize / header de la petición; no se pide otro token).',
+      'Body opcional: `{ "channelId": 1 }` (1–5).',
       'Sin `channelId` → todos los canales activos del registry (máx. 3).',
       'Timeout ≥ 90 s. Persistencia vía AMQP `jt808.position` (no duplica INSERT).',
     ].join('\n'),
@@ -94,11 +94,11 @@ export class MonitoreoController {
   async capturarFoto(
     @Param('idInstalacion', ParseIntPipe) idInstalacion: number,
     @Body() body: CaptureFotoMonitoreoDto,
-    @Headers('authorization') authorization?: string,
+    @Request() req,
   ) {
     return this.monitoreoService.capturarFoto(
       idInstalacion,
-      extractBearerToken(authorization),
+      extractBearerToken(req.headers?.authorization),
       body?.channelId,
     );
   }
@@ -108,6 +108,7 @@ export class MonitoreoController {
     summary: 'Capturar video Trackcam (proxy gateway)',
     description: [
       'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/video/capture`.',
+      'Reenvía al gateway el mismo JWT Bearer del usuario autenticado (Authorize / header de la petición; no se pide otro token).',
       'Body: `{ "durationSeconds"?: 15, "channelId"?: 1 }` (`channelId` 1–5 opcional).',
       'Sin `channelId` → paralelo en canales activos. Con `channelId` → un solo stream.',
       'Timeout: ~90 s (1 canal) / ~150 s (multi). Persistencia vía AMQP.',
@@ -122,11 +123,11 @@ export class MonitoreoController {
   async capturarVideo(
     @Param('idInstalacion', ParseIntPipe) idInstalacion: number,
     @Body() body: CaptureVideoMonitoreoDto,
-    @Headers('authorization') authorization?: string,
+    @Request() req,
   ) {
     return this.monitoreoService.capturarVideo(
       idInstalacion,
-      extractBearerToken(authorization),
+      extractBearerToken(req.headers?.authorization),
       {
         durationSeconds: body?.durationSeconds,
         channelId: body?.channelId,

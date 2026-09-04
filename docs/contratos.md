@@ -1,367 +1,235 @@
-# NextAPI — contratos
+# Contratos — NextAPI
 
-Prefijo global: **`/api`**. JSON camelCase. IDs numéricos (no string). Swagger interactivo: `/docs`.
+Contratos HTTP, Socket.IO y AMQP de las funcionalidades implementadas. Complementa [`contexto.md`](./contexto.md).
 
-Auth de usuario (salvo login, verify, refresh, logout, recuperación, ingest HMAC y `validateFace`):
-
-```http
-Authorization: Bearer <accessToken>
-```
-
-Errores `HttpException`: cuerpo **texto plano** (filtro global), no JSON `{ message }`.
-
-Contexto de negocio: [contexto.md](./contexto.md).
-
-## Respuestas comunes
-
-Alta / update / estatus:
-
-```json
-{ "status": "success", "message": "...", "data": { "id": 1, "nombre": "..." } }
-```
-
-Listado paginado (mayoría de módulos):
-
-```json
-{
-  "data": [],
-  "paginated": { "total": 0, "page": 1, "limit": 20, "totalPages": 0 }
-}
-```
-
-### Estatus producto / dispositivo / panel
-
-Body en `PATCH .../estatus/:id`:
-
-```json
-{ "estatus": 0 | 1 | 2 | 3 | 4 | 5 }
-```
-
-| Valor | Significado |
-|-------|-------------|
-| 0 | Inactivo |
-| 1 | Activo / disponible |
-| 2 | Asignado |
-| 3 | Baja reemplazo |
-| 4 | Baja mantenimiento |
-| 5 | Inservible |
-
-Si el estatus **actual** del recurso es **2**, la API responde **400** con mensaje formal (*…se encuentra asignado a una instalación*).
-
-### Estatus SIM
-
-`PATCH /api/sims/estatus/:id` **sin body**: alterna `1 ↔ 0`. Si actual es **2**, **400** (mismo criterio).
+Autenticación general (salvo ingest HMAC / health):  
+`Authorization: Bearer <accessToken>`.
 
 ---
 
-## Autenticación
+## 1. Monitoreo
 
-| Método | Ruta | Auth | Notas |
-|--------|------|------|--------|
-| POST | `/api/login` | no | Body `userName`, `password`. Query `Nombres` (solución; default `NXT`) |
-| POST | `/api/login/operador/accesso/nip` | no | NIP de operador. Query `Nombres` |
-| GET | `/api/login/me` | JWT | Perfil del token |
-| POST | `/api/login/cambiar/accesso` | JWT | Cambio de contraseña |
-| PATCH | `/api/login/verify` | no | Código de confirmación |
-| POST | `/api/login/refresh` | no | Body `refreshToken` |
-| POST | `/api/login/logout` | no | Body `refreshToken` |
-| POST | `/api/login/usuario/solicitud/recuperacion` | no | |
-| POST | `/api/login/recuperar/confirmacion` | no | |
-| POST | `/api/auth/validateFace` | no | Login facial; tenant fijo en servidor |
+Base: `/monitoreo` · Tag Swagger `Monitoreo`.
 
-JWT access: claim `type = access`. En request: `userId`, `email`, `idCliente`, `rol`, `idOperador`, opcional `face`.
+### 1.1 `GET /monitoreo/list`
 
----
+Listado de instalaciones activas con telemetría según rol.
 
-## Clientes
+| Rol | Alcance |
+|-----|---------|
+| SA, Dev, Admin, JefeMonitoreo, Monitoreo, Técnico (1–5, 8) | Todas activas |
+| Cliente (6) | Cliente + descendientes |
+| Operador (7), Usuario (9) | `UsuariosInstalaciones` |
 
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/clientes` | Multipart |
-| GET | `/api/clientes/list` | |
-| GET | `/api/clientes/jerarquia` | |
-| GET | `/api/clientes/list/:cliente` | |
-| GET | `/api/clientes/:page/:limit` | |
-| GET | `/api/clientes/:id` | |
-| PATCH | `/api/clientes/:id` | |
-| PATCH | `/api/clientes/estatus/:id` | `{ estatus }` |
+**Respuesta:** `{ "posicion": [ ... ] }` (plano, camelCase).
 
----
+#### Shape GPS (tipos producto 1, 2, 4)
 
-## Usuarios
+Contexto del producto + campos de `UltimaPosicion` (null si no hay fila):
 
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/usuarios` | Multipart |
-| POST | `/api/usuarios/face-auth` | Registrar IdFaceAuth |
-| GET | `/api/usuarios/list` | |
-| GET | `/api/usuarios/list/cliente/:id` | |
-| GET | `/api/usuarios/:page/:limit` | |
-| GET | `/api/usuarios/:id` | |
-| PATCH | `/api/usuarios/estatus/:id` | |
-| PATCH | `/api/usuarios/actualizar/contrasena` | Contraseña del usuario autenticado |
-| PATCH | `/api/usuarios/mi-nip` | Crear / actualizar NIP |
-| PATCH | `/api/usuarios/:id` | |
-
----
-
-## Roles / permisos / módulos / operadores / bitácora
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST/GET/PUT/PATCH | `/api/roles`… | CRUD + `estatus/:id` |
-| POST/GET/PUT/PATCH | `/api/permisos`… | Incluye `permisosAgrupados`; estatus `PATCH :id/estatus` |
-| POST/GET/PUT/PATCH | `/api/modulos`… | CRUD + `PATCH :id/estatus` |
-| POST/GET/PATCH | `/api/operadores`… | CRUD + `estatus/:id` |
-| GET | `/api/bitacora/:page/:limit`, `/api/bitacora/:id` | Consulta |
-
----
-
-## Catálogos
-
-| Prefijo | Notas |
-|---------|--------|
-| `/api/cat-tipo-combustible` | CRUD + list / paginado / estatus |
-| `/api/cat-telefonia` | + `GET /:idTelefonia/planes` |
-| `/api/cat-planes-telefonia` | CRUD + list |
-| `/api/cat-marcas` | + `GET /:id/modelos` |
-| `/api/cat-modelos` | CRUD + list / paginado / estatus |
-| `/api/catalogos/:nombreCatalogo` | Solo GET lista (registry) |
-
----
-
-## SIMs — `/api/sims`
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/sims` | Alta; estatus inicial 1; IMEI único |
-| GET | `/api/sims/list` | Solo `estatus = 1` |
-| GET | `/api/sims/:page/:limit` | Paginado |
-| GET | `/api/sims/:id` | Detalle |
-| PATCH | `/api/sims/estatus/:id` | Toggle 1↔0; **400 si actual = 2** |
-| PATCH | `/api/sims/:id` | Update parcial (**no** estatus) |
-
----
-
-## Dispositivos — `/api/dispositivos`
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/dispositivos` | Alta (no tipo panel) |
-| GET | `/api/dispositivos/list` | Query `idTipoDispositivo`, `idCliente` |
-| GET | `/api/dispositivos/paginado/:page/:limit` | |
-| GET | `/api/dispositivos/:id` | |
-| PATCH | `/api/dispositivos/estatus/:id` | `{ estatus: 0–5 }`; **400 si actual = 2** |
-| PATCH | `/api/dispositivos/:id` | |
-
-### Paneles — `/api/dispositivos/paneles`
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/dispositivos/paneles` | Dispositivo + PanelAlarma; no devuelve `aesKey` |
-| GET | `/api/dispositivos/paneles/list` | Plano |
-| GET | `/api/dispositivos/paneles/:page/:limit` | |
-| GET | `/api/dispositivos/paneles/:id` | `id` = IdDispositivo |
-| PATCH | `/api/dispositivos/paneles/estatus/:id` | 0–5; **400 si actual = 2** |
-| PATCH | `/api/dispositivos/paneles/:id` | |
-
----
-
-## Productos — `/api/productos`
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| GET | `/api/productos/list` | Query `idTipoProducto`, `idCliente` |
-| GET | `/api/productos/paginado/:page/:limit` | |
-| GET | `/api/productos/:id` | + cliente + tipo |
-| PATCH | `/api/productos/estatus/:id` | 0–5; **400 si actual = 2** |
-| PATCH | `/api/productos/:id` | Nombre |
-
-Alta solo por subtipo.
-
-### Vehículos — `/api/productos/vehiculos`
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/productos/vehiculos` | Multipart |
-| GET | `/api/productos/vehiculos/list` | Activos |
-| GET | `/api/productos/vehiculos/placa/:placa` | Solo activos; data con `numeroEconomico`, `fotoFrente`, marca/modelo/combustible. Guía: [consumo-vehiculo-por-placa.md](./consumo-vehiculo-por-placa.md) |
-| GET | `/api/productos/vehiculos/:page/:limit` | |
-| GET | `/api/productos/vehiculos/:id` | IdProducto |
-| PATCH | `/api/productos/vehiculos/estatus/:id` | 0–5; bloqueo ASIGNADO |
-| PATCH | `/api/productos/vehiculos/:id` | |
-
-### Activos / inmuebles / personas
-
-Mismo patrón bajo:
-
-- `/api/productos/activos`
-- `/api/productos/inmuebles`
-- `/api/productos/personas`
-
-`POST`, `GET list`, `GET :page/:limit`, `GET :id`, `PATCH estatus/:id` (0–5 + bloqueo), `PATCH :id`.
-
-`idTipoProducto`: **1** vehículo, **2** activo, **3** inmueble, **4** persona.
-
----
-
-## Instalaciones — `/api/instalaciones`
-
-| Método | Ruta | Auth | Notas |
-|--------|------|------|--------|
-| POST | `/api/instalaciones` | JWT | Alta ACTIVA; componentes 1 → 2 |
-| GET | `/api/instalaciones/list` | JWT | Filas con `Estatus = 1` |
-| GET | `/api/instalaciones/historico/:id` | JWT | Cadena histórico |
-| POST | `/api/instalaciones/paginado` | JWT | Body paginado por tipo producto |
-| GET | `/api/instalaciones/:id` | JWT | Detalle completo |
-| PATCH | `/api/instalaciones/estatus/:id` | JWT | Solo **0, 1, 5**; no archiva |
-| PATCH | `/api/instalaciones/:id` | JWT | Archiva + nueva versión ACTIVA |
-
-### Body `POST /paginado`
-
-```json
-{ "page": 1, "limit": 20, "idTipoProducto": 3 }
-```
-
-`idTipoProducto`: 1–4. Respuesta: `data[]` + `paginated`.
-
-### Orden y nomenclatura del ítem (paginado y detalle)
-
-1. Instalación → 2. Cliente → 3. Producto + detalle → 4. Dispositivo (+ Panel si tipo 2) → 5. SIM  
-
-Sufijos: `…Dispositivo`, `…Panel`, `…Vehiculo|Activo|Inmueble|Persona`, `…Sim`. Sin `aesKey`.
-
-**Detalle** incluye además: `idHistoricoInstalacion`, `dispositivoActivo`, `simActivo`, fechas de producto/dispositivo/panel/SIM, plan telefonía, fotos extra de vehículo, etc.
-
-### `PATCH /estatus/:id` — body
-
-```json
-{ "estatus": 0 | 1 | 5 }
-```
-
-| Valor | Efecto |
+| Campo | Origen |
 |-------|--------|
-| 0 o 5 | `EstatusInstalacion` = valor; fila `Estatus = 0`; componentes → 1 |
-| 1 | Componentes deben estar en 1; instalación activa; componentes → 2 |
+| `idInstalacion`, `idCliente`, `idTipoProducto` | Instalación / producto |
+| `cliente`, `placa` / `descripcion` / `persona`, `economico`, `marca`, `modelo`, … | Contexto por tipo |
+| `imei`, `lat`, `lng`, `estado`, `fechaHora`, `velocidad`, `direccion`, `odometro`, `ignicion`, `alarma1`, `alarma2`, `energia`, `idEvento`, `idFoto`, `fhRegistro`, `bateria`, `alimentacion`, `gps`, `gsm`, `movimiento`, `combustible`, `nivelCombustible` | `UltimaPosicion` |
+| `id` | `UltimaPosicion.Id` |
 
-### `PATCH /:id` (update) — reglas
+**No se exponen** en listado/socket: `idFoto1..3`, `idVideo1..3`, `rutaFoto*`, `rutaVideo*`.
 
-- Archiva vigente → histórico; inserta nueva ACTIVA; migra `UsuariosInstalaciones` al nuevo id; elimina fila anterior.
-- Body incluye `estatusInstalacionAnterior` (contexto histórico; allowlist 0,1,3,4,5).
-- Si cambia producto/dispositivo/SIM saliente: enviar `estatusProductoAnterior` / `estatusDispositivoAnterior` / `estatusSimAnterior` (0–5).
-- Entrantes: deben estar en estatus **1** y mismo `idCliente`; pasan a **2**.
+#### Shape inmueble / panel (tipo 3)
 
-### Alta — body (campos principales)
-
-- `idCliente`, `idProducto` (obligatorios)
-- `idDispositivo`, `idSim` (opcionales)
-- Componentes en 1 al asignar.
+Sin `UltimaPosicion`. Incluye `lat`/`lng` del inmueble, `ultimoHeartbeat`, `fechaHora`, `ultimoEventoAlarma`.
 
 ---
 
-## Alarmas — `/api/alarmas`
+### 1.2 Socket.IO — namespace `/monitoreo`
 
-### Consulta (JWT)
+| Evento | Dirección | Payload |
+|--------|-----------|---------|
+| Auth | Cliente → server | JWT en `auth.token` / `Authorization` / query |
+| `conexion:lista` | Server → cliente | `{ idsInstalaciones: number[], posicion: MonitoreoPosicionItem[] }` (mismo shape que list) |
+| `monitoreo:actualizacion` | Server → rooms `instalacion:{id}` | Un ítem plano (igual que un elemento de `posicion[]`) |
 
-| Método | Ruta | Notas |
-|--------|------|--------|
-| GET | `/api/alarmas/paneles` | Paneles activos; tenant |
-| GET | `/api/alarmas/paneles/:id` | `id` = IdDispositivo |
-| GET | `/api/alarmas/ultimos-eventos` | Último por panel |
-| GET | `/api/alarmas/eventos` | Historial (filtros query) |
-| GET | `/api/alarmas/eventos/:id` | Detalle |
-
-### Ingest (HMAC, sin JWT)
-
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/alarmas/ingest` | Evento SIA |
-| POST | `/api/alarmas/ingest/heartbeat` | Heartbeat RP |
-
-Headers típicos de gateway: timestamp + firma HMAC (`GATEWAY_HMAC_SECRET`); opcional `X-Gateway-Key` si `GATEWAY_API_KEY` está definida.
-
-Socket.IO: eventos de alarma hacia clientes autenticados (mismo proceso Nest).
+Se emite tras ingest JT808 (`notificarImei`) o cambios de panel relevantes.
 
 ---
 
-## S3
+### 1.3 `GET /monitoreo/:idInstalacion/historico`
 
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/api/s3` (upload) | Archivo → bucket |
-| PATCH | `/api/s3` (update) | Reemplazo |
+Query: `fechaInicio`, `fechaFinal` (`YYYY-MM-DD HH:mm:ss`, hora de pared).
+
+- **No aplica** a inmueble/panel (`400`).
+- Lee `Posiciones` por IMEI; orden DESC.
+- Calcula `totalDistancia` (Haversine) con exclusión de segmentos (salto GPS, drift, detenido).
+
+**Respuesta:** `{ totalDistancia, posiciones: [...] }`.
+
+Cada ítem conserva campos históricos existentes y añade en plano el resto de columnas de `Posiciones` + `rutaFoto` / `rutaFoto1..3` / `rutaVideo1..3` (null si faltan).
 
 ---
 
-## Webhooks salientes (Next → suscriptores)
+### 1.4 `POST /monitoreo/:idInstalacion/foto`
 
-No es un endpoint de entrada de Next. Emisión `POST` JSON firmado.
+Proxy a springTrackCam `POST /gateway/photo/start`.
 
-| Variable | Uso |
-|----------|-----|
-| `WEBHOOK_SUBSCRIBERS` | URLs destino, separadas por coma |
-| `WEBHOOK_SECRET` | Secreto HMAC-SHA256 compartido con el receptor |
+**Precondiciones:** instalación activa, dispositivo tipo TRACKCAM (codigo / id 5), `NumeroSerie` + `Imei` válidos.
 
-### Eventos
+**Headers:** reenvía el JWT del usuario.
 
-| `event` | Cuándo |
-|---------|--------|
-| `vehiculo.created` | `POST /api/productos/vehiculos` |
-| `vehiculo.updated` | `PATCH /api/productos/vehiculos/:id` |
-| `vehiculo.deleted` | `PATCH .../vehiculos/estatus/:id` con estatus **0, 3, 4 o 5** |
-| `cliente.created` | `POST /api/clientes` |
-| `cliente.updated` | `PATCH /api/clientes/:id` |
+**Body (opcional):**
+
+```json
+{ "channelId": 1 }
+```
+
+| Campo | Obligatorio | Notas |
+|-------|-------------|--------|
+| `channelId` | no | `1`–`5`; si falta → todos los canales activos del registry |
+
+NextAPI envía al gateway: `terminalId` (NumeroSerie pad 12), `imei`, `saveFlag: 0`, y `channelId` solo si viene.
+
+**Respuesta:** la del gateway (`Foto1..3`, `channelIds`, `location`, …).  
+**No** INSERT local; persistencia vía AMQP.
+
+Timeout proxy: **90 s**.
+
+---
+
+### 1.5 `POST /monitoreo/:idInstalacion/video`
+
+Proxy a `POST /gateway/video/capture`.
+
+**Body (opcional):**
+
+```json
+{ "durationSeconds": 15, "channelId": 2 }
+```
+
+| Campo | Default | Notas |
+|-------|---------|--------|
+| `durationSeconds` | 30 | Máx. 30 |
+| `channelId` | — | `1`–`5`; si falta → paralelo multi-canal |
+
+Gateway body: `terminalId`, `imei`, `durationSeconds`, `streamType: 0`, `dataType: 1`, `channelId?`.
+
+Timeout: **90 s** (1 canal) / **150 s** (multi).
+
+---
+
+## 2. AMQP JT808 → NextAPI
+
+| Parámetro | Valor |
+|-----------|--------|
+| Exchange | `telemetry` (topic) |
+| Binding posiciones/media | `jt808.position` |
+| Alarmas (opcional) | `jt808.alarm.*` |
 
 ### Envelope
 
 ```json
 {
-  "event": "vehiculo.created",
-  "timestamp": "2026-08-21T15:30:00.123Z",
-  "tenantId": 13,
-  "entityId": 1000042,
-  "data": { },
-  "signature": "<hmac-sha256-hex>"
+  "eventId": "<sha256-hex-64>",
+  "protocol": "jt808",
+  "kind": "position",
+  "deviceId": "007773050481",
+  "receivedAt": "2026-09-03T23:30:00.000Z",
+  "payload": { }
 }
 ```
 
-Orden firmado (sin `signature`): `event` → `timestamp` → `tenantId` → `entityId` → `data`.
+### Persistencia (orden)
 
-### `data` vehículo
+1. Idempotencia `eventId` (`TelemetryIngestLog`).
+2. Lookup `deviceId` → Imei.
+3. `Foto1..3` → INSERT `Fotos` → ids.
+4. `Video1..3` → INSERT `Videos` → ids.
+5. INSERT `Posiciones` (`Estado: null`, FKs media, **`IdFoto: null`**).
+6. Trigger → `UltimaPosicion`.
+7. Socket `monitoreo:actualizacion`.
 
-```json
-{
-  "placa": "ABC1234",
-  "marcaNombre": "Toyota",
-  "modeloNombre": "Hilux",
-  "fotoFrente": "https://…/frente.jpg"
-}
-```
-
-`marcaNombre` / `modeloNombre`: string (`""` si vacío). `fotoFrente`: URL o `null`.
-
-### `data` cliente
-
-```json
-{ "idPadre": 1 }
-```
-
-Contrato completo (HMAC, checklist ShiftControl): [webhook-shiftcontrol.md](./webhook-shiftcontrol.md).
+`payload.IdFoto` / `jt808.multimediaId` → solo columna `Fotos.IdFoto` (no FK de Posiciones).
 
 ---
 
-## Mail
+## 3. Trackcam — webhooks salientes
 
-Servicio SMTP interno. Controller `/api/mail` sin rutas de negocio expuestas.
+Eventos: `trackcam.created`, `trackcam.updated`.
+
+| Config | Variable |
+|--------|----------|
+| URL | `TRACKCAM_WEBHOOK_URL` |
+| Firma | `WEBHOOK_SECRET` (HMAC) |
+
+Guía receptor SpringTrackCam: [`webhook-trackcam-springtrackcam.md`](./webhook-trackcam-springtrackcam.md) (si existe en el repo).
 
 ---
 
-## Códigos de error frecuentes
+## 4. Alarmas (resumen contrato)
 
-| HTTP | Cuándo |
+| Superficie | Contrato |
+|------------|----------|
+| REST consulta | `GET /alarmas/paneles`, `/ultimos-eventos`, `/eventos`, … |
+| Ingest | `POST /alarmas/ingest`, `/ingest/heartbeat` (HMAC `GATEWAY_HMAC_SECRET`) |
+| Socket `/alarmas` | `conexion:lista`, `evento:nuevo`, `panel:heartbeat`, `panel:estado` |
+
+---
+
+## 5. Auth (resumen)
+
+| Endpoint | Uso |
+|----------|-----|
+| `POST /login` | Access + refresh |
+| `POST /login/refresh` (o equivalente) | Renovar sesión |
+| `GET /login/me` | Perfil |
+| Flujos PIN / face / recuperación | Ver módulo `auth` + Swagger |
+
+---
+
+## 6. Dispositivos / Trackcam / Paneles
+
+| Ruta | Notas |
 |------|--------|
-| 400 | Validación DTO; estatus ASIGNADO al PATCH; reglas de instalación |
-| 401 | Sin / JWT inválido |
-| 403 | Tenant fuera de alcance (p. ej. alarmas + `idCliente`) |
-| 404 | Recurso no encontrado o fuera de tenant |
-| 409 | Conflictos de unicidad (IMEI, cuenta SIA, etc.) |
+| `CRUD /dispositivos` | Alta genérica; **rechaza** tipo TRACKCAM |
+| `CRUD /dispositivos/trackcam` | Alta 1:1 con `TrackcamConfig` + webhook |
+| `CRUD /dispositivos/paneles` | Panel alarma (SIA) |
+
+---
+
+## 7. Health messaging
+
+`GET /health/rabbitmq` — estado consumidor / pool.
+
+---
+
+## 8. Inventario de funcionalidades implementadas
+
+### Telemetría y monitoreo
+- [x] Listado GPS plano desde `UltimaPosicion` (vehículo/activo/persona)
+- [x] Inmueble/panel sin UltimaPosicion
+- [x] Socket `/monitoreo` con mismo shape que listado
+- [x] Histórico `Posiciones` + distancia Haversine + rutas media
+- [x] Proxy foto/video Trackcam (`channelId` opcional)
+- [x] Consumer JT808: position (+ media URLs → Fotos/Videos → Posiciones)
+- [x] Idempotencia `eventId`; Imei vía `NumeroSerie`
+- [x] `Posiciones.IdFoto` legacy siempre null en ingest
+- [x] Confianza en trigger MySQL para `UltimaPosicion` / `Estado`
+
+### Alarmas y paneles
+- [x] Ingest HMAC eventos/heartbeats
+- [x] Consultas paginadas / filtros
+- [x] Socket `/alarmas`
+- [x] CRUD paneles bajo dispositivos
+
+### Catálogo y operación
+- [x] CRUD Trackcam + webhook HMAC
+- [x] CRUD dispositivos / instalaciones / clientes / productos (vehículo, activo, persona, inmueble)
+- [x] Catálogos (marcas, modelos, telefonía, combustible, registry genérico)
+- [x] Auth JWT multi-paso (login, PIN, face, recuperación)
+- [x] Usuarios, roles, permisos, módulos, operadores, SIMs, bitácora, S3, mail
+- [x] Webhooks genéricos + Trackcam dedicados
+- [x] Consumers AX PRO (eventos / heartbeats) en messaging
+
+### Fuera de alcance de estos contratos
+- Recalcular `Estado` en aplicación (lo hace el trigger)
+- Duplicar persistencia foto/video en el proxy HTTP
+- Histórico GPS para inmuebles/paneles
