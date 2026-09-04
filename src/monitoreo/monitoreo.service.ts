@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, FindOptionsWhere, Repository, SelectQueryBuilder } from 'typeorm';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import {
   EnumRoles,
@@ -18,6 +18,7 @@ import {
 import { imeiToString } from 'src/common/imei.util';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
+import { PuntosInteres } from 'src/entities/PuntosInteres';
 import { Fotos } from 'src/entities/Fotos';
 import { Videos } from 'src/entities/Videos';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
@@ -27,6 +28,10 @@ import { Personas } from 'src/entities/Personas';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
 import { obtenerTipoTrackcam } from 'src/dispositivos/crear-dispositivo.util';
+import {
+  mapPuntoInteresPlano,
+  RELACIONES_PUNTO_INTERES,
+} from 'src/puntos-interes/map-puntos-interes.util';
 import {
   applyMonitoreoListJoins,
   applyMonitoreoListSelect,
@@ -59,6 +64,11 @@ type TrackcamInstalacionDevice = {
   imei: string;
 };
 
+export type MonitoreoListadoResponse = {
+  posicion: MonitoreoPosicionItem[];
+  'puntos-interes': ReturnType<typeof mapPuntoInteresPlano>[];
+};
+
 @Injectable()
 export class MonitoreoService {
   constructor(
@@ -66,6 +76,8 @@ export class MonitoreoService {
     private readonly instalacionesRepo: Repository<Instalaciones>,
     @InjectRepository(Posiciones)
     private readonly posicionesRepo: Repository<Posiciones>,
+    @InjectRepository(PuntosInteres)
+    private readonly puntosInteresRepo: Repository<PuntosInteres>,
     private readonly tenantFilter: TenantFilterService,
     private readonly config: ConfigService,
     private readonly trackcamGateway: TrackcamGatewayClient,
@@ -171,8 +183,13 @@ export class MonitoreoService {
     idUsuario: number,
     idClienteToken: number,
     rol: number,
-  ): Promise<{ posicion: MonitoreoPosicionItem[] }> {
+  ): Promise<MonitoreoListadoResponse> {
     try {
+      const puntosInteres = await this.listarPuntosInteresVisibles(
+        idClienteToken,
+        rol,
+      );
+
       const qb = this.createListadoQueryBuilder();
       const visible = await this.applyVisibilidadInstalaciones(
         qb,
@@ -181,7 +198,7 @@ export class MonitoreoService {
         rol,
       );
       if (!visible) {
-        return { posicion: [] };
+        return { posicion: [], 'puntos-interes': puntosInteres };
       }
 
       qb.orderBy(
@@ -193,6 +210,7 @@ export class MonitoreoService {
 
       return {
         posicion: rows.map((row) => mapMonitoreoPosicionItem(row)),
+        'puntos-interes': puntosInteres,
       };
     } catch (error) {
       if (error instanceof HttpException) {
@@ -203,6 +221,35 @@ export class MonitoreoService {
         error: (error as Error)?.message,
       });
     }
+  }
+
+  /** Puntos de interés activos con el mismo alcance tenant que el módulo Puntos. */
+  private async listarPuntosInteresVisibles(
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ReturnType<typeof mapPuntoInteresPlano>[]> {
+    const tenant = await this.tenantFilter.forTypeOrmIdCliente(
+      rol,
+      idClienteToken,
+    );
+    if (tenant.sinAcceso) {
+      return [];
+    }
+
+    const where: FindOptionsWhere<PuntosInteres> = {
+      estatus: EstatusEnum.ACTIVO,
+      ...(tenant.idCliente !== undefined
+        ? { idCliente: tenant.idCliente }
+        : {}),
+    };
+
+    const rows = await this.puntosInteresRepo.find({
+      where,
+      relations: [...RELACIONES_PUNTO_INTERES],
+      order: { id: 'ASC' },
+    });
+
+    return rows.map((item) => mapPuntoInteresPlano(item));
   }
 
   /**
