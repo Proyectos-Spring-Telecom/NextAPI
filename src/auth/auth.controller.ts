@@ -17,7 +17,7 @@ import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LoginRefreshTokenDto } from './dto/login-refresh-token.dto';
 
@@ -71,6 +71,12 @@ export class AuthController {
   @Post('usuario/solicitud/recuperacion')
   @Throttle({
     default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS },
+  })
+  @ApiOperation({
+    summary: 'Recuperación de contraseña (Next)',
+    description:
+      'Envía correo de restablecimiento con branding **Next** (`sendResetPasswordEmailNext`): ' +
+      'código PIN + enlace. No altera el flujo de Shift.',
   })
   async solicitudRecuperacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,

@@ -726,8 +726,15 @@ export class AuthService {
       });
       const name =
         `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
-      await this.emailService.sendResetPasswordEmail(user.userName, name, token, codigo);
-      this.logger.log(`Auth: correo de recuperación enviado (userId=${user.id})`);
+      await this.emailService.sendResetPasswordEmailNext(
+        user.userName,
+        name,
+        token,
+        codigo,
+      );
+      this.logger.log(
+        `Auth: correo de recuperación Next enviado (userId=${user.id})`,
+      );
       return mensajeGenerico;
     } catch {
       this.logger.error(

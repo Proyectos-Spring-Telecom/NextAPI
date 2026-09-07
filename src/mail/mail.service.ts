@@ -158,6 +158,7 @@ export class MailService {
     }
   }
 
+  /** Recuperación de contraseña — branding Shift / Spring Telecom. */
   async sendResetPasswordEmail(
     to: string,
     name: string,
@@ -244,6 +245,99 @@ export class MailService {
       }
       throw new InternalServerErrorException(
         'Error al enviar el correo de restablecimiento de contraseña.',
+      );
+    }
+  }
+
+  /**
+   * Recuperación de contraseña para Next (administrativo).
+   * Shift sigue usando `sendResetPasswordEmail`.
+   */
+  async sendResetPasswordEmailNext(
+    to: string,
+    name: string,
+    token: string,
+    codigo: string,
+  ): Promise<void> {
+    try {
+      const dominio = process.env.MAIL_FRONTEND_URL_NEXT || 'https://springtelecom.mx/next';
+      const logoUrl =
+        process.env.MAIL_NEXT_LOGO_URL ||
+        'https://analiticadevideo.s3.us-east-1.amazonaws.com/Imagenes/spring_white.png';
+      const url = `${dominio}/cambio-password?token=${token}`;
+      const displayName = name?.trim() || 'usuario';
+
+      await this.transporter.sendMail({
+        from: `<${this.mailUser}>`,
+        to,
+        subject: 'Next — Restablecer contraseña',
+        html: `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restablecer contraseña — Next</title>
+</head>
+<body style="font-family: 'Open Sans', Arial, sans-serif; margin:0; padding:0; background:#f4f6f8;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table width="550" cellpadding="0" cellspacing="0"
+          style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(15,23,42,0.08);">
+          <tr>
+            <td style="background:#0f172a; color:#ffffff; padding:20px 24px;">
+              <img src="${logoUrl}" alt="Next" style="height:72px; max-width:220px;">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 32px;" align="center">
+              <h1 style="margin:0 0 8px 0; color:#0f172a; font-size:26px;">Restablecer contraseña</h1>
+              <p style="margin:0 0 20px 0; color:#334155; font-size:16px;">
+                Hola <strong>${displayName}</strong>, recibimos una solicitud para restablecer tu acceso a <strong>Next</strong>.
+              </p>
+              <p style="margin:0 0 12px 0; color:#334155; font-size:15px;">
+                Usa este código de verificación (válido por tiempo limitado):
+              </p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                <tr>
+                  <td style="background:#0f172a; color:#ffffff; font-size:28px; font-weight:bold; padding:16px 24px; border-radius:10px; letter-spacing:8px; font-family:monospace;">
+                    ${codigo}
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 12px 0; color:#64748b; font-size:14px;">
+                O continúa con el siguiente enlace:
+              </p>
+              <a href="${url}"
+                style="display:inline-block; margin-top:4px; padding:12px 22px; background:#2563eb; color:#ffffff; border-radius:999px; text-decoration:none; font-size:16px; font-weight:600;">
+                Restablecer contraseña
+              </a>
+              <p style="margin:28px 0 0 0; color:#94a3b8; font-size:13px;">
+                Si no solicitaste este cambio, ignora este correo. Tu contraseña no se modificará.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#0f172a; color:#e2e8f0; padding:20px 28px; text-align:center; font-size:12px;">
+              <p style="margin:0 0 6px 0;"><strong>Next</strong> — plataforma administrativa</p>
+              <p style="margin:0;">Este mensaje se envió de forma automática. No respondas a este correo.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+        `,
+      });
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error al enviar el correo de restablecimiento de contraseña (Next).',
       );
     }
   }
