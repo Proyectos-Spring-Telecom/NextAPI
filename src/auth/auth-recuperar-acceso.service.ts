@@ -15,7 +15,7 @@ import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
 
 /**
  * Recuperación de contraseña para Next: POST login/usuario/recuperar/acceso.
- * Correo: sendResetPasswordEmailNext (branding Next + PIN).
+ * Correo: sendResetPasswordEmailNext (mismo diseño que Shift; solo enlace).
  * Shift usa POST login/usuario/solicitud/recuperacion → AuthService.recuperarContrasena.
  */
 @Injectable()
