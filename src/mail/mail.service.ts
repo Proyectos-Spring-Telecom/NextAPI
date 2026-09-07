@@ -251,7 +251,8 @@ export class MailService {
 
   /**
    * Recuperación de contraseña para Next (administrativo).
-   * Shift sigue usando `sendResetPasswordEmail`.
+   * Endpoint: POST /login/usuario/recuperar/acceso
+   * Shift sigue usando `sendResetPasswordEmail` vía POST /login/usuario/solicitud/recuperacion.
    */
   async sendResetPasswordEmailNext(
     to: string,

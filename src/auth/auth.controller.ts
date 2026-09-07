@@ -57,6 +57,11 @@ export class AuthController {
   @Throttle({
     default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS },
   })
+  @ApiOperation({
+    summary: 'Recuperación de contraseña (Next)',
+    description:
+      'Envía correo con branding **Next** (`sendResetPasswordEmailNext`): código PIN + enlace.',
+  })
   async recuperarAcceso(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
   ) {
@@ -73,10 +78,10 @@ export class AuthController {
     default: { limit: THROTTLE_RECUPERACION_LIMIT, ttl: THROTTLE_RECUPERACION_TTL_MS },
   })
   @ApiOperation({
-    summary: 'Recuperación de contraseña (Next)',
+    summary: 'Recuperación de contraseña (Shift)',
     description:
-      'Envía correo de restablecimiento con branding **Next** (`sendResetPasswordEmailNext`): ' +
-      'código PIN + enlace. No altera el flujo de Shift.',
+      'Envía correo con branding **Shift** (`sendResetPasswordEmail`). ' +
+      'No altera el flujo de Next (`usuario/recuperar/acceso`).',
   })
   async solicitudRecuperacion(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
