@@ -14,8 +14,9 @@ import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
 
 /**
- * Servicio legacy para POST login/usuario/recuperar/acceso.
- * Réplica de la lógica de recuperación por correo sin modificar AuthService.
+ * Recuperación de contraseña para Next: POST login/usuario/recuperar/acceso.
+ * Correo: sendResetPasswordEmailNext (branding Next + PIN).
+ * Shift usa POST login/usuario/solicitud/recuperacion → AuthService.recuperarContrasena.
  */
 @Injectable()
 export class AuthRecuperarAccesoService {
@@ -79,14 +80,14 @@ export class AuthRecuperarAccesoService {
       });
       const name =
         `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
-      await this.emailService.sendResetPasswordEmail(
+      await this.emailService.sendResetPasswordEmailNext(
         user.userName,
         name,
         token,
         codigo,
       );
       this.logger.log(
-        `AuthRecuperarAcceso: correo de recuperación enviado (userId=${user.id})`,
+        `AuthRecuperarAcceso: correo de recuperación Next enviado (userId=${user.id})`,
       );
       return mensajeGenerico;
     } catch {

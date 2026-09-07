@@ -726,14 +726,14 @@ export class AuthService {
       });
       const name =
         `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
-      await this.emailService.sendResetPasswordEmailNext(
+      await this.emailService.sendResetPasswordEmail(
         user.userName,
         name,
         token,
         codigo,
       );
       this.logger.log(
-        `Auth: correo de recuperación Next enviado (userId=${user.id})`,
+        `Auth: correo de recuperación Shift enviado (userId=${user.id})`,
       );
       return mensajeGenerico;
     } catch {
