@@ -15,9 +15,10 @@ import { AuthRecuperarAccesoService } from './auth-recuperar-acceso.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
+import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LoginRefreshTokenDto } from './dto/login-refresh-token.dto';
 
@@ -60,7 +61,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Recuperación de contraseña (Next)',
     description:
-      'Envía correo con branding **Next** (`sendResetPasswordEmailNext`): código PIN + enlace.',
+      'Envía correo idéntico a Shift (`sendResetPasswordEmailNext`): solo enlace de restablecimiento, sin código en el cuerpo.',
   })
   async recuperarAcceso(
     @Body() loginAuthConfirmacionDto: LoginAuthConfirmacionDto,
@@ -106,6 +107,24 @@ export class AuthController {
       `HTTP POST login/recuperar/confirmacion (userName=${loginAuthConfirmacionDto.userName})`,
     );
     return await this.authService.recuperarConfirmacion(loginAuthConfirmacionDto);
+  }
+
+  @Post('cambiar/accesso')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Cambiar contraseña (usuario autenticado)',
+    description:
+      'Actualiza la contraseña del usuario del JWT. Body: `passwordNueva` y `passwordConfirmacion`. ' +
+      'Revoca refresh sessions activas.',
+  })
+  @ApiBody({ type: LoginAuthResetDto })
+  async resetPassword(
+    @Body() loginAuthResetDto: LoginAuthResetDto,
+    @Request() req: { user: { userId: number } },
+  ) {
+    const idUser = req.user.userId;
+    this.logger.log(`HTTP POST login/cambiar/accesso (userId=${idUser})`);
+    return await this.authService.resetPassword(+idUser, loginAuthResetDto);
   }
 
   @Post('operador/accesso/nip')

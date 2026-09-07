@@ -250,88 +250,92 @@ export class MailService {
   }
 
   /**
-   * Recuperación de contraseña para Next (administrativo).
-   * Endpoint: POST /login/usuario/recuperar/acceso
-   * Shift sigue usando `sendResetPasswordEmail` vía POST /login/usuario/solicitud/recuperacion.
+   * Recuperación de contraseña para Next.
+   * Mismo diseño HTML que `sendResetPasswordEmail` (sin código en el cuerpo).
+   * Solo cambia la URL base (`MAIL_FRONTEND_URL_NEXT`).
    */
   async sendResetPasswordEmailNext(
     to: string,
     name: string,
     token: string,
-    codigo: string,
+    _codigo: string,
   ): Promise<void> {
     try {
-      const dominio = process.env.MAIL_FRONTEND_URL_NEXT || 'https://springtelecom.mx/next';
-      const logoUrl =
-        process.env.MAIL_NEXT_LOGO_URL ||
-        'https://analiticadevideo.s3.us-east-1.amazonaws.com/Imagenes/spring_white.png';
-      const url = `${dominio}/cambio-password?token=${token}`;
-      const displayName = name?.trim() || 'usuario';
+      const dominio =
+        process.env.MAIL_FRONTEND_URL_NEXT ||
+        process.env.MAIL_FRONTEND_URL ||
+        '';
+      const url = `${dominio}/#/nueva-contrasena?token=${token}`;
+      void name;
+      void _codigo;
 
       await this.transporter.sendMail({
-        from: `<${this.mailUser}>`,
+        from: ` <${this.mailUser}>`,
         to,
-        subject: 'Next — Restablecer contraseña',
+        subject: 'Restablecer Contraseña',
         html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Restablecer contraseña — Next</title>
-</head>
-<body style="font-family: 'Open Sans', Arial, sans-serif; margin:0; padding:0; background:#f4f6f8;">
-  <table width="100%" cellpadding="0" cellspacing="0">
-    <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table width="550" cellpadding="0" cellspacing="0"
-          style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(15,23,42,0.08);">
-          <tr>
-            <td style="background:#0f172a; color:#ffffff; padding:20px 24px;">
-              <img src="${logoUrl}" alt="Next" style="height:72px; max-width:220px;">
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:28px 32px;" align="center">
-              <h1 style="margin:0 0 8px 0; color:#0f172a; font-size:26px;">Restablecer contraseña</h1>
-              <p style="margin:0 0 20px 0; color:#334155; font-size:16px;">
-                Hola <strong>${displayName}</strong>, recibimos una solicitud para restablecer tu acceso a <strong>Next</strong>.
-              </p>
-              <p style="margin:0 0 12px 0; color:#334155; font-size:15px;">
-                Usa este código de verificación (válido por tiempo limitado):
-              </p>
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
-                <tr>
-                  <td style="background:#0f172a; color:#ffffff; font-size:28px; font-weight:bold; padding:16px 24px; border-radius:10px; letter-spacing:8px; font-family:monospace;">
-                    ${codigo}
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:24px 0 12px 0; color:#64748b; font-size:14px;">
-                O continúa con el siguiente enlace:
-              </p>
-              <a href="${url}"
-                style="display:inline-block; margin-top:4px; padding:12px 22px; background:#2563eb; color:#ffffff; border-radius:999px; text-decoration:none; font-size:16px; font-weight:600;">
-                Restablecer contraseña
-              </a>
-              <p style="margin:28px 0 0 0; color:#94a3b8; font-size:13px;">
-                Si no solicitaste este cambio, ignora este correo. Tu contraseña no se modificará.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background:#0f172a; color:#e2e8f0; padding:20px 28px; text-align:center; font-size:12px;">
-              <p style="margin:0 0 6px 0;"><strong>Next</strong> — plataforma administrativa</p>
-              <p style="margin:0;">Este mensaje se envió de forma automática. No respondas a este correo.</p>
-            </td>
-          </tr>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Restablecer Contraseña</title>
+    </head>
+    <body style="font-family: 'Open Sans', sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+                <td align="center">
+                    <table width="550px" style="background-color: #FFFFFF; border-radius: 13px; box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;" cellpadding="0" cellspacing="0">
+                        <!-- Header -->
+                        <tr>
+                            <td  style="background-color: #021d6a; color: #FFFFFF; padding: 1rem; ">
+                                <a href="#">
+                                    <img src="https://analiticadevideo.s3.us-east-1.amazonaws.com/Imagenes/spring_white.png" alt="logo" style="height: 95px;">
+                                </a>
+                            </td>
+                        </tr>
+                        <!-- Body -->
+                        <tr>
+                            <td  style="padding: 0 2rem; "  align="center">
+                                <h5 style="color: #691330; font-size: 30px; text-align:center">
+                                    Restablecer Contraseña
+                                </h5>
+                                <p style="color: #000; font-family: 'Open Sans', sans-serif; font-size: 16px; text-align: center; margin-top: -30px;">Hola, haz click en el siguiente botón para restablecer tu contraseña. Si no has solicitado una nueva contraseña, <strong>ignora este correo</strong>.</p>
+                                <a href="${url}" style="font-size: 18px; padding: 0.9rem; background-color: #691330; color: #FFFFFF; border-radius: 30px; text-decoration: none; display: inline-block; margin-top: 13px; ">Restablecer Contraseña</a>
+                            </td>
+                        </tr>
+                        <!-- Divider -->
+                        <tr><td  style="padding: 0 2rem; "><hr style="border: none; height: 2px; background-color: rgba(226, 226, 226, 0.589); margin-top: 25px;"></td></tr>
+                        <tr>
+                            <td  style="padding: 0 2rem; "><br>
+                                <p style="margin: 0; font-size: 16px; font-family: 'Open Sans', sans-serif;"><strong>Nota: </strong>Recibes este correo electrónico porque has solicitado restablecer tu contraseña. Si no estas seguro/a de por qué estás recibiendo esto ignoralo.</p>
+                                <p >Atentamente,</p>
+                                <p style="margin-top: -10px;"><strong>Spring Telecom</strong></p>
+                            <br>
+                            </td>
+                        </tr>
+                        <!-- Footer -->
+                        <tr>
+                            <td style="background-color: #021d6a; color: #FFFFFF; padding: 2rem; " align="center">
+                                <!-- Contenido del footer aquí -->                  
+                                <h5 style="color: #FFFFFF; margin: 0; font-family: 'Open Sans', sans-serif; font-size: 13px;"><b>Tu entorno unificado para la gestión y análisis.</b></h5><br>
+                                <p style="margin: 0; font-size: 13px; font-family: 'Open Sans', sans-serif;">Si necesita ayuda o tiene
+                                    preguntas, siempre nos complace poder ayudarle. Comuníquese con nosotros enviándonos un correo
+                                    electrónico a contacto@springtelecom.mx</p>
+                                <p style="margin: 0; font-size: 13px; font-family: 'Open Sans', sans-serif;">Atentamente,</p>
+                                <p style="margin: 0; font-size: 13px; font-family: 'Open Sans', sans-serif;">© Spring Telecom</p>
+                                <br>
+                                <p style="margin: 0; font-size: 9px; font-family: 'Open Sans', sans-serif;">Spring Telecom, C. San Cristóbal 103 piso 2, San Cristóbal, 62250 Cuernavaca, Morelos.</p>
+                                <!-- Redes sociales y más -->
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
         </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-        `,
+    </body>
+    </html>
+    `,
       });
     } catch (error) {
       if (error instanceof HttpException) {
