@@ -97,6 +97,34 @@ export class InstalacionesController {
     );
   }
 
+  @Get('cliente/:idCliente')
+  @ApiOperation({
+    summary: 'Lista de instalaciones por idCliente',
+    description:
+      'Param `idCliente`. Solo `Estatus = 1`. Mismo shape plano que el paginado ' +
+      '(instalación → cliente → producto+detalle → dispositivo(+panel) → SIM; sin JSON anidados). ' +
+      'El `idCliente` solicitado debe estar dentro del alcance del rol del token.',
+  })
+  @ApiParam({
+    name: 'idCliente',
+    description: 'ID del cliente propietario de las instalaciones',
+    example: 1,
+  })
+  @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
+  @ApiResponse({ status: 400, description: 'idCliente inválido' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'Cliente fuera de alcance' })
+  async findAllByIdCliente(
+    @Param('idCliente', ParseIntPipe) idCliente: number,
+    @Request() req,
+  ): Promise<ApiResponseCommon> {
+    return this.instalacionesService.findAllByIdCliente(
+      idCliente,
+      req.user.idCliente,
+      req.user.rol,
+    );
+  }
+
   @Get('historico/:id')
   @ApiOperation({
     summary: 'Histórico de una instalación',

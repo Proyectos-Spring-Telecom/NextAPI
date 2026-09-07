@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -628,6 +629,49 @@ export class InstalacionesService {
         data: rows.map((row) =>
           mapInstalacionPaginadaPlana(row, tipoProducto),
         ),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  async findAllByIdCliente(
+    idClienteParam: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ApiResponseCommon> {
+    const idCliente = Number(idClienteParam);
+    if (!Number.isFinite(idCliente) || idCliente < 1) {
+      throw new BadRequestException('idCliente inválido');
+    }
+
+    try {
+      const scope = await this.tenantFilter.idsClientePermitidos(
+        rol,
+        idClienteToken,
+      );
+      if (!this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
+        throw new ForbiddenException(
+          'No tienes acceso a las instalaciones de ese cliente',
+        );
+      }
+
+      const qb = this.repository.createQueryBuilder('i');
+      applyPaginadoBaseJoins(qb);
+      applyPaginadoSelectBase(qb);
+      applyPaginadoTodosTiposProducto(qb);
+
+      qb.andWhere('i.idCliente = :idCliente', { idCliente })
+        .andWhere('i.estatus = :estatusInstalacion', {
+          estatusInstalacion: EstatusEnum.ACTIVO,
+        })
+        .orderBy('i.id', 'ASC');
+
+      const rows = await qb.getRawMany();
+
+      return {
+        data: rows.map((row) => mapInstalacionPaginadaPlana(row)),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
