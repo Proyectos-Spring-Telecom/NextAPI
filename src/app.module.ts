@@ -96,6 +96,8 @@ import * as jwt from 'jsonwebtoken';
         E_MAIL: Joi.string().required(),
         MAIL_PASSWORD: Joi.string().required(),
         MAIL_FRONTEND_URL: Joi.string().optional(),
+        MAIL_FRONTEND_URL_NEXT: Joi.string().optional(),
+        MAIL_NEXT_LOGO_URL: Joi.string().optional(),
         WEBHOOK_SUBSCRIBERS: Joi.string().allow('').default(''),
         WEBHOOK_SECRET: Joi.string().allow('').default(''),
         TRACKCAM_WEBHOOK_URL: Joi.string().allow('').default(''),
