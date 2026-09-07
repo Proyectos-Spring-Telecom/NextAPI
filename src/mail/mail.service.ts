@@ -264,8 +264,8 @@ export class MailService {
       const dominio =
         process.env.MAIL_FRONTEND_URL_NEXT ||
         process.env.MAIL_FRONTEND_URL ||
-        '';
-      const url = `${dominio}/#/nueva-contrasena?token=${token}`;
+        'https://springtelecom.mx/next';
+      const url = `${dominio}/cambio-password?token=${token}`;
       void name;
       void _codigo;
 
