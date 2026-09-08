@@ -13,6 +13,7 @@ import {
 import { isDuplicateKeyError } from '../core/db-errors.util';
 import {
   extractJt808Audit,
+  isPublicHttpUrl,
   mapAcometidasToPosicion,
 } from './jt808-envelope.mapper';
 import {
@@ -22,8 +23,10 @@ import {
 } from './jt808.types';
 
 /**
- * Consume telemetría JT808 → INSERT Posiciones (Estado NULL).
- * UltimaPosicion / Estado / Ignicion (si NULL) los deriva el trigger de BD.
+ * Consume telemetría JT808 (springTrackCam):
+ * - kind=position → INSERT Posiciones (+ media URLs) → WS
+ * - kind=alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
+ * Estado e Ignicion vienen del gateway; el trigger solo completa si van NULL.
  */
 @Injectable()
 export class Jt808IngestService {
@@ -38,7 +41,7 @@ export class Jt808IngestService {
   async handleEnvelope(
     envelope: Jt808TelemetryEnvelope,
     routingKey: string,
-  ): Promise<{ posicionId?: number; duplicate?: boolean }> {
+  ): Promise<{ posicionId?: number; duplicate?: boolean; audited?: boolean }> {
     let imei: string;
     try {
       ({ imei } = await this.deviceLookup.resolve(envelope.deviceId));
@@ -53,7 +56,55 @@ export class Jt808IngestService {
       throw error;
     }
 
-    const auditPayload = extractJt808Audit(envelope.payload);
+    if (envelope.kind === 'alarm') {
+      return this.handleAlarm(envelope, routingKey, imei);
+    }
+
+    return this.handlePosition(envelope, routingKey, imei);
+  }
+
+  /** Whitelist alarm: auditoría / push futuro — sin INSERT Posiciones. */
+  private async handleAlarm(
+    envelope: Jt808TelemetryEnvelope,
+    routingKey: string,
+    imei: string,
+  ): Promise<{ duplicate?: boolean; audited?: boolean }> {
+    const auditPayload = extractJt808Audit(envelope.payload, 'alarm');
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      try {
+        await manager.insert(TelemetryIngestLog, {
+          eventId: envelope.eventId,
+          protocol: envelope.protocol,
+          kind: envelope.kind,
+          deviceId: envelope.deviceId,
+          routingKey,
+          payloadJson: auditPayload ?? undefined,
+        });
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          return { duplicate: true as const };
+        }
+        throw error;
+      }
+
+      this.logger.log(
+        `[Jt808Ingest] alarm eventId=${envelope.eventId} deviceId=${envelope.deviceId} imei=${imei} routingKey=${routingKey} (sin Posiciones)`,
+      );
+
+      return { audited: true as const };
+    });
+
+    return result;
+  }
+
+  /** GPS / ACC / media / IdEvento dominante → Posiciones + WS. */
+  private async handlePosition(
+    envelope: Jt808TelemetryEnvelope,
+    routingKey: string,
+    imei: string,
+  ): Promise<{ posicionId?: number; duplicate?: boolean }> {
+    const auditPayload = extractJt808Audit(envelope.payload, envelope.kind);
     const posicionData = mapAcometidasToPosicion(imei, envelope.payload);
 
     const result = await this.dataSource.transaction(async (manager) => {
@@ -85,7 +136,7 @@ export class Jt808IngestService {
       );
 
       this.logger.log(
-        `[Jt808Ingest] ${envelope.kind} eventId=${envelope.eventId} deviceId=${envelope.deviceId} → PosicionId=${posicionId}`,
+        `[Jt808Ingest] ${envelope.kind} eventId=${envelope.eventId} deviceId=${envelope.deviceId} → PosicionId=${posicionId} Estado=${posicionData.estado ?? 'NULL'}`,
       );
 
       return { posicionId };
@@ -99,9 +150,8 @@ export class Jt808IngestService {
   }
 
   /**
-   * Orden FK: INSERT Fotos/Videos desde URLs Foto1..3 / Video1..3 → IdFoto1..3 / IdVideo1..3.
-   * - payload.IdFoto / jt808.multimediaId = multimedia JT808 → se guarda en Fotos.IdFoto (no es FK).
-   * - Posiciones.IdFoto (legacy) se deja NULL; no copiar IdFoto1.
+   * Orden FK: INSERT Fotos/Videos desde URLs públicas Foto1..3 / Video1..3.
+   * Ignora paths absolutos del gateway (`filePath` / `filePaths`).
    */
   private async attachMediaIds(
     manager: EntityManager,
@@ -111,9 +161,6 @@ export class Jt808IngestService {
   ): Promise<void> {
     const fechaHora = posicionData.fechaHora ?? null;
     const jt808 = payload.jt808 as Jt808PhotoExtension | undefined;
-    const filePaths = jt808?.filePaths ?? [];
-    const singlePath = jt808?.filePath ?? null;
-    /** Solo para columna Fotos.IdFoto (multimedia cámara); nunca como FK de Posiciones */
     const multimediaJt808 =
       payload.IdFoto != null
         ? Number(payload.IdFoto)
@@ -126,43 +173,34 @@ export class Jt808IngestService {
       url: payload.Foto1,
       fechaHora,
       idFotoJt808: multimediaJt808,
-      rutaServidor: filePaths[0] ?? singlePath,
     });
     const idFoto2 = await this.insertFotoIfUrl(manager, {
       imei,
       url: payload.Foto2,
       fechaHora,
       idFotoJt808: null,
-      rutaServidor: filePaths[1] ?? null,
     });
     const idFoto3 = await this.insertFotoIfUrl(manager, {
       imei,
       url: payload.Foto3,
       fechaHora,
       idFotoJt808: null,
-      rutaServidor: filePaths[2] ?? null,
     });
 
     const idVideo1 = await this.insertVideoIfUrl(manager, {
       imei,
       url: payload.Video1,
       fechaHora,
-      rutaServidor:
-        !payload.Foto1 && !payload.Foto2 && !payload.Foto3
-          ? (filePaths[0] ?? singlePath)
-          : null,
     });
     const idVideo2 = await this.insertVideoIfUrl(manager, {
       imei,
       url: payload.Video2,
       fechaHora,
-      rutaServidor: filePaths[1] ?? null,
     });
     const idVideo3 = await this.insertVideoIfUrl(manager, {
       imei,
       url: payload.Video3,
       fechaHora,
-      rutaServidor: filePaths[2] ?? null,
     });
 
     posicionData.idFoto1 = idFoto1;
@@ -181,17 +219,16 @@ export class Jt808IngestService {
       url: string | null | undefined;
       fechaHora: Date | null;
       idFotoJt808: number | null;
-      rutaServidor: string | null;
     },
   ): Promise<number | null> {
-    const ruta = args.url?.trim();
-    if (!ruta) return null;
+    if (!isPublicHttpUrl(args.url)) return null;
+    const ruta = args.url!.trim();
 
     const result = await manager.insert(Fotos, {
       imei: args.imei,
       idFoto: args.idFotoJt808,
       ruta,
-      rutaServidor: args.rutaServidor,
+      rutaServidor: null,
       fechaHora: args.fechaHora,
     });
     return Number(result.identifiers[0]?.id);
@@ -203,16 +240,15 @@ export class Jt808IngestService {
       imei: string;
       url: string | null | undefined;
       fechaHora: Date | null;
-      rutaServidor: string | null;
     },
   ): Promise<number | null> {
-    const ruta = args.url?.trim();
-    if (!ruta) return null;
+    if (!isPublicHttpUrl(args.url)) return null;
+    const ruta = args.url!.trim();
 
     const result = await manager.insert(Videos, {
       imei: args.imei,
       ruta,
-      rutaServidor: args.rutaServidor,
+      rutaServidor: null,
       fechaHora: args.fechaHora,
     });
     return Number(result.identifiers[0]?.id);

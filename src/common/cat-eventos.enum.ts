@@ -1,6 +1,6 @@
 /**
  * CatEventos Sion — valores de Posiciones.IdEvento / UltimaPosicion.IdEvento.
- * Referencia: Documentacion Sion.pdf, springTrackCam cat-evento.map.ts
+ * Alineado con springTrackCam `cat-evento.map.ts` (contrato AMQP JT808).
  */
 export enum EnumCatEventos {
   IGNICION_ON = 1,
@@ -23,12 +23,18 @@ export enum EnumCatEventos {
   ADAS_LDWS = 17,
   ADAS_PCWS = 18,
   ADAS_HMW = 19,
-  /** DSM 21–28 */
+  /** Sobrecupo (whitelist alarm: VIDEO_SOBRECUPO / ANORMAL_SOBRECUPO) */
+  SOBRECUPO = 20,
+  /**
+   * DSM whitelist alarm → jt808.alarm.*
+   * Fatiga=21, Celular=22, Fumar=23
+   */
   DSM_FATIGA = 21,
-  DSM_BOSTEZO = 22,
-  DSM_CELULAR = 23,
+  DSM_CELULAR = 22,
+  DSM_FUMAR = 23,
+  /** DSM otros (solo position; el gateway ya no publica alarm.*) */
   DSM_DISTRACCION = 24,
-  DSM_FUMAR = 25,
+  DSM_BOSTEZO = 25,
   DSM_SIN_CONDUCTOR = 26,
   DSM_CINTURON = 27,
   DSM_MIRAR_ABAJO = 28,
