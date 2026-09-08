@@ -280,8 +280,20 @@ export class UsuariosController {
   @Get(':page/:limit')
   @ApiOperation({
     summary: 'Obtener usuarios con paginación',
-    description:
-      'Obtiene una lista paginada de usuarios según los parámetros especificados',
+    description: [
+      'Lista paginada de usuarios filtrada por tenant y por jerarquía de roles.',
+      '',
+      '**Visibilidad por rol del token:**',
+      '- **SA (1):** todos los roles.',
+      '- **Dev (2):** Admin, Jefe Monitoreo, Monitoreo, Cliente, Operador, Técnico, Usuario.',
+      '- **Admin (3):** Jefe Monitoreo, Monitoreo, Cliente, Operador, Técnico, Usuario.',
+      '- **Jefe Monitoreo (4):** Monitoreo, Cliente, Operador, Técnico, Usuario.',
+      '- **Monitoreo (5):** Cliente, Operador, Técnico, Usuario.',
+      '- **Cliente (6):** Operador, Técnico, Usuario.',
+      '- **Operador (7):** Operador.',
+      '- **Técnico (8):** Cliente, Usuario.',
+      '- **Usuario (9):** Usuario.',
+    ].join('\n'),
   })
   @ApiParam({
     name: 'page',

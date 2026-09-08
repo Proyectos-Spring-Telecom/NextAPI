@@ -29,7 +29,7 @@ import { SetFaceAuthDto } from './dto/set-face-auth.dto';
 import { AsignarUsuarioInstalacionesDto } from './dto/asignar-usuario-instalaciones.dto';
 import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
-import { EnumModulos, EstatusEnum, esRolAccesoGlobal, EnumRoles } from 'src/common/estatus.enum';
+import { EnumModulos, EstatusEnum, esRolAccesoGlobal, EnumRoles, idsRolesVisiblesEnListado } from 'src/common/estatus.enum';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { S3Service } from 'src/s3/s3.service';
 import { AuthService } from 'src/auth/auth.service';
@@ -87,6 +87,27 @@ export class UsuariosService {
           },
         };
       }
+
+      const rolesVisibles = idsRolesVisiblesEnListado(rolNum);
+      if (rolesVisibles !== 'all' && rolesVisibles.length === 0) {
+        return {
+          data: [],
+          paginated: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+
+      const rolesSql =
+        rolesVisibles === 'all'
+          ? ''
+          : ` AND u.IdRol IN (${rolesVisibles.map(() => '?').join(', ')}) `;
+      const rolesParams =
+        rolesVisibles === 'all' ? [] : [...rolesVisibles];
+
       const excludeSelf = esRolAccesoGlobal(rolNum) ? '' : ' AND u.Id != ? ';
       const usuariosSql = `
 SELECT
@@ -114,12 +135,14 @@ INNER JOIN Roles r ON u.IdRol = r.Id
 LEFT JOIN Clientes c ON u.IdCliente = c.Id
 WHERE 1 = 1
 ${tenant.sql}
+${rolesSql}
 ${excludeSelf}
 ORDER BY u.Id DESC
 LIMIT ? OFFSET ?`;
 
       const usuariosParams = [
         ...tenant.params,
+        ...rolesParams,
         ...(excludeSelf ? [idUser] : []),
         limit,
         offset,
@@ -132,8 +155,13 @@ FROM Usuarios u
 INNER JOIN Clientes c ON u.IdCliente = c.Id
 WHERE 1 = 1
 ${tenant.sql}
+${rolesSql}
 ${excludeSelf}`;
-      const totalParams = [...tenant.params, ...(excludeSelf ? [idUser] : [])];
+      const totalParams = [
+        ...tenant.params,
+        ...rolesParams,
+        ...(excludeSelf ? [idUser] : []),
+      ];
       const totalResult = await this.usuarioRepository.query(totalSql, totalParams);
 
       const total = Number(totalResult[0]?.total || 0);
@@ -178,6 +206,18 @@ ${excludeSelf}`;
         return { data: [] };
       }
 
+      const rolesVisibles = idsRolesVisiblesEnListado(Number(rol));
+      if (rolesVisibles !== 'all' && rolesVisibles.length === 0) {
+        return { data: [] };
+      }
+
+      const rolesSql =
+        rolesVisibles === 'all'
+          ? ''
+          : ` AND u.IdRol IN (${rolesVisibles.map(() => '?').join(', ')}) `;
+      const rolesParams =
+        rolesVisibles === 'all' ? [] : [...rolesVisibles];
+
       const usuarios = await this.usuarioRepository.query(
         `
 SELECT
@@ -205,9 +245,10 @@ INNER JOIN Roles r ON u.IdRol = r.Id
 LEFT JOIN Clientes c ON u.IdCliente = c.Id
 WHERE u.Estatus = 1
 ${tenant.sql}
+${rolesSql}
 ORDER BY u.Id DESC
 `,
-        [...tenant.params],
+        [...tenant.params, ...rolesParams],
       );
 
       const data = usuarios.map((item) => ({
