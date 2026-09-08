@@ -21,6 +21,7 @@ import { MonitoreoModule } from './monitoreo/monitoreo.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { PuntosInteresModule } from './puntos-interes/puntos-interes.module';
+import { GeocercasModule } from './geocercas/geocercas.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
@@ -211,6 +212,8 @@ import * as jwt from 'jsonwebtoken';
     MonitoreoModule,
 
     PuntosInteresModule,
+
+    GeocercasModule,
 
     MessagingModule,
 

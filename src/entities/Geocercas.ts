@@ -25,8 +25,8 @@ export class Geocercas {
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
-  @Column('bigint', { name: 'IdInstalacion' })
-  idInstalacion: number;
+  @Column('bigint', { name: 'IdInstalacion', nullable: true })
+  idInstalacion: number | null;
 
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;
@@ -68,12 +68,13 @@ export class Geocercas {
   @ManyToOne(() => Instalaciones, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn([
     { name: 'IdCliente', referencedColumnName: 'idCliente' },
     { name: 'IdInstalacion', referencedColumnName: 'id' },
   ])
-  idInstalacion2: Instalaciones;
+  idInstalacion2: Instalaciones | null;
 
   @OneToMany(() => UsuariosGeocerca, (ug) => ug.idGeocerca2)
   usuariosGeocerca: UsuariosGeocerca[];

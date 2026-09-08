@@ -160,28 +160,30 @@ export enum EnumModulos {
   SIMS = 14,
   /** Dispositivos — Gestión de dispositivos GPS */
   DISPOSITIVOS = 15,
-  /** Vehiculos — Catálogo de vehículos de flota */
+  /** Vehiculos — Gestión del catálogo de vehículos de flota */
   VEHICULOS = 16,
-  /** Instalaciones — Instalaciones GPS */
+  /** Instalaciones — Gestión de instalaciones GPS en vehículos */
   INSTALACIONES = 17,
-  /** Operadores — Operadores / conductores */
+  /** Operadores — Gestión de operadores / conductores */
   OPERADORES = 18,
-  /** Licencias — Licencias de conducir */
+  /** Licencias — Gestión de licencias de conducir */
   LICENCIAS = 19,
   /** Inmuebles — Gestión de inmuebles */
   INMUEBLES = 20,
-  /** Paneles — Paneles de alarma */
+  /** Paneles — Gestión de paneles alarmas */
   PANELES = 21,
-  /** Alarmas — Alarmas de paneles */
+  /** Alarmas — Gestión de alarmas de los paneles */
   ALARMAS = 22,
-  /** Reportes — Generación de reportes */
+  /** Reportes — Módulo para la generación de reportes */
   REPORTES = 23,
-  /** Activos — Gestión de activos */
+  /** Activos — Módulo para la gestión de activos */
   ACTIVOS = 24,
-  /** Personas — Gestión de personas */
+  /** Personas — Módulo para la gestión de personas */
   PERSONAS = 25,
-  /** Puntos — Puntos de interés */
+  /** Puntos — Módulo para la gestión de puntos de interés */
   PUNTOS = 26,
+  /** Geocercas — Módulo para la gestión de geocercas */
+  GEOCERCAS = 27,
 }
 
 /** Valores de CatTipoProducto.Id */
