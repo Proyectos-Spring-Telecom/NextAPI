@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -277,16 +278,36 @@ ORDER BY u.Id DESC
   // 🔹 OBTENER LISTADO DE USUARIOS POR CLIENTE
   // ========================================
   async getAllListUsuariosCliente(
-    id: number,
-    cliente: number,
+    idClienteParam: number,
+    idClienteToken: number,
+    rol: number,
   ): Promise<ApiResponseCommon> {
     try {
-      const usuarios = await this.usuarioRepository.find({
-        where: { estatus: 1, idCliente: cliente },
-      });
-      if (usuarios.length === 0) {
-        throw new NotFoundException('No se encontraron usuarios.');
+      const scope = await this.tenantFilter.idsClientePermitidos(
+        rol,
+        idClienteToken,
+      );
+      if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteParam)) {
+        throw new ForbiddenException('Cliente fuera de alcance');
       }
+
+      const rolesVisibles = idsRolesVisiblesEnListado(Number(rol));
+      if (rolesVisibles !== 'all' && rolesVisibles.length === 0) {
+        return { data: [] };
+      }
+
+      const usuarios = await this.usuarioRepository.find({
+        where:
+          rolesVisibles === 'all'
+            ? { estatus: EstatusEnum.ACTIVO, idCliente: idClienteParam }
+            : {
+                estatus: EstatusEnum.ACTIVO,
+                idCliente: idClienteParam,
+                idRol: In([...rolesVisibles]),
+              },
+        order: { id: 'DESC' },
+      });
+
       const usuariosSanitizados = usuarios.map(
         ({
           passwordHash,
@@ -303,10 +324,8 @@ ORDER BY u.Id DESC
           idCliente: Number(rest.idCliente),
         }),
       );
-      const result: ApiResponseCommon = {
-        data: usuariosSanitizados,
-      };
-      return result;
+
+      return { data: usuariosSanitizados };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;

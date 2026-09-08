@@ -1,4 +1,5 @@
 import { num, str, toIso } from '../monitoreo.mapper';
+import { nombreCatEvento } from 'src/common/cat-eventos.enum';
 import { imeiToString } from 'src/common/imei.util';
 
 export type HistoricoPosicionItem = {
@@ -35,6 +36,8 @@ export type HistoricoPosicionItem = {
   alarma2: number | null;
   energia: number | null;
   idEvento: number | null;
+  /** Nombre CatEventos según `idEvento` (null si desconocido o ausente). */
+  nombreEvento: string | null;
   idFoto: number | null;
   fhRegistro: string | null;
   bateria: number | null;
@@ -121,6 +124,7 @@ export function mapHistoricoPosicionItem(
     alarma2: num(row.alarma2),
     energia: num(row.energia),
     idEvento: num(row.idEvento),
+    nombreEvento: nombreCatEvento(num(row.idEvento)),
     idFoto: num(row.idFoto),
     fhRegistro: toIso(row.fhRegistro as string | Date | null | undefined),
     bateria: num(row.bateria),

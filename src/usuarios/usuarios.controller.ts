@@ -211,12 +211,16 @@ export class UsuariosController {
   @Get('list/cliente/:id')
   @ApiOperation({
     summary: 'Obtener usuarios por cliente específico',
-    description: 'Obtiene la lista de usuarios asociados a un cliente específico',
+    description: [
+      'Lista usuarios **activos** del cliente indicado en el path (`:id`).',
+      'Aplica la **misma jerarquía de roles** que el paginado (`idsRolesVisiblesEnListado`).',
+      'El cliente del path debe estar en el alcance del token; si no → 403.',
+    ].join('\n'),
   })
   @ApiParam({
     name: 'id',
     type: 'number',
-    description: 'ID del cliente',
+    description: 'ID del cliente a consultar',
     example: 1,
   })
   @ApiResponse({
@@ -224,8 +228,8 @@ export class UsuariosController {
     description: 'Lista de usuarios del cliente obtenida exitosamente',
   })
   @ApiResponse({
-    status: 404,
-    description: 'Cliente no encontrado',
+    status: 403,
+    description: 'Cliente fuera de alcance',
   })
   @ApiResponse({
     status: 401,
@@ -235,8 +239,11 @@ export class UsuariosController {
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
   ): Promise<ApiResponseCommon> {
-    const idCliente = req.user.idCliente;
-    return await this.usuariosService.getAllListUsuariosCliente(id, +idCliente);
+    return await this.usuariosService.getAllListUsuariosCliente(
+      id,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
   }
 
   @Get(':id/instalaciones')

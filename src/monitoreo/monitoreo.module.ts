@@ -6,6 +6,7 @@ import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.modul
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
+import { Usuarios } from 'src/entities/Usuarios';
 import { MonitoreoController } from './monitoreo.controller';
 import { MonitoreoGateway } from './monitoreo.gateway';
 import { MonitoreoService } from './monitoreo.service';
@@ -13,7 +14,12 @@ import { TrackcamGatewayClient } from './trackcam-gateway.client';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Instalaciones, Posiciones, PuntosInteres]),
+    TypeOrmModule.forFeature([
+      Instalaciones,
+      Posiciones,
+      PuntosInteres,
+      Usuarios,
+    ]),
     TenantFilterModule,
     AuthModule,
     HttpModule.register({

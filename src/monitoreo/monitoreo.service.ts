@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -19,6 +20,7 @@ import { imeiToString } from 'src/common/imei.util';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
+import { Usuarios } from 'src/entities/Usuarios';
 import { Fotos } from 'src/entities/Fotos';
 import { Videos } from 'src/entities/Videos';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
@@ -69,6 +71,11 @@ export type MonitoreoListadoResponse = {
   'puntos-interes': ReturnType<typeof mapPuntoInteresPlano>[];
 };
 
+/** Mismo shape plano que `posicion[]` del listado (sin puntos-interes). */
+export type MonitoreoInstalacionesUsuariosResponse = {
+  posicion: MonitoreoPosicionItem[];
+};
+
 @Injectable()
 export class MonitoreoService {
   constructor(
@@ -78,6 +85,8 @@ export class MonitoreoService {
     private readonly posicionesRepo: Repository<Posiciones>,
     @InjectRepository(PuntosInteres)
     private readonly puntosInteresRepo: Repository<PuntosInteres>,
+    @InjectRepository(Usuarios)
+    private readonly usuariosRepo: Repository<Usuarios>,
     private readonly tenantFilter: TenantFilterService,
     private readonly config: ConfigService,
     private readonly trackcamGateway: TrackcamGatewayClient,
@@ -218,6 +227,94 @@ export class MonitoreoService {
       }
       throw new InternalServerErrorException({
         message: 'Error al obtener listado de monitoreo',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  /**
+   * Instalaciones activas del cliente asignadas (UsuariosInstalaciones) a los usuarios dados.
+   * Mismo mapeo plano que GET /monitoreo/list → `posicion[]` (sin JSON anidados).
+   */
+  async listadoPorUsuarios(
+    idCliente: number,
+    idUsuarios: number[],
+    idClienteToken: number,
+    rol: number,
+  ): Promise<MonitoreoInstalacionesUsuariosResponse> {
+    try {
+      const idsUsuarios = [
+        ...new Set(idUsuarios.map(Number).filter((n) => n > 0)),
+      ];
+      if (idsUsuarios.length === 0) {
+        throw new BadRequestException(
+          'idUsuarios debe incluir al menos un ID válido',
+        );
+      }
+
+      const scope = await this.tenantFilter.idsClientePermitidos(
+        rol,
+        idClienteToken,
+      );
+      if (!this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
+        throw new ForbiddenException('Cliente fuera de alcance');
+      }
+
+      const usuariosOk = await this.usuariosRepo.count({
+        where: {
+          id: In(idsUsuarios),
+          idCliente,
+        },
+      });
+      if (usuariosOk !== idsUsuarios.length) {
+        throw new BadRequestException(
+          'Uno o más usuarios no existen o no pertenecen al cliente indicado',
+        );
+      }
+
+      const idRows = await this.instalacionesRepo
+        .createQueryBuilder('i')
+        .innerJoin(
+          UsuariosInstalaciones,
+          'ui',
+          'ui.idInstalacion = i.id AND ui.idUsuario IN (:...idsUsuarios) AND ui.estatus = :uiActivo',
+          { idsUsuarios, uiActivo: EstatusEnum.ACTIVO },
+        )
+        .select('DISTINCT i.id', 'id')
+        .where('i.idCliente = :idCliente', { idCliente })
+        .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+        .getRawMany<{ id: string | number }>();
+
+      const idsInstalacion = [
+        ...new Set(
+          idRows
+            .map((r) => Number(r.id))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
+      if (idsInstalacion.length === 0) {
+        return { posicion: [] };
+      }
+
+      const qb = this.createListadoQueryBuilder();
+      qb.andWhere('i.id IN (:...idsInstalacion)', { idsInstalacion })
+        .orderBy(
+          'COALESCE(up.fechaHora, uea.recibidoEn, pa.ultimoHeartbeat)',
+          'DESC',
+        )
+        .addOrderBy('i.id', 'ASC');
+
+      const rows = await qb.getRawMany<Record<string, unknown>>();
+
+      return {
+        posicion: rows.map((row) => mapMonitoreoPosicionItem(row)),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Error al obtener instalaciones por usuarios',
         error: (error as Error)?.message,
       });
     }
