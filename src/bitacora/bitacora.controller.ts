@@ -18,10 +18,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 @ApiTags('Bitácora')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(1, 2, 3) // Todos los roles pueden acceder a la bitácora
+@Roles() // Todos los roles pueden acceder a la bitácora
 @Controller('bitacora')
 export class BitacoraController {
-  constructor(private readonly bitacoraService: BitacoraLoggerService) {}
+  constructor(private readonly bitacoraService: BitacoraLoggerService) { }
 
   @Get('list') //Obseleto
   async findAllListBitacora(@Request() req): Promise<ApiResponseCommon> {

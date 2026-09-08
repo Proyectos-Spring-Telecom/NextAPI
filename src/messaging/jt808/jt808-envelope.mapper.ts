@@ -3,6 +3,7 @@ import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import { Posiciones } from '../../entities/Posiciones';
 import {
   AcometidasPayload,
+  Jt808AlarmExtension,
   Jt808Kind,
   Jt808TelemetryEnvelope,
 } from './jt808.types';
@@ -81,7 +82,8 @@ function assertAcometidasPayload(payload: AcometidasPayload, kind: Jt808Kind) {
 
 /**
  * Mapea telemetría GPS/evento a Posiciones.
- * - Estado siempre NULL (lo deriva el trigger → UltimaPosicion).
+ * - Estado: del gateway (`payload.Estado`). Solo NULL si el gateway lo manda NULL
+ *   (el trigger de BD puede completarlo).
  * - Ignicion: 0|1 si el gateway lo conoce; NULL → el trigger completa.
  * - IdFoto1..3 / IdVideo1..3: el ingest inserta Fotos/Videos y rellena FKs.
  */
@@ -93,7 +95,7 @@ export function mapAcometidasToPosicion(
     imei,
     lat: aco.Lat,
     lng: aco.Lng,
-    estado: null,
+    estado: aco.Estado != null ? Number(aco.Estado) : null,
     fechaHora: aco.FechaHora as unknown as Date,
     velocidad: Math.round(Number(aco.Velocidad)) || 0,
     direccion: Math.round(Number(aco.Direccion)) || 0,
@@ -119,6 +121,35 @@ export function mapAcometidasToPosicion(
   };
 }
 
-export function extractJt808Audit(payload: AcometidasPayload): unknown {
+/** Auditoría para TelemetryIngestLog (position media o alarm whitelist). */
+export function extractJt808Audit(
+  payload: AcometidasPayload,
+  kind?: Jt808Kind,
+): unknown {
+  if (kind === 'alarm') {
+    const jt808 = payload.jt808 as Jt808AlarmExtension | undefined;
+    return {
+      IdEvento: payload.IdEvento,
+      Estado: payload.Estado,
+      Alarma1: payload.Alarma1,
+      Alarma2: payload.Alarma2,
+      Velocidad: payload.Velocidad,
+      Ignicion: payload.Ignicion,
+      jt808: jt808
+        ? {
+            source: jt808.source,
+            code: jt808.code,
+            label: jt808.label,
+          }
+        : null,
+    };
+  }
   return payload.jt808 ?? null;
+}
+
+/** Solo URLs públicas http(s); ignora paths absolutos del gateway. */
+export function isPublicHttpUrl(value: string | null | undefined): boolean {
+  const v = value?.trim();
+  if (!v) return false;
+  return /^https?:\/\//i.test(v);
 }

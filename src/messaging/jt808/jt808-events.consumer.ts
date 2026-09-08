@@ -26,6 +26,10 @@ export class Jt808EventsConsumer {
     const result = await this.ingest.handleEnvelope(envelope, routingKey);
     if (result.duplicate) {
       this.logger.debug(`jt808.events duplicado ${envelope.eventId}`);
+    } else if (result.audited) {
+      this.logger.debug(
+        `jt808.events alarm auditada ${envelope.eventId} (${routingKey})`,
+      );
     }
   }
 }
