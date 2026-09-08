@@ -118,17 +118,26 @@ export function esRolCambioContrasenaOtroUsuario(rol: number): boolean {
 }
 
 /**
- * Roles visibles en listados de Roles según el rol del solicitante.
- * SA ve todos; el resto solo los IDs indicados.
+ * Roles visibles en listados (Roles y Usuarios) según el rol del solicitante.
+ * SA ve todos; el resto solo los IDs debajo de su jerarquía.
+ *
+ * Dev → Admin, JefeMonitoreo, Monitoreo, Cliente, Operador, Técnico, Usuario
+ * Admin → JefeMonitoreo, Monitoreo, Cliente, Operador, Técnico, Usuario
+ * JefeMonitoreo → Monitoreo, Cliente, Operador, Técnico, Usuario
+ * Monitoreo → Cliente, Operador, Técnico, Usuario
+ * Cliente → Operador, Técnico, Usuario
+ * Operador → Operador
+ * Técnico → Cliente, Usuario
+ * Usuario → Usuario
  */
 export const ROLES_VISIBLES_EN_LISTADO: Readonly<
   Partial<Record<EnumRoles, readonly number[]>>
 > = {
-  [EnumRoles.DEV]: [2, 3, 4, 5, 6, 7, 8, 9],
-  [EnumRoles.ADMIN]: [3, 4, 5, 6, 7, 8, 9],
-  [EnumRoles.JEFE_MONITOREO]: [4, 5, 6, 7, 8, 9],
-  [EnumRoles.MONITOREO]: [5, 6, 7, 8, 9],
-  [EnumRoles.CLIENTE]: [6, 9],
+  [EnumRoles.DEV]: [3, 4, 5, 6, 7, 8, 9],
+  [EnumRoles.ADMIN]: [4, 5, 6, 7, 8, 9],
+  [EnumRoles.JEFE_MONITOREO]: [5, 6, 7, 8, 9],
+  [EnumRoles.MONITOREO]: [6, 7, 8, 9],
+  [EnumRoles.CLIENTE]: [7, 8, 9],
   [EnumRoles.OPERADOR]: [7],
   [EnumRoles.TECNICO]: [6, 9],
   [EnumRoles.USUARIO]: [9],
