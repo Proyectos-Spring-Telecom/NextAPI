@@ -1,12 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import { Posiciones } from '../../entities/Posiciones';
+import { isPublicHttpUrl } from '../shared/media-url.util';
 import {
   AcometidasPayload,
   Jt808AlarmExtension,
   Jt808Kind,
   Jt808TelemetryEnvelope,
 } from './jt808.types';
+
+export { isPublicHttpUrl };
 
 const EVENT_ID_RE = /^[a-fA-F0-9]{64}$/;
 
@@ -145,11 +148,4 @@ export function extractJt808Audit(
     };
   }
   return payload.jt808 ?? null;
-}
-
-/** Solo URLs públicas http(s); ignora paths absolutos del gateway. */
-export function isPublicHttpUrl(value: string | null | undefined): boolean {
-  const v = value?.trim();
-  if (!v) return false;
-  return /^https?:\/\//i.test(v);
 }

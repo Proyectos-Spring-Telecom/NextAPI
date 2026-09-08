@@ -41,3 +41,46 @@ export enum EnumCatEventos {
   CONDUCCION_ANORMAL = 29,
   CONDUCCION_BRUSCA = 30,
 }
+
+/** Nombres de negocio CatEventos (UI / histórico monitoreo). */
+export const CAT_EVENTOS_NOMBRE: Readonly<Record<EnumCatEventos, string>> = {
+  [EnumCatEventos.IGNICION_ON]: 'Ignición On',
+  [EnumCatEventos.IGNICION_OFF]: 'Ignición Off',
+  [EnumCatEventos.BATERIA_BAJA]: 'Batería Baja',
+  [EnumCatEventos.ENERGY_ALARM]: 'Alarma de Energía',
+  [EnumCatEventos.HELP_ME]: 'Help Me',
+  [EnumCatEventos.SPEED]: 'Exceso de Velocidad',
+  [EnumCatEventos.MOVE]: 'Movimiento',
+  [EnumCatEventos.GEOCERCA]: 'Geocerca',
+  [EnumCatEventos.TRANSMISION]: 'Transmisión',
+  [EnumCatEventos.CAMERA]: 'Cámara',
+  [EnumCatEventos.OTROS]: 'Otros',
+  [EnumCatEventos.ADAS_COLISION_FRONTAL]: 'ADAS Colisión Frontal',
+  [EnumCatEventos.ADAS_CARRIL]: 'ADAS Carril',
+  [EnumCatEventos.ADAS_PEATON]: 'ADAS Peatón',
+  [EnumCatEventos.ADAS_DISTANCIA]: 'ADAS Distancia',
+  [EnumCatEventos.ADAS_FCW]: 'ADAS FCW',
+  [EnumCatEventos.ADAS_LDWS]: 'ADAS LDWS',
+  [EnumCatEventos.ADAS_PCWS]: 'ADAS PCWS',
+  [EnumCatEventos.ADAS_HMW]: 'ADAS HMW',
+  [EnumCatEventos.SOBRECUPO]: 'Sobrecupo',
+  [EnumCatEventos.DSM_FATIGA]: 'DSM Fatiga',
+  [EnumCatEventos.DSM_CELULAR]: 'DSM Celular',
+  [EnumCatEventos.DSM_FUMAR]: 'DSM Fumar',
+  [EnumCatEventos.DSM_DISTRACCION]: 'DSM Distracción',
+  [EnumCatEventos.DSM_BOSTEZO]: 'DSM Bostezo',
+  [EnumCatEventos.DSM_SIN_CONDUCTOR]: 'DSM Sin Conductor',
+  [EnumCatEventos.DSM_CINTURON]: 'DSM Cinturón',
+  [EnumCatEventos.DSM_MIRAR_ABAJO]: 'DSM Mirar Abajo',
+  [EnumCatEventos.CONDUCCION_ANORMAL]: 'Conducción Anormal',
+  [EnumCatEventos.CONDUCCION_BRUSCA]: 'Conducción Brusca',
+};
+
+export function nombreCatEvento(
+  idEvento: number | null | undefined,
+): string | null {
+  if (idEvento == null || !Number.isFinite(idEvento)) {
+    return null;
+  }
+  return CAT_EVENTOS_NOMBRE[idEvento as EnumCatEventos] ?? null;
+}

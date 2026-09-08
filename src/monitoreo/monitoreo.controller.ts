@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -25,6 +26,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { FilterHistoricoMonitoreoDto } from './dto/filter-historico-monitoreo.dto';
 import { CaptureVideoMonitoreoDto } from './dto/capture-video-monitoreo.dto';
 import { CaptureFotoMonitoreoDto } from './dto/capture-foto-monitoreo.dto';
+import { FilterInstalacionesUsuariosMonitoreoDto } from './dto/filter-instalaciones-usuarios.dto';
 import {
   MONITOREO_DISTANCIA_DEFAULTS,
   MONITOREO_DISTANCIA_ENV,
@@ -72,6 +74,36 @@ export class MonitoreoController {
   async findList(@Request() req) {
     return this.monitoreoService.listado(
       Number(req.user.userId),
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
+  }
+
+  @Post('instalaciones-usuarios')
+  @ApiOperation({
+    summary: 'Instalaciones de un cliente asignadas a usuarios',
+    description: [
+      'Body: `idCliente` + `idUsuarios[]` (mín. 1).',
+      'Une instalaciones **activas** del cliente vía `UsuariosInstalaciones` (estatus 1).',
+      'Los usuarios deben pertenecer al mismo `idCliente`.',
+      'El cliente debe estar en el alcance del token.',
+      '',
+      '**Respuesta:** `{ posicion: [...] }` — mismo shape plano que `GET /monitoreo/list` (sin anidar, sin `puntos-interes`).',
+      'Instalaciones únicas (si varios usuarios comparten una, aparece una sola vez).',
+    ].join('\n'),
+  })
+  @ApiBody({ type: FilterInstalacionesUsuariosMonitoreoDto })
+  @ApiResponse({ status: 200, description: 'Listado plano obtenido' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos / usuarios ajenos al cliente' })
+  @ApiResponse({ status: 403, description: 'Cliente fuera de alcance' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async findInstalacionesPorUsuarios(
+    @Body() dto: FilterInstalacionesUsuariosMonitoreoDto,
+    @Request() req,
+  ) {
+    return this.monitoreoService.listadoPorUsuarios(
+      Number(dto.idCliente),
+      dto.idUsuarios,
       Number(req.user.idCliente),
       Number(req.user.rol),
     );
@@ -153,6 +185,7 @@ export class MonitoreoController {
       '',
       'Cada ítem mantiene los campos históricos existentes y añade en plano (camelCase, sin anidar)',
       'el resto de `Posiciones` + `rutaFoto` / `rutaFoto1..3` / `rutaVideo1..3` (`Fotos.Ruta` / `Videos.Ruta`), null si faltan.',
+      'Además incluye `nombreEvento` (CatEventos) según `idEvento`; null si el id es desconocido o ausente.',
       '',
       '**Cálculo de distancia (`totalDistancia`, km con 2 decimales):**',
       '- Fórmula Haversine entre puntos consecutivos en el tiempo.',
