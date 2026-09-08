@@ -105,6 +105,37 @@ export function transformOptionalNumberArray({
   return value;
 }
 
+/**
+ * Convierte arreglos de objetos enviados en multipart/form-data.
+ * Acepta JSON string '[{...}]' o array ya parseado.
+ */
+export function transformObjectArray({
+  value,
+}: TransformFnParams): unknown {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      return parsed;
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
 /** Número opcional en actualización: '' no debe convertirse en 0. */
 export function transformOptionalNumber({
   value,

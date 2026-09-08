@@ -1,5 +1,5 @@
 import { ApiHideProperty, ApiProperty } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { plainToInstance, Transform, Type } from "class-transformer";
 import {
   IsString,
   IsOptional,
@@ -8,7 +8,11 @@ import {
   MaxLength,
   IsEmail,
   IsIn,
+  IsArray,
+  ArrayMinSize,
+  ValidateNested,
 } from "class-validator";
+import { NumeroEmergenciaClienteItemDto } from "./numero-emergencia-cliente-item.dto";
 
 export class CreateClienteDto {
   @IsOptional()
@@ -172,6 +176,51 @@ export class CreateClienteDto {
   })
   logotipo?: string;
 
+  /**
+   * Contactos de emergencia (mínimo 1).
+   * En multipart enviar JSON string, p. ej.:
+   * `[{"telefono":"5512345678","nombre":"Central","prioridad":1}]`
+   */
+  @Transform(({ value }) => {
+    let parsed: unknown = value;
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    }
+    if (!Array.isArray(parsed)) {
+      return parsed;
+    }
+    return plainToInstance(NumeroEmergenciaClienteItemDto, parsed);
+  })
+  @IsArray({ message: "numerosEmergencia debe ser un arreglo" })
+  @ArrayMinSize(1, {
+    message: "Debe registrar al menos un contacto de emergencia",
+  })
+  @ValidateNested({ each: true })
+  @Type(() => NumeroEmergenciaClienteItemDto)
+  @ApiProperty({
+    type: [NumeroEmergenciaClienteItemDto],
+    description:
+      "Obligatorio: al menos un contacto de emergencia. En multipart, enviar como JSON string.",
+    example: [
+      {
+        telefono: "5512345678",
+        nombre: "Central de monitoreo",
+        descripcion: "Línea 24/7",
+        prioridad: 1,
+      },
+    ],
+  })
+  numerosEmergencia!: NumeroEmergenciaClienteItemDto[];
+
   // ⚡ Estatus (oculto en Swagger en POST/PATCH cliente; usar PATCH /clientes/estatus/:id)
   @ApiHideProperty()
   @IsOptional()
@@ -179,5 +228,4 @@ export class CreateClienteDto {
   @IsInt({ message: "Estatus debe ser 0 ó 1" })
   @IsIn([0, 1], { message: "Solo puede ser 0 ó 1" })
   estatus?: number = 1;
-  
 }

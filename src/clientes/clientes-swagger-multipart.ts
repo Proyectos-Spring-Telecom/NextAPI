@@ -3,7 +3,8 @@
  */
 export const clientesCreateMultipartApiBody = {
   description:
-    '**Creación:** `rfc`, `tipoPersona`, `actaConstitutiva`, `comprobanteDomicilio` y `constanciaSituacionFiscal` son obligatorios: URL en texto o archivo PDF por cada documento. Logotipo opcional (PNG/JPEG). Si solo adjunta PDF, el body recibe un marcador interno para validación. **No envíe `estatus`** (alta activa por defecto en servidor; cambio de estatus vía `PATCH /clientes/estatus/:id`).',
+    '**Creación:** `rfc`, `tipoPersona`, documentos (acta/comprobante/constancia) y **`numerosEmergencia` (mín. 1)** son obligatorios. ' +
+    '`numerosEmergencia` se envía como JSON string en form-data. Logotipo opcional. **No envíe `estatus`**.',
   schema: {
     type: 'object',
     required: [
@@ -12,6 +13,7 @@ export const clientesCreateMultipartApiBody = {
       'actaConstitutiva',
       'comprobanteDomicilio',
       'constanciaSituacionFiscal',
+      'numerosEmergencia',
     ],
     properties: {
       idPadre: {
@@ -43,6 +45,13 @@ export const clientesCreateMultipartApiBody = {
       nombreEncargado: { type: 'string' },
       telefonoEncargado: { type: 'string' },
       correoEncargado: { type: 'string' },
+      numerosEmergencia: {
+        type: 'string',
+        description:
+          'JSON string con al menos un contacto. Campos: telefono (obligatorio), nombre, descripcion, prioridad.',
+        example:
+          '[{"telefono":"5512345678","nombre":"Central de monitoreo","descripcion":"Línea 24/7","prioridad":1}]',
+      },
       actaConstitutiva: {
         type: 'string',
         format: 'binary',
@@ -74,7 +83,11 @@ export const clientesUpdateMultipartApiBody = {
   schema: {
     type: 'object',
     properties: {
-      ...clientesCreateMultipartApiBody.schema.properties,
+      ...Object.fromEntries(
+        Object.entries(clientesCreateMultipartApiBody.schema.properties).filter(
+          ([key]) => key !== 'numerosEmergencia',
+        ),
+      ),
     },
   },
 } as const;
