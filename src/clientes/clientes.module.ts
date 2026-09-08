@@ -4,6 +4,7 @@ import { ClientesController } from './clientes.controller';
 import { ClientesMultipartDocumentsPlaceholderInterceptor } from './clientes-multipart-placeholder.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Clientes } from 'src/entities/Clientes';
+import { NumerosEmergenciaCliente } from 'src/entities/NumerosEmergenciaCliente';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { S3Module } from 'src/s3/s3.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
@@ -11,7 +12,7 @@ import { WebhookEmitterModule } from 'src/webhook-emitter/webhook-emitter.module
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Clientes]),
+    TypeOrmModule.forFeature([Clientes, NumerosEmergenciaCliente]),
     BitacoraModule,
     S3Module,
     TenantFilterModule,

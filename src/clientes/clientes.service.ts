@@ -9,15 +9,16 @@ import {
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Clientes } from 'src/entities/Clientes';
+import { NumerosEmergenciaCliente } from 'src/entities/NumerosEmergenciaCliente';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { EnumModulos, esRolAccesoGlobal } from 'src/common/estatus.enum';
+import { EnumModulos, EstatusEnum, esRolAccesoGlobal } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
@@ -28,6 +29,7 @@ export class ClientesService {
   constructor(
     @InjectRepository(Clientes)
     private readonly clienteRepository: Repository<Clientes>,
+    private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly s3Service: S3Service,
     private readonly tenantFilter: TenantFilterService,
@@ -117,8 +119,15 @@ export class ClientesService {
         comprobanteDomicilio: dtoComp,
         constanciaSituacionFiscal: dtoCsf,
         logotipo: dtoLogo,
+        numerosEmergencia,
         ...restDto
       } = createClienteDto;
+
+      if (!Array.isArray(numerosEmergencia) || numerosEmergencia.length < 1) {
+        throw new BadRequestException(
+          'Debe registrar al menos un contacto de emergencia',
+        );
+      }
 
       const urlFromBody = (v: string | null | undefined) =>
         v && String(v).trim() ? String(v).trim() : null;
@@ -183,16 +192,48 @@ export class ClientesService {
 
       const idPadre = restDto.idPadre == null ? 1 : restDto.idPadre;
 
-      //Creamos el nuevo cliente
-      const clienteData = await this.clienteRepository.create({
-        ...restDto,
-        idPadre,
-        actaConstitutiva,
-        comprobanteDomicilio,
-        constanciaSituacionFiscal,
-        logotipo,
-      });
-      const clienteCreado = await this.clienteRepository.save(clienteData);
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      let clienteCreado: Clientes;
+      try {
+        const clienteRepo = queryRunner.manager.getRepository(Clientes);
+        const numerosRepo = queryRunner.manager.getRepository(
+          NumerosEmergenciaCliente,
+        );
+
+        const clienteData = clienteRepo.create({
+          ...restDto,
+          idPadre,
+          actaConstitutiva,
+          comprobanteDomicilio,
+          constanciaSituacionFiscal,
+          logotipo,
+        });
+        clienteCreado = await clienteRepo.save(clienteData);
+
+        await numerosRepo.save(
+          numerosEmergencia.map((item) =>
+            numerosRepo.create({
+              idCliente: Number(clienteCreado.id),
+              nombre: item.nombre?.trim() || null,
+              telefono: item.telefono.trim(),
+              descripcion: item.descripcion?.trim() || null,
+              prioridad:
+                item.prioridad != null ? Number(item.prioridad) : 1,
+              estatus: EstatusEnum.ACTIVO,
+            }),
+          ),
+        );
+
+        await queryRunner.commitTransaction();
+      } catch (txError) {
+        await queryRunner.rollbackTransaction();
+        throw txError;
+      } finally {
+        await queryRunner.release();
+      }
 
       //-----Registro en la bitacora----- SUCCESS
       const querylogger = { createClienteDto };
@@ -228,20 +269,20 @@ export class ClientesService {
       const querylogger = { createClienteDto };
       await this.bitacoraLogger.logToBitacora(
         'Clientes',
-        `Cliente creado correctamente con RFC: ${createClienteDto.rfc}.`,
+        `Error al crear cliente con RFC: ${createClienteDto.rfc}.`,
         'CREATE',
         querylogger,
         idUser,
         EnumModulos.CLIENTES,
         EstatusEnumBitcora.ERROR,
-        error.message,
+        (error as Error)?.message,
       );
       if (error instanceof HttpException) {
         throw error;
       }
       throw new InternalServerErrorException({
         message: 'Ocurrió un error al intentar crear un cliente.',
-        error: error.message,
+        error: (error as Error)?.message,
       });
     }
   }
@@ -486,6 +527,7 @@ ORDER BY Id ASC
         comprobanteDomicilio: dtoComp,
         constanciaSituacionFiscal: dtoCsf,
         logotipo: dtoLogo,
+        numerosEmergencia: _numerosEmergencia,
         ...restDto
       } = updateClienteDto;
 
