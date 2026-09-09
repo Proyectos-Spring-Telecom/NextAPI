@@ -29,6 +29,10 @@ export interface PosicionIngestBase {
   routingKey: string;
   /** IMEI ya resuelto (Dispositivos.Imei) */
   imei: string;
+  /** CatTipoDispositivo.Id (RASTREADOR/AVL/TELEFONO/TRACKCAM, …) */
+  idTipoDispositivo?: number | null;
+  /** Instalación activa del dispositivo (geocerca requiere IdInstalacion no null). */
+  idInstalacion?: number | null;
   /** JSON de auditoría → TelemetryIngestLog.PayloadJson */
   auditPayload?: unknown;
 }

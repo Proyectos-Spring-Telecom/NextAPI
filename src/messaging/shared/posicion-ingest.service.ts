@@ -1,11 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { Fotos } from 'src/entities/Fotos';
+import { Geocercas } from 'src/entities/Geocercas';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
 import { Videos } from 'src/entities/Videos';
 import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { isDuplicateKeyError } from '../core/db-errors.util';
+import {
+  debeEvaluarGeocerca,
+  estaFueraDeAlgunaGeocerca,
+  ESTADO_FUERA_GEOCERCA,
+} from './estado-geocerca.util';
+import {
+  debeAplicarTiempoDetenido,
+  estadoPorMinutosDetenido,
+  minutosEntre,
+  VELOCIDAD_EN_MOVIMIENTO_MIN,
+} from './estado-tiempo-detenido.util';
 import { isPublicHttpUrl } from './media-url.util';
 import {
   PosicionIngestAlarmRequest,
@@ -19,6 +32,8 @@ import {
  *
  * - position/photo → TelemetryIngestLog + media + Posiciones + WS
  * - alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
+ * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM; geocerca con IdInstalacion
+ * - Tiempo detenido (4/5/6): solo AVL/TRACKCAM si Estado=0 y Velocidad=0
  *
  * Cada protocolo: cola AMQP propia + mapper → este servicio.
  * Ver: docs/CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md
@@ -70,6 +85,20 @@ export class PosicionIngestService {
         posicionData,
       );
 
+      await this.aplicarGeocercaSiCorresponde(
+        manager,
+        req.idTipoDispositivo,
+        req.idInstalacion,
+        posicionData,
+      );
+
+      await this.aplicarTiempoDetenidoSiCorresponde(
+        manager,
+        req.imei,
+        req.idTipoDispositivo,
+        posicionData,
+      );
+
       const insertResult = await manager.insert(Posiciones, posicionData);
       const posicionId = Number(insertResult.identifiers[0]?.id);
 
@@ -91,6 +120,128 @@ export class PosicionIngestService {
     }
 
     return result;
+  }
+
+  /**
+   * Prioridad 3 Sion: fuera de alguna geocerca de la instalación → Estado=8.
+   * No pisa botón (2/3) ni energía (10). Geocercas con IdInstalacion NULL no aplican.
+   */
+  private async aplicarGeocercaSiCorresponde(
+    manager: EntityManager,
+    idTipoDispositivo: number | null | undefined,
+    idInstalacion: number | null | undefined,
+    posicionData: Partial<Posiciones>,
+  ): Promise<void> {
+    if (
+      !debeEvaluarGeocerca({
+        idTipoDispositivo,
+        idInstalacion,
+        estado: posicionData.estado,
+        lat: posicionData.lat,
+        lng: posicionData.lng,
+      })
+    ) {
+      return;
+    }
+
+    const geocercas = await manager
+      .createQueryBuilder(Geocercas, 'g')
+      .where('g.idInstalacion = :idInstalacion', {
+        idInstalacion: Number(idInstalacion),
+      })
+      .andWhere('g.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+      .getMany();
+
+    if (geocercas.length === 0) {
+      return;
+    }
+
+    const fuera = estaFueraDeAlgunaGeocerca(
+      Number(posicionData.lat),
+      Number(posicionData.lng),
+      geocercas.map((g) => g.geocerca),
+    );
+
+    if (!fuera) {
+      return;
+    }
+
+    this.logger.debug(
+      `[PosicionIngest] geocerca fuera idInstalacion=${idInstalacion} → Estado=${ESTADO_FUERA_GEOCERCA}`,
+    );
+    posicionData.estado = ESTADO_FUERA_GEOCERCA;
+  }
+
+  /**
+   * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM).
+   * Otros estados (alertas / geocerca) se conservan.
+   */
+  private async aplicarTiempoDetenidoSiCorresponde(
+    manager: EntityManager,
+    imei: string,
+    idTipoDispositivo: number | null | undefined,
+    posicionData: Partial<Posiciones>,
+  ): Promise<void> {
+    if (
+      !debeAplicarTiempoDetenido({
+        idTipoDispositivo,
+        estado: posicionData.estado,
+        velocidad: posicionData.velocidad,
+      })
+    ) {
+      return;
+    }
+
+    const fechaActual = posicionData.fechaHora;
+    if (fechaActual == null) {
+      return;
+    }
+
+    const ultimaMovimiento = await this.buscarUltimaFechaEnMovimiento(
+      manager,
+      imei,
+      fechaActual,
+    );
+    if (!ultimaMovimiento) {
+      return;
+    }
+
+    const minutos = minutosEntre(ultimaMovimiento, fechaActual);
+    if (minutos == null) {
+      return;
+    }
+
+    const estadoNuevo = estadoPorMinutosDetenido(minutos);
+    if (estadoNuevo === Number(posicionData.estado)) {
+      return;
+    }
+
+    this.logger.debug(
+      `[PosicionIngest] tiempoDetenido imei=${imei} minutos=${minutos.toFixed(1)} → Estado=${estadoNuevo}`,
+    );
+    posicionData.estado = estadoNuevo;
+  }
+
+  /** Última posición del IMEI en movimiento (Velocidad > 5 o Estado = 1) antes de fechaActual. */
+  private async buscarUltimaFechaEnMovimiento(
+    manager: EntityManager,
+    imei: string,
+    fechaActual: Date | string,
+  ): Promise<Date | string | null> {
+    const row = await manager
+      .createQueryBuilder(Posiciones, 'p')
+      .select('p.fechaHora', 'fechaHora')
+      .where('p.imei = :imei', { imei })
+      .andWhere('p.fechaHora < :fechaActual', { fechaActual })
+      .andWhere('(p.velocidad > :velMin OR p.estado = :estadoMov)', {
+        velMin: VELOCIDAD_EN_MOVIMIENTO_MIN,
+        estadoMov: 1,
+      })
+      .orderBy('p.fechaHora', 'DESC')
+      .limit(1)
+      .getRawOne<{ fechaHora: Date | string }>();
+
+    return row?.fechaHora ?? null;
   }
 
   private async tryInsertIngestLog(

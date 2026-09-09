@@ -30,8 +30,8 @@ Cámara JT808 ──TCP──► springTrackCam ──AMQP jt808.position──�
 
 - `deviceId` AMQP = `NumeroSerie` JT808 (12 dígitos), **no** es IMEI.
 - IMEI se resuelve por lookup en `Dispositivos`.
-- `Estado` en INSERT de `Posiciones` va **NULL**; el trigger BD lo deriva y espeja a `UltimaPosicion`.
-- NextAPI **no** hace upsert de `UltimaPosicion` en aplicación (confía en el trigger MySQL).
+- `Estado` / `Ignicion` en INSERT: se persisten del payload del gateway; si llegan **NULL**, el trigger BD los completa (reglas Sion Tablas 10–11).
+- NextAPI **no** hace upsert de `UltimaPosicion` en aplicación (confía en el trigger MySQL AFTER INSERT).
 - Captura HTTP on-demand **no** persiste en NextAPI: el gateway publica AMQP y el consumer JT808 inserta.
 
 ---
@@ -70,16 +70,126 @@ Tipo dispositivo Trackcam: `CatTipoDispositivo.Codigo = TRACKCAM` (id típico **
 
 ---
 
-## 5. Triggers BD (MySQL)
+## 5. Estados, eventos y triggers BD (Sion)
 
-Sobre `Posiciones` (entorno Next):
+Fuente: [`Documentacion Sion.pdf`](./Documentacion%20Sion.pdf).
+
+### 5.1 Catálogo de eventos (`IdEvento`, Tabla 1)
+
+| Id | Nombre |
+|----|--------|
+| 1 | Ignicion On |
+| 2 | Ignicion Off |
+| 3 | Battery Low |
+| 4 | Energy Alarm |
+| 5 | Help me |
+| 6 | Speed |
+| 7 | Move |
+| 8 | Door |
+| 9 | Transmision |
+| 10 | Camera |
+| 11 | Distance |
+
+Extensiones JT808 (ADAS/DSM/Sobrecupo, ids ≥12): ver `src/common/cat-eventos.enum.ts`.
+
+### 5.2 Catálogo de estados (`Estado`, Tabla 2)
+
+| Estado | Descripción | Color UI (Sion) |
+|--------|-------------|-----------------|
+| 0 | Autos detenidos | Gris |
+| 1 | Autos en movimiento | Verde |
+| 2 | Alerta botón primario | Rojo, parpadeando |
+| 3 | Alerta botón secundario o accesorio | Amarillo, parpadeando |
+| 4 | Detenido > 30 min | Amarillo |
+| 5 | Detenido > 60 min | Naranja |
+| 6 | Detenido > 90 min | Rojo |
+| 7 | Exceso de velocidad (> umbral; configurable por vehículo) | Azul |
+| 8 | Fuera de geocerca | — |
+| 9 | Alerta batería baja | — |
+| 10 | Alerta falta de energía | — |
+| 11 | Alerta de movimiento | — |
+
+### 5.3 Prioridad de generación de estados (Tabla 3 — Sion)
+
+**Orden estricto** (gana el primero que aplique). Esta prioridad es la regla de negocio a respetar al generar `Estado` (en consulta **y**, cuando se implemente en app, en cada INSERT de posición):
+
+| Prioridad | Condición | Estado resultante |
+|-----------|-----------|-------------------|
+| 1 | Alerta de botón (primario y/o secundario) | 2 y/o 3 |
+| 2 | Falta de energía | 10 |
+| 3 | Fuera de geocerca | 8 |
+| 4 | Exceso de velocidad | 7 |
+| 5 | Batería baja | 9 |
+| 6 | Alerta de movimiento | 11 |
+| 7 | Tiempo detenido (solo AVL / TRACKCAM) | 4 / 5 / 6 |
+| 8 | Detenido / Circulando | 0 / 1 |
+
+Si aplica una prioridad **1–6**, **no** se evalúa tiempo detenido ni detenido/circulando.
+
+### 5.4 Generación base por evento (Tabla 10 — trigger / insumos)
+
+Insumos típicos hacia la prioridad (§5.3), cuando `Estado` llega NULL o se recalcula desde telemetría:
+
+| Estado candidato | Condición (`IdEvento` / `Velocidad`) |
+|------------------|--------------------------------------|
+| 0 | `IdEvento = 2` **o** (`IdEvento = 1` y `Velocidad = 0`) |
+| 1 | `IdEvento = 1` y `Velocidad > 5` |
+| 2 | `IdEvento = 5` (Help me) |
+| 3 | `IdEvento = 8` (Door) |
+| 9 | `IdEvento = 3` |
+| 10 | `IdEvento = 4` |
+| 11 | `IdEvento = 7` |
+
+Estos candidatos se **colocan** en la cascada de prioridad; no se escriben a ciegas si hay algo de mayor prioridad.
+
+### 5.5 Tiempo detenido (estados 4 / 5 / 6) — implementado en ingest
+
+Solo si el insert trae **`Estado = 0` y `Velocidad = 0`** (cualquier otro estado se **conserva**: alertas prioritarias, geocerca 8, circulando, NULL) y el dispositivo es:
+
+| Id | Código | Alcance |
+|----|--------|---------|
+| 3 | AVL | Sí |
+| 5 | TRACKCAM | Sí |
+
+Otros tipos: **no** aplicar 4/5/6.
+
+En **cada INSERT** (`PosicionIngestService`), **después** de geocerca:
+
+1. Gate: `debeAplicarTiempoDetenido` (tipo + estado 0 + vel 0).
+2. Minutos = `FechaHora_actual −` última posición del IMEI con `Velocidad > 5` **o** `Estado = 1`.
+3. Asignar: ≥90 → `6`, ≥60 → `5`, ≥30 → `4`, si no → `0`.
+4. Código: `messaging/shared/estado-tiempo-detenido.util.ts`.
+
+### 5.5b Fuera de geocerca (estado 8) — implementado en ingest
+
+Prioridad **3** Sion. Se evalúa en cada INSERT **antes** del tiempo detenido.
+
+| Id | Código | ¿Evalúa geocerca? |
+|----|--------|-------------------|
+| 1 | RASTREADOR | Sí |
+| 2 | PANEL | **No** |
+| 3 | AVL | Sí |
+| 4 | TELEFONO | Sí |
+| 5 | TRACKCAM | Sí |
+
+Reglas:
+
+1. Geocerca activa con **`IdInstalacion` = instalación del dispositivo**. Si `IdInstalacion` es **NULL** → **no aplica**.
+2. Point-in-polygon (`Lat`/`Lng`) sobre `Geocercas.Geocerca` (GeoJSON Polygon / Feature).
+3. Si está **fuera de al menos una** geocerca de esa instalación → `Estado = 8`.
+4. **No pisa** estados 2, 3 ni 10 (botón / energía). **Sí pisa** exceso, batería, move, tiempo detenido, 0/1.
+5. Lookup: `DeviceLookupService` resuelve `idInstalacion` (instalación activa del dispositivo). Código: `estado-geocerca.util.ts`.
+
+### 5.6 Triggers MySQL
 
 | Trigger | Momento | Función |
 |---------|---------|---------|
 | `trg_pos_before_ins` | BEFORE INSERT | Completa `Estado` / `Ignicion` si vienen NULL |
 | `trg_pos_after_ins_ult` | AFTER INSERT | Espeja a `UltimaPosicion` por Imei |
 
-No recalcular `Estado` en código salvo casos excepcionales. `Estado=2` = pánico (no “en movimiento”).
+`Ignicion` (Tabla 11): si NULL → 0 si IdEvento=2; 1 si IdEvento=1; si no, valor del registro previo del mismo IMEI.
+
+`Estado=2` = pánico (no “en movimiento”).
 
 ---
 

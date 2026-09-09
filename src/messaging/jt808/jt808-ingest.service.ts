@@ -30,8 +30,11 @@ export class Jt808IngestService {
     routingKey: string,
   ): Promise<{ posicionId?: number; duplicate?: boolean; audited?: boolean }> {
     let imei: string;
+    let idTipoDispositivo: number;
+    let idInstalacion: number | null;
     try {
-      ({ imei } = await this.deviceLookup.resolve(envelope.deviceId));
+      ({ imei, idTipoDispositivo, idInstalacion } =
+        await this.deviceLookup.resolve(envelope.deviceId));
     } catch (error) {
       if (
         error instanceof DeviceNotFoundError ||
@@ -51,6 +54,8 @@ export class Jt808IngestService {
         deviceId: envelope.deviceId,
         routingKey,
         imei,
+        idTipoDispositivo,
+        idInstalacion,
         auditPayload: extractJt808Audit(envelope.payload, 'alarm'),
       });
     }
@@ -71,6 +76,8 @@ export class Jt808IngestService {
       deviceId: envelope.deviceId,
       routingKey,
       imei,
+      idTipoDispositivo,
+      idInstalacion,
       auditPayload: extractJt808Audit(envelope.payload, envelope.kind),
       posicion: mapAcometidasToPosicion(imei, p),
       media: {

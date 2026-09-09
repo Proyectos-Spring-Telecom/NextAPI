@@ -210,10 +210,33 @@ export enum EnumTipoProducto {
  * TRACKCAM (por codigo, no por Id fijo) → Dispositivos + TrackcamConfig.
  */
 export enum EnumTipoDispositivo {
+  /** Rastreador GPS */
+  RASTREADOR = 1,
   PANEL_ALARMA = 2,
-  /** Trackcam / dashcam GPS (CatTipoDispositivo.Id típico) */
+  /** GPS AVL clásico */
+  AVL = 3,
+  /** Teléfono con telemetría */
+  TELEFONO = 4,
+  /** Trackcam / dashcam GPS */
   TRACKCAM = 5,
 }
+
+/** Tipos que aplican estados 4/5/6 (tiempo detenido) en ingest. */
+export const TIPOS_DISPOSITIVO_TIEMPO_DETENIDO: readonly number[] = [
+  EnumTipoDispositivo.AVL,
+  EnumTipoDispositivo.TRACKCAM,
+] as const;
+
+/**
+ * Tipos que evalúan fuera de geocerca (Estado=8) en ingest.
+ * Panel (2) no aplica.
+ */
+export const TIPOS_DISPOSITIVO_GEOCERCA: readonly number[] = [
+  EnumTipoDispositivo.RASTREADOR,
+  EnumTipoDispositivo.AVL,
+  EnumTipoDispositivo.TELEFONO,
+  EnumTipoDispositivo.TRACKCAM,
+] as const;
 
 /** Valores de CatProductos.Id (categoría de marcas) */
 export enum EnumCatProducto {
