@@ -143,11 +143,15 @@ Timeout: **90 s** (1 canal) / **150 s** (multi).
 2. Lookup `deviceId` → Imei.
 3. `Foto1..3` → INSERT `Fotos` → ids.
 4. `Video1..3` → INSERT `Videos` → ids.
-5. INSERT `Posiciones` (`Estado: null`, FKs media, **`IdFoto: null`**).
-6. Trigger → `UltimaPosicion`.
+5. INSERT `Posiciones` (Estado/Ignicion del payload; FKs media; **`IdFoto: null`**).
+   - Geocerca: tipos 1/3/4/5, geocerca con `IdInstalacion` de la unidad; fuera de alguna → `Estado=8` (no pisa 2/3/10).
+   - Si AVL/TRACKCAM y `Estado=0` y `Velocidad=0` → puede subir a 4/5/6 por minutos detenidos.
+6. Trigger BD → completa Estado/Ignicion si NULL + espejo `UltimaPosicion`.
 7. Socket `monitoreo:actualizacion`.
 
 `payload.IdFoto` / `jt808.multimediaId` → solo columna `Fotos.IdFoto` (no FK de Posiciones).
+
+Catálogos Estado/Evento y reglas Sion (referencia): [`contexto.md` §5](./contexto.md).
 
 ---
 
@@ -212,7 +216,9 @@ Guía receptor SpringTrackCam: [`webhook-trackcam-springtrackcam.md`](./webhook-
 - [x] Consumer JT808: position (+ media URLs → Fotos/Videos → Posiciones)
 - [x] Idempotencia `eventId`; Imei vía `NumeroSerie`
 - [x] `Posiciones.IdFoto` legacy siempre null en ingest
-- [x] Confianza en trigger MySQL para `UltimaPosicion` / `Estado`
+- [x] Confianza en trigger MySQL para `UltimaPosicion` / `Estado` / `Ignicion` si llegan NULL
+- [x] Tiempo detenido 4/5/6 (AVL/TRACKCAM, Estado=0 y Vel=0)
+- [x] Fuera de geocerca Estado=8 (tipos 1/3/4/5; geocerca con IdInstalacion; no pisa 2/3/10)
 
 ### Alarmas y paneles
 - [x] Ingest HMAC eventos/heartbeats
@@ -230,6 +236,7 @@ Guía receptor SpringTrackCam: [`webhook-trackcam-springtrackcam.md`](./webhook-
 - [x] Consumers AX PRO (eventos / heartbeats) en messaging
 
 ### Fuera de alcance de estos contratos
-- Recalcular `Estado` en aplicación (lo hace el trigger)
+- Recalcular `Estado` / `Ignicion` en aplicación (lo hace el trigger BD)
+- Generación de último estado por prioridad de consulta (Sion Tabla 3)
 - Duplicar persistencia foto/video en el proxy HTTP
 - Histórico GPS para inmuebles/paneles

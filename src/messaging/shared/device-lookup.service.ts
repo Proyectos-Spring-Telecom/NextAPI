@@ -1,15 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA } from '../../common/estatus.enum';
+import { Repository } from 'typeorm';
+import {
+  ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA,
+  EstatusEnum,
+} from '../../common/estatus.enum';
 import { imeiToString } from '../../common/imei.util';
 import { Dispositivos } from '../../entities/Dispositivos';
+import { Instalaciones } from '../../entities/Instalaciones';
 
 export interface DeviceResolved {
   /** IMEI como string (bigint BD; evita redondeo JS) */
   imei: string;
   idCliente: number;
+  idTipoDispositivo: number;
+  /** Instalación activa del dispositivo; null si no hay (geocerca no aplica). */
+  idInstalacion: number | null;
 }
 
 export class DeviceNotFoundError extends Error {
@@ -56,13 +63,27 @@ export class DeviceLookupService {
 
     const row = await this.dispositivoRepo
       .createQueryBuilder('d')
+      .leftJoin(
+        Instalaciones,
+        'i',
+        'i.idDispositivo = d.id AND i.idCliente = d.idCliente AND i.estatus = :instActivo',
+        { instActivo: EstatusEnum.ACTIVO },
+      )
       .select('CAST(d.imei AS CHAR)', 'imei')
       .addSelect('d.idCliente', 'idCliente')
+      .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
+      .addSelect('i.id', 'idInstalacion')
       .where('d.numeroSerie = :deviceId', { deviceId })
       .andWhere('d.estatus IN (:...estatus)', {
         estatus: [...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA],
       })
-      .getRawOne<{ imei: string | null; idCliente: string | number }>();
+      .orderBy('i.id', 'DESC')
+      .getRawOne<{
+        imei: string | null;
+        idCliente: string | number;
+        idTipoDispositivo: string | number;
+        idInstalacion: string | number | null;
+      }>();
 
     if (!row) {
       throw new DeviceNotFoundError(deviceId);
@@ -72,9 +93,19 @@ export class DeviceLookupService {
       throw new DeviceImeiMissingError(deviceId);
     }
 
+    const idInstalacion =
+      row.idInstalacion != null && row.idInstalacion !== ''
+        ? Number(row.idInstalacion)
+        : null;
+
     const resolved: DeviceResolved = {
       imei,
       idCliente: Number(row.idCliente),
+      idTipoDispositivo: Number(row.idTipoDispositivo),
+      idInstalacion:
+        idInstalacion != null && Number.isFinite(idInstalacion)
+          ? idInstalacion
+          : null,
     };
     this.writeCache(deviceId, resolved);
     return resolved;
