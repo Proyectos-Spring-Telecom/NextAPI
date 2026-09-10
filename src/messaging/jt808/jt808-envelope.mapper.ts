@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import { Posiciones } from '../../entities/Posiciones';
+import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
 import { isPublicHttpUrl } from '../shared/media-url.util';
 import {
   AcometidasPayload,
@@ -99,7 +100,7 @@ export function mapAcometidasToPosicion(
     lat: aco.Lat,
     lng: aco.Lng,
     estado: aco.Estado != null ? Number(aco.Estado) : null,
-    fechaHora: aco.FechaHora as unknown as Date,
+    fechaHora: parseFechaHoraPared(String(aco.FechaHora)),
     velocidad: Math.round(Number(aco.Velocidad)) || 0,
     direccion: Math.round(Number(aco.Direccion)) || 0,
     odometro: aco.Odometro != null ? Math.round(Number(aco.Odometro)) : null,
