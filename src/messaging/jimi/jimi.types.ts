@@ -7,9 +7,9 @@ export interface JimiExtension {
   label?: string;
 }
 
-/** Shape Acometidas + Combustible (litros UL212). Imei siempre null en AMQP. */
+/** Shape Acometidas + Combustible (litros UL212). Imei = Concox (o null legacy). */
 export interface JimiAcometidasPayload {
-  Imei: null;
+  Imei: string | number | null;
   Lat: number;
   Lng: number;
   Estado: number | null;

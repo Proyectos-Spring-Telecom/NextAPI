@@ -26,6 +26,13 @@ export class DeviceNotFoundError extends Error {
   }
 }
 
+export class DeviceNotFoundByImeiError extends Error {
+  constructor(public readonly imei: string) {
+    super(`Dispositivo desconocido: Imei=${imei}`);
+    this.name = 'DeviceNotFoundByImeiError';
+  }
+}
+
 export class DeviceImeiMissingError extends Error {
   constructor(public readonly numeroSerie: string) {
     super(`Dispositivo sin Imei: NumeroSerie=${numeroSerie}`);
@@ -55,7 +62,7 @@ export class DeviceLookupService {
       throw new DeviceNotFoundError(numeroSerie);
     }
 
-    const cached = this.readCache(deviceId);
+    const cached = this.readCache(`ns:${deviceId}`);
     if (cached) {
       this.logger.debug(`cache hit device:ns:${deviceId}`);
       return cached;
@@ -107,7 +114,73 @@ export class DeviceLookupService {
           ? idInstalacion
           : null,
     };
-    this.writeCache(deviceId, resolved);
+    this.writeCache(`ns:${deviceId}`, resolved);
+    return resolved;
+  }
+
+  /**
+   * Lookup por `Dispositivos.Imei` (protocolos donde la clave es IMEI, p. ej. Jimi/VL802).
+   */
+  async resolveByImei(imeiRaw: string): Promise<DeviceResolved> {
+    const imeiKey = imeiToString(imeiRaw)?.trim() ?? '';
+    if (!imeiKey) {
+      throw new DeviceNotFoundByImeiError(imeiRaw);
+    }
+
+    const cacheKey = `imei:${imeiKey}`;
+    const cached = this.readCache(cacheKey);
+    if (cached) {
+      this.logger.debug(`cache hit device:imei:${imeiKey}`);
+      return cached;
+    }
+
+    const row = await this.dispositivoRepo
+      .createQueryBuilder('d')
+      .leftJoin(
+        Instalaciones,
+        'i',
+        'i.idDispositivo = d.id AND i.idCliente = d.idCliente AND i.estatus = :instActivo',
+        { instActivo: EstatusEnum.ACTIVO },
+      )
+      .select('CAST(d.imei AS CHAR)', 'imei')
+      .addSelect('d.idCliente', 'idCliente')
+      .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
+      .addSelect('i.id', 'idInstalacion')
+      .where('CAST(d.imei AS CHAR) = :imeiKey', { imeiKey })
+      .andWhere('d.estatus IN (:...estatus)', {
+        estatus: [...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA],
+      })
+      .orderBy('i.id', 'DESC')
+      .getRawOne<{
+        imei: string | null;
+        idCliente: string | number;
+        idTipoDispositivo: string | number;
+        idInstalacion: string | number | null;
+      }>();
+
+    if (!row) {
+      throw new DeviceNotFoundByImeiError(imeiKey);
+    }
+    const imei = imeiToString(row.imei);
+    if (!imei) {
+      throw new DeviceNotFoundByImeiError(imeiKey);
+    }
+
+    const idInstalacion =
+      row.idInstalacion != null && row.idInstalacion !== ''
+        ? Number(row.idInstalacion)
+        : null;
+
+    const resolved: DeviceResolved = {
+      imei,
+      idCliente: Number(row.idCliente),
+      idTipoDispositivo: Number(row.idTipoDispositivo),
+      idInstalacion:
+        idInstalacion != null && Number.isFinite(idInstalacion)
+          ? idInstalacion
+          : null,
+    };
+    this.writeCache(cacheKey, resolved);
     return resolved;
   }
 

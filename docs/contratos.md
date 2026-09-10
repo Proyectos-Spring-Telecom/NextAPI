@@ -140,7 +140,7 @@ Exchange: `telemetry` (topic). Env: `RABBITMQ_QUEUE_JIMI_EVENTS`, `RABBITMQ_QUEU
 }
 ```
 
-**Jimi:** `payload.Imei` siempre `null` (lookup por `deviceId` = NumeroSerie). `Combustible` litros → `Posiciones.Combustible` (int redondeado). Alarm AMQP solo SOS (`jimi.alarm.*`); powercut/battery van en `jimi.position`.
+**Jimi:** `payload.Imei` = IMEI Concox (fallback `deviceId` si legacy null) → lookup `Dispositivos.Imei` (`resolveByImei`). `Combustible` litros → `Posiciones.Combustible` (int redondeado). Alarm AMQP solo SOS (`jimi.alarm.*`); powercut/battery van en `jimi.position`.
 
 ### Persistencia (orden)
 
