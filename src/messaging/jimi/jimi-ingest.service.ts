@@ -2,14 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   DeviceImeiMissingError,
   DeviceLookupService,
+  DeviceNotFoundByImeiError,
   DeviceNotFoundError,
 } from '../shared/device-lookup.service';
 import { PosicionIngestService } from '../shared/posicion-ingest.service';
-import { extractJimiAudit, mapJimiToPosicion } from './jimi-envelope.mapper';
+import {
+  extractJimiAudit,
+  mapJimiToPosicion,
+  resolveJimiImei,
+} from './jimi-envelope.mapper';
 import { JimiTelemetryEnvelope } from './jimi.types';
 
 /**
  * Adapter Jimi / Concox VL802 (springTrackGas) → PosicionIngestService.
+ * Lookup por Dispositivos.Imei (payload.Imei || deviceId).
  * - kind=position → Posiciones (+ Combustible)
  * - kind=alarm (SOS) → solo auditoría (NO Posiciones)
  */
@@ -26,14 +32,17 @@ export class JimiIngestService {
     envelope: JimiTelemetryEnvelope,
     routingKey: string,
   ): Promise<{ posicionId?: number; duplicate?: boolean; audited?: boolean }> {
+    const imeiKey = resolveJimiImei(envelope);
+
     let imei: string;
     let idTipoDispositivo: number;
     let idInstalacion: number | null;
     try {
       ({ imei, idTipoDispositivo, idInstalacion } =
-        await this.deviceLookup.resolve(envelope.deviceId));
+        await this.deviceLookup.resolveByImei(imeiKey));
     } catch (error) {
       if (
+        error instanceof DeviceNotFoundByImeiError ||
         error instanceof DeviceNotFoundError ||
         error instanceof DeviceImeiMissingError
       ) {

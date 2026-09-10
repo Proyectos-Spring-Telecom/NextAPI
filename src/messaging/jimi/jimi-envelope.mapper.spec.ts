@@ -4,56 +4,108 @@ import {
   extractJimiAudit,
   mapJimiToPosicion,
   parseJimiEnvelope,
+  resolveJimiImei,
 } from './jimi-envelope.mapper';
 
 const eventId =
   '373923bf2255a795133622f3345f3e2587d59f5b686fb0582fca210c51cf9b29';
 
+const imeiConcox = '860121060275115';
+
+function basePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    Imei: null as string | null,
+    Lat: 18.95,
+    Lng: -99.23,
+    Estado: 0,
+    FechaHora: '2026-09-09 18:37:23',
+    Velocidad: 1,
+    Direccion: 0,
+    Odometro: null as number | null,
+    Ignicion: 1 as number | null,
+    Alarma1: 201 as number | null,
+    Alarma2: null as number | null,
+    Energia: null as number | null,
+    IdEvento: EnumCatEventos.GEOCERCA,
+    IdFoto: null as number | null,
+    Bateria: null as number | null,
+    Alimentacion: null as number | null,
+    GPS: 6 as number | null,
+    GSM: 4 as number | null,
+    Movimiento: 1 as number | null,
+    Combustible: 10.7 as number | null,
+    Foto1: null as string | null,
+    Foto2: null as string | null,
+    Foto3: null as string | null,
+    Video1: null as string | null,
+    Video2: null as string | null,
+    Video3: null as string | null,
+    jimi: { protocol: 164 },
+    ...overrides,
+  };
+}
+
 describe('jimi-envelope.mapper', () => {
+  it('Imei string en payload → resolveJimiImei + fila Posiciones con ese Imei', () => {
+    const envelope = assertJimiEnvelope({
+      eventId,
+      protocol: 'jimi',
+      kind: 'position',
+      deviceId: imeiConcox,
+      receivedAt: '2026-09-10T00:37:27.647Z',
+      payload: basePayload({ Imei: imeiConcox, IdEvento: 9 }),
+    });
+
+    expect(resolveJimiImei(envelope)).toBe(imeiConcox);
+
+    const pos = mapJimiToPosicion(resolveJimiImei(envelope), envelope.payload);
+    expect(pos.imei).toBe(imeiConcox);
+    expect(pos.estado).toBe(0);
+    expect(pos.ignicion).toBe(1);
+    expect(pos.combustible).toBe(11);
+  });
+
+  it('legacy Imei null + deviceId → resuelve por deviceId', () => {
+    const envelope = parseJimiEnvelope(
+      JSON.stringify({
+        eventId,
+        protocol: 'jimi',
+        kind: 'position',
+        deviceId: imeiConcox,
+        receivedAt: '2026-09-10T00:37:27.647Z',
+        payload: basePayload({ Imei: null }),
+      }),
+    );
+
+    expect(envelope.payload.Imei).toBeNull();
+    expect(resolveJimiImei(envelope)).toBe(imeiConcox);
+
+    const pos = mapJimiToPosicion(resolveJimiImei(envelope), envelope.payload);
+    expect(pos.imei).toBe(imeiConcox);
+    expect(pos.estado).toBe(0);
+    expect(pos.combustible).toBe(11);
+  });
+
   it('parsea position detenido + Combustible y conserva Estado del gateway', () => {
     const raw = JSON.stringify({
       eventId,
       protocol: 'jimi',
       kind: 'position',
-      deviceId: '860121060275115',
+      deviceId: imeiConcox,
       receivedAt: '2026-09-10T00:37:27.647Z',
-      payload: {
-        Imei: null,
+      payload: basePayload({
         Lat: 18.953311111111113,
         Lng: -99.23588444444444,
-        Estado: 0,
-        FechaHora: '2026-09-09 18:37:23',
-        Velocidad: 1,
-        Direccion: 0,
-        Odometro: null,
-        Ignicion: 1,
-        Alarma1: 201,
-        Alarma2: null,
-        Energia: null,
-        IdEvento: EnumCatEventos.GEOCERCA,
-        IdFoto: null,
-        Bateria: null,
-        Alimentacion: null,
-        GPS: 6,
-        GSM: 4,
-        Movimiento: 1,
-        Combustible: 10.7,
-        Foto1: null,
-        Foto2: null,
-        Foto3: null,
-        Video1: null,
-        Video2: null,
-        Video3: null,
-        jimi: { protocol: 164 },
-      },
+        Imei: null,
+      }),
     });
 
     const envelope = parseJimiEnvelope(raw);
     expect(envelope.protocol).toBe('jimi');
-    expect(envelope.deviceId).toBe('860121060275115');
+    expect(envelope.deviceId).toBe(imeiConcox);
 
-    const pos = mapJimiToPosicion('860121060275115', envelope.payload);
-    expect(pos.imei).toBe('860121060275115');
+    const pos = mapJimiToPosicion(imeiConcox, envelope.payload);
+    expect(pos.imei).toBe(imeiConcox);
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
     expect(pos.idEvento).toBe(EnumCatEventos.GEOCERCA);
@@ -62,39 +114,31 @@ describe('jimi-envelope.mapper', () => {
 
     const audit = extractJimiAudit(envelope.payload, 'position') as {
       Combustible: number;
+      Imei: null;
     };
     expect(audit.Combustible).toBe(10.7);
+    expect(audit.Imei).toBeNull();
+  });
+
+  it('Combustible null no rompe el mapeo', () => {
+    const pos = mapJimiToPosicion(
+      imeiConcox,
+      basePayload({ Combustible: null }) as never,
+    );
+    expect(pos.combustible).toBeNull();
+    expect(pos.imei).toBe(imeiConcox);
   });
 
   it('mapea Estados del gateway (movimiento / energía / batería / SOS)', () => {
-    const base = {
-      Imei: null as null,
-      Lat: 18.95,
-      Lng: -99.23,
-      FechaHora: '2026-09-08 18:48:02',
-      Direccion: 0,
-      Odometro: null as number | null,
-      Ignicion: 0 as number | null,
-      Alarma1: null as number | null,
-      Alarma2: null as number | null,
-      Energia: null as number | null,
-      IdFoto: null as number | null,
-      Bateria: null as number | null,
-      Alimentacion: null as number | null,
-      GPS: null as number | null,
-      GSM: null as number | null,
-      Movimiento: 2 as number | null,
-      Combustible: null as number | null,
-      Foto1: null as string | null,
-      Foto2: null as string | null,
-      Foto3: null as string | null,
-      Video1: null as string | null,
-      Video2: null as string | null,
-      Video3: null as string | null,
-    };
+    const base = basePayload({
+      Combustible: null,
+      Alarma1: null,
+      Ignicion: 0,
+      Movimiento: 2,
+    });
 
     expect(
-      mapJimiToPosicion('860121060275115', {
+      mapJimiToPosicion(imeiConcox, {
         ...base,
         Estado: 1,
         Velocidad: 11,
@@ -103,7 +147,7 @@ describe('jimi-envelope.mapper', () => {
     ).toBe(1);
 
     expect(
-      mapJimiToPosicion('860121060275115', {
+      mapJimiToPosicion(imeiConcox, {
         ...base,
         Estado: 10,
         Velocidad: 0,
@@ -113,7 +157,7 @@ describe('jimi-envelope.mapper', () => {
     ).toBe(10);
 
     expect(
-      mapJimiToPosicion('860121060275115', {
+      mapJimiToPosicion(imeiConcox, {
         ...base,
         Estado: 9,
         Velocidad: 0,
@@ -123,7 +167,7 @@ describe('jimi-envelope.mapper', () => {
     ).toBe(9);
 
     expect(
-      mapJimiToPosicion('860121060275115', {
+      mapJimiToPosicion(imeiConcox, {
         ...base,
         Estado: 2,
         Velocidad: 0,
@@ -138,44 +182,27 @@ describe('jimi-envelope.mapper', () => {
       eventId,
       protocol: 'jimi',
       kind: 'alarm',
-      deviceId: '860121060275115',
+      deviceId: imeiConcox,
       receivedAt: '2026-09-10T00:00:00.000Z',
-      payload: {
-        Imei: null,
-        Lat: 18.95,
-        Lng: -99.23,
+      payload: basePayload({
+        Imei: imeiConcox,
         Estado: 2,
-        FechaHora: '2026-09-09 18:00:00',
         Velocidad: 0,
-        Direccion: 0,
-        Odometro: null,
         Ignicion: 1,
         Alarma1: 1,
-        Alarma2: null,
-        Energia: null,
         IdEvento: EnumCatEventos.HELP_ME,
-        IdFoto: null,
-        Bateria: null,
-        Alimentacion: null,
-        GPS: null,
-        GSM: null,
-        Movimiento: 1,
         Combustible: null,
-        Foto1: null,
-        Foto2: null,
-        Foto3: null,
-        Video1: null,
-        Video2: null,
-        Video3: null,
         jimi: { source: 'a4', code: 'SOS', label: 'sos' },
-      },
+      }),
     };
 
     expect(() => assertJimiEnvelope(sos)).not.toThrow();
     const audit = extractJimiAudit(sos.payload, 'alarm') as {
       jimi: { code: string };
+      Imei: string;
     };
     expect(audit.jimi.code).toBe('SOS');
+    expect(audit.Imei).toBe(imeiConcox);
 
     expect(() =>
       assertJimiEnvelope({
@@ -194,7 +221,7 @@ describe('jimi-envelope.mapper', () => {
         eventId,
         protocol: 'jt808',
         kind: 'position',
-        deviceId: '860121060275115',
+        deviceId: imeiConcox,
         receivedAt: '2026-09-10T00:00:00.000Z',
         payload: {
           Lat: 1,

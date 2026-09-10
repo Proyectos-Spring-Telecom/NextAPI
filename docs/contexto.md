@@ -30,7 +30,7 @@ VL802 Concox ──TCP──► springTrackGas ──AMQP jimi.* ──► NextA
 - `deviceId` JT808 = `NumeroSerie` JT808; `deviceId` Jimi = IMEI Concox (= `NumeroSerie`).
 - Colas **separadas** por protocolo (nunca mezclar bindings `jimi.*` en cola JT808).
 - `kind=alarm` → solo `TelemetryIngestLog` (Jimi: solo SOS en `jimi.alarm.*`).
-- IMEI se resuelve por lookup en `Dispositivos` (`payload.Imei` Jimi siempre null).
+- IMEI Jimi: `payload.Imei || deviceId` → lookup `Dispositivos.Imei` (`resolveByImei`); no NumeroSerie/SIM.
 - `Estado` / `Ignicion` del payload se persisten; geocerca (8) y detenido (4/5/6) los calcula el ingest NextAPI.
 - NextAPI **no** hace upsert de `UltimaPosicion` en aplicación (confía en el trigger MySQL AFTER INSERT).
 - Captura HTTP on-demand Trackcam **no** persiste en NextAPI: el gateway publica AMQP y el consumer JT808 inserta.

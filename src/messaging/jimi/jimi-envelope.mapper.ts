@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Posiciones } from '../../entities/Posiciones';
+import { imeiToString } from '../../common/imei.util';
 import {
   JimiAcometidasPayload,
   JimiKind,
@@ -86,6 +87,21 @@ function assertJimiPayload(payload: JimiAcometidasPayload, kind: JimiKind) {
 }
 
 /**
+ * IMEI de negocio Jimi: preferir `payload.Imei`, fallback `deviceId` (mensajes legacy).
+ */
+export function resolveJimiImei(envelope: JimiTelemetryEnvelope): string {
+  const fromPayload = imeiToString(envelope.payload?.Imei);
+  if (fromPayload) {
+    return fromPayload;
+  }
+  const fromDeviceId = String(envelope.deviceId ?? '').trim();
+  if (fromDeviceId) {
+    return fromDeviceId;
+  }
+  throw new BadRequestException('IMEI ausente en envelope jimi');
+}
+
+/**
  * Mapea payload Jimi → Posiciones.
  * Estado/Ignicion del gateway tal cual (no forzar NULL).
  * Combustible litros float → int redondeado (columna MySQL int).
@@ -137,6 +153,7 @@ export function extractJimiAudit(
       Estado: payload.Estado,
       Alarma1: payload.Alarma1,
       Ignicion: payload.Ignicion,
+      Imei: payload.Imei,
       jimi: payload.jimi
         ? {
             source: payload.jimi.source,
@@ -151,5 +168,6 @@ export function extractJimiAudit(
   return {
     jimi: payload.jimi ?? null,
     Combustible: payload.Combustible,
+    Imei: payload.Imei,
   };
 }
