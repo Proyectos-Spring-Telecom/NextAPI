@@ -32,8 +32,8 @@ import {
  *
  * - position/photo → TelemetryIngestLog + media + Posiciones + WS
  * - alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
- * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM; geocerca con IdInstalacion
- * - Tiempo detenido (4/5/6): solo AVL/TRACKCAM si Estado=0 y Velocidad=0
+ * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocerca con IdInstalacion
+ * - Tiempo detenido (4/5/6): AVL/TRACKCAM/TRACKGAS si Estado=0 y Velocidad=0
  *
  * Cada protocolo: cola AMQP propia + mapper → este servicio.
  * Ver: docs/CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md
@@ -173,7 +173,7 @@ export class PosicionIngestService {
   }
 
   /**
-   * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM).
+   * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM/TRACKGAS).
    * Otros estados (alertas / geocerca) se conservan.
    */
   private async aplicarTiempoDetenidoSiCorresponde(

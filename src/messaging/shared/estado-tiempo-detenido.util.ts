@@ -18,7 +18,7 @@ export type AplicarTiempoDetenidoInput = {
 };
 
 /**
- * Solo AVL/TRACKCAM, y solo si Estado=0 y Velocidad=0.
+ * Solo AVL/TRACKCAM/TRACKGAS, y solo si Estado=0 y Velocidad=0.
  * Cualquier otro estado (alertas prioritarias, circulando, NULL) → no recalcular.
  */
 export function debeAplicarTiempoDetenido(

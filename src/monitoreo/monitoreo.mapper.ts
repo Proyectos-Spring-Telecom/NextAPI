@@ -91,6 +91,10 @@ type MonitoreoBase = {
   idInstalacion: number;
   idCliente: number;
   idTipoProducto: number;
+  /** CatTipoDispositivo (plano; TRACKGAS=6, TRACKCAM=5, …). */
+  idTipoDispositivo: number | null;
+  codigoTipoDispositivo: string | null;
+  nombreTipoDispositivo: string | null;
 };
 
 export type MonitoreoVehiculoItem = MonitoreoBase &
@@ -153,6 +157,9 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
     idInstalacion: Number(row.idInstalacion),
     idCliente: Number(row.idCliente),
     idTipoProducto: Number(row.idTipoProducto),
+    idTipoDispositivo: num(row.idTipoDispositivo),
+    codigoTipoDispositivo: str(row.codigoTipoDispositivo),
+    nombreTipoDispositivo: str(row.nombreTipoDispositivo),
   };
 }
 

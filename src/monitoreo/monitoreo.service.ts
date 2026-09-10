@@ -29,6 +29,7 @@ import { Vehiculos } from 'src/entities/Vehiculos';
 import { Personas } from 'src/entities/Personas';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
+import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { obtenerTipoTrackcam } from 'src/dispositivos/crear-dispositivo.util';
 import {
   mapPuntoInteresPlano,
@@ -546,6 +547,7 @@ export class MonitoreoService {
       .innerJoin('i.idCliente2', 'c')
       .innerJoin('i.idProducto2', 'p')
       .leftJoin('i.idDispositivo2', 'd')
+      .leftJoin(CatTipoDispositivo, 'td', 'td.id = d.idTipoDispositivo')
       .leftJoin('d.idMarca2', 'marDisp')
       .leftJoin('d.idModelo2', 'modDisp')
       .leftJoin(
@@ -575,6 +577,9 @@ export class MonitoreoService {
         'CAST(d.imei AS CHAR) AS imei',
         'd.eco AS ecoDispositivo',
         'd.numeroSerie AS numeroSerieDispositivo',
+        'd.idTipoDispositivo AS idTipoDispositivo',
+        'td.codigo AS codigoTipoDispositivo',
+        'td.nombre AS nombreTipoDispositivo',
         'marDisp.nombre AS marcaDispositivo',
         'modDisp.nombre AS modeloDispositivo',
         'v.anio AS anio',

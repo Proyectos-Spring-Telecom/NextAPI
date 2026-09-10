@@ -19,6 +19,10 @@ export type HistoricoPosicionItem = {
   modelo: string | null;
   estatus: number | null;
   imei: string | null;
+  /** CatTipoDispositivo (plano). */
+  idTipoDispositivo: number | null;
+  codigoTipoDispositivo: string | null;
+  nombreTipoDispositivo: string | null;
   lat: number;
   lng: number;
   estado: number | null;
@@ -81,6 +85,9 @@ type ContextoProducto = {
   modelo: string | null;
   estatus: number | null;
   cliente: string | null;
+  idTipoDispositivo: number | null;
+  codigoTipoDispositivo: string | null;
+  nombreTipoDispositivo: string | null;
 };
 
 export function mapHistoricoPosicionItem(
@@ -108,6 +115,9 @@ export function mapHistoricoPosicionItem(
     modelo: ctx.modelo,
     estatus: ctx.estatus,
     imei: imeiToString(row.imei),
+    idTipoDispositivo: ctx.idTipoDispositivo,
+    codigoTipoDispositivo: ctx.codigoTipoDispositivo,
+    nombreTipoDispositivo: ctx.nombreTipoDispositivo,
     lat: Number(row.lat),
     lng: Number(row.lng),
     estado: num(row.estado),
@@ -209,5 +219,8 @@ export function mapContextoDesdeRow(row: Record<string, unknown>): ContextoProdu
     modelo: str(row.modelo) ?? str(row.modeloDispositivo),
     estatus: num(row.estatusProducto),
     cliente: str(row.nombreCompletoCliente),
+    idTipoDispositivo: num(row.idTipoDispositivo),
+    codigoTipoDispositivo: str(row.codigoTipoDispositivo),
+    nombreTipoDispositivo: str(row.nombreTipoDispositivo),
   };
 }

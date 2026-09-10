@@ -151,6 +151,7 @@ Solo si el insert trae **`Estado = 0` y `Velocidad = 0`** (cualquier otro estado
 |----|--------|---------|
 | 3 | AVL | Sí |
 | 5 | TRACKCAM | Sí |
+| 6 | TRACKGAS | Sí |
 
 Otros tipos: **no** aplicar 4/5/6.
 
@@ -172,6 +173,7 @@ Prioridad **3** Sion. Se evalúa en cada INSERT **antes** del tiempo detenido.
 | 3 | AVL | Sí |
 | 4 | TELEFONO | Sí |
 | 5 | TRACKCAM | Sí |
+| 6 | TRACKGAS | Sí |
 
 Reglas:
 
