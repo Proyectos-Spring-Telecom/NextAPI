@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import amqp, { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
 import { AxproEventsConsumer } from '../axpro/axpro-events.consumer';
 import { AxproHeartbeatsConsumer } from '../axpro/axpro-heartbeats.consumer';
+import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
 import { Jt808PhotoConsumer } from '../jt808/jt808-photo.consumer';
 import { DbConcurrencyLimiter } from './db-concurrency.util';
@@ -48,6 +49,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     private readonly axproHeartbeatsConsumer: AxproHeartbeatsConsumer,
     private readonly jt808EventsConsumer: Jt808EventsConsumer,
     private readonly jt808PhotoConsumer: Jt808PhotoConsumer,
+    private readonly jimiEventsConsumer: JimiEventsConsumer,
   ) {}
 
   async onModuleInit() {
@@ -201,13 +203,21 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     const axproHbCh = await this.connection.createChannel();
     const jt808EventsCh = await this.connection.createChannel();
     const jt808MediaCh = await this.connection.createChannel();
+    const jimiEventsCh = await this.connection.createChannel();
 
     this.bindChannelEvents(axproEventsCh, 'axpro-events');
     this.bindChannelEvents(axproHbCh, 'axpro-heartbeats');
     this.bindChannelEvents(jt808EventsCh, 'jt808-events');
     this.bindChannelEvents(jt808MediaCh, 'jt808-media');
+    this.bindChannelEvents(jimiEventsCh, 'jimi-events');
 
-    for (const ch of [axproEventsCh, axproHbCh, jt808EventsCh, jt808MediaCh]) {
+    for (const ch of [
+      axproEventsCh,
+      axproHbCh,
+      jt808EventsCh,
+      jt808MediaCh,
+      jimiEventsCh,
+    ]) {
       await ch.assertExchange(cfg.exchange, 'topic', { durable: true });
       await ch.assertExchange(cfg.dlx, 'topic', { durable: true });
     }
@@ -228,6 +238,14 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.jt808.dlq,
       cfg.dlx,
       cfg.jt808.events.dlqRoutingKey,
+    );
+
+    await this.setupQueue(jimiEventsCh, cfg.exchange, cfg.dlx, cfg.jimi.events);
+    await jimiEventsCh.assertQueue(cfg.jimi.dlq, { durable: true });
+    await jimiEventsCh.bindQueue(
+      cfg.jimi.dlq,
+      cfg.dlx,
+      cfg.jimi.events.dlqRoutingKey,
     );
 
     await this.registerConsumer(
@@ -254,9 +272,15 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       'jt808:media',
       (m) => this.jt808PhotoConsumer.consume(m),
     );
+    await this.registerConsumer(
+      jimiEventsCh,
+      cfg.jimi.events,
+      'jimi:events',
+      (m) => this.jimiEventsConsumer.consume(m),
+    );
 
     this.logger.log(
-      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, jt808=${cfg.jt808.events.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries})`,
+      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, jt808=${cfg.jt808.events.prefetch}, jimi=${cfg.jimi.events.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries})`,
     );
   }
 
