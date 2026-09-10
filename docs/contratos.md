@@ -116,26 +116,30 @@ Timeout: **90 s** (1 canal) / **150 s** (multi).
 
 ---
 
-## 2. AMQP JT808 → NextAPI
+## 2. AMQP JT808 / Jimi → NextAPI
 
-| Parámetro | Valor |
-|-----------|--------|
-| Exchange | `telemetry` (topic) |
-| Binding posiciones/media | `jt808.position` |
-| Alarmas (opcional) | `jt808.alarm.*` |
+| Protocolo | Cola events | Bindings | DLQ |
+|-----------|-------------|----------|-----|
+| JT808 | `telemetry.jt808.events` | `jt808.position`, `jt808.alarm.*` | `telemetry.jt808.dlq` |
+| JT808 media | `telemetry.jt808.media` | `jt808.multimedia.photo` | idem |
+| **Jimi (VL802)** | `telemetry.jimi.events` | `jimi.position`, `jimi.alarm.*` | `telemetry.jimi.dlq` |
 
-### Envelope
+Exchange: `telemetry` (topic). Env: `RABBITMQ_QUEUE_JIMI_EVENTS`, `RABBITMQ_QUEUE_JIMI_DLQ`, `RABBITMQ_PREFETCH_JIMI`.
+
+### Envelope (ambos)
 
 ```json
 {
   "eventId": "<sha256-hex-64>",
-  "protocol": "jt808",
+  "protocol": "jt808|jimi",
   "kind": "position",
-  "deviceId": "007773050481",
+  "deviceId": "<NumeroSerie o IMEI Concox>",
   "receivedAt": "2026-09-03T23:30:00.000Z",
   "payload": { }
 }
 ```
+
+**Jimi:** `payload.Imei` siempre `null` (lookup por `deviceId` = NumeroSerie). `Combustible` litros → `Posiciones.Combustible` (int redondeado). Alarm AMQP solo SOS (`jimi.alarm.*`); powercut/battery van en `jimi.position`.
 
 ### Persistencia (orden)
 
@@ -214,6 +218,7 @@ Guía receptor SpringTrackCam: [`webhook-trackcam-springtrackcam.md`](./webhook-
 - [x] Histórico `Posiciones` + distancia Haversine + rutas media
 - [x] Proxy foto/video Trackcam (`channelId` opcional)
 - [x] Consumer JT808: position (+ media URLs → Fotos/Videos → Posiciones)
+- [x] Consumer **Jimi** (VL802 / springTrackGas): cola `telemetry.jimi.events` (`jimi.position` / `jimi.alarm.*`)
 - [x] Idempotencia `eventId`; Imei vía `NumeroSerie`
 - [x] `Posiciones.IdFoto` legacy siempre null en ingest
 - [x] Confianza en trigger MySQL para `UltimaPosicion` / `Estado` / `Ignicion` si llegan NULL

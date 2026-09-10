@@ -27,6 +27,10 @@ export interface RabbitMqRuntimeConfig {
     media: RabbitMqQueueDefinition;
     dlq: string;
   };
+  jimi: {
+    events: RabbitMqQueueDefinition;
+    dlq: string;
+  };
 }
 
 function dlqArgs(dlx: string, failedRoutingKey: string) {
@@ -130,6 +134,18 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_JT808_DLQ') ?? 'telemetry.jt808.dlq',
+    },
+    jimi: {
+      events: {
+        queue:
+          config.get<string>('RABBITMQ_QUEUE_JIMI_EVENTS') ??
+          'telemetry.jimi.events',
+        bindings: ['jimi.position', 'jimi.alarm.*'],
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_JIMI', defaultPrefetch),
+        dlqRoutingKey: 'telemetry.jimi.failed',
+      },
+      dlq:
+        config.get<string>('RABBITMQ_QUEUE_JIMI_DLQ') ?? 'telemetry.jimi.dlq',
     },
   };
 }

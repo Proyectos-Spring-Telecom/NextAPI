@@ -15,24 +15,25 @@ Backend NestJS 11 (TypeORM + MySQL) para telemetría GPS, alarmas, catálogo de 
 
 ---
 
-## 2. Arquitectura de telemetría GPS (Trackcam / JT808)
+## 2. Arquitectura de telemetría GPS (Trackcam / JT808 / Jimi)
 
 ```text
-Cámara JT808 ──TCP──► springTrackCam ──AMQP jt808.position──► NextAPI
-                              │                                    │
-                              │ HTTP foto/video (on-demand)        ├─ INSERT Fotos/Videos (URLs)
-                              │◄── proxy NextAPI /monitoreo/*/foto │─ INSERT Posiciones (FKs)
-                              │    /video                          │─ Trigger BD → UltimaPosicion
-                              │                                    └─ Socket /monitoreo
+Cámara JT808 ──TCP──► springTrackCam ──AMQP jt808.*──► NextAPI (cola telemetry.jt808.*)
+VL802 Concox ──TCP──► springTrackGas ──AMQP jimi.* ──► NextAPI (cola telemetry.jimi.*)
+                                                       ├─ DeviceLookup (NumeroSerie)
+                                                       ├─ PosicionIngestService
+                                                       └─ Posiciones + UltimaPosicion + WS
 ```
 
 **Reglas clave**
 
-- `deviceId` AMQP = `NumeroSerie` JT808 (12 dígitos), **no** es IMEI.
-- IMEI se resuelve por lookup en `Dispositivos`.
-- `Estado` / `Ignicion` en INSERT: se persisten del payload del gateway; si llegan **NULL**, el trigger BD los completa (reglas Sion Tablas 10–11).
+- `deviceId` JT808 = `NumeroSerie` JT808; `deviceId` Jimi = IMEI Concox (= `NumeroSerie`).
+- Colas **separadas** por protocolo (nunca mezclar bindings `jimi.*` en cola JT808).
+- `kind=alarm` → solo `TelemetryIngestLog` (Jimi: solo SOS en `jimi.alarm.*`).
+- IMEI se resuelve por lookup en `Dispositivos` (`payload.Imei` Jimi siempre null).
+- `Estado` / `Ignicion` del payload se persisten; geocerca (8) y detenido (4/5/6) los calcula el ingest NextAPI.
 - NextAPI **no** hace upsert de `UltimaPosicion` en aplicación (confía en el trigger MySQL AFTER INSERT).
-- Captura HTTP on-demand **no** persiste en NextAPI: el gateway publica AMQP y el consumer JT808 inserta.
+- Captura HTTP on-demand Trackcam **no** persiste en NextAPI: el gateway publica AMQP y el consumer JT808 inserta.
 
 ---
 
