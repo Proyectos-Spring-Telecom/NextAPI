@@ -130,7 +130,8 @@ export class InstalacionesController {
     summary: 'Histórico de una instalación',
     description:
       'Devuelve la versión vigente (si existe) y la cadena de `HistoricoInstalaciones` de lo más reciente a lo más antiguo. ' +
-      'Cada elemento incluye `nombreCliente` y `nombreUsuario` en camelCase, sin JSON anidados.',
+      'Campos planos camelCase: producto (nombreTipoProducto, nombreProducto), dispositivo (nombreTipoDispositivo, numeroSerie, imei, nombreMarca, nombreModelo), SIM (imeiSim, numeroTelefonico). ' +
+      'Sin idProducto/idDispositivo/idSim ni JSON anidados.',
   })
   @ApiParam({
     name: 'id',

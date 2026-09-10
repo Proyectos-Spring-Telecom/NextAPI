@@ -93,7 +93,7 @@ export class UltimaPosicion {
   @Column('int', { name: 'Movimiento', nullable: true })
   movimiento: number | null;
 
-  @Column('int', { name: 'Combustible', nullable: true })
+  @Column('float', { name: 'Combustible', nullable: true })
   combustible: number | null;
 
   @Column('bigint', { name: 'IdFoto1', nullable: true })

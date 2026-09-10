@@ -105,7 +105,7 @@ export function resolveJimiImei(envelope: JimiTelemetryEnvelope): string {
 /**
  * Mapea payload Jimi → Posiciones.
  * Estado/Ignicion del gateway tal cual (no forzar NULL).
- * Combustible litros float → int redondeado (columna MySQL int).
+ * Combustible: litros float (columna MySQL float).
  */
 export function mapJimiToPosicion(
   imei: string,
@@ -133,7 +133,7 @@ export function mapJimiToPosicion(
     movimiento: aco.Movimiento,
     combustible:
       aco.Combustible != null && Number.isFinite(Number(aco.Combustible))
-        ? Math.round(Number(aco.Combustible))
+        ? Number(aco.Combustible)
         : null,
     idFoto1: null,
     idFoto2: null,
