@@ -8,6 +8,7 @@ import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { UltimoEventoAlarma } from 'src/entities/UltimoEventoAlarma';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
+import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 
 /**
  * GPS: Instalación → Dispositivo → UltimaPosicion.
@@ -19,6 +20,7 @@ export function applyMonitoreoListJoins(
   qb.innerJoin('i.idCliente2', 'c')
     .innerJoin('i.idProducto2', 'p')
     .leftJoin('i.idDispositivo2', 'd')
+    .leftJoin(CatTipoDispositivo, 'td', 'td.id = d.idTipoDispositivo')
     .leftJoin('d.idMarca2', 'marDisp')
     .leftJoin('d.idModelo2', 'modDisp')
     .leftJoin('d.ultimaPosicion', 'up')
@@ -71,6 +73,9 @@ export function applyMonitoreoListSelect(
     'CAST(d.imei AS CHAR) AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
     'd.numeroSerie AS numeroSerieDispositivo',
+    'd.idTipoDispositivo AS idTipoDispositivo',
+    'td.codigo AS codigoTipoDispositivo',
+    'td.nombre AS nombreTipoDispositivo',
     'marDisp.nombre AS marcaDispositivo',
     'modDisp.nombre AS modeloDispositivo',
 

@@ -204,10 +204,11 @@ export enum EnumTipoProducto {
 }
 
 /**
- * Valores relevantes de CatTipoDispositivo.Id para el paginado.
+ * Valores relevantes de CatTipoDispositivo.Id.
  * 1, 3, 4 → solo campos de Dispositivos.
  * 2 → Dispositivos + PanelAlarma.
- * TRACKCAM (por codigo, no por Id fijo) → Dispositivos + TrackcamConfig.
+ * 5 TRACKCAM → Dispositivos + TrackcamConfig.
+ * 6 TRACKGAS → Dispositivos (telemetría Jimi / VL802).
  */
 export enum EnumTipoDispositivo {
   /** Rastreador GPS */
@@ -219,12 +220,15 @@ export enum EnumTipoDispositivo {
   TELEFONO = 4,
   /** Trackcam / dashcam GPS */
   TRACKCAM = 5,
+  /** TrackGas / sensor gasolina (Concox VL802, springTrackGas) */
+  TRACKGAS = 6,
 }
 
 /** Tipos que aplican estados 4/5/6 (tiempo detenido) en ingest. */
 export const TIPOS_DISPOSITIVO_TIEMPO_DETENIDO: readonly number[] = [
   EnumTipoDispositivo.AVL,
   EnumTipoDispositivo.TRACKCAM,
+  EnumTipoDispositivo.TRACKGAS,
 ] as const;
 
 /**
@@ -236,6 +240,7 @@ export const TIPOS_DISPOSITIVO_GEOCERCA: readonly number[] = [
   EnumTipoDispositivo.AVL,
   EnumTipoDispositivo.TELEFONO,
   EnumTipoDispositivo.TRACKCAM,
+  EnumTipoDispositivo.TRACKGAS,
 ] as const;
 
 /** Valores de CatProductos.Id (categoría de marcas) */

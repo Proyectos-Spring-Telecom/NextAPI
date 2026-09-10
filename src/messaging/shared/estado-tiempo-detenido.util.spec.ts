@@ -8,7 +8,7 @@ import {
 
 describe('estado-tiempo-detenido.util', () => {
   describe('debeAplicarTiempoDetenido', () => {
-    it('aplica solo AVL/TRACKCAM con estado 0 y velocidad 0', () => {
+    it('aplica AVL/TRACKCAM/TRACKGAS con estado 0 y velocidad 0', () => {
       expect(
         debeAplicarTiempoDetenido({
           idTipoDispositivo: EnumTipoDispositivo.AVL,
@@ -19,6 +19,13 @@ describe('estado-tiempo-detenido.util', () => {
       expect(
         debeAplicarTiempoDetenido({
           idTipoDispositivo: EnumTipoDispositivo.TRACKCAM,
+          estado: 0,
+          velocidad: 0,
+        }),
+      ).toBe(true);
+      expect(
+        debeAplicarTiempoDetenido({
+          idTipoDispositivo: EnumTipoDispositivo.TRACKGAS,
           estado: 0,
           velocidad: 0,
         }),

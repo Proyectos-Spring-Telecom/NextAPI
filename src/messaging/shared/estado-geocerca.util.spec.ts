@@ -21,12 +21,13 @@ const POLIGONO_CDMX = {
 
 describe('estado-geocerca.util', () => {
   describe('debeEvaluarGeocerca', () => {
-    it('permite RASTREADOR/AVL/TELEFONO/TRACKCAM con instalación y coords', () => {
+    it('permite RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS con instalación y coords', () => {
       for (const tipo of [
         EnumTipoDispositivo.RASTREADOR,
         EnumTipoDispositivo.AVL,
         EnumTipoDispositivo.TELEFONO,
         EnumTipoDispositivo.TRACKCAM,
+        EnumTipoDispositivo.TRACKGAS,
       ]) {
         expect(
           debeEvaluarGeocerca({

@@ -30,6 +30,7 @@ Contexto del producto + campos de `UltimaPosicion` (null si no hay fila):
 | Campo | Origen |
 |-------|--------|
 | `idInstalacion`, `idCliente`, `idTipoProducto` | Instalación / producto |
+| `idTipoDispositivo`, `codigoTipoDispositivo`, `nombreTipoDispositivo` | `CatTipoDispositivo` (plano; p. ej. TRACKGAS) |
 | `cliente`, `placa` / `descripcion` / `persona`, `economico`, `marca`, `modelo`, … | Contexto por tipo |
 | `imei`, `lat`, `lng`, `estado`, `fechaHora`, `velocidad`, `direccion`, `odometro`, `ignicion`, `alarma1`, `alarma2`, `energia`, `idEvento`, `idFoto`, `fhRegistro`, `bateria`, `alimentacion`, `gps`, `gsm`, `movimiento`, `combustible`, `nivelCombustible` | `UltimaPosicion` |
 | `id` | `UltimaPosicion.Id` |
