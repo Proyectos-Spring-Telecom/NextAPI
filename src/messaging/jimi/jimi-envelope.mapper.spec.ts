@@ -46,6 +46,20 @@ function basePayload(overrides: Record<string, unknown> = {}) {
 }
 
 describe('jimi-envelope.mapper', () => {
+  it('FechaHora de pared 11:47 no se desplaza a 17:47 (bug DB_TZ UTC)', () => {
+    const pos = mapJimiToPosicion(
+      imeiConcox,
+      basePayload({ FechaHora: '2026-09-10 11:47:10' }) as never,
+    );
+    const fh = pos.fechaHora as Date;
+    expect(fh.getUTCFullYear()).toBe(2026);
+    expect(fh.getUTCMonth()).toBe(8);
+    expect(fh.getUTCDate()).toBe(10);
+    expect(fh.getUTCHours()).toBe(11);
+    expect(fh.getUTCMinutes()).toBe(47);
+    expect(fh.getUTCSeconds()).toBe(10);
+  });
+
   it('Imei string en payload → resolveJimiImei + fila Posiciones con ese Imei', () => {
     const envelope = assertJimiEnvelope({
       eventId,
@@ -63,6 +77,9 @@ describe('jimi-envelope.mapper', () => {
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
     expect(pos.combustible).toBe(11);
+    // Hora de pared en componentes UTC (DB_TZ UTC no debe sumar +6h)
+    expect((pos.fechaHora as Date).getUTCHours()).toBe(18);
+    expect((pos.fechaHora as Date).getUTCMinutes()).toBe(37);
   });
 
   it('legacy Imei null + deviceId → resuelve por deviceId', () => {

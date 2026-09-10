@@ -234,3 +234,4 @@ Plantilla: `.env.example`.
 - Respuestas de monitoreo list/histórico: **sin** wrapper `data` (`{ posicion: [...] }`, `{ totalDistancia, posiciones }`).
 - Campos en **camelCase**; sin JSON anidados de telemetría en listado/socket (objeto plano).
 - Fechas de `Posiciones.FechaHora` en histórico: hora de pared (sin forzar UTC en query params).
+- Ingest AMQP: `parseFechaHoraPared` (Date.UTC) para no sumar +6h con `TZ=America/Mexico_City` + `DB_TZ` UTC.
