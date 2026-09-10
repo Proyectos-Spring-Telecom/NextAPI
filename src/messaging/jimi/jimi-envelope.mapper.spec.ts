@@ -76,7 +76,7 @@ describe('jimi-envelope.mapper', () => {
     expect(pos.imei).toBe(imeiConcox);
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
-    expect(pos.combustible).toBe(11);
+    expect(pos.combustible).toBe(10.7);
     // Hora de pared en componentes UTC (DB_TZ UTC no debe sumar +6h)
     expect((pos.fechaHora as Date).getUTCHours()).toBe(18);
     expect((pos.fechaHora as Date).getUTCMinutes()).toBe(37);
@@ -100,7 +100,7 @@ describe('jimi-envelope.mapper', () => {
     const pos = mapJimiToPosicion(resolveJimiImei(envelope), envelope.payload);
     expect(pos.imei).toBe(imeiConcox);
     expect(pos.estado).toBe(0);
-    expect(pos.combustible).toBe(11);
+    expect(pos.combustible).toBe(10.7);
   });
 
   it('parsea position detenido + Combustible y conserva Estado del gateway', () => {
@@ -126,7 +126,7 @@ describe('jimi-envelope.mapper', () => {
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
     expect(pos.idEvento).toBe(EnumCatEventos.GEOCERCA);
-    expect(pos.combustible).toBe(11);
+    expect(pos.combustible).toBe(10.7);
     expect(pos.lat).toBeCloseTo(18.953311111111113);
 
     const audit = extractJimiAudit(envelope.payload, 'position') as {

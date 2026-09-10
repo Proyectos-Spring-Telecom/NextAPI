@@ -28,7 +28,7 @@ export interface JimiAcometidasPayload {
   GPS: number | null;
   GSM: number | null;
   Movimiento: number | null;
-  /** Litros (float). Columna Posiciones.Combustible es int → se redondea al persistir. */
+  /** Litros (float). Columna Posiciones.Combustible es float. */
   Combustible: number | null;
   Foto1: string | null;
   Foto2: string | null;

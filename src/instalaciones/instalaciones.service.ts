@@ -40,9 +40,10 @@ import {
   ESTATUS_PRODUCTO_DISPOSITIVO_PATCH,
 } from 'src/common/estatus.enum';
 import {
-  mapHistoricoPlano,
+  mapHistoricoDetallePlano,
+  mapInstalacionHistoricoVigente,
   mapInstalacionPlana,
-  RELACIONES_INSTALACION_HISTORICO,
+  RELACIONES_INSTALACION_HISTORICO_DETALLE,
 } from './map-instalaciones.util';
 import {
   applyPaginadoBaseJoins,
@@ -860,7 +861,7 @@ export class InstalacionesService {
       };
       const vigente = await this.repository.findOne({
         where: whereInst,
-        relations: [...RELACIONES_INSTALACION_HISTORICO],
+        relations: [...RELACIONES_INSTALACION_HISTORICO_DETALLE],
       });
 
       const cadena: HistoricoInstalaciones[] = [];
@@ -893,7 +894,7 @@ export class InstalacionesService {
               ? { idCliente: tenant.idCliente as number }
               : {}),
           },
-          relations: [...RELACIONES_INSTALACION_HISTORICO],
+          relations: [...RELACIONES_INSTALACION_HISTORICO_DETALLE],
         });
         if (!hist) break;
         cadena.push(hist);
@@ -909,8 +910,8 @@ export class InstalacionesService {
 
       return {
         data: {
-          vigente: vigente ? mapInstalacionPlana(vigente) : null,
-          historico: cadena.map((h) => mapHistoricoPlano(h)),
+          vigente: vigente ? mapInstalacionHistoricoVigente(vigente) : null,
+          historico: cadena.map((h) => mapHistoricoDetallePlano(h)),
         },
       };
     } catch (error) {
