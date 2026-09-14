@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -44,6 +45,15 @@ export class UpdateDispositivosDto {
   @IsString()
   @MaxLength(50)
   eco?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Indica si el dispositivo tiene cámara (0/1)',
+    enum: [0, 1],
+  })
+  @IsOptional()
+  @IsInt()
+  @IsIn([0, 1])
+  camara?: number;
 
   @ApiPropertyOptional({ description: 'ID de marca (CatMarcas)' })
   @IsOptional()

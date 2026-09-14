@@ -69,6 +69,7 @@ export function applyDetalleSelectBase(
     'd.numeroSerie AS numeroSerieDispositivo',
     'CAST(d.imei AS CHAR) AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
+    'd.camara AS camara',
     'd.idTipoDispositivo AS idTipoDispositivo',
     'td.nombre AS nombreTipoDispositivo',
     'td.codigo AS codigoTipoDispositivo',
@@ -84,8 +85,6 @@ export function applyDetalleSelectBase(
     'tcam.canal1Activo AS canal1Activo',
     'tcam.canal2Activo AS canal2Activo',
     'tcam.canal3Activo AS canal3Activo',
-    'tcam.canal4Activo AS canal4Activo',
-    'tcam.canal5Activo AS canal5Activo',
 
     // panel (sin aesKey)
     'pa.cuentaSia AS cuentaSiaPanel',
@@ -233,6 +232,7 @@ function mapBloqueDispositivo(row: Record<string, unknown>) {
     numeroSerieDispositivo: str(row.numeroSerieDispositivo),
     imeiDispositivo: str(row.imeiDispositivo),
     ecoDispositivo: str(row.ecoDispositivo),
+    camara: num(row.camara),
     idTipoDispositivo,
     nombreTipoDispositivo: str(row.nombreTipoDispositivo),
     codigoTipoDispositivo: str(row.codigoTipoDispositivo),
@@ -246,8 +246,6 @@ function mapBloqueDispositivo(row: Record<string, unknown>) {
     canal1Activo: num(row.canal1Activo),
     canal2Activo: num(row.canal2Activo),
     canal3Activo: num(row.canal3Activo),
-    canal4Activo: num(row.canal4Activo),
-    canal5Activo: num(row.canal5Activo),
   };
 
   const incluirPanel =

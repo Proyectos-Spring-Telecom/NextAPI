@@ -69,6 +69,7 @@ export class TrackcamService {
         numeroSerie: dto.numeroSerie,
         imei: dto.imei ?? null,
         eco: dto.eco ?? null,
+        camara: dto.camara ?? 0,
         idMarca: dto.idMarca ?? null,
         idModelo: dto.idModelo ?? null,
       });
@@ -240,6 +241,7 @@ export class TrackcamService {
         dto.numeroSerie !== undefined ||
         dto.imei !== undefined ||
         dto.eco !== undefined ||
+        dto.camara !== undefined ||
         dto.idMarca !== undefined ||
         dto.idModelo !== undefined;
 
@@ -279,6 +281,7 @@ export class TrackcamService {
           dispositivo.numeroSerie = dto.numeroSerie;
         if (dto.imei !== undefined) dispositivo.imei = dto.imei;
         if (dto.eco !== undefined) dispositivo.eco = dto.eco;
+        if (dto.camara !== undefined) dispositivo.camara = dto.camara;
         if (dto.idMarca !== undefined) dispositivo.idMarca = dto.idMarca;
         if (dto.idModelo !== undefined) dispositivo.idModelo = dto.idModelo;
         await this.dispositivosRepo.save(dispositivo);

@@ -125,6 +125,7 @@ export class DispositivosService {
         numeroSerie: dto.numeroSerie,
         imei: dto.imei ?? null,
         eco: dto.eco ?? null,
+        camara: dto.camara ?? 0,
         idMarca: dto.idMarca ?? null,
         idModelo: dto.idModelo ?? null,
       });
@@ -309,6 +310,7 @@ export class DispositivosService {
       if (dto.numeroSerie !== undefined) entity.numeroSerie = dto.numeroSerie;
       if (dto.imei !== undefined) entity.imei = dto.imei;
       if (dto.eco !== undefined) entity.eco = dto.eco;
+      if (dto.camara !== undefined) entity.camara = dto.camara;
       if (dto.idMarca !== undefined) entity.idMarca = dto.idMarca;
       if (dto.idModelo !== undefined) entity.idModelo = dto.idModelo;
       await this.repository.save(entity);
