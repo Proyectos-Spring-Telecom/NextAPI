@@ -13,6 +13,15 @@ export type AccessTokenPayload = {
   face?: number;
 };
 
+/** JWT del correo de recuperación — solo válido en cambio de contraseña. */
+export type PasswordResetTokenPayload = {
+  id: number;
+  email: string;
+  idCliente: number | null;
+  rol: number | null;
+  type: 'password_reset';
+};
+
 export type RefreshTokenPayload = {
   id: number;
   type: 'refresh';
@@ -82,6 +91,25 @@ export class AuthTokensService {
     faceClaim?: number,
   ): string {
     return this.jwtService.sign(this.buildAccessPayload(user, faceClaim));
+  }
+
+  /**
+   * Token de recuperación de contraseña (correo).
+   * `type: password_reset` — no abre el resto de la API (solo rutas con guard dedicado).
+   */
+  signPasswordResetToken(
+    user: Pick<Usuarios, 'id' | 'userName' | 'idCliente' | 'idRol'>,
+  ): string {
+    const payload: PasswordResetTokenPayload = {
+      id: Number(user.id),
+      email: user.userName,
+      idCliente: user.idCliente != null ? Number(user.idCliente) : null,
+      rol: user.idRol != null ? Number(user.idRol) : null,
+      type: 'password_reset',
+    };
+    return this.jwtService.sign(payload, {
+      expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
+    });
   }
 
   signRefreshToken(userId: number): SignedRefreshToken {

@@ -721,10 +721,7 @@ export class AuthService {
         user.id,
         TipoCodigoAutenticacion.RECUPERACION_CONTRASENA,
       );
-      const payload = { id: user.id, email: user.userName };
-      const token = this.jwtService.sign(payload, {
-        expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
-      });
+      const token = this.authTokensService.signPasswordResetToken(user);
       const name =
         `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendResetPasswordEmail(

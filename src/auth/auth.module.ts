@@ -11,6 +11,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
 import { JwtStrategy } from './jwt.strategy';
+import { JwtPasswordChangeStrategy } from './jwt-password-change.strategy';
 import { MailModule } from 'src/mail/mail.module';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
@@ -49,6 +50,7 @@ import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
     AuthRecuperarAccesoService,
     AuthTokensService,
     JwtStrategy,
+    JwtPasswordChangeStrategy,
     BehaviorIqAuthService,
   ],
   exports: [JwtModule, AuthService, AuthTokensService],
