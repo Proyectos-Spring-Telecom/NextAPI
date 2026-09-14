@@ -17,6 +17,7 @@ import { LoginAuthPinDto } from './dto/login-pin.dto';
 import { LoginAuthConfirmacionDto } from './dto/login-confirmacion.dto';
 import { LoginAuthResetDto } from './dto/login-recuperacion.dto';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
+import { JwtPasswordChangeGuard } from 'src/guard/jwt-password-change.guard';
 import { CodigoPasajeroAutenticacion } from './dto/login-autenticacion.dto';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -110,11 +111,12 @@ export class AuthController {
   }
 
   @Post('cambiar/accesso')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtPasswordChangeGuard)
   @ApiOperation({
-    summary: 'Cambiar contraseña (usuario autenticado)',
+    summary: 'Cambiar contraseña (usuario autenticado o recuperación)',
     description:
       'Actualiza la contraseña del usuario del JWT. Body: `passwordNueva` y `passwordConfirmacion`. ' +
+      'Acepta Bearer de login (`type: access`) o del correo de recuperación (`type: password_reset`). ' +
       'Revoca refresh sessions activas.',
   })
   @ApiBody({ type: LoginAuthResetDto })

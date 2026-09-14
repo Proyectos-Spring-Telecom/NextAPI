@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { JwtService } from '@nestjs/jwt';
 import { Usuarios } from 'src/entities/Usuarios';
 import { CodigoAutenticacion } from 'src/entities/CodigoAutenticacion';
 import { MailService } from 'src/mail/mail.service';
@@ -11,7 +10,7 @@ import {
   TipoCodigoAutenticacion,
 } from 'src/common/estatus.enum';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
-import { toJwtExpiresIn } from 'src/common/jwt-expires.util';
+import { AuthTokensService } from './auth-tokens.service';
 
 /**
  * Recuperación de contraseña para Next: POST login/usuario/recuperar/acceso.
@@ -27,7 +26,7 @@ export class AuthRecuperarAccesoService {
     private readonly usuariosRepository: Repository<Usuarios>,
     @InjectRepository(CodigoAutenticacion)
     private readonly codigoAutenticacioRepository: Repository<CodigoAutenticacion>,
-    private readonly jwtService: JwtService,
+    private readonly authTokensService: AuthTokensService,
     private readonly emailService: MailService,
   ) {}
 
@@ -74,10 +73,7 @@ export class AuthRecuperarAccesoService {
         user.id,
         TipoCodigoAutenticacion.RECUPERACION_CONTRASENA,
       );
-      const payload = { id: user.id, email: user.userName };
-      const token = this.jwtService.sign(payload, {
-        expiresIn: toJwtExpiresIn(process.env.JWT_CONFIRMACION, '15m'),
-      });
+      const token = this.authTokensService.signPasswordResetToken(user);
       const name =
         `${user.nombre ?? ''} ${user.apellidoPaterno ?? ''} ${user.apellidoMaterno ?? ''}`.trim();
       await this.emailService.sendResetPasswordEmailNext(
