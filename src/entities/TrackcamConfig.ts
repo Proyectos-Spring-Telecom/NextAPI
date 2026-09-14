@@ -57,12 +57,6 @@ export class TrackcamConfig {
   @Column('tinyint', { name: 'Canal3Activo', default: () => "'0'" })
   canal3Activo: number;
 
-  @Column('tinyint', { name: 'Canal4Activo', default: () => "'0'" })
-  canal4Activo: number;
-
-  @Column('tinyint', { name: 'Canal5Activo', default: () => "'0'" })
-  canal5Activo: number;
-
   @Column('tinyint', { name: 'AlarmaFatiga', default: () => "'0'" })
   alarmaFatiga: number;
 

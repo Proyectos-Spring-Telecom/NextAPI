@@ -108,6 +108,7 @@ export async function crearDispositivoBase(
     numeroSerie: string;
     imei?: string | null;
     eco?: string | null;
+    camara?: number;
     idMarca?: number | null;
     idModelo?: number | null;
   },
@@ -141,6 +142,7 @@ export async function crearDispositivoBase(
     numeroSerie: params.numeroSerie,
     imei: params.imei ?? null,
     eco: params.eco ?? null,
+    camara: params.camara != null ? Number(params.camara) : 0,
     idMarca: params.idMarca ?? null,
     idModelo: params.idModelo ?? null,
     estatus: EstatusEnum.ACTIVO,

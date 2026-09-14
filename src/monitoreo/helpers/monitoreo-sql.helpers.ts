@@ -79,6 +79,7 @@ export function applyMonitoreoListSelect(
     'CAST(d.imei AS CHAR) AS imeiDispositivo',
     'd.eco AS ecoDispositivo',
     'd.numeroSerie AS numeroSerieDispositivo',
+    'd.camara AS camara',
     'd.idTipoDispositivo AS idTipoDispositivo',
     'td.codigo AS codigoTipoDispositivo',
     'td.nombre AS nombreTipoDispositivo',
@@ -88,8 +89,6 @@ export function applyMonitoreoListSelect(
     'tc.canal1Activo AS canal1Activo',
     'tc.canal2Activo AS canal2Activo',
     'tc.canal3Activo AS canal3Activo',
-    'tc.canal4Activo AS canal4Activo',
-    'tc.canal5Activo AS canal5Activo',
 
     'p.estatus AS estatusProducto',
     'pa.estatus AS estatusPanel',

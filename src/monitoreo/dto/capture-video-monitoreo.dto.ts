@@ -19,15 +19,15 @@ export class CaptureVideoMonitoreoDto {
 
   @ApiPropertyOptional({
     description:
-      'Canal 1–5. Si se omite, el gateway captura en paralelo todos los canales activos (máx. 3).',
+      'Canal 1–3. Si se omite, el gateway captura en paralelo todos los canales activos (máx. 3).',
     minimum: 1,
-    maximum: 5,
+    maximum: 3,
     example: 1,
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(5)
+  @Max(3)
   channelId?: number;
 }

@@ -60,6 +60,12 @@ export class Dispositivos {
   })
   eco: string | null;
 
+  @Column('tinyint', {
+    name: 'Camara',
+    default: () => "'0'",
+  })
+  camara: number;
+
   @Column('bigint', { name: 'IdMarca', nullable: true })
   idMarca: number | null;
 

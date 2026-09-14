@@ -59,18 +59,6 @@ export class TrackcamConfigDto {
   @IsOptional()
   @IsInt()
   @IsIn(FLAG)
-  canal4Activo?: number;
-
-  @ApiPropertyOptional({ enum: FLAG, default: 0 })
-  @IsOptional()
-  @IsInt()
-  @IsIn(FLAG)
-  canal5Activo?: number;
-
-  @ApiPropertyOptional({ enum: FLAG, default: 0 })
-  @IsOptional()
-  @IsInt()
-  @IsIn(FLAG)
   alarmaFatiga?: number;
 
   @ApiPropertyOptional({ description: 'Nivel DSM 1-10. Mayor = más severo' })
