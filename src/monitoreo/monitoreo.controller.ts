@@ -45,6 +45,7 @@ export class MonitoreoController {
     summary: 'Listado de instalaciones con última posición GPS',
     description: [
       'Devuelve instalaciones activas (listado y socket, mismo shape plano en camelCase).',
+      'Incluye canales TrackcamConfig: canal1Activo…canal5Activo (null si no aplica).',
       'No requiere `idCliente` en la ruta; el alcance se resuelve por rol del token.',
       '',
       '**SA, Dev, Admin, JefeMonitoreo, Monitoreo, Técnico (1–5, 8):** todas las instalaciones activas.',
