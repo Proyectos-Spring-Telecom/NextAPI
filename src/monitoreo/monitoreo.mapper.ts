@@ -95,6 +95,12 @@ type MonitoreoBase = {
   idTipoDispositivo: number | null;
   codigoTipoDispositivo: string | null;
   nombreTipoDispositivo: string | null;
+  /** TrackcamConfig — canales activos (null si no hay config / no TRACKCAM). */
+  canal1Activo: number | null;
+  canal2Activo: number | null;
+  canal3Activo: number | null;
+  canal4Activo: number | null;
+  canal5Activo: number | null;
 };
 
 export type MonitoreoVehiculoItem = MonitoreoBase &
@@ -160,6 +166,11 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
     idTipoDispositivo: num(row.idTipoDispositivo),
     codigoTipoDispositivo: str(row.codigoTipoDispositivo),
     nombreTipoDispositivo: str(row.nombreTipoDispositivo),
+    canal1Activo: num(row.canal1Activo),
+    canal2Activo: num(row.canal2Activo),
+    canal3Activo: num(row.canal3Activo),
+    canal4Activo: num(row.canal4Activo),
+    canal5Activo: num(row.canal5Activo),
   };
 }
 

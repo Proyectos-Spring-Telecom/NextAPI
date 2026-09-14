@@ -1,6 +1,7 @@
 import { SelectQueryBuilder } from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
+import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import {
   EnumTipoDispositivo,
   EnumTipoProducto,
@@ -20,7 +21,11 @@ function str(value: unknown): string | null {
 /** Joins base del paginado + plan de telefonía para detalle. */
 export function applyDetalleJoins(qb: SelectQueryBuilder<Instalaciones>): void {
   applyPaginadoBaseJoins(qb);
-  qb.leftJoin(CatPlanesTelefonia, 'plan', 'plan.id = s.idPlanTelefonia');
+  qb.leftJoin(
+    TrackcamConfig,
+    'tcam',
+    'tcam.idDispositivo = d.id AND tcam.idCliente = d.idCliente',
+  ).leftJoin(CatPlanesTelefonia, 'plan', 'plan.id = s.idPlanTelefonia');
 }
 
 /**
@@ -74,6 +79,13 @@ export function applyDetalleSelectBase(
     'd.estatus AS estatusDispositivo',
     'd.fechaCreacion AS fechaCreacionDispositivo',
     'd.fechaActualizacion AS fechaActualizacionDispositivo',
+
+    // TrackcamConfig (canales; null si no aplica)
+    'tcam.canal1Activo AS canal1Activo',
+    'tcam.canal2Activo AS canal2Activo',
+    'tcam.canal3Activo AS canal3Activo',
+    'tcam.canal4Activo AS canal4Activo',
+    'tcam.canal5Activo AS canal5Activo',
 
     // panel (sin aesKey)
     'pa.cuentaSia AS cuentaSiaPanel',
@@ -231,6 +243,11 @@ function mapBloqueDispositivo(row: Record<string, unknown>) {
     estatusDispositivo: num(row.estatusDispositivo),
     fechaCreacionDispositivo: row.fechaCreacionDispositivo ?? null,
     fechaActualizacionDispositivo: row.fechaActualizacionDispositivo ?? null,
+    canal1Activo: num(row.canal1Activo),
+    canal2Activo: num(row.canal2Activo),
+    canal3Activo: num(row.canal3Activo),
+    canal4Activo: num(row.canal4Activo),
+    canal5Activo: num(row.canal5Activo),
   };
 
   const incluirPanel =

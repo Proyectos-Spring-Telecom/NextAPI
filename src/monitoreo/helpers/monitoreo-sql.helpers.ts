@@ -9,6 +9,7 @@ import { UltimoEventoAlarma } from 'src/entities/UltimoEventoAlarma';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
+import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 
 /**
  * GPS: Instalación → Dispositivo → UltimaPosicion.
@@ -24,6 +25,11 @@ export function applyMonitoreoListJoins(
     .leftJoin('d.idMarca2', 'marDisp')
     .leftJoin('d.idModelo2', 'modDisp')
     .leftJoin('d.ultimaPosicion', 'up')
+    .leftJoin(
+      TrackcamConfig,
+      'tc',
+      'tc.idDispositivo = d.id AND tc.idCliente = d.idCliente',
+    )
     .leftJoin(
       PanelAlarma,
       'pa',
@@ -78,6 +84,12 @@ export function applyMonitoreoListSelect(
     'td.nombre AS nombreTipoDispositivo',
     'marDisp.nombre AS marcaDispositivo',
     'modDisp.nombre AS modeloDispositivo',
+
+    'tc.canal1Activo AS canal1Activo',
+    'tc.canal2Activo AS canal2Activo',
+    'tc.canal3Activo AS canal3Activo',
+    'tc.canal4Activo AS canal4Activo',
+    'tc.canal5Activo AS canal5Activo',
 
     'p.estatus AS estatusProducto',
     'pa.estatus AS estatusPanel',
