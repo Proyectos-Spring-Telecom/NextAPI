@@ -35,6 +35,12 @@ export class PuntosInteres {
   @Column('double', { name: 'Lat' })
   lat: number;
 
+  @Column('double', {
+    name: 'RadioMetros',
+    default: () => "'25'",
+  })
+  radioMetros: number;
+
   @Column('varchar', {
     name: 'Icono',
     length: 500,

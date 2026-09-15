@@ -23,6 +23,7 @@ import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { PuntosInteresModule } from './puntos-interes/puntos-interes.module';
 import { GeocercasModule } from './geocercas/geocercas.module';
 import { NumerosEmergenciaModule } from './numeros-emergencia/numeros-emergencia.module';
+import { ReportesModule } from './reportes/reportes.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
@@ -222,6 +223,8 @@ import * as jwt from 'jsonwebtoken';
     GeocercasModule,
 
     NumerosEmergenciaModule,
+
+    ReportesModule,
 
     MessagingModule,
 

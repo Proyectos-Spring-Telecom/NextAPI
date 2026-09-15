@@ -53,6 +53,20 @@ export class PuntosInteresService {
     }
   }
 
+  private async assertClienteEnAlcance(
+    idCliente: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<void> {
+    const scope = await this.tenantFilter.idsClientePermitidos(
+      rol,
+      idClienteToken,
+    );
+    if (!this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
+      throw new ForbiddenException('Cliente fuera de alcance');
+    }
+  }
+
   private async resolveIdClienteCreate(
     rol: number,
     idClienteToken: number,
@@ -155,6 +169,8 @@ export class PuntosInteresService {
         descripcion: dto.descripcion?.trim() || null,
         lng: dto.lng,
         lat: dto.lat,
+        radioMetros:
+          dto.radioMetros != null ? Number(dto.radioMetros) : 25,
         icono: dto.icono?.trim() || null,
         estatus: EstatusEnum.ACTIVO,
       });
@@ -227,6 +243,31 @@ export class PuntosInteresService {
 
       const data = await this.repository.find({
         where,
+        relations: [...RELACIONES_PUNTO_INTERES],
+        order: { id: 'ASC' },
+      });
+
+      return { data: data.map((item) => mapPuntoInteresPlano(item)) };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  async findByIdCliente(
+    idCliente: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ApiResponseCommon> {
+    try {
+      await this.assertClienteExiste(idCliente);
+      await this.assertClienteEnAlcance(idCliente, idClienteToken, rol);
+
+      const data = await this.repository.find({
+        where: {
+          idCliente,
+          estatus: EstatusEnum.ACTIVO,
+        },
         relations: [...RELACIONES_PUNTO_INTERES],
         order: { id: 'ASC' },
       });
@@ -322,6 +363,9 @@ export class PuntosInteresService {
       }
       if (dto.lat !== undefined) {
         entity.lat = dto.lat;
+      }
+      if (dto.radioMetros !== undefined) {
+        entity.radioMetros = Number(dto.radioMetros);
       }
       if (dto.icono !== undefined) {
         entity.icono = dto.icono?.trim() || null;

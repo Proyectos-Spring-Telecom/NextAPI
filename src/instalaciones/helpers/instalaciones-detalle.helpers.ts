@@ -85,6 +85,7 @@ export function applyDetalleSelectBase(
     'tcam.canal1Activo AS canal1Activo',
     'tcam.canal2Activo AS canal2Activo',
     'tcam.canal3Activo AS canal3Activo',
+    'tcam.canal4Activo AS canal4Activo',
 
     // panel (sin aesKey)
     'pa.cuentaSia AS cuentaSiaPanel',
@@ -246,6 +247,7 @@ function mapBloqueDispositivo(row: Record<string, unknown>) {
     canal1Activo: num(row.canal1Activo),
     canal2Activo: num(row.canal2Activo),
     canal3Activo: num(row.canal3Activo),
+    canal4Activo: num(row.canal4Activo),
   };
 
   const incluirPanel =

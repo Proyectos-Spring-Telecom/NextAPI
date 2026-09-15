@@ -59,6 +59,18 @@ export class CreatePuntoInteresDto {
   lat!: number;
 
   @ApiPropertyOptional({
+    description: 'Radio del punto en metros (geocerca circular)',
+    default: 25,
+    example: 25,
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  radioMetros?: number;
+
+  @ApiPropertyOptional({
     description: 'URL o clave del icono en mapa',
     maxLength: 500,
     example: 'https://cdn.example.com/icons/poi-base.png',

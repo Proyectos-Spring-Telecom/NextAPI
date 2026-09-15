@@ -41,6 +41,7 @@ const ITEM_EXAMPLE = {
   descripcion: 'Punto de control acceso norte',
   lng: -99.133209,
   lat: 19.432608,
+  radioMetros: 25,
   icono: 'https://cdn.example.com/icons/poi-base.png',
   estatus: EstatusEnum.ACTIVO,
   fechaCreacion: '2026-09-04T18:00:00.000Z',
@@ -109,6 +110,31 @@ export class PuntosInteresController {
       Number(req.user.idCliente),
       Number(req.user.rol),
       Number.isFinite(filtro as number) ? filtro : undefined,
+    );
+  }
+
+  @Get('cliente/:idCliente')
+  @ApiOperation({
+    summary: 'Puntos de interés por idCliente',
+    description:
+      'Lista activa (`estatus = 1`) del cliente indicado. El `idCliente` debe estar en el alcance del rol.',
+  })
+  @ApiParam({ name: 'idCliente', type: Number })
+  @ApiOkResponse({
+    description: 'Lista por cliente',
+    schema: { example: { data: [ITEM_EXAMPLE] } },
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiBadRequestResponse({ description: 'idCliente inválido / no existe' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async findByIdCliente(
+    @Param('idCliente', ParseIntPipe) idCliente: number,
+    @Request() req,
+  ): Promise<ApiResponseCommon> {
+    return this.service.findByIdCliente(
+      idCliente,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
     );
   }
 
