@@ -12,6 +12,7 @@ export function mapPuntoInteresPlano(item: PuntosInteres) {
     descripcion: item.descripcion,
     lng: item.lng != null ? Number(item.lng) : null,
     lat: item.lat != null ? Number(item.lat) : null,
+    radioMetros: item.radioMetros != null ? Number(item.radioMetros) : 25,
     icono: item.icono,
     estatus: Number(item.estatus),
     fechaCreacion: item.fechaCreacion,

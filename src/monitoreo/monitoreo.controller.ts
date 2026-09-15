@@ -45,7 +45,7 @@ export class MonitoreoController {
     summary: 'Listado de instalaciones con última posición GPS',
     description: [
       'Devuelve instalaciones activas (listado y socket, mismo shape plano en camelCase).',
-      'Incluye canales TrackcamConfig: canal1Activo…canal3Activo (null si no aplica).',
+      'Incluye canales TrackcamConfig: canal1Activo…canal4Activo (null si no aplica).',
       'No requiere `idCliente` en la ruta; el alcance se resuelve por rol del token.',
       '',
       '**SA, Dev, Admin, JefeMonitoreo, Monitoreo, Técnico (1–5, 8):** todas las instalaciones activas.',
@@ -116,8 +116,8 @@ export class MonitoreoController {
     description: [
       'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/photo/start`.',
       'Reenvía al gateway el mismo JWT Bearer del usuario autenticado (Authorize / header de la petición; no se pide otro token).',
-      'Body opcional: `{ "channelId": 1 }` (1–3).',
-      'Sin `channelId` → todos los canales activos del registry (máx. 3).',
+      'Body opcional: `{ "channelId": 1 }` (1–4).',
+      'Sin `channelId` → todos los canales activos del registry (máx. 4).',
       'Timeout ≥ 90 s. Persistencia vía AMQP `jt808.position` (no duplica INSERT).',
     ].join('\n'),
   })
@@ -145,7 +145,7 @@ export class MonitoreoController {
     description: [
       'Resuelve la instalación → dispositivo TRACKCAM y llama `POST /gateway/video/capture`.',
       'Reenvía al gateway el mismo JWT Bearer del usuario autenticado (Authorize / header de la petición; no se pide otro token).',
-      'Body: `{ "durationSeconds"?: 15, "channelId"?: 1 }` (`channelId` 1–3 opcional).',
+      'Body: `{ "durationSeconds"?: 15, "channelId"?: 1 }` (`channelId` 1–4 opcional).',
       'Sin `channelId` → paralelo en canales activos. Con `channelId` → un solo stream.',
       'Timeout: ~90 s (1 canal) / ~150 s (multi). Persistencia vía AMQP.',
     ].join('\n'),

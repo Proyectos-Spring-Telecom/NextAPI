@@ -99,6 +99,7 @@ type MonitoreoBase = {
   canal1Activo: number | null;
   canal2Activo: number | null;
   canal3Activo: number | null;
+  canal4Activo: number | null;
   /** Dispositivos.Camara (0/1; null si no hay dispositivo). */
   camara: number | null;
 };
@@ -169,6 +170,7 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
     canal1Activo: num(row.canal1Activo),
     canal2Activo: num(row.canal2Activo),
     canal3Activo: num(row.canal3Activo),
+    canal4Activo: num(row.canal4Activo),
     camara: num(row.camara),
   };
 }

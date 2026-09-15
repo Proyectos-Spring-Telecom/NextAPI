@@ -89,6 +89,7 @@ export function applyMonitoreoListSelect(
     'tc.canal1Activo AS canal1Activo',
     'tc.canal2Activo AS canal2Activo',
     'tc.canal3Activo AS canal3Activo',
+    'tc.canal4Activo AS canal4Activo',
 
     'p.estatus AS estatusProducto',
     'pa.estatus AS estatusPanel',

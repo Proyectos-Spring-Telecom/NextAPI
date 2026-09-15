@@ -6,6 +6,7 @@ export const TRACKCAM_CONFIG_KEYS = [
   'canal1Activo',
   'canal2Activo',
   'canal3Activo',
+  'canal4Activo',
   'alarmaFatiga',
   'umbralFatiga',
   'alarmaTelefono',
