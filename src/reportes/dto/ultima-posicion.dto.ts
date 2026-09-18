@@ -12,28 +12,22 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import {
+  FILTROS_PASO_POR_POI,
+  type FiltroPasoPorPoi,
+} from './paso-por-poi.dto';
 
 /**
- * Misma convención que histórico de monitoreo / `Posiciones.FechaHora`
+ * Misma convención que histórico de monitoreo / `UltimaPosicion.FechaHora`
  * (hora de pared, sin zona).
  */
 const FECHA_REPORTE_RE =
   /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
 
-export const FILTROS_PASO_POR_POI = [
-  'imei',
-  'numeroSerie',
-  'placa',
-  'economico',
-] as const;
-
-export type FiltroPasoPorPoi = (typeof FILTROS_PASO_POR_POI)[number];
-
-export class PasoPorPoiDto {
+export class UltimaPosicionDto {
   @ApiProperty({
     description:
-      'Cliente dueño del análisis. Debe estar en el alcance del rol del token. ' +
-      'Los POI deben pertenecer a este cliente.',
+      'Cliente dueño del análisis. Debe estar en el alcance del rol del token.',
     example: 1,
   })
   @Type(() => Number)
@@ -41,26 +35,13 @@ export class PasoPorPoiDto {
   @Min(1)
   idCliente!: number;
 
-  @ApiProperty({
-    description:
-      'IDs de puntos de interés a evaluar (1..N). Todos deben pertenecer al cliente.',
-    type: [Number],
-    example: [1, 2, 3],
-  })
-  @IsArray()
-  @ArrayMinSize(1)
-  @Type(() => Number)
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  idsPuntoInteres!: number[];
-
   @ApiPropertyOptional({
     description:
       'Cómo interpretar `valores` para resolver instalaciones. ' +
       '`imei` / `numeroSerie` → `Dispositivos`; `placa` / `economico` → `Vehiculos`. ' +
       'Si se omite → todas las instalaciones activas del cliente con dispositivo e IMEI.',
     enum: FILTROS_PASO_POR_POI,
-    example: 'placa',
+    example: 'imei',
   })
   @IsOptional()
   @IsIn([...FILTROS_PASO_POR_POI], {
@@ -71,11 +52,11 @@ export class PasoPorPoiDto {
   @ApiPropertyOptional({
     description:
       'Valores a buscar según `filtro` (1..N). Obligatorio si se envía `filtro`. ' +
-      'Sin coincidencias → respuesta vacía (0 dispositivos / posiciones).',
+      'Sin coincidencias → respuesta vacía.',
     type: [String],
-    example: ['ABC-123', 'XYZ-987'],
+    example: ['860123456789012'],
   })
-  @ValidateIf((o: PasoPorPoiDto) => o.filtro != null)
+  @ValidateIf((o: UltimaPosicionDto) => o.filtro != null)
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })
@@ -84,7 +65,8 @@ export class PasoPorPoiDto {
 
   @ApiProperty({
     description:
-      'Inicio del periodo (inclusive). Formato: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO sin zona.',
+      'Inicio del periodo (inclusive) sobre `UltimaPosicion.FechaHora`. ' +
+      'Formato: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO sin zona.',
     example: '2026-09-01 00:00:00',
   })
   @IsString()
@@ -97,7 +79,8 @@ export class PasoPorPoiDto {
 
   @ApiProperty({
     description:
-      'Fin del periodo (inclusive). Formato: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO sin zona.',
+      'Fin del periodo (inclusive) sobre `UltimaPosicion.FechaHora`. ' +
+      'Formato: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO sin zona.',
     example: '2026-09-14 23:59:59',
   })
   @IsString()
