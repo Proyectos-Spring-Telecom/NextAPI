@@ -6,12 +6,17 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
   Min,
   ValidateIf,
 } from 'class-validator';
+import {
+  FILTROS_PASO_POR_POI,
+  type FiltroPasoPorPoi,
+} from './paso-por-poi.dto';
 
 /**
  * Misma convención que histórico de monitoreo / `Posiciones.FechaHora`
@@ -20,20 +25,10 @@ import {
 const FECHA_REPORTE_RE =
   /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
 
-export const FILTROS_PASO_POR_POI = [
-  'imei',
-  'numeroSerie',
-  'placa',
-  'economico',
-] as const;
-
-export type FiltroPasoPorPoi = (typeof FILTROS_PASO_POR_POI)[number];
-
-export class PasoPorPoiDto {
+export class VelocidadDto {
   @ApiProperty({
     description:
-      'Cliente dueño del análisis. Debe estar en el alcance del rol del token. ' +
-      'Los POI deben pertenecer a este cliente.',
+      'Cliente dueño del análisis. Debe estar en el alcance del rol del token.',
     example: 1,
   })
   @Type(() => Number)
@@ -43,22 +38,19 @@ export class PasoPorPoiDto {
 
   @ApiProperty({
     description:
-      'IDs de puntos de interés a evaluar (1..N). Todos deben pertenecer al cliente.',
-    type: [Number],
-    example: [1, 2, 3],
+      'Velocidad mínima (km/h). Se incluyen posiciones con `Posiciones.Velocidad >= velocidad`.',
+    example: 80,
   })
-  @IsArray()
-  @ArrayMinSize(1)
   @Type(() => Number)
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  idsPuntoInteres!: number[];
+  @IsNumber()
+  @Min(0)
+  velocidad!: number;
 
   @ApiPropertyOptional({
     description:
-      'Cómo interpretar `valores` para resolver instalaciones. ' +
+      'Cómo interpretar `valores` para resolver instalaciones de **vehículos**. ' +
       '`imei` / `numeroSerie` → `Dispositivos`; `placa` / `economico` → `Vehiculos`. ' +
-      'Si se omite → todas las instalaciones activas del cliente con dispositivo e IMEI.',
+      'Si se omite → todas las instalaciones activas de productos vehículo del cliente.',
     enum: FILTROS_PASO_POR_POI,
     example: 'placa',
   })
@@ -71,11 +63,11 @@ export class PasoPorPoiDto {
   @ApiPropertyOptional({
     description:
       'Valores a buscar según `filtro` (1..N). Obligatorio si se envía `filtro`. ' +
-      'Sin coincidencias → respuesta vacía (0 dispositivos / posiciones).',
+      'Sin coincidencias → respuesta vacía.',
     type: [String],
     example: ['ABC-123', 'XYZ-987'],
   })
-  @ValidateIf((o: PasoPorPoiDto) => o.filtro != null)
+  @ValidateIf((o: VelocidadDto) => o.filtro != null)
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })
