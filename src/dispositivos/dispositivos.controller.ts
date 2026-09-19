@@ -129,6 +129,28 @@ export class DispositivosController {
     );
   }
 
+  @Get('cliente/:idCliente')
+  @ApiOperation({
+    summary: 'Lista de dispositivos por cliente',
+    description:
+      'Dispositivos del `idCliente` con `estatus = 2` (asignado). ' +
+      'Respuesta plana (mismo mapeo que el listado). El cliente debe estar en el alcance del rol.',
+  })
+  @ApiParam({ name: 'idCliente', description: 'ID del cliente' })
+  @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
+  @ApiResponse({ status: 403, description: 'Cliente fuera de alcance' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async findByIdCliente(
+    @Param('idCliente', ParseIntPipe) idCliente: number,
+    @Request() req,
+  ): Promise<ApiResponseCommon> {
+    return this.dispositivosService.findByIdCliente(
+      idCliente,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener dispositivo por ID' })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })

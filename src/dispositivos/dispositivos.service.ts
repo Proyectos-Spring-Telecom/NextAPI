@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -187,6 +188,37 @@ export class DispositivosService {
       });
       return { data: data.map((item) => mapDispositivoPlano(item)) };
     } catch (error) {
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  async findByIdCliente(
+    idCliente: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ApiResponseCommon> {
+    try {
+      const { sinAcceso, where } = await this.whereTenant(
+        rol,
+        idClienteToken,
+        undefined,
+        idCliente,
+      );
+      if (sinAcceso) {
+        throw new ForbiddenException('Cliente fuera de alcance');
+      }
+
+      const data = await this.repository.find({
+        where: {
+          ...where,
+          estatus: EnumEstatusProductoDispositivo.ASIGNADO,
+        },
+        relations: [...RELACIONES_DISPOSITIVO_BASE],
+        order: { id: 'DESC' },
+      });
+      return { data: data.map((item) => mapDispositivoPlano(item)) };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
     }
   }

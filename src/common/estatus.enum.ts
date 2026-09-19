@@ -195,6 +195,18 @@ export enum EnumModulos {
   GEOCERCAS = 27,
 }
 
+/** Incidentes.TipoOrigen */
+export enum TipoOrigenIncidente {
+  POSICION = 1,
+  EVENTO_ALARMA = 2,
+}
+
+/** Incidentes.Estatus / SeguimientoIncidentes.Estatus de ciclo (no es catálogo 0/1 de recursos). */
+export enum EstatusIncidente {
+  CERRADO = 0,
+  ABIERTO = 1,
+}
+
 /** Valores de CatTipoProducto.Id */
 export enum EnumTipoProducto {
   VEHICULO = 1,
