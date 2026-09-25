@@ -27,10 +27,6 @@ import { FilterHistoricoMonitoreoDto } from './dto/filter-historico-monitoreo.dt
 import { CaptureVideoMonitoreoDto } from './dto/capture-video-monitoreo.dto';
 import { CaptureFotoMonitoreoDto } from './dto/capture-foto-monitoreo.dto';
 import { FilterInstalacionesUsuariosMonitoreoDto } from './dto/filter-instalaciones-usuarios.dto';
-import {
-  MONITOREO_DISTANCIA_DEFAULTS,
-  MONITOREO_DISTANCIA_ENV,
-} from './helpers/monitoreo-distancia.config';
 
 @ApiTags('Monitoreo')
 @ApiBearerAuth('bearer-token')
@@ -189,25 +185,10 @@ export class MonitoreoController {
       'Además incluye `nombreEvento` (CatEventos) según `idEvento`; null si el id es desconocido o ausente.',
       '',
       '**Cálculo de distancia (`totalDistancia`, km con 2 decimales):**',
-      '- Fórmula Haversine entre puntos consecutivos en el tiempo.',
+      '- Fórmula Haversine entre **todos** los puntos consecutivos en el tiempo.',
       '- Orden de consulta y respuesta: **DESC**; el acumulado avanza de la posición más antigua a la más reciente.',
       '- Cada ítem incluye `totalDistancia` acumulada hasta ese punto (km).',
-      '',
-      '**Importante:** no se eliminan posiciones del arreglo; solo se discriminan **segmentos** al sumar distancia:',
-      '',
-      `1. **Coordenada inválida** → el punto no entra al recorrido y su \`totalDistancia\` es \`null\`:`,
-      '   - `lat`/`lng` no numéricos, `(0, 0)`, `|lat| > 90` o `|lng| > 180`.',
-      '   - El punto **sí aparece** en `posiciones[]`.',
-      '',
-      `2. **Salto GPS** → no suma el tramo si la distancia entre consecutivos supera \`${MONITOREO_DISTANCIA_ENV.saltoGpsMetros}\` (metros; default **${MONITOREO_DISTANCIA_DEFAULTS.saltoGpsMetros}** = ${MONITOREO_DISTANCIA_DEFAULTS.saltoGpsMetros / 1000} km).`,
-      '   - Típico de pérdida de señal o fix erróneo.',
-      '',
-      `3. **Drift estacionado** → no suma si el tramo es menor a \`${MONITOREO_DISTANCIA_ENV.driftDetenidoMetros}\` (metros; default **${MONITOREO_DISTANCIA_DEFAULTS.driftDetenidoMetros}**) y **ambos** extremos están detenidos.`,
-      '',
-      '4. **Vehículo detenido en ambos extremos** → no suma el tramo si ninguno de los dos puntos está en movimiento.',
-      '',
-      '**En movimiento** = `Movimiento === 1` **o** `Velocidad > 0`.',
-      'Un segmento **sí suma** si al menos un extremo está en movimiento y no cae en las reglas anteriores.',
+      '- No se filtran saltos GPS, drift ni coordenadas; la validación de posiciones se implementará más adelante.',
     ].join('\n'),
   })
   @ApiParam({ name: 'idInstalacion', type: Number })

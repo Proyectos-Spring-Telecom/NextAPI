@@ -17,6 +17,7 @@ import { PasoPorPoiDto } from './dto/paso-por-poi.dto';
 import { VelocidadDto } from './dto/velocidad.dto';
 import { ReportePosicionesDto } from './dto/reporte-posiciones.dto';
 import { UltimaPosicionDto } from './dto/ultima-posicion.dto';
+import { DistanciaDto } from './dto/distancia.dto';
 import { ReportesService } from './reportes.service';
 
 @ApiTags('Reportes')
@@ -134,7 +135,11 @@ export class ReportesController {
       '  - Sin `filtro` → todas las instalaciones activas del cliente con dispositivo e IMEI.',
       '  - Con filtro sin coincidencias → respuesta vacía.',
       '',
-      '**Respuesta:** `data.posiciones[]` con los campos de la tabla `Posiciones`.',
+      '**Respuesta:** `data.posiciones[]` plano (sin JSON anidado):',
+      '- Contexto: `idInstalacion`, `idDispositivo`, `numeroSerie`.',
+      '- Producto (mismos nombres que listado de instalaciones): base + vehículo / activo /',
+      '  inmueble / persona según tipo (campos de otros tipos en `null`).',
+      '- Telemetría: campos de la tabla `Posiciones`.',
       '',
       '**Exclusiones:** tipo panel de alarma (`idTipoDispositivo = 2`).',
       '',
@@ -143,7 +148,8 @@ export class ReportesController {
   })
   @ApiBody({ type: ReportePosicionesDto })
   @ApiOkResponse({
-    description: 'Reporte de posiciones (`data.posiciones` + `data.total`)',
+    description:
+      'Reporte de posiciones (`data.posiciones` plano con producto + `data.total`)',
   })
   @ApiBadRequestResponse({
     description: 'Fechas inválidas / filtro inválido',
@@ -173,7 +179,11 @@ export class ReportesController {
       '  - Sin `filtro` → todas las instalaciones activas del cliente con dispositivo e IMEI.',
       '  - Con filtro sin coincidencias → respuesta vacía.',
       '',
-      '**Respuesta:** `data.posiciones[]` con los campos de `UltimaPosicion`.',
+      '**Respuesta:** `data.posiciones[]` plano (sin JSON anidado):',
+      '- Contexto: `idInstalacion`, `idDispositivo`, `numeroSerie`.',
+      '- Producto (mismos nombres que listado de instalaciones): base + vehículo / activo /',
+      '  inmueble / persona según tipo (campos de otros tipos en `null`).',
+      '- Telemetría: campos de `UltimaPosicion`.',
       'Orden: `fechaHora` DESC, `id` DESC.',
       '',
       '**Exclusiones:** tipo panel de alarma (`idTipoDispositivo = 2`).',
@@ -184,7 +194,7 @@ export class ReportesController {
   @ApiBody({ type: UltimaPosicionDto })
   @ApiOkResponse({
     description:
-      'Reporte de última posición (`data.posiciones` + `data.total`)',
+      'Reporte de última posición (`data.posiciones` plano con producto + `data.total`)',
   })
   @ApiBadRequestResponse({
     description: 'Fechas inválidas / filtro inválido',
@@ -193,6 +203,51 @@ export class ReportesController {
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async ultimaPosicion(@Body() dto: UltimaPosicionDto, @Request() req) {
     return this.service.ultimaPosicion(
+      dto,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
+  }
+
+  @Post('distancia')
+  @ApiOperation({
+    summary: 'Distancia recorrida por instalación / IMEI',
+    description: [
+      'Calcula la distancia Haversine del recorrido en el periodo, con la **misma lógica**',
+      'que `GET /monitoreo/:idInstalacion/historico` (`calcularDistanciaHistoricoMonitoreo`):',
+      'suma **todos** los tramos consecutivos (sin filtrar saltos ni drift).',
+      '',
+      '**Body:**',
+      '- `idCliente` + `fechaInicio` / `fechaFinal`.',
+      '- `filtro` + `valores` opcionales (misma lógica que posiciones):',
+      '  - `imei` / `numeroSerie` → `Dispositivos`.',
+      '  - `placa` / `economico` → `Vehiculos`.',
+      '  - Sin `filtro` → todas las instalaciones activas del cliente con dispositivo e IMEI.',
+      '  - Con filtro sin coincidencias → respuesta vacía.',
+      '',
+      '**Respuesta:** `data.recorridos[]` (uno por IMEI) con:',
+      '- `totalDistancia` del recorrido (km, 2 decimales).',
+      '- `posiciones[]` en orden DESC; cada ítem incluye `totalDistancia` acumulada',
+      '  desde el punto más antiguo hasta ese punto.',
+      '- `data.totalDistancia` = suma de los recorridos.',
+      '',
+      '**Exclusiones:** tipo panel de alarma (`idTipoDispositivo = 2`).',
+      '',
+      '**Alcance:** `idCliente` debe estar visible según el rol del token.',
+    ].join('\n'),
+  })
+  @ApiBody({ type: DistanciaDto })
+  @ApiOkResponse({
+    description:
+      'Reporte de distancia (`data.recorridos` con `totalDistancia` y acumulado por punto)',
+  })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas / filtro inválido',
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async distancia(@Body() dto: DistanciaDto, @Request() req) {
+    return this.service.distancia(
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
