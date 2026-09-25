@@ -16,10 +16,7 @@ import { Licencias } from './Licencias';
 @Index('UQ_Operadores_IdUsuario', ['idUsuario'], { unique: true })
 @Index('UQ_Operadores_IdCliente_CURP', ['idCliente', 'curp'], { unique: true })
 @Index('UQ_Operadores_IdCliente_NSS', ['idCliente', 'nss'], { unique: true })
-@Index('IX_Operadores_IdCliente_IdEstatusOperador', [
-  'idCliente',
-  'idEstatusOperador',
-])
+@Index('IX_Operadores_IdCliente_IdEstatusOperador', ['idCliente'])
 @Entity('Operadores')
 export class Operadores {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -85,14 +82,12 @@ export class Operadores {
   @Column('varchar', { name: 'CertificadoMedico', length: 500, nullable: true })
   certificadoMedico: string | null;
 
-  @Column('varchar', { name: 'AntecedentesNoPenales', length: 500, nullable: true })
-  antecedentesNoPenales: string | null;
-
-  @Column('bigint', {
-    name: 'IdEstatusOperador',
-    default: () => "'1'",
+  @Column('varchar', {
+    name: 'AntecedentesNoPenales',
+    length: 500,
+    nullable: true,
   })
-  idEstatusOperador: number;
+  antecedentesNoPenales: string | null;
 
   @Column('datetime', {
     name: 'FechaCreacion',

@@ -5,6 +5,7 @@ import { AuthModule } from 'src/auth/auth.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
+import { UltimaPosicion } from 'src/entities/UltimaPosicion';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
 import { Usuarios } from 'src/entities/Usuarios';
 import { MonitoreoController } from './monitoreo.controller';
@@ -17,6 +18,7 @@ import { TrackcamGatewayClient } from './trackcam-gateway.client';
     TypeOrmModule.forFeature([
       Instalaciones,
       Posiciones,
+      UltimaPosicion,
       PuntosInteres,
       Usuarios,
     ]),
