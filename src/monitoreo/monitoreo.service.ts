@@ -6,7 +6,6 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, FindOptionsWhere, Repository, SelectQueryBuilder } from 'typeorm';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
@@ -39,10 +38,7 @@ import {
   applyMonitoreoListJoins,
   applyMonitoreoListSelect,
 } from './helpers/monitoreo-sql.helpers';
-import {
-  calcularDistanciaHistoricoMonitoreo,
-} from './helpers/monitoreo-distancia.helpers';
-import { resolveUmbralesDistanciaHistorico } from './helpers/monitoreo-distancia.config';
+import { calcularDistanciaHistoricoMonitoreo } from './helpers/monitoreo-distancia.helpers';
 import {
   mapContextoDesdeRow,
   mapHistoricoPosicionItem,
@@ -89,7 +85,6 @@ export class MonitoreoService {
     @InjectRepository(Usuarios)
     private readonly usuariosRepo: Repository<Usuarios>,
     private readonly tenantFilter: TenantFilterService,
-    private readonly config: ConfigService,
     private readonly trackcamGateway: TrackcamGatewayClient,
   ) { }
 
@@ -452,18 +447,14 @@ export class MonitoreoService {
         .addOrderBy('p.id', 'DESC')
         .getRawMany<Record<string, unknown>>();
 
-      const umbrales = resolveUmbralesDistanciaHistorico(this.config);
-
       const distancia = calcularDistanciaHistoricoMonitoreo(
         posicionesRows.map((row) => ({
           id: Number(row.id),
           lat: Number(row.lat),
           lng: Number(row.lng),
           fechaHora: row.fechaHora as Date | string,
-          movimiento: num(row.movimiento),
-          velocidad: num(row.velocidad),
         })),
-        { yaOrdenadoDesc: true, umbrales },
+        { yaOrdenadoDesc: true },
       );
 
       const posiciones = posicionesRows.map((row) => {

@@ -312,8 +312,6 @@ Patrón NextAPI en catálogos/productos: módulo padre + submódulos + registry 
 | `WEBHOOK_SUBSCRIBERS` | Destinos genéricos (Shift, …) |
 | `WEBHOOK_SECRET` | HMAC webhooks |
 | `GATEWAY_HMAC_SECRET` | Ingest SIA / paneles |
-| `MONITOREO_SALTO_GPS_METROS` | Umbral salto en histórico (default 5 km) |
-| `MONITOREO_DRIFT_DETENIDO_METROS` | Drift estacionado en histórico |
 | `AWS_*` / `UPLOAD_MAX_SIZE` | S3 |
 | `THROTTLE_*` | Rate limit auth |
 
@@ -335,8 +333,8 @@ Plantilla: `.env.example`.
 
 ## 13. Distancia en histórico vs Gateway
 
-- NextAPI histórico usa tope fijo / drift (`MONITOREO_*`) al sumar `totalDistancia`.
-- La regla de negocio recomendada para saltos GPS / offline (`maxDist = Vmax × Δt`, Vmax 250) está documentada para el **Gateway** en [`posicion-valida-gateway.md`](./posicion-valida-gateway.md). **No** se implementa como fuente de verdad en reportes NextAPI.
+- NextAPI histórico (`GET /monitoreo/:id/historico`) y reporte `POST /reportes/distancia` suman Haversine entre **todos** los puntos consecutivos (sin filtrar saltos, drift ni coordenadas).
+- La validación de posiciones (p. ej. `maxDist = Vmax × Δt`) está documentada para el **Gateway** en [`posicion-valida-gateway.md`](./posicion-valida-gateway.md) y se implementará más adelante.
 
 ---
 

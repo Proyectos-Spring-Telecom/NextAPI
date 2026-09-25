@@ -17,8 +17,10 @@ import { CatTipoProducto } from 'src/entities/CatTipoProducto';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import { Activos } from 'src/entities/Activos';
 import { Personas } from 'src/entities/Personas';
+import { Inmuebles } from 'src/entities/Inmuebles';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
+import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import {
   EnumTipoDispositivo,
@@ -32,8 +34,11 @@ import type { FiltroPasoPorPoi } from './dto/paso-por-poi.dto';
 import { VelocidadDto } from './dto/velocidad.dto';
 import { ReportePosicionesDto } from './dto/reporte-posiciones.dto';
 import { UltimaPosicionDto } from './dto/ultima-posicion.dto';
+import { DistanciaDto } from './dto/distancia.dto';
+import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
+import { redondearKm } from 'src/utils/recorrido.utils';
 
-/** Producto base + vehículo (reducido) + activo/persona (sin inmueble). */
+/** Producto base + detalle por tipo (plano; mismos nombres que instalaciones). */
 export type ProductoPlanoPasoPoi = {
   idProducto: number | null;
   nombreProducto: string | null;
@@ -44,13 +49,33 @@ export type ProductoPlanoPasoPoi = {
 
   placaVehiculo: string | null;
   ecoVehiculo: string | null;
+  idMarcaVehiculo: number | null;
   nombreMarcaVehiculo: string | null;
+  idModeloVehiculo: number | null;
   nombreModeloVehiculo: string | null;
   anioVehiculo: number | null;
+  colorVehiculo: string | null;
+  numeroSerieVehiculo: string | null;
   fotoVehiculo: string | null;
+  fotoFrenteVehiculo: string | null;
+  tarjetaCirculacionVehiculo: string | null;
+  polizaSeguroVehiculo: string | null;
+  permisoCargaVehiculo: string | null;
+  idCombustibleVehiculo: number | null;
+  nombreCombustibleVehiculo: string | null;
+  kmVehiculo: number | null;
+  capacidadLitrosVehiculo: number | null;
 
   nombreActivo: string | null;
   descripcionActivo: string | null;
+
+  inmueble: string | null;
+  direccionFiscalInmueble: string | null;
+  nombreRepresentanteInmueble: string | null;
+  telefonoRepresentanteInmueble: string | null;
+  correoRepresentanteInmueble: string | null;
+  latInmueble: number | null;
+  lngInmueble: number | null;
 
   nombrePersona: string | null;
   telefonoPersona: string | null;
@@ -152,8 +177,12 @@ export type VelocidadResult = {
   posiciones: VelocidadItem[];
 };
 
-/** Fila de `Posiciones` para el reporte de posiciones. */
+/** Fila de `Posiciones` / `UltimaPosicion` + contexto instalación/producto (plano). */
 export type ReportePosicionItem = {
+  idInstalacion: number;
+  idDispositivo: number;
+  numeroSerie: string | null;
+
   id: number;
   imei: string | null;
   lat: number;
@@ -182,7 +211,7 @@ export type ReportePosicionItem = {
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
-};
+} & ProductoPlanoPasoPoi;
 
 export type ReportePosicionesResult = {
   idCliente: number;
@@ -194,6 +223,36 @@ export type ReportePosicionesResult = {
 
 /** Misma forma que el reporte de posiciones; origen `UltimaPosicion`. */
 export type UltimaPosicionResult = ReportePosicionesResult;
+
+/** Posición del reporte de distancia con km acumulados hasta ese punto. */
+export type DistanciaPosicionItem = ReportePosicionItem & {
+  /** Km acumulados desde el punto más antiguo hasta este (2 decimales). */
+  totalDistancia: number;
+};
+
+/** Recorrido de un IMEI / instalación en el periodo. */
+export type DistanciaRecorridoItem = {
+  idInstalacion: number;
+  idDispositivo: number;
+  imei: string;
+  numeroSerie: string | null;
+  /** Distancia total del recorrido (km, 2 decimales). */
+  totalDistancia: number;
+  total: number;
+  /** Orden DESC por fechaHora (más reciente primero), igual que histórico. */
+  posiciones: DistanciaPosicionItem[];
+};
+
+export type DistanciaResult = {
+  idCliente: number;
+  fechaInicio: string;
+  fechaFinal: string;
+  /** Suma de `totalDistancia` de todos los recorridos (km). */
+  totalDistancia: number;
+  totalRecorridos: number;
+  totalPosiciones: number;
+  recorridos: DistanciaRecorridoItem[];
+};
 
 type InstalacionCandidata = {
   idInstalacion: number;
@@ -243,14 +302,37 @@ function mapProductoPlano(row: Record<string, unknown>): ProductoPlanoPasoPoi {
     idTipoProducto: num(row.idTipoProducto),
     nombreTipoProducto: str(row.nombreTipoProducto),
     codigoTipoProducto: str(row.codigoTipoProducto),
+
     placaVehiculo: str(row.placaVehiculo),
     ecoVehiculo: str(row.ecoVehiculo),
+    idMarcaVehiculo: num(row.idMarcaVehiculo),
     nombreMarcaVehiculo: str(row.nombreMarcaVehiculo),
+    idModeloVehiculo: num(row.idModeloVehiculo),
     nombreModeloVehiculo: str(row.nombreModeloVehiculo),
     anioVehiculo: num(row.anioVehiculo),
+    colorVehiculo: str(row.colorVehiculo),
+    numeroSerieVehiculo: str(row.numeroSerieVehiculo),
     fotoVehiculo: str(row.fotoVehiculo),
+    fotoFrenteVehiculo: str(row.fotoFrenteVehiculo),
+    tarjetaCirculacionVehiculo: str(row.tarjetaCirculacionVehiculo),
+    polizaSeguroVehiculo: str(row.polizaSeguroVehiculo),
+    permisoCargaVehiculo: str(row.permisoCargaVehiculo),
+    idCombustibleVehiculo: num(row.idCombustibleVehiculo),
+    nombreCombustibleVehiculo: str(row.nombreCombustibleVehiculo),
+    kmVehiculo: num(row.kmVehiculo),
+    capacidadLitrosVehiculo: num(row.capacidadLitrosVehiculo),
+
     nombreActivo: str(row.nombreActivo),
     descripcionActivo: str(row.descripcionActivo),
+
+    inmueble: str(row.inmueble),
+    direccionFiscalInmueble: str(row.direccionFiscalInmueble),
+    nombreRepresentanteInmueble: str(row.nombreRepresentanteInmueble),
+    telefonoRepresentanteInmueble: str(row.telefonoRepresentanteInmueble),
+    correoRepresentanteInmueble: str(row.correoRepresentanteInmueble),
+    latInmueble: num(row.latInmueble),
+    lngInmueble: num(row.lngInmueble),
+
     nombrePersona: str(row.nombrePersona),
     telefonoPersona: str(row.telefonoPersona),
   };
@@ -266,14 +348,37 @@ function pickProducto(
     idTipoProducto: c.idTipoProducto,
     nombreTipoProducto: c.nombreTipoProducto,
     codigoTipoProducto: c.codigoTipoProducto,
+
     placaVehiculo: c.placaVehiculo,
     ecoVehiculo: c.ecoVehiculo,
+    idMarcaVehiculo: c.idMarcaVehiculo,
     nombreMarcaVehiculo: c.nombreMarcaVehiculo,
+    idModeloVehiculo: c.idModeloVehiculo,
     nombreModeloVehiculo: c.nombreModeloVehiculo,
     anioVehiculo: c.anioVehiculo,
+    colorVehiculo: c.colorVehiculo,
+    numeroSerieVehiculo: c.numeroSerieVehiculo,
     fotoVehiculo: c.fotoVehiculo,
+    fotoFrenteVehiculo: c.fotoFrenteVehiculo,
+    tarjetaCirculacionVehiculo: c.tarjetaCirculacionVehiculo,
+    polizaSeguroVehiculo: c.polizaSeguroVehiculo,
+    permisoCargaVehiculo: c.permisoCargaVehiculo,
+    idCombustibleVehiculo: c.idCombustibleVehiculo,
+    nombreCombustibleVehiculo: c.nombreCombustibleVehiculo,
+    kmVehiculo: c.kmVehiculo,
+    capacidadLitrosVehiculo: c.capacidadLitrosVehiculo,
+
     nombreActivo: c.nombreActivo,
     descripcionActivo: c.descripcionActivo,
+
+    inmueble: c.inmueble,
+    direccionFiscalInmueble: c.direccionFiscalInmueble,
+    nombreRepresentanteInmueble: c.nombreRepresentanteInmueble,
+    telefonoRepresentanteInmueble: c.telefonoRepresentanteInmueble,
+    correoRepresentanteInmueble: c.correoRepresentanteInmueble,
+    latInmueble: c.latInmueble,
+    lngInmueble: c.lngInmueble,
+
     nombrePersona: c.nombrePersona,
     telefonoPersona: c.telefonoPersona,
   };
@@ -613,6 +718,139 @@ export class ReportesService {
     }
   }
 
+  /**
+   * Distancia recorrida por IMEI en el periodo.
+   * Misma lógica Haversine que `GET /monitoreo/:idInstalacion/historico`
+   * (`calcularDistanciaHistoricoMonitoreo`: suma todos los tramos consecutivos).
+   */
+  async distancia(
+    dto: DistanciaDto,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<{ data: DistanciaResult }> {
+    try {
+      const idCliente = Number(dto.idCliente);
+      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+
+      let fechaInicio: string;
+      let fechaFinal: string;
+      try {
+        fechaInicio = parseFechaHistorico(dto.fechaInicio);
+        fechaFinal = parseFechaHistorico(dto.fechaFinal);
+      } catch {
+        throw new BadRequestException(
+          'fechaInicio / fechaFinal tienen un formato inválido',
+        );
+      }
+      if (fechaInicio > fechaFinal) {
+        throw new BadRequestException(
+          'fechaInicio no puede ser posterior a fechaFinal',
+        );
+      }
+
+      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
+        idCliente,
+        dto.filtro,
+        dto.valores,
+      );
+
+      const candidatos =
+        idsFiltro !== null && idsFiltro.length === 0
+          ? []
+          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+
+      if (!candidatos.length) {
+        return {
+          data: {
+            idCliente,
+            fechaInicio,
+            fechaFinal,
+            totalDistancia: 0,
+            totalRecorridos: 0,
+            totalPosiciones: 0,
+            recorridos: [],
+          },
+        };
+      }
+
+      const posiciones = await this.consultarPosicionesPorPeriodo({
+        candidatos,
+        fechaInicio,
+        fechaFinal,
+      });
+
+      const byImeiCand = new Map(
+        candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
+      );
+
+      const porImei = new Map<string, ReportePosicionItem[]>();
+      for (const p of posiciones) {
+        const imei = imeiToString(p.imei) ?? p.imei ?? '';
+        if (!imei) continue;
+        const list = porImei.get(imei);
+        if (list) {
+          list.push(p);
+        } else {
+          porImei.set(imei, [p]);
+        }
+      }
+
+      const recorridos: DistanciaRecorridoItem[] = [];
+      let totalDistancia = 0;
+      let totalPosiciones = 0;
+
+      for (const [imei, pts] of porImei) {
+        const cand = byImeiCand.get(imei);
+        if (!cand) continue;
+
+        const distancia = calcularDistanciaHistoricoMonitoreo(
+          pts.map((p) => ({
+            id: p.id,
+            lat: p.lat,
+            lng: p.lng,
+            fechaHora: p.fechaHora ?? '',
+          })),
+          { yaOrdenadoDesc: true },
+        );
+
+        const posicionesConKm: DistanciaPosicionItem[] = pts.map((p) => ({
+          ...p,
+          totalDistancia: distancia.acumuladoKmPorId.get(p.id) ?? 0,
+        }));
+
+        totalDistancia += distancia.totalDistanciaKm;
+        totalPosiciones += posicionesConKm.length;
+
+        recorridos.push({
+          idInstalacion: cand.idInstalacion,
+          idDispositivo: cand.idDispositivo,
+          imei: cand.imei,
+          numeroSerie: cand.numeroSerie,
+          totalDistancia: distancia.totalDistanciaKm,
+          total: posicionesConKm.length,
+          posiciones: posicionesConKm,
+        });
+      }
+
+      recorridos.sort((a, b) => a.idInstalacion - b.idInstalacion);
+
+      return {
+        data: {
+          idCliente,
+          fechaInicio,
+          fechaFinal,
+          totalDistancia: redondearKm(totalDistancia),
+          totalRecorridos: recorridos.length,
+          totalPosiciones,
+          recorridos,
+        },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
   private async assertClienteEnAlcance(
     rol: number,
     idClienteToken: number,
@@ -781,10 +1019,16 @@ export class ReportesService {
       )
       .leftJoin(CatMarcas, 'marVeh', 'marVeh.id = v.idMarcaVehiculo')
       .leftJoin(CatModelos, 'modVeh', 'modVeh.id = v.idModeloVehiculo')
+      .leftJoin(CatTipoCombustible, 'tc', 'tc.id = v.idCombustible')
       .leftJoin(
         Activos,
         'a',
         'a.idProducto = i.idProducto AND a.idCliente = i.idCliente',
+      )
+      .leftJoin(
+        Inmuebles,
+        'inm',
+        'inm.idProducto = i.idProducto AND inm.idCliente = i.idCliente',
       )
       .leftJoin(
         Personas,
@@ -804,12 +1048,31 @@ export class ReportesService {
         'tp.codigo AS codigoTipoProducto',
         'v.placa AS placaVehiculo',
         'v.numeroEconomico AS ecoVehiculo',
+        'v.idMarcaVehiculo AS idMarcaVehiculo',
         'marVeh.nombre AS nombreMarcaVehiculo',
+        'v.idModeloVehiculo AS idModeloVehiculo',
         'modVeh.nombre AS nombreModeloVehiculo',
         'v.anio AS anioVehiculo',
+        'v.color AS colorVehiculo',
+        'v.numeroSerie AS numeroSerieVehiculo',
         'v.foto AS fotoVehiculo',
+        'v.fotoFrente AS fotoFrenteVehiculo',
+        'v.tarjetaCirculacion AS tarjetaCirculacionVehiculo',
+        'v.polizaSeguro AS polizaSeguroVehiculo',
+        'v.permisoCarga AS permisoCargaVehiculo',
+        'v.idCombustible AS idCombustibleVehiculo',
+        'tc.nombre AS nombreCombustibleVehiculo',
+        'v.km AS kmVehiculo',
+        'v.capacidadLitros AS capacidadLitrosVehiculo',
         'a.nombre AS nombreActivo',
         'a.descripcion AS descripcionActivo',
+        'inm.inmueble AS inmueble',
+        'inm.direccionFiscal AS direccionFiscalInmueble',
+        'inm.nombreRepresentante AS nombreRepresentanteInmueble',
+        'inm.telefonoRepresentante AS telefonoRepresentanteInmueble',
+        'inm.correoRepresentante AS correoRepresentanteInmueble',
+        'inm.lat AS latInmueble',
+        'inm.lng AS lngInmueble',
         'per.nombre AS nombrePersona',
         'per.telefono AS telefonoPersona',
       ])
@@ -1032,12 +1295,11 @@ export class ReportesService {
     fechaFinal: string;
   }): Promise<ReportePosicionItem[]> {
     const { candidatos, fechaInicio, fechaFinal } = args;
-    const byImei = new Set(
-      candidatos
-        .map((c) => imeiToString(c.imei) ?? c.imei)
-        .filter((imei) => imei !== ''),
+    const byImei = new Map(
+      candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
     );
-    const imeis = [...byImei];
+    const imeis = [...byImei.keys()].filter((imei) => imei !== '');
+    if (!imeis.length) return [];
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(Posiciones)
@@ -1082,9 +1344,16 @@ export class ReportesService {
     const result: ReportePosicionItem[] = [];
     for (const row of rows) {
       const imei = imeiToString(row.imei);
-      if (!imei || !byImei.has(imei)) continue;
+      if (!imei) continue;
+      const cand = byImei.get(imei);
+      if (!cand) continue;
 
       result.push({
+        idInstalacion: cand.idInstalacion,
+        idDispositivo: cand.idDispositivo,
+        numeroSerie: cand.numeroSerie,
+        ...pickProducto(cand),
+
         id: Number(row.id),
         imei,
         lat: Number(row.lat),
@@ -1129,12 +1398,11 @@ export class ReportesService {
     fechaFinal: string;
   }): Promise<ReportePosicionItem[]> {
     const { candidatos, fechaInicio, fechaFinal } = args;
-    const byImei = new Set(
-      candidatos
-        .map((c) => imeiToString(c.imei) ?? c.imei)
-        .filter((imei) => imei !== ''),
+    const byImei = new Map(
+      candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
     );
-    const imeis = [...byImei];
+    const imeis = [...byImei.keys()].filter((imei) => imei !== '');
+    if (!imeis.length) return [];
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(UltimaPosicion)
@@ -1179,9 +1447,16 @@ export class ReportesService {
     const result: ReportePosicionItem[] = [];
     for (const row of rows) {
       const imei = imeiToString(row.imei);
-      if (!imei || !byImei.has(imei)) continue;
+      if (!imei) continue;
+      const cand = byImei.get(imei);
+      if (!cand) continue;
 
       result.push({
+        idInstalacion: cand.idInstalacion,
+        idDispositivo: cand.idDispositivo,
+        numeroSerie: cand.numeroSerie,
+        ...pickProducto(cand),
+
         id: Number(row.id),
         imei,
         lat: Number(row.lat),

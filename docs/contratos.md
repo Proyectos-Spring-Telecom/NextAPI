@@ -181,7 +181,7 @@ La guía multipart de foto es **diseño**, no API vigente: `FLUJO-USUARIOS-FORM-
 | Alarmas | REST + ingest + socket (§13) |
 | Incidentes | Alta manual desde Posición o EventoAlarma |
 | Webhooks | Trackcam + genéricos (§15) |
-| Geocercas / POI / Números emergencia / Reportes | Operación de monitoreo |
+| Geocercas / POI / Números emergencia / Reportes | Operación; `POST /reportes/distancia` (Haversine por IMEI) |
 
 ---
 
@@ -233,7 +233,7 @@ Query: `fechaInicio`, `fechaFinal` (`YYYY-MM-DD HH:mm:ss`, hora de pared).
 
 - **No aplica** a inmueble/panel (`400`).
 - Lee `Posiciones` por IMEI; orden DESC.
-- `totalDistancia` Haversine con exclusión de segmentos (salto GPS, drift, detenido). Env: `MONITOREO_SALTO_GPS_METROS`, `MONITOREO_DRIFT_DETENIDO_METROS`.
+- `totalDistancia` Haversine entre **todos** los puntos consecutivos (sin filtrar saltos, drift ni coordenadas).
 
 **Respuesta:** `{ totalDistancia, posiciones: [...] }` — ítems con columnas de `Posiciones` + `rutaFoto` / `rutaFoto1..3` / `rutaVideo1..3`.
 
@@ -367,8 +367,6 @@ Guías: [`webhook-trackcam-springtrackcam.md`](./webhook-trackcam-springtrackcam
 | `WEBHOOK_SUBSCRIBERS` | No | Destinos genéricos |
 | `WEBHOOK_SECRET` | Condicional | HMAC webhooks |
 | `GATEWAY_HMAC_SECRET` | Condicional | Ingest paneles |
-| `MONITOREO_SALTO_GPS_METROS` | No | Histórico |
-| `MONITOREO_DRIFT_DETENIDO_METROS` | No | Histórico |
 
 Plantilla: `.env.example`.
 
@@ -418,7 +416,7 @@ Análisis amplio: `ANALISIS-BD-NEXT.md` (si existe en el repo).
 - Generar “último estado” por prioridad Sion Tabla 3 en consulta
 - Duplicar persistencia foto/video en el proxy HTTP
 - Histórico GPS para inmuebles/paneles
-- Regla R1 `maxDist = Vmax×Δt` en reportes NextAPI (documentada para Gateway: [`posicion-valida-gateway.md`](./posicion-valida-gateway.md))
+- Regla R1 `maxDist = Vmax×Δt` en reportes NextAPI (documentada para Gateway: [`posicion-valida-gateway.md`](./posicion-valida-gateway.md); histórico suma todos los tramos por ahora)
 - Frontend Angular; ShiftControl / App Operador; facturación; UX; pen-test (salvo addendum)
 
 ---
