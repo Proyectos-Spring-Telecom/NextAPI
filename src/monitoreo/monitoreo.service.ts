@@ -18,6 +18,8 @@ import {
 import { imeiToString } from 'src/common/imei.util';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
+import { UltimaPosicion } from 'src/entities/UltimaPosicion';
+import { Dispositivos } from 'src/entities/Dispositivos';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
 import { Usuarios } from 'src/entities/Usuarios';
 import { Fotos } from 'src/entities/Fotos';
@@ -43,6 +45,7 @@ import {
   mapContextoDesdeRow,
   mapHistoricoPosicionItem,
   parseFechaHistorico,
+  formatFechaPosicion,
   HistoricoMonitoreoResponse,
 } from './helpers/monitoreo-historico.helpers';
 import {
@@ -68,6 +71,45 @@ export type MonitoreoListadoResponse = {
   'puntos-interes': ReturnType<typeof mapPuntoInteresPlano>[];
 };
 
+/** Ítem plano de consola (`UltimaPosicion`). */
+export type ConsolaUltimaPosicionItem = {
+  id: number;
+  imei: string | null;
+  lat: number;
+  lng: number;
+  estado: number | null;
+  fechaHora: string | null;
+  velocidad: number | null;
+  direccion: number | null;
+  odometro: number | null;
+  ignicion: number | null;
+  alarma1: number | null;
+  alarma2: number | null;
+  energia: number | null;
+  idEvento: number | null;
+  idFoto: number | null;
+  fhRegistro: string | null;
+  bateria: number | null;
+  alimentacion: number | null;
+  gps: number | null;
+  gsm: number | null;
+  movimiento: number | null;
+  combustible: number | null;
+  idFoto1: number | null;
+  idFoto2: number | null;
+  idFoto3: number | null;
+  idVideo1: number | null;
+  idVideo2: number | null;
+  idVideo3: number | null;
+  idInstalacion: number | null;
+  idCliente: number | null;
+  idDispositivo: number | null;
+};
+
+export type ConsolaMonitoreoResponse = {
+  posicion: ConsolaUltimaPosicionItem[];
+};
+
 /** Mismo shape plano que `posicion[]` del listado (sin puntos-interes). */
 export type MonitoreoInstalacionesUsuariosResponse = {
   posicion: MonitoreoPosicionItem[];
@@ -80,6 +122,8 @@ export class MonitoreoService {
     private readonly instalacionesRepo: Repository<Instalaciones>,
     @InjectRepository(Posiciones)
     private readonly posicionesRepo: Repository<Posiciones>,
+    @InjectRepository(UltimaPosicion)
+    private readonly ultimaPosicionRepo: Repository<UltimaPosicion>,
     @InjectRepository(PuntosInteres)
     private readonly puntosInteresRepo: Repository<PuntosInteres>,
     @InjectRepository(Usuarios)
@@ -87,6 +131,160 @@ export class MonitoreoService {
     private readonly tenantFilter: TenantFilterService,
     private readonly trackcamGateway: TrackcamGatewayClient,
   ) { }
+
+  /**
+   * Consola: filas de `UltimaPosicion` visibles según rol/tenant,
+   * ordenadas de la más reciente a la más antigua (`FechaHora` DESC).
+   */
+  async consola(
+    idUsuario: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<ConsolaMonitoreoResponse> {
+    try {
+      const qb = this.createConsolaQueryBuilder();
+
+      const visible = await this.applyVisibilidadInstalaciones(
+        qb as unknown as SelectQueryBuilder<Instalaciones>,
+        idUsuario,
+        idClienteToken,
+        rol,
+      );
+      if (!visible) {
+        return { posicion: [] };
+      }
+
+      qb.orderBy('up.fechaHora', 'DESC').addOrderBy('up.id', 'DESC');
+
+      const rows = await qb.getRawMany<Record<string, unknown>>();
+      return {
+        posicion: rows.map((row) => this.mapConsolaUltimaPosicion(row)),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException({
+        message: 'Error al obtener consola de última posición',
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  /** Ítem plano de consola por IMEI (mismo shape que GET /monitoreo/consola). */
+  async obtenerConsolaPorImei(
+    imei: string,
+  ): Promise<ConsolaUltimaPosicionItem | null> {
+    const qb = this.createConsolaQueryBuilder();
+    qb.andWhere('up.imei = :imei', { imei });
+    const row = await qb.getRawOne<Record<string, unknown>>();
+    return row ? this.mapConsolaUltimaPosicion(row) : null;
+  }
+
+  async obtenerConsolaPorInstalacion(
+    idInstalacion: number,
+  ): Promise<ConsolaUltimaPosicionItem | null> {
+    const qb = this.createConsolaQueryBuilder();
+    qb.andWhere('i.id = :idInstalacion', { idInstalacion });
+    const row = await qb.getRawOne<Record<string, unknown>>();
+    return row ? this.mapConsolaUltimaPosicion(row) : null;
+  }
+
+  async obtenerConsolaPorDispositivo(
+    idDispositivo: number,
+  ): Promise<ConsolaUltimaPosicionItem | null> {
+    const qb = this.createConsolaQueryBuilder();
+    qb.andWhere('d.id = :idDispositivo', { idDispositivo });
+    const row = await qb.getRawOne<Record<string, unknown>>();
+    return row ? this.mapConsolaUltimaPosicion(row) : null;
+  }
+
+  private createConsolaQueryBuilder() {
+    return this.ultimaPosicionRepo
+      .createQueryBuilder('up')
+      .innerJoin(Dispositivos, 'd', 'd.imei = up.imei')
+      .innerJoin(
+        Instalaciones,
+        'i',
+        'i.idDispositivo = d.id AND i.estatus = :instActivo',
+        { instActivo: EstatusEnum.ACTIVO },
+      )
+      .select([
+        'up.id AS id',
+        'CAST(up.imei AS CHAR) AS imei',
+        'up.lat AS lat',
+        'up.lng AS lng',
+        'up.estado AS estado',
+        'up.fechaHora AS fechaHora',
+        'up.velocidad AS velocidad',
+        'up.direccion AS direccion',
+        'up.odometro AS odometro',
+        'up.ignicion AS ignicion',
+        'up.alarma1 AS alarma1',
+        'up.alarma2 AS alarma2',
+        'up.energia AS energia',
+        'up.idEvento AS idEvento',
+        'up.idFoto AS idFoto',
+        'up.fhRegistro AS fhRegistro',
+        'up.bateria AS bateria',
+        'up.alimentacion AS alimentacion',
+        'up.gps AS gps',
+        'up.gsm AS gsm',
+        'up.movimiento AS movimiento',
+        'up.combustible AS combustible',
+        'up.idFoto1 AS idFoto1',
+        'up.idFoto2 AS idFoto2',
+        'up.idFoto3 AS idFoto3',
+        'up.idVideo1 AS idVideo1',
+        'up.idVideo2 AS idVideo2',
+        'up.idVideo3 AS idVideo3',
+        'i.id AS idInstalacion',
+        'i.idCliente AS idCliente',
+        'd.id AS idDispositivo',
+      ]);
+  }
+
+  private mapConsolaUltimaPosicion(
+    row: Record<string, unknown>,
+  ): ConsolaUltimaPosicionItem {
+    return {
+      id: Number(row.id),
+      imei: imeiToString(row.imei),
+      lat: Number(row.lat),
+      lng: Number(row.lng),
+      estado: num(row.estado),
+      fechaHora: formatFechaPosicion(
+        row.fechaHora as string | Date | null | undefined,
+      ),
+      velocidad: num(row.velocidad),
+      direccion: num(row.direccion),
+      odometro: num(row.odometro),
+      ignicion: num(row.ignicion),
+      alarma1: num(row.alarma1),
+      alarma2: num(row.alarma2),
+      energia: num(row.energia),
+      idEvento: num(row.idEvento),
+      idFoto: num(row.idFoto),
+      fhRegistro: formatFechaPosicion(
+        row.fhRegistro as string | Date | null | undefined,
+      ),
+      bateria: num(row.bateria),
+      alimentacion: num(row.alimentacion),
+      gps: num(row.gps),
+      gsm: num(row.gsm),
+      movimiento: num(row.movimiento),
+      combustible: num(row.combustible),
+      idFoto1: num(row.idFoto1),
+      idFoto2: num(row.idFoto2),
+      idFoto3: num(row.idFoto3),
+      idVideo1: num(row.idVideo1),
+      idVideo2: num(row.idVideo2),
+      idVideo3: num(row.idVideo3),
+      idInstalacion: num(row.idInstalacion),
+      idCliente: num(row.idCliente),
+      idDispositivo: num(row.idDispositivo),
+    };
+  }
 
   /**
    * Proxy a springTrackCam POST /gateway/photo/start.

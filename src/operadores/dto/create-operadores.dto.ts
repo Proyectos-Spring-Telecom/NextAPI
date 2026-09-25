@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -15,6 +15,7 @@ export class CreateOperadoresDto {
     description:
       'ID del usuario (Usuarios.Id) vinculado al operador; debe pertenecer al mismo IdCliente',
   })
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   idUsuario: number;
@@ -71,7 +72,8 @@ export class CreateOperadoresDto {
   contactoEmergenciaTelefono: string;
 
   @ApiProperty({
-    description: 'Ruta o URL de documento de identificación (INE/Pasaporte)',
+    description:
+      'URL o archivo (PNG/JPEG/PDF) de identificación INE/Pasaporte. Obligatorio en create.',
     maxLength: 500,
   })
   @IsString()
@@ -80,7 +82,7 @@ export class CreateOperadoresDto {
   identificacion: string;
 
   @ApiProperty({
-    description: 'Ruta o URL de fotografía del operador',
+    description: 'URL o archivo (PNG/JPEG/PDF) de fotografía del operador',
     maxLength: 500,
     required: false,
   })
@@ -90,7 +92,7 @@ export class CreateOperadoresDto {
   foto?: string;
 
   @ApiProperty({
-    description: 'Ruta o URL de comprobante de domicilio',
+    description: 'URL o archivo (PNG/JPEG/PDF) de comprobante de domicilio',
     maxLength: 500,
     required: false,
   })
@@ -100,7 +102,7 @@ export class CreateOperadoresDto {
   comprobanteDomicilio?: string;
 
   @ApiProperty({
-    description: 'Ruta o URL de certificado médico',
+    description: 'URL o archivo (PNG/JPEG/PDF) de certificado médico',
     maxLength: 500,
     required: false,
   })
@@ -110,7 +112,7 @@ export class CreateOperadoresDto {
   certificadoMedico?: string;
 
   @ApiProperty({
-    description: 'Ruta o URL de antecedentes no penales',
+    description: 'URL o archivo (PNG/JPEG/PDF) de antecedentes no penales',
     maxLength: 500,
     required: false,
   })
@@ -119,26 +121,7 @@ export class CreateOperadoresDto {
   @MaxLength(500)
   antecedentesNoPenales?: string;
 
-  @ApiProperty({
-    description: 'ID estatus del operador',
-    default: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  idEstatusOperador?: number = 1;
-
-  @ApiProperty({
-    description: 'Estatus (1 activo, 0 inactivo)',
-    example: 1,
-    required: false,
-  })
-  @IsOptional()
-  @IsInt()
-  @IsIn([0, 1])
-  estatus?: number = 1;
-
-  // Campos adicionales para la primera licencia (obligatorios en create)
+  // Primera licencia (obligatoria en create)
   @ApiProperty({
     description: 'Número oficial de la licencia (único global)',
     maxLength: 50,
@@ -151,6 +134,7 @@ export class CreateOperadoresDto {
   @ApiProperty({
     description: 'ID tipo licencia (CatTipoLicencia en BD)',
   })
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   idTipoLicencia: number;
@@ -158,6 +142,7 @@ export class CreateOperadoresDto {
   @ApiProperty({
     description: 'ID categoría licencia (CatCategoriaLicencia en BD)',
   })
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   idCategoriaLicencia: number;
@@ -177,7 +162,8 @@ export class CreateOperadoresDto {
   fechaVencimiento: string;
 
   @ApiProperty({
-    description: 'URL S3 del documento de la licencia',
+    description:
+      'URL o archivo (PNG/JPEG/PDF) del documento escaneado de la licencia. Obligatorio en create.',
     maxLength: 500,
   })
   @IsString()

@@ -59,6 +59,7 @@ export class MonitoreoController {
       '**Socket.IO** `/monitoreo` (mismo shape plano que este listado):',
       '- `conexion:lista` → `{ idsInstalaciones, posicion, "puntos-interes" }` al conectar.',
       '- `monitoreo:actualizacion` → un ítem de `posicion[]` (tras ingest GPS / panel).',
+      '- `conexion:consola` / `consola:actualizacion` → shape de `GET /monitoreo/consola` (UltimaPosicion).',
       '',
       'Respuesta: `{ posicion: [...], "puntos-interes": [...] }` (sin wrapper `data`).',
       '`puntos-interes`: activos de `PuntosInteres` filtrados por rol/tenant',
@@ -70,6 +71,37 @@ export class MonitoreoController {
   @ApiResponse({ status: 500, description: 'Error interno' })
   async findList(@Request() req) {
     return this.monitoreoService.listado(
+      Number(req.user.userId),
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
+  }
+
+  @Get('consola')
+  @ApiOperation({
+    summary: 'Consola — listado de UltimaPosicion',
+    description: [
+      'Lista filas de `UltimaPosicion` (plano, camelCase) ordenadas por `fechaHora` **DESC**',
+      '(más reciente → más antigua).',
+      '',
+      'Alcance por rol (mismo criterio que `GET /monitoreo/list`):',
+      '- Roles globales (1–5, 8): todas las últimas posiciones con instalación activa.',
+      '- Cliente (6): instalaciones de su jerarquía.',
+      '- Operador (7) / Usuario (9): solo instalaciones asignadas.',
+      '',
+      '**Respuesta:** `{ posicion: [...] }` (sin wrapper `data`, sin JSON anidados).',
+      'Incluye contexto mínimo: `idInstalacion`, `idCliente`, `idDispositivo`.',
+      '',
+      '**Tiempo real (Socket.IO `/monitoreo`):**',
+      '- Al conectar: `conexion:consola` → mismo `{ posicion: [...] }`.',
+      '- Tras ingest GPS: `consola:actualizacion` → un ítem (rooms `instalacion:{id}`).',
+    ].join('\n'),
+  })
+  @ApiResponse({ status: 200, description: 'Consola obtenida correctamente' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 500, description: 'Error interno' })
+  async consola(@Request() req) {
+    return this.monitoreoService.consola(
       Number(req.user.userId),
       Number(req.user.idCliente),
       Number(req.user.rol),

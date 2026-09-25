@@ -223,9 +223,11 @@ Sin `UltimaPosicion`. Incluye `lat`/`lng` del inmueble, `ultimoHeartbeat`, `fech
 |--------|-----------|---------|
 | Auth | Cliente → server | JWT en `auth.token` / `Authorization` / query |
 | `conexion:lista` | Server → cliente | `{ idsInstalaciones, posicion[] }` (mismo shape que list) |
-| `monitoreo:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano |
+| `conexion:consola` | Server → cliente | `{ posicion[] }` (mismo shape que `GET /monitoreo/consola`) |
+| `monitoreo:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano (listado) |
+| `consola:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano de `UltimaPosicion` (consola) |
 
-Se emite tras ingest GPS (`notificarImei`) o cambios de panel relevantes al monitoreo.
+Se emite tras ingest GPS (`notificarImei`) o cambios de panel relevantes.
 
 ### 11.3 `GET /monitoreo/:idInstalacion/historico`
 

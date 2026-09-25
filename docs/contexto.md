@@ -195,9 +195,11 @@ Auth cliente: JWT en `auth.token` / `Authorization` / query.
 | Evento | Dirección | Payload |
 |--------|-----------|---------|
 | `conexion:lista` | Server → cliente | `{ idsInstalaciones, posicion[] }` (mismo shape que `GET /monitoreo/list`) |
+| `conexion:consola` | Server → cliente | `{ posicion[] }` (mismo shape que `GET /monitoreo/consola`) |
 | `monitoreo:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano |
+| `consola:actualizacion` | Server → room `instalacion:{id}` | Ítem plano `UltimaPosicion` (consola) |
 
-Se emite tras ingest GPS (`notificarImei`) o cambios de panel relevantes al monitoreo.
+Se emite tras ingest GPS (`notificarImei`) o cambios de panel relevantes.
 
 Guías front: [`consumo-socket-monitoreo-angular.md`](./consumo-socket-monitoreo-angular.md), [`consumo-socket-posiciones-angular.md`](./consumo-socket-posiciones-angular.md).
 

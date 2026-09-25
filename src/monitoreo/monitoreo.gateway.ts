@@ -7,7 +7,10 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { MonitoreoService } from './monitoreo.service';
+import {
+  ConsolaUltimaPosicionItem,
+  MonitoreoService,
+} from './monitoreo.service';
 import { MonitoreoPosicionItem } from './monitoreo.mapper';
 
 @WebSocketGateway({
@@ -56,6 +59,16 @@ export class MonitoreoGateway
         posicion: listado.posicion,
         'puntos-interes': listado['puntos-interes'],
       });
+
+      // Mismo shape que GET /monitoreo/consola
+      const consola = await this.monitoreoService.consola(
+        idUsuario,
+        idCliente,
+        rol,
+      );
+      client.emit('conexion:consola', {
+        posicion: consola.posicion,
+      });
     } catch (error) {
       this.logger.warn(
         `Socket rechazado: ${(error as Error)?.message ?? 'token inválido'}`,
@@ -76,12 +89,28 @@ export class MonitoreoGateway
     this.safeEmit(idInstalacion, 'monitoreo:actualizacion', payload);
   }
 
+  /**
+   * Emite el mismo ítem plano que GET /monitoreo/consola.
+   * Evento: `consola:actualizacion`
+   */
+  emitConsolaActualizacion(
+    idInstalacion: number,
+    payload: ConsolaUltimaPosicionItem,
+  ) {
+    this.safeEmit(idInstalacion, 'consola:actualizacion', payload);
+  }
+
   async notificarInstalacion(idInstalacion: number): Promise<void> {
     try {
       const item =
         await this.monitoreoService.obtenerPorInstalacion(idInstalacion);
       if (item) {
         this.emitActualizacion(idInstalacion, item);
+      }
+      const consola =
+        await this.monitoreoService.obtenerConsolaPorInstalacion(idInstalacion);
+      if (consola && consola.idInstalacion != null) {
+        this.emitConsolaActualizacion(consola.idInstalacion, consola);
       }
     } catch (error) {
       this.logger.error(
@@ -97,6 +126,11 @@ export class MonitoreoGateway
       if (item) {
         this.emitActualizacion(item.idInstalacion, item);
       }
+      const consola =
+        await this.monitoreoService.obtenerConsolaPorDispositivo(idDispositivo);
+      if (consola && consola.idInstalacion != null) {
+        this.emitConsolaActualizacion(consola.idInstalacion, consola);
+      }
     } catch (error) {
       this.logger.error(
         `Error notificando dispositivo ${idDispositivo}: ${(error as Error)?.message}`,
@@ -109,6 +143,10 @@ export class MonitoreoGateway
       const item = await this.monitoreoService.obtenerPorImei(imei);
       if (item) {
         this.emitActualizacion(item.idInstalacion, item);
+      }
+      const consola = await this.monitoreoService.obtenerConsolaPorImei(imei);
+      if (consola && consola.idInstalacion != null) {
+        this.emitConsolaActualizacion(consola.idInstalacion, consola);
       }
     } catch (error) {
       this.logger.error(
