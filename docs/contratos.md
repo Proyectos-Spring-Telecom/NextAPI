@@ -264,11 +264,10 @@ Timeout: **90 s** (1 canal) / **150 s** (multi).
 
 Exchange: `telemetry` (topic). Prefijo código: `src/messaging/`.
 
-| Protocolo | Cola events | Bindings | DLQ |
-|-----------|-------------|----------|-----|
-| JT808 | `telemetry.jt808.events` | `jt808.position`, `jt808.alarm.*` | `telemetry.jt808.dlq` |
-| JT808 media | `telemetry.jt808.media` | `jt808.multimedia.photo` | idem |
-| Jimi (VL802) | `telemetry.jimi.events` | `jimi.position`, `jimi.alarm.*` | `telemetry.jimi.dlq` |
+| Protocolo | Cola | Bindings | DLQ |
+|-----------|------|----------|-----|
+| AVL posiciones (JT808 + Jimi) | `telemetry.avl.events` | `jt808.position`, `jimi.position` | `telemetry.avl.dlq` |
+| AVL alarmas (JT808 + Jimi) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | `telemetry.avl.dlq` |
 | AX PRO | `telemetry.axpro.events` / `…heartbeats` | eventos / heartbeats panel | `telemetry.axpro.dlq` |
 
 ### Envelope JT808 / Jimi
