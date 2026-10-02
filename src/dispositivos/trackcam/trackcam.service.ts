@@ -51,7 +51,7 @@ export class TrackcamService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
-  ) {}
+  ) { }
 
   async create(
     dto: CreateTrackcamDto,
@@ -178,10 +178,10 @@ export class TrackcamService {
         ...(incluirInservibles
           ? {}
           : {
-              idDispositivo2: {
-                estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
-              },
-            }),
+            idDispositivo2: {
+              estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
+            },
+          }),
       };
       const [data, total] = await this.repository.findAndCount({
         where,
@@ -207,7 +207,7 @@ export class TrackcamService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
         relations: RELACIONES_DETALLE_TRACKCAM,
       });
       if (!entity) {

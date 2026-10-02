@@ -214,7 +214,7 @@ export class PanelesService {
   async findOne(id: number, idCliente: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
         relations: RELACIONES_DETALLE_PANEL,
       });
       if (!entity) {

@@ -152,13 +152,16 @@ export class DispositivosController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener dispositivo por ID' })
+  @ApiOperation({
+    summary: 'Obtener dispositivo por ID',
+    description: 'Busca por ID sin validar el `idCliente` del token.',
+  })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })
   @ApiResponse({ status: 200, description: 'Dispositivo encontrado' })
   @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.dispositivosService.findOne(id, req.user.idCliente);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.dispositivosService.findOne(id);
   }
 
   @Patch('estatus/:id')

@@ -270,10 +270,10 @@ export class DispositivosService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number) {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
         relations: [...RELACIONES_DISPOSITIVO_BASE],
       });
       if (!entity) {
