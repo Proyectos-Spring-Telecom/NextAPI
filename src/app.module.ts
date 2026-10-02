@@ -126,16 +126,6 @@ import * as jwt from 'jsonwebtoken';
         RABBITMQ_PREFETCH: Joi.number().default(10),
         RABBITMQ_PREFETCH_EVENTS: Joi.number().default(10),
         RABBITMQ_PREFETCH_HEARTBEATS: Joi.number().default(50),
-        RABBITMQ_QUEUE_JT808_EVENTS: Joi.string().default(
-          'telemetry.jt808.events',
-        ),
-        RABBITMQ_QUEUE_JT808_DLQ: Joi.string().default('telemetry.jt808.dlq'),
-        RABBITMQ_PREFETCH_JT808: Joi.number().default(10),
-        RABBITMQ_QUEUE_JIMI_EVENTS: Joi.string().default(
-          'telemetry.jimi.events',
-        ),
-        RABBITMQ_QUEUE_JIMI_DLQ: Joi.string().default('telemetry.jimi.dlq'),
-        RABBITMQ_PREFETCH_JIMI: Joi.number().default(10),
         RABBITMQ_QUEUE_AVL_EVENTS: Joi.string().default('telemetry.avl.events'),
         RABBITMQ_QUEUE_AVL_ALARMS: Joi.string().default('telemetry.avl.alarms'),
         RABBITMQ_QUEUE_AVL_DLQ: Joi.string().default('telemetry.avl.dlq'),

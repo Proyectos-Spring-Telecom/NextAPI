@@ -22,16 +22,6 @@ export interface RabbitMqRuntimeConfig {
     heartbeats: RabbitMqQueueDefinition;
     dlq: string;
   };
-  /** Legacy: se consumen para vaciarlas; sin bindings al exchange (ver avl). */
-  jt808: {
-    events: RabbitMqQueueDefinition;
-    dlq: string;
-  };
-  /** Legacy: se consumen para vaciarlas; sin bindings al exchange (ver avl). */
-  jimi: {
-    events: RabbitMqQueueDefinition;
-    dlq: string;
-  };
   avl: {
     events: RabbitMqQueueDefinition;
     alarms: RabbitMqQueueDefinition;
@@ -120,30 +110,6 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_AXPRO_DLQ') ?? 'telemetry.axpro.dlq',
-    },
-    jt808: {
-      events: {
-        queue:
-          config.get<string>('RABBITMQ_QUEUE_JT808_EVENTS') ??
-          'telemetry.jt808.events',
-        bindings: ['jt808.position', 'jt808.alarm.*'],
-        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_JT808', defaultPrefetch),
-        dlqRoutingKey: 'telemetry.jt808.failed',
-      },
-      dlq:
-        config.get<string>('RABBITMQ_QUEUE_JT808_DLQ') ?? 'telemetry.jt808.dlq',
-    },
-    jimi: {
-      events: {
-        queue:
-          config.get<string>('RABBITMQ_QUEUE_JIMI_EVENTS') ??
-          'telemetry.jimi.events',
-        bindings: ['jimi.position', 'jimi.alarm.*'],
-        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_JIMI', defaultPrefetch),
-        dlqRoutingKey: 'telemetry.jimi.failed',
-      },
-      dlq:
-        config.get<string>('RABBITMQ_QUEUE_JIMI_DLQ') ?? 'telemetry.jimi.dlq',
     },
     avl: {
       events: {

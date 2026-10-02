@@ -68,18 +68,18 @@ Panel SIA     ──HMAC─► /alarmas/ingest ───────────
 
 Exchange: **`telemetry`** (topic, durable). Prefijo de rutas: `src/messaging/`.
 
-| Protocolo | Cola events | Bindings | DLQ / notas |
-|-----------|-------------|----------|-------------|
-| **JT808** | `telemetry.jt808.events` | `jt808.position`, `jt808.alarm.*` | `telemetry.jt808.dlq` |
-| **JT808 media** | `telemetry.jt808.media` | `jt808.multimedia.photo` | misma DLQ |
-| **Jimi (VL802)** | `telemetry.jimi.events` | `jimi.position`, `jimi.alarm.*` | `telemetry.jimi.dlq` |
+| Protocolo | Cola | Bindings | DLQ / notas |
+|-----------|------|----------|-------------|
+| **AVL posiciones (JT808 + Jimi)** | `telemetry.avl.events` | `jt808.position`, `jimi.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| **AVL alarmas (JT808 + Jimi)** | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
 | **AX PRO** | `telemetry.axpro.events` / `…heartbeats` | eventos / heartbeats de panel vía cola | `telemetry.axpro.dlq` |
 
-Env relevantes: `RABBITMQ_*`, `RABBITMQ_QUEUE_JT808_*`, `RABBITMQ_QUEUE_JIMI_*`, `RABBITMQ_QUEUE_AXPRO_*`, prefetch por cola.
+Env relevantes: `RABBITMQ_*`, `RABBITMQ_QUEUE_AVL_*`, `RABBITMQ_PREFETCH_AVL`, `RABBITMQ_QUEUE_AXPRO_*`, prefetch por cola.
 
 ### Reglas de colas
 
-- Colas **separadas** por protocolo: **nunca** mezclar bindings `jimi.*` en cola JT808 ni `axpro.*` en el mismo handler JT808.
+- AVL: `AvlEventsConsumer` despacha por `protocol` (header o body) a `Jt808EventsConsumer` / `JimiEventsConsumer`; `kind` debe coincidir con la cola (`position` en events, `alarm` en alarms).
+- **Nunca** mezclar bindings `axpro.*` con las colas AVL.
 - `kind=alarm` (JT808/Jimi) → auditoría en `TelemetryIngestLog`; **no** INSERT `Posiciones` (evita GPS duplicado). Jimi: solo SOS en `jimi.alarm.*`.
 - Idempotencia global por `eventId` (SHA-256 hex 64) en `TelemetryIngestLog`.
 - Health: `GET /health/rabbitmq`.
