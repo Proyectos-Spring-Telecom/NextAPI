@@ -16,8 +16,6 @@ import {
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
 import { UsuariosPermisos } from 'src/entities/UsuariosPermisos';
-import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
-import { UsuarioPanelAlarma } from 'src/entities/UsuarioPanelAlarma';
 import { AsignacionSoluciones } from 'src/entities/AsignacionSoluciones';
 
 @Injectable()
@@ -27,10 +25,6 @@ export class PermisosService {
     private readonly permisoRepository: Repository<Permisos>,
     @InjectRepository(UsuariosPermisos)
     private readonly usuarioPermiso: Repository<UsuariosPermisos>,
-    @InjectRepository(UsuariosInstalaciones)
-    private readonly usuariosInstalacionesRepository: Repository<UsuariosInstalaciones>,
-    @InjectRepository(UsuarioPanelAlarma)
-    private readonly usuarioPanelAlarmaRepository: Repository<UsuarioPanelAlarma>,
     @InjectRepository(AsignacionSoluciones)
     private readonly asignacionSolucionesRepository: Repository<AsignacionSoluciones>,
     private readonly bitacoraLogger: BitacoraLoggerService,
@@ -289,20 +283,8 @@ export class PermisosService {
             WHERE 
               UsuariosPermisos.IdUsuario = '${idUsuario}'`;
 
-      const [
-        results,
-        usuariosInstalacionesRaw,
-        usuarioPanelAlarmaRaw,
-        asignacionSolucionesRaw,
-      ] = await Promise.all([
+      const [results, asignacionSolucionesRaw] = await Promise.all([
         this.permisoRepository.query(query),
-        this.usuariosInstalacionesRepository.find({
-          where: { idUsuario: idUsuarioNum },
-          relations: ['idInstalacion2'],
-        }),
-        this.usuarioPanelAlarmaRepository.find({
-          where: { idUsuario: idUsuarioNum },
-        }),
         this.asignacionSolucionesRepository.find({
           where: { idUsuario: idUsuarioNum },
           relations: ['idSolucion2'],
@@ -334,41 +316,6 @@ export class PermisosService {
         return result;
       }, []);
 
-      const UsuariosInstalaciones = usuariosInstalacionesRaw.map((item) => ({
-        Id: Number(item.id),
-        IdUsuario: Number(item.idUsuario),
-        IdInstalacion: Number(item.idInstalacion),
-        Estatus: item.estatus,
-        FechaCreacion: item.fechaCreacion,
-        FechaActualizacion: item.fechaActualizacion,
-        ...(item.idInstalacion2 && {
-          Instalacion: {
-            Id: Number(item.idInstalacion2.id),
-            IdCliente: Number(item.idInstalacion2.idCliente),
-            IdProducto: Number(item.idInstalacion2.idProducto),
-            IdDispositivo:
-              item.idInstalacion2.idDispositivo != null
-                ? Number(item.idInstalacion2.idDispositivo)
-                : null,
-            IdSim:
-              item.idInstalacion2.idSim != null
-                ? Number(item.idInstalacion2.idSim)
-                : null,
-            EstatusInstalacion: Number(item.idInstalacion2.estatusInstalacion),
-            Estatus: item.idInstalacion2.estatus,
-          },
-        }),
-      }));
-
-      const UsuarioPanelAlarma = usuarioPanelAlarmaRaw.map((item) => ({
-        Id: Number(item.id),
-        IdUsuario: Number(item.idUsuario),
-        IdPanelAlarma: Number(item.idPanelAlarma),
-        Estatus: item.estatus,
-        FechaCreacion: item.fechaCreacion,
-        FechaActualizacion: item.fechaActualizacion,
-      }));
-
       const AsignacionSoluciones = asignacionSolucionesRaw.map((item) => ({
         Id: Number(item.id),
         IdUsuario: Number(item.idUsuario),
@@ -389,8 +336,6 @@ export class PermisosService {
 
       return {
         UsuariosPermisos: permisosAgrupados,
-        UsuariosInstalaciones,
-        UsuarioPanelAlarma,
         AsignacionSoluciones,
       };
     } catch (error) {

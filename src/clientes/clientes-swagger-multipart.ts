@@ -3,18 +3,11 @@
  */
 export const clientesCreateMultipartApiBody = {
   description:
-    '**Creación:** `rfc`, `tipoPersona`, documentos (acta/comprobante/constancia) y **`numerosEmergencia` (mín. 1)** son obligatorios. ' +
-    '`numerosEmergencia` se envía como JSON string en form-data. Logotipo opcional. **No envíe `estatus`**.',
+    '**Creación:** `rfc`, `tipoPersona` y **`numerosEmergencia` (mín. 1)** son obligatorios. ' +
+    '`numerosEmergencia` se envía como JSON string en form-data. Documentos (acta/comprobante/constancia) y logotipo opcionales. **No envíe `estatus`**.',
   schema: {
     type: 'object',
-    required: [
-      'rfc',
-      'tipoPersona',
-      'actaConstitutiva',
-      'comprobanteDomicilio',
-      'constanciaSituacionFiscal',
-      'numerosEmergencia',
-    ],
+    required: ['rfc', 'tipoPersona', 'numerosEmergencia'],
     properties: {
       idPadre: {
         type: 'string',

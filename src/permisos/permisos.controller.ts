@@ -23,10 +23,10 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger'
 @ApiTags('Permisos')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(1, 2, 3) // Todos los roles pueden acceder por defecto
+@Roles() // Todos los roles pueden acceder por defecto
 @Controller('permisos')
 export class PermisosController {
-  constructor(private readonly permisosService: PermisosService) {}
+  constructor(private readonly permisosService: PermisosService) { }
 
   @Post()
   @Roles(1) // Solo SuperAdministrador puede crear permisos
@@ -63,6 +63,7 @@ export class PermisosController {
     return await this.permisosService.findOne(+id);
   }
 
+  @Roles(1)
   @Put(':id')
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -73,6 +74,7 @@ export class PermisosController {
     return await this.permisosService.update(id, updatePermisoDto, idUser);
   }
 
+  @Roles(1)
   @Patch(':id/estatus')
   @ApiOperation({
     summary: 'Cambiar estatus del permiso',

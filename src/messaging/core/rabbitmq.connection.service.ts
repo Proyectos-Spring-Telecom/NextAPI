@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import amqp, { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
+import { AvlEventsConsumer } from '../avl/avl-events.consumer';
 import { AxproEventsConsumer } from '../axpro/axpro-events.consumer';
 import { AxproHeartbeatsConsumer } from '../axpro/axpro-heartbeats.consumer';
 import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
-import { Jt808PhotoConsumer } from '../jt808/jt808-photo.consumer';
 import { DbConcurrencyLimiter } from './db-concurrency.util';
 import {
   dlqArgs,
@@ -48,8 +48,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     private readonly axproEventsConsumer: AxproEventsConsumer,
     private readonly axproHeartbeatsConsumer: AxproHeartbeatsConsumer,
     private readonly jt808EventsConsumer: Jt808EventsConsumer,
-    private readonly jt808PhotoConsumer: Jt808PhotoConsumer,
     private readonly jimiEventsConsumer: JimiEventsConsumer,
+    private readonly avlEventsConsumer: AvlEventsConsumer,
   ) {}
 
   async onModuleInit() {
@@ -201,21 +201,24 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
 
     const axproEventsCh = await this.connection.createChannel();
     const axproHbCh = await this.connection.createChannel();
+    const avlEventsCh = await this.connection.createChannel();
+    const avlAlarmsCh = await this.connection.createChannel();
     const jt808EventsCh = await this.connection.createChannel();
-    const jt808MediaCh = await this.connection.createChannel();
     const jimiEventsCh = await this.connection.createChannel();
 
     this.bindChannelEvents(axproEventsCh, 'axpro-events');
     this.bindChannelEvents(axproHbCh, 'axpro-heartbeats');
+    this.bindChannelEvents(avlEventsCh, 'avl-events');
+    this.bindChannelEvents(avlAlarmsCh, 'avl-alarms');
     this.bindChannelEvents(jt808EventsCh, 'jt808-events');
-    this.bindChannelEvents(jt808MediaCh, 'jt808-media');
     this.bindChannelEvents(jimiEventsCh, 'jimi-events');
 
     for (const ch of [
       axproEventsCh,
       axproHbCh,
+      avlEventsCh,
+      avlAlarmsCh,
       jt808EventsCh,
-      jt808MediaCh,
       jimiEventsCh,
     ]) {
       await ch.assertExchange(cfg.exchange, 'topic', { durable: true });
@@ -231,8 +234,22 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.axpro.events.dlqRoutingKey,
     );
 
-    await this.setupQueue(jt808EventsCh, cfg.exchange, cfg.dlx, cfg.jt808.events);
-    await this.setupQueue(jt808MediaCh, cfg.exchange, cfg.dlx, cfg.jt808.media);
+    // AVL (JT808 + Jimi): bindings nuevos ANTES de quitar los legacy, para no
+    // dejar ventanas en que el exchange descarte jt808.* / jimi.*.
+    await this.setupQueue(avlEventsCh, cfg.exchange, cfg.dlx, cfg.avl.events);
+    await this.setupQueue(avlAlarmsCh, cfg.exchange, cfg.dlx, cfg.avl.alarms);
+    await avlEventsCh.assertQueue(cfg.avl.dlq, { durable: true });
+    await avlEventsCh.bindQueue(
+      cfg.avl.dlq,
+      cfg.dlx,
+      cfg.avl.events.dlqRoutingKey,
+    );
+
+    // Legacy: se siguen consumiendo para vaciarlas, pero sin bindings al exchange.
+    await this.setupQueue(jt808EventsCh, cfg.exchange, cfg.dlx, cfg.jt808.events, {
+      bind: false,
+    });
+    await this.unbindLegacy(jt808EventsCh, cfg.exchange, cfg.jt808.events);
     await jt808EventsCh.assertQueue(cfg.jt808.dlq, { durable: true });
     await jt808EventsCh.bindQueue(
       cfg.jt808.dlq,
@@ -240,7 +257,10 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.jt808.events.dlqRoutingKey,
     );
 
-    await this.setupQueue(jimiEventsCh, cfg.exchange, cfg.dlx, cfg.jimi.events);
+    await this.setupQueue(jimiEventsCh, cfg.exchange, cfg.dlx, cfg.jimi.events, {
+      bind: false,
+    });
+    await this.unbindLegacy(jimiEventsCh, cfg.exchange, cfg.jimi.events);
     await jimiEventsCh.assertQueue(cfg.jimi.dlq, { durable: true });
     await jimiEventsCh.bindQueue(
       cfg.jimi.dlq,
@@ -261,16 +281,22 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       (m) => this.axproHeartbeatsConsumer.consume(m),
     );
     await this.registerConsumer(
+      avlEventsCh,
+      cfg.avl.events,
+      'avl:events',
+      (m) => this.avlEventsConsumer.consume(m, 'position'),
+    );
+    await this.registerConsumer(
+      avlAlarmsCh,
+      cfg.avl.alarms,
+      'avl:alarms',
+      (m) => this.avlEventsConsumer.consume(m, 'alarm'),
+    );
+    await this.registerConsumer(
       jt808EventsCh,
       cfg.jt808.events,
       'jt808:events',
       (m) => this.jt808EventsConsumer.consume(m),
-    );
-    await this.registerConsumer(
-      jt808MediaCh,
-      cfg.jt808.media,
-      'jt808:media',
-      (m) => this.jt808PhotoConsumer.consume(m),
     );
     await this.registerConsumer(
       jimiEventsCh,
@@ -280,7 +306,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     );
 
     this.logger.log(
-      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, jt808=${cfg.jt808.events.prefetch}, jimi=${cfg.jimi.events.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries})`,
+      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, avl=${cfg.avl.events.prefetch}/${cfg.avl.alarms.prefetch}, jt808(legacy)=${cfg.jt808.events.prefetch}, jimi(legacy)=${cfg.jimi.events.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries})`,
     );
   }
 
@@ -316,12 +342,32 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     exchange: string,
     dlx: string,
     def: RabbitMqQueueDefinition,
+    opts: { bind: boolean } = { bind: true },
   ) {
     await channel.assertQueue(def.queue, dlqArgs(dlx, def.dlqRoutingKey));
-    for (const key of def.bindings) {
-      await channel.bindQueue(def.queue, exchange, key);
+    if (opts.bind) {
+      for (const key of def.bindings) {
+        await channel.bindQueue(def.queue, exchange, key);
+      }
     }
     await channel.prefetch(def.prefetch);
+  }
+
+  /** Solo para colas legacy jt808/jimi; nunca para axpro. */
+  private async unbindLegacy(
+    channel: Channel,
+    exchange: string,
+    def: RabbitMqQueueDefinition,
+  ) {
+    for (const key of def.bindings) {
+      try {
+        await channel.unbindQueue(def.queue, exchange, key);
+      } catch (error) {
+        this.logger.warn(
+          `unbind legacy ${def.queue} <- ${exchange} (${key}) falló: ${(error as Error)?.message}`,
+        );
+      }
+    }
   }
 
   private async onMessage(

@@ -24,10 +24,10 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 @ApiTags('Modulos')
 @ApiBearerAuth('bearer-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(1, 2, 3) // Todos los roles pueden acceder por defecto
+@Roles() // Todos los roles pueden acceder por defecto
 @Controller('modulos')
 export class ModulosController {
-  constructor(private readonly modulosService: ModulosService) {}
+  constructor(private readonly modulosService: ModulosService) { }
 
   @Post()
   @Roles(1) // Solo SuperAdministrador puede crear módulos
@@ -57,6 +57,7 @@ export class ModulosController {
     return this.modulosService.findOne(+id);
   }
 
+  @Roles(1)
   @Put(':id')
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -67,6 +68,7 @@ export class ModulosController {
     return await this.modulosService.update(id, updateModuloDto, idUser);
   }
 
+  @Roles(1)
   @Patch(':id/estatus')
   @ApiOperation({
     summary: 'Cambiar estatus del módulo',

@@ -124,7 +124,7 @@ Base: `/s3` · Roles `1, 2, 3`.
 | Elemento | Spec |
 |----------|------|
 | `POST /`, `PATCH /:id` | `multipart/form-data` (no JSON como cuerpo principal) |
-| Documentos en **alta** | Obligatorios: `actaConstitutiva`, `comprobanteDomicilio`, `constanciaSituacionFiscal` (PDF archivo y/o URL texto) |
+| Documentos en **alta** | Opcionales: `actaConstitutiva`, `comprobanteDomicilio`, `constanciaSituacionFiscal` (PDF archivo y/o URL texto) |
 | `logotipo` | Opcional PNG/JPEG |
 | MIME por campo | En módulo Clientes, no en S3 genérico |
 | Carpeta S3 | `clientes` |
