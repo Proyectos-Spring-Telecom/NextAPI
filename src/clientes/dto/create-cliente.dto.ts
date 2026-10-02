@@ -124,47 +124,39 @@ export class CreateClienteDto {
   @IsEmail({}, { message: "Debe ser un correo válido" })
   correoEncargado?: string;
 
-  // ⚡ Documentos (obligatorios en creación: URL o archivo multipart en el mismo nombre de campo)
+  // ⚡ Documentos (opcionales: URL o archivo multipart en el mismo nombre de campo)
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({
-    message:
-      "La constancia de situación fiscal es obligatoria (URL o archivo PDF constanciaSituacionFiscal).",
-  })
   @MaxLength(500)
   @ApiProperty({
     description:
-      "Obligatorio: URL o enviar el PDF en el campo de archivo `constanciaSituacionFiscal`.",
-    required: true,
+      "Opcional: URL o enviar el PDF en el campo de archivo `constanciaSituacionFiscal`.",
+    required: false,
     maxLength: 500,
   })
-  constanciaSituacionFiscal: string;
+  constanciaSituacionFiscal?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({
-    message:
-      "El comprobante de domicilio es obligatorio (URL o archivo PDF comprobanteDomicilio).",
-  })
   @MaxLength(500)
   @ApiProperty({
     description:
-      "Obligatorio: URL o enviar el PDF en el campo de archivo `comprobanteDomicilio`.",
-    required: true,
+      "Opcional: URL o enviar el PDF en el campo de archivo `comprobanteDomicilio`.",
+    required: false,
     maxLength: 500,
   })
-  comprobanteDomicilio: string;
+  comprobanteDomicilio?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({
-    message: "El acta constitutiva es obligatoria (URL o archivo PDF actaConstitutiva).",
-  })
   @MaxLength(500)
   @ApiProperty({
     description:
-      "Obligatorio: URL o enviar el PDF en el campo de archivo `actaConstitutiva`.",
-    required: true,
+      "Opcional: URL o enviar el PDF en el campo de archivo `actaConstitutiva`.",
+    required: false,
     maxLength: 500,
   })
-  actaConstitutiva: string;
+  actaConstitutiva?: string;
 
   @IsOptional()
   @IsString()

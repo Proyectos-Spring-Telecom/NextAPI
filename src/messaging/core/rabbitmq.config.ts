@@ -22,13 +22,19 @@ export interface RabbitMqRuntimeConfig {
     heartbeats: RabbitMqQueueDefinition;
     dlq: string;
   };
+  /** Legacy: se consumen para vaciarlas; sin bindings al exchange (ver avl). */
   jt808: {
     events: RabbitMqQueueDefinition;
-    media: RabbitMqQueueDefinition;
     dlq: string;
   };
+  /** Legacy: se consumen para vaciarlas; sin bindings al exchange (ver avl). */
   jimi: {
     events: RabbitMqQueueDefinition;
+    dlq: string;
+  };
+  avl: {
+    events: RabbitMqQueueDefinition;
+    alarms: RabbitMqQueueDefinition;
     dlq: string;
   };
 }
@@ -124,14 +130,6 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         prefetch: prefetch(config, 'RABBITMQ_PREFETCH_JT808', defaultPrefetch),
         dlqRoutingKey: 'telemetry.jt808.failed',
       },
-      media: {
-        queue:
-          config.get<string>('RABBITMQ_QUEUE_JT808_MEDIA') ??
-          'telemetry.jt808.media',
-        bindings: ['jt808.multimedia.photo'],
-        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_JT808', defaultPrefetch),
-        dlqRoutingKey: 'telemetry.jt808.failed',
-      },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_JT808_DLQ') ?? 'telemetry.jt808.dlq',
     },
@@ -146,6 +144,26 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_JIMI_DLQ') ?? 'telemetry.jimi.dlq',
+    },
+    avl: {
+      events: {
+        queue:
+          config.get<string>('RABBITMQ_QUEUE_AVL_EVENTS') ??
+          'telemetry.avl.events',
+        bindings: ['jt808.position', 'jimi.position'],
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
+        dlqRoutingKey: 'telemetry.avl.failed',
+      },
+      alarms: {
+        queue:
+          config.get<string>('RABBITMQ_QUEUE_AVL_ALARMS') ??
+          'telemetry.avl.alarms',
+        bindings: ['jt808.alarm.*', 'jimi.alarm.*'],
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
+        dlqRoutingKey: 'telemetry.avl.failed',
+      },
+      dlq:
+        config.get<string>('RABBITMQ_QUEUE_AVL_DLQ') ?? 'telemetry.avl.dlq',
     },
   };
 }

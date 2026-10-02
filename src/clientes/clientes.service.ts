@@ -174,22 +174,6 @@ export class ClientesService {
         logotipo = url;
       }
 
-      if (!actaConstitutiva?.trim()) {
-        throw new BadRequestException(
-          'Debe proporcionar el acta constitutiva (URL o archivo PDF).',
-        );
-      }
-      if (!comprobanteDomicilio?.trim()) {
-        throw new BadRequestException(
-          'Debe proporcionar el comprobante de domicilio (URL o archivo PDF).',
-        );
-      }
-      if (!constanciaSituacionFiscal?.trim()) {
-        throw new BadRequestException(
-          'Debe proporcionar la constancia de situación fiscal (URL o archivo PDF).',
-        );
-      }
-
       const idPadre = restDto.idPadre == null ? 1 : restDto.idPadre;
 
       const queryRunner = this.dataSource.createQueryRunner();

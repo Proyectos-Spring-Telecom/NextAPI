@@ -57,8 +57,8 @@ export class ClientesController {
   @ApiOperation({
     summary: 'Crear un nuevo cliente',
     description:
-      'Crea un cliente con `multipart/form-data`. Acta, comprobante y constancia son **obligatorios** (URL o PDF). ' +
-      'También es **obligatorio** `numerosEmergencia` (JSON string, mínimo 1 contacto). Logotipo opcional.',
+      'Crea un cliente con `multipart/form-data`. Acta, comprobante y constancia son opcionales (URL o PDF). ' +
+      'Es **obligatorio** `numerosEmergencia` (JSON string, mínimo 1 contacto). Logotipo opcional.',
   })
   @ApiBody(clientesCreateMultipartApiBody)
   @ApiResponse({
