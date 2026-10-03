@@ -388,10 +388,10 @@ export class VehiculosService {
         ...(incluirInservibles
           ? {}
           : {
-              idProducto2: {
-                estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
-              },
-            }),
+            idProducto2: {
+              estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
+            },
+          }),
       };
       const [data, total] = await this.repository.findAndCount({
         where,
@@ -609,7 +609,7 @@ LIMIT ${limit}
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
