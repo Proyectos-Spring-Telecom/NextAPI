@@ -294,7 +294,7 @@ export class DispositivosService {
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
