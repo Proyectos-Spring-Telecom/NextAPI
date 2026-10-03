@@ -9,4 +9,5 @@
 | [webhook-trackcam-springtrackcam.md](./webhook-trackcam-springtrackcam.md) | Receptor HMAC Trackcam (SpringTrackCam) |
 | [webhook-shiftcontrol.md](./webhook-shiftcontrol.md) | Webhooks salientes hacia ShiftControl |
 
-Swagger runtime: `/api/docs` (o la ruta en `main.ts`).
+Swagger runtime: `/docs` (fuera del prefijo `/api`; ver `main.ts`).  
+README general de la solución: [`../README.md`](../README.md).
