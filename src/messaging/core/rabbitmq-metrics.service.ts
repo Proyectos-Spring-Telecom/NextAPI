@@ -1,8 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+export type ProtocolMetrics = {
+  processed: number;
+  lastMessageAt: string | null;
+  lastDeviceId: string | null;
+};
+
+type LabelActivity = {
+  lastMessageAt: string | null;
+  lastFailureAt: string | null;
+  lastDlqAt: string | null;
+};
+
+/**
+ * Contadores en memoria: se reinician cuando el servicio arranca.
+ * `counters` alimenta GET /health/rabbitmq (no agregar campos ahí);
+ * `activity` y `protocols` solo los usa GET /health/rabbitmq/queues.
+ */
 @Injectable()
 export class RabbitMqMetricsService {
+  private readonly startedAt = new Date().toISOString();
   private connected = false;
   private lastMessageAt: string | null = null;
   private lastReconnectAt: string | null = null;
@@ -11,6 +29,8 @@ export class RabbitMqMetricsService {
     string,
     { processed: number; failed: number; dlq: number; duplicate: number }
   >();
+  private readonly activity = new Map<string, LabelActivity>();
+  private readonly protocols = new Map<string, Map<string, ProtocolMetrics>>();
 
   markConnected() {
     this.connected = true;
@@ -28,6 +48,7 @@ export class RabbitMqMetricsService {
 
   recordSuccess(label: string) {
     this.lastMessageAt = new Date().toISOString();
+    this.touchActivity(label, 'lastMessageAt', this.lastMessageAt);
     const row = this.counters.get(label) ?? {
       processed: 0,
       failed: 0,
@@ -40,6 +61,7 @@ export class RabbitMqMetricsService {
 
   recordDuplicate(label: string) {
     this.lastMessageAt = new Date().toISOString();
+    this.touchActivity(label, 'lastMessageAt', this.lastMessageAt);
     const row = this.counters.get(label) ?? {
       processed: 0,
       failed: 0,
@@ -51,6 +73,7 @@ export class RabbitMqMetricsService {
   }
 
   recordFailure(label: string) {
+    this.touchActivity(label, 'lastFailureAt', new Date().toISOString());
     const row = this.counters.get(label) ?? {
       processed: 0,
       failed: 0,
@@ -62,6 +85,7 @@ export class RabbitMqMetricsService {
   }
 
   recordDlq(label: string) {
+    this.touchActivity(label, 'lastDlqAt', new Date().toISOString());
     const row = this.counters.get(label) ?? {
       processed: 0,
       failed: 0,
@@ -70,6 +94,52 @@ export class RabbitMqMetricsService {
     };
     row.dlq += 1;
     this.counters.set(label, row);
+  }
+
+  /** Mensaje procesado sin error, desglosado por protocolo del gateway (jt808 / jimi). */
+  recordProtocol(label: string, protocol: string, deviceId?: string | null) {
+    const byProtocol =
+      this.protocols.get(label) ?? new Map<string, ProtocolMetrics>();
+    const row = byProtocol.get(protocol) ?? {
+      processed: 0,
+      lastMessageAt: null,
+      lastDeviceId: null,
+    };
+    row.processed += 1;
+    row.lastMessageAt = new Date().toISOString();
+    if (deviceId) {
+      row.lastDeviceId = deviceId;
+    }
+    byProtocol.set(protocol, row);
+    this.protocols.set(label, byProtocol);
+  }
+
+  getStartedAt(): string {
+    return this.startedAt;
+  }
+
+  getLabelMetrics(label: string) {
+    const counters = this.counters.get(label) ?? {
+      processed: 0,
+      failed: 0,
+      dlq: 0,
+      duplicate: 0,
+    };
+    const activity = this.activity.get(label) ?? {
+      lastMessageAt: null,
+      lastFailureAt: null,
+      lastDlqAt: null,
+    };
+    const byProtocol = this.protocols.get(label);
+    return {
+      ...counters,
+      ...activity,
+      byProtocol: byProtocol
+        ? Object.fromEntries(
+            [...byProtocol.entries()].map(([k, v]) => [k, { ...v }]),
+          )
+        : null,
+    };
   }
 
   getConsumerState() {
@@ -96,5 +166,15 @@ export class RabbitMqMetricsService {
         inUse: all != null && free != null ? all - free : null,
       },
     };
+  }
+
+  private touchActivity(label: string, field: keyof LabelActivity, at: string) {
+    const row = this.activity.get(label) ?? {
+      lastMessageAt: null,
+      lastFailureAt: null,
+      lastDlqAt: null,
+    };
+    row[field] = at;
+    this.activity.set(label, row);
   }
 }

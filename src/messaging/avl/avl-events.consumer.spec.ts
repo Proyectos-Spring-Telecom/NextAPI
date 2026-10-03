@@ -24,11 +24,60 @@ function buildMsg(opts: {
 describe('AvlEventsConsumer', () => {
   const jt808 = { consume: jest.fn().mockResolvedValue(undefined) };
   const jimi = { consume: jest.fn().mockResolvedValue(undefined) };
+  const metrics = { recordProtocol: jest.fn() };
   let consumer: AvlEventsConsumer;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    consumer = new AvlEventsConsumer(jt808 as never, jimi as never);
+    consumer = new AvlEventsConsumer(
+      jt808 as never,
+      jimi as never,
+      metrics as never,
+    );
+  });
+
+  it('tras delegar sin error registra protocolo y deviceId (header) en el label de la cola', async () => {
+    const msg = buildMsg({
+      routingKey: 'jimi.position',
+      headers: { protocol: 'jimi', kind: 'position', deviceId: '869999000000001' },
+      body: { protocol: 'jimi', kind: 'position', deviceId: 'otro' },
+    });
+
+    await consumer.consume(msg, 'position');
+
+    expect(metrics.recordProtocol).toHaveBeenCalledWith(
+      'avl:events',
+      'jimi',
+      '869999000000001',
+    );
+  });
+
+  it('sin header deviceId lo toma del body; alarmas usan label avl:alarms', async () => {
+    const msg = buildMsg({
+      routingKey: 'jt808.alarm.dsm',
+      headers: { protocol: 'jt808', kind: 'alarm' },
+      body: { protocol: 'jt808', kind: 'alarm', deviceId: 'T-01' },
+    });
+
+    await consumer.consume(msg, 'alarm');
+
+    expect(metrics.recordProtocol).toHaveBeenCalledWith(
+      'avl:alarms',
+      'jt808',
+      'T-01',
+    );
+  });
+
+  it('si el consumidor delegado falla no registra el protocolo', async () => {
+    jt808.consume.mockRejectedValueOnce(new Error('db caída'));
+    const msg = buildMsg({
+      routingKey: 'jt808.position',
+      headers: { protocol: 'jt808', kind: 'position', deviceId: 'T-01' },
+      body: { protocol: 'jt808', kind: 'position' },
+    });
+
+    await expect(consumer.consume(msg, 'position')).rejects.toThrow('db caída');
+    expect(metrics.recordProtocol).not.toHaveBeenCalled();
   });
 
   it('jt808 position en cola events → delega solo a jt808', async () => {
@@ -126,5 +175,6 @@ describe('AvlEventsConsumer', () => {
     expect(isPermanentIngestError(error)).toBe(true);
     expect(jt808.consume).not.toHaveBeenCalled();
     expect(jimi.consume).not.toHaveBeenCalled();
+    expect(metrics.recordProtocol).not.toHaveBeenCalled();
   });
 });

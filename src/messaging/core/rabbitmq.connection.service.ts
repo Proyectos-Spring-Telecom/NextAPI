@@ -18,6 +18,8 @@ import {
 } from './rabbitmq.config';
 import { handleConsumerMessage } from './rabbitmq.consumer.handler';
 import { RabbitMqMetricsService } from './rabbitmq-metrics.service';
+import { QUEUE_LABEL } from './rabbitmq-queue-labels';
+import { BrokerQueueResult } from './rabbitmq-queue-status.util';
 
 type ConsumerRegistration = {
   channel: Channel;
@@ -69,6 +71,90 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       clearInterval(this.watchdogTimer);
     }
     await this.teardown();
+  }
+
+  /**
+   * Solo lectura (checkQueue, nunca assertQueue) en un canal temporal propio:
+   * los canales de consumo no se tocan. Una cola inexistente (404) cierra el
+   * canal en el broker, así que se abre otro para las siguientes.
+   */
+  async getQueueStats(
+    queues: string[],
+    timeoutMs = 5000,
+  ): Promise<Map<string, BrokerQueueResult>> {
+    const results = new Map<string, BrokerQueueResult>();
+    const conn = this.connection;
+    if (!conn) {
+      for (const queue of queues) {
+        results.set(queue, { broker: null, error: 'disconnected' });
+      }
+      return results;
+    }
+
+    const opened: Channel[] = [];
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const work = async () => {
+      let channel: Channel | null = null;
+      for (const queue of queues) {
+        if (timedOut) {
+          return;
+        }
+        try {
+          if (!channel) {
+            const created = await conn.createChannel();
+            created.on('error', () => undefined);
+            if (timedOut) {
+              await created.close().catch(() => undefined);
+              return;
+            }
+            opened.push(created);
+            channel = created;
+          }
+          const { messageCount, consumerCount } =
+            await channel.checkQueue(queue);
+          if (timedOut) {
+            return;
+          }
+          results.set(queue, {
+            broker: { messages: messageCount, consumers: consumerCount },
+            error: null,
+          });
+        } catch (error) {
+          if (timedOut) {
+            return;
+          }
+          const missing = (error as { code?: number })?.code === 404;
+          results.set(queue, { broker: null, error: missing ? 'missing' : 'error' });
+          channel = null;
+        }
+      }
+    };
+
+    try {
+      await Promise.race([
+        work(),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            resolve();
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      for (const ch of opened) {
+        await ch.close().catch(() => undefined);
+      }
+    }
+
+    for (const queue of queues) {
+      if (!results.has(queue)) {
+        results.set(queue, { broker: null, error: 'timeout' });
+      }
+    }
+    return results;
   }
 
   private startWatchdog() {
@@ -236,25 +322,25 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     await this.registerConsumer(
       axproEventsCh,
       cfg.axpro.events,
-      'axpro:event',
+      QUEUE_LABEL.axproEvents,
       (m) => this.axproEventsConsumer.consume(m),
     );
     await this.registerConsumer(
       axproHbCh,
       cfg.axpro.heartbeats,
-      'axpro:heartbeat',
+      QUEUE_LABEL.axproHeartbeats,
       (m) => this.axproHeartbeatsConsumer.consume(m),
     );
     await this.registerConsumer(
       avlEventsCh,
       cfg.avl.events,
-      'avl:events',
+      QUEUE_LABEL.avlEvents,
       (m) => this.avlEventsConsumer.consume(m, 'position'),
     );
     await this.registerConsumer(
       avlAlarmsCh,
       cfg.avl.alarms,
-      'avl:alarms',
+      QUEUE_LABEL.avlAlarms,
       (m) => this.avlEventsConsumer.consume(m, 'alarm'),
     );
 
