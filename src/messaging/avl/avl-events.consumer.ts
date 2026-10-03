@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ConsumeMessage } from 'amqplib';
+import { RabbitMqMetricsService } from '../core/rabbitmq-metrics.service';
+import { QUEUE_LABEL } from '../core/rabbitmq-queue-labels';
 import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
 
 export type AvlExpectedKind = 'position' | 'alarm';
+
+const AVL_QUEUE_LABEL: Record<AvlExpectedKind, string> = {
+  position: QUEUE_LABEL.avlEvents,
+  alarm: QUEUE_LABEL.avlAlarms,
+};
 
 /**
  * Colas compartidas `telemetry.avl.events` / `telemetry.avl.alarms`.
@@ -15,6 +22,7 @@ export class AvlEventsConsumer {
   constructor(
     private readonly jt808: Jt808EventsConsumer,
     private readonly jimi: JimiEventsConsumer,
+    private readonly metrics: RabbitMqMetricsService,
   ) {}
 
   async consume(
@@ -44,15 +52,19 @@ export class AvlEventsConsumer {
 
     if (protocol === 'jt808') {
       await this.jt808.consume(msg);
-      return;
-    }
-    if (protocol === 'jimi') {
+    } else if (protocol === 'jimi') {
       await this.jimi.consume(msg);
-      return;
+    } else {
+      throw new Error(
+        `protocol=${String(protocol)} inválido para cola avl (${routingKey})`,
+      );
     }
 
-    throw new Error(
-      `protocol=${String(protocol)} inválido para cola avl (${routingKey})`,
+    const deviceId = headerString(headers.deviceId) ?? fromBody('deviceId');
+    this.metrics.recordProtocol(
+      AVL_QUEUE_LABEL[expectedKind],
+      protocol,
+      deviceId != null ? String(deviceId) : null,
     );
   }
 }

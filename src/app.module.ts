@@ -135,6 +135,7 @@ import * as jwt from 'jsonwebtoken';
         RABBITMQ_RECONNECT_MAX_DELAY: Joi.number().default(30000),
         RABBITMQ_MAX_CONCURRENT_DB: Joi.number().default(5),
         CONSUMER_WATCHDOG_MINUTES: Joi.number().default(15),
+        QUEUE_IDLE_WARN_SECONDS: Joi.number().default(900),
         DB_CONNECTION_LIMIT: Joi.number().default(10),
         DB_LOGGING: Joi.boolean().default(false),
         DEVICE_LOOKUP_CACHE_TTL_SEC: Joi.number().default(600),
