@@ -23,6 +23,7 @@ import {
   ApiUnauthorizedResponse,
   ApiNotFoundResponse,
   ApiConflictResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { SimsService } from './sims.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
@@ -274,16 +275,19 @@ export class SimsController {
     summary: 'Actualizar SIM',
     description:
       'Actualización parcial de un SIM (`application/json`, propiedades en **camelCase**).\n\n' +
+      'Se pueden modificar todos los campos. Si se cambia el cliente y el SIM tiene historial de instalaciones, se hace un traspaso: ' +
+      'el registro anterior queda inactivo con el cliente anterior (conserva el historial) y se crea un SIM nuevo para el cliente nuevo; ' +
+      'la respuesta trae el `id` nuevo. Si el SIM está en una instalación activa responde 409.\n\n' +
       '**Campos opcionales** (omitir = conservar valor actual):\n' +
-      '- `imei` — string, máx. 25; único en BD (`UQ_Sims_IMEI`).\n' +
-      '- `numeroTelefono` — string, máx. 20.\n' +
-      '- `idCliente` — reasigna el tenant propietario (debe existir en `Clientes`).\n' +
+      '- `imei` — string, máx. 25; único en BD (`UQ_Sims_IMEI`). Cadena vacía = `null`.\n' +
+      '- `numeroTelefono` — string, máx. 20. Cadena vacía = `null`.\n' +
+      '- `idCliente` — reasigna el tenant propietario (debe existir y estar en el alcance del token).\n' +
       '- `idTelefonia` — FK a `CatTelefonia`.\n' +
-      '- `idPlanTelefonia` — FK a `CatPlanesTelefonia`.\n' +
-      '- `notas` — string, máx. 500.\n\n' +
+      '- `idPlanTelefonia` — FK a `CatPlanesTelefonia`; debe pertenecer a la telefonía final.\n' +
+      '- `notas` — string, máx. 500. Cadena vacía = `null`.\n\n' +
       '**No incluido:** `estatus`. Para cambiarlo usa `PATCH /api/sims/estatus/{id}` ' +
       'con body `{ "estatus": 0|1|2|3|4|5 }`.\n\n' +
-      '**Validaciones:** FKs enviadas deben existir; si cambia `imei`, no puede estar duplicado.',
+      '**Validaciones:** el SIM debe estar en el alcance del rol; FKs enviadas deben existir; si cambia `imei`, no puede estar duplicado.',
   })
   @ApiParam({
     name: 'id',
@@ -329,23 +333,41 @@ export class SimsController {
     },
   })
   @ApiOkResponse({
-    description: 'SIM actualizado correctamente',
-    schema: {
-      example: {
-        status: 'success',
-        message: 'SIM actualizado correctamente',
-        data: { id: 5, nombre: '5598765432' },
+    description:
+      'SIM actualizado correctamente. En un traspaso, `data.id` es el SIM nuevo, `data.idAnterior` el registro anterior y `data.traspaso = true`.',
+    examples: {
+      actualizacion: {
+        summary: 'Actualización normal',
+        value: {
+          status: 'success',
+          message: 'SIM actualizado correctamente',
+          data: { id: 5, nombre: '5598765432' },
+        },
+      },
+      traspaso: {
+        summary: 'Traspaso a otro cliente',
+        value: {
+          status: 'success',
+          message: 'SIM traspasado al nuevo cliente correctamente',
+          data: { id: 18, nombre: '5598765432', idAnterior: 5, traspaso: true },
+        },
       },
     },
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos o FK inexistente (`idCliente` / `idTelefonia` / `idPlanTelefonia`)',
+      'Datos inválidos, FK inexistente (`idCliente` / `idTelefonia` / `idPlanTelefonia`) o el plan no pertenece a la compañía telefónica seleccionada',
   })
   @ApiConflictResponse({
-    description: 'El IMEI ya está registrado (`UQ_Sims_IMEI`)',
+    description:
+      'El SIM está asignado a una instalación activa (retíralo antes de cambiar el cliente) o el IMEI ya está registrado (`UQ_Sims_IMEI`)',
   })
-  @ApiNotFoundResponse({ description: 'SIM no encontrado' })
+  @ApiForbiddenResponse({
+    description: 'El nuevo `idCliente` está fuera del alcance del token',
+  })
+  @ApiNotFoundResponse({
+    description: 'SIM no encontrado o fuera del alcance del token',
+  })
   @ApiUnauthorizedResponse({ description: 'No autorizado (JWT Bearer)' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -353,7 +375,8 @@ export class SimsController {
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
+    const rol = req.user.rol;
     const idUser = req.user.userId;
-    return this.simsService.update(id, dto, idCliente, idUser);
+    return this.simsService.update(id, dto, idCliente, rol, idUser);
   }
 }
