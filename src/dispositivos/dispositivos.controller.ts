@@ -11,8 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
+  ApiForbiddenResponse,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -195,10 +198,28 @@ export class DispositivosController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar dispositivo' })
+  @ApiOperation({
+    summary: 'Actualizar dispositivo',
+    description:
+      'Actualización parcial. Tipo, marca, modelo, eco y cámara se pueden cambiar siempre. Cliente, IMEI y número de serie solo si el dispositivo no está ni ha estado en una instalación; al cambiar el cliente se mueve también su configuración de panel / TrackCam.',
+  })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })
   @ApiResponse({ status: 200, description: 'Dispositivo actualizado' })
-  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos, FK inexistente (`idCliente` / tipo / marca / modelo) o número de serie / IMEI ya existente',
+  })
+  @ApiConflictResponse({
+    description:
+      'El dispositivo está en una instalación activa, tiene historial de instalaciones (no se puede cambiar cliente, IMEI ni número de serie) o el IMEI / número de serie ya está registrado',
+  })
+  @ApiForbiddenResponse({
+    description: 'El nuevo `idCliente` está fuera del alcance del token',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Dispositivo no encontrado o fuera del alcance del token',
+  })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -209,6 +230,7 @@ export class DispositivosController {
       id,
       dto,
       req.user.idCliente,
+      req.user.rol,
       req.user.userId,
     );
   }
