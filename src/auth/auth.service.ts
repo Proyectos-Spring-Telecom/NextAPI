@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -42,6 +42,19 @@ const VALIDATE_FACE_ID_SOLUCION = 2;
 const MSG_SOLUCION_INVALIDA = 'Credenciales inválidas.';
 const MSG_LOGOUT_OK = 'Sesión cerrada';
 const DUMMY_BCRYPT_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+/** Soluciones.Id (BD Next). */
+const ID_SOLUCION_NEXT = 1;
+const ID_SOLUCION_SHIFTCONTROL = 2;
+
+/**
+ * Soluciones adicionales que también permiten entrar a una solución solicitada.
+ * NEXT (1): también entran usuarios con ShiftControl (2) — acceso al dashboard de Next.
+ * Las demás soluciones (incluida ShiftControl) conservan la validación estricta.
+ */
+const SOLUCIONES_ADICIONALES_CON_ACCESO: Readonly<Record<number, readonly number[]>> = {
+  [ID_SOLUCION_NEXT]: [ID_SOLUCION_SHIFTCONTROL],
+};
 
 @Injectable()
 export class AuthService {
@@ -135,6 +148,13 @@ export class AuthService {
     return solucion.id;
   }
 
+  /** Ids de solución que dan acceso a la solución solicitada (ella misma + adicionales). */
+  private idsSolucionConAcceso(idSolucion: number | string): number[] {
+    const id = Number(idSolucion);
+    const adicionales = SOLUCIONES_ADICIONALES_CON_ACCESO[id] ?? [];
+    return [...new Set([id, ...adicionales.map(Number)])];
+  }
+
   async signIn(loginAuthDto: LoginAuthDto, nombres?: string) {
     try {
       this.logger.log(`Auth: intento de login (userName=${loginAuthDto.userName})`);
@@ -157,17 +177,18 @@ export class AuthService {
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
 
+      const idsSolucionPermitidos = this.idsSolucionConAcceso(idSolucion);
       const permisos = await this.asignacionSolucionesRepository.findOne({
         where: {
           idUsuario: user.id,
-          idSolucion: idSolucion,
+          idSolucion: In(idsSolucionPermitidos),
           estatus: EstatusEnum.ACTIVO,
         },
       });
 
       if (!permisos) {
         this.logger.warn(
-          `Auth: login fallido — sin asignación a la solución (userId=${user.id}, idSolucion=${idSolucion})`,
+          `Auth: login fallido — sin asignación a la solución (userId=${user.id}, idSolucion=${idSolucion}, aceptadas=${idsSolucionPermitidos.join(',')})`,
         );
         throw new UnauthorizedException(MSG_CREDENCIALES_INVALIDAS);
       }
@@ -189,6 +210,12 @@ export class AuthService {
       }
 
       const session = await this.createSessionForUser(user, this.optionalFaceClaim(user));
+
+      if (Number(permisos.idSolucion) !== Number(idSolucion)) {
+        this.logger.log(
+          `Auth: acceso por solución adicional (userId=${user.id}, solicitada=${idSolucion}, asignada=${permisos.idSolucion})`,
+        );
+      }
 
       this.logger.log(
         `Auth: login correcto (userId=${user.id}, idCliente=${user.idCliente})`,

@@ -44,6 +44,11 @@ import {
 } from 'src/instalaciones/helpers/instalaciones-paginado.helpers';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 
+/** Roles que pueden ver las soluciones asignadas de los usuarios en listados. */
+const ROLES_VEN_SOLUCIONES_USUARIO: readonly number[] = [
+  EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO,
+];
+
 @Injectable()
 export class UsuariosService {
   constructor(
@@ -62,6 +67,41 @@ export class UsuariosService {
     @InjectRepository(Instalaciones)
     private readonly instalacionesRepository: Repository<Instalaciones>,
   ) {}
+
+  private puedeVerSoluciones(rol: number): boolean {
+    return ROLES_VEN_SOLUCIONES_USUARIO.includes(Number(rol));
+  }
+
+  /**
+   * Soluciones activas por usuario en UNA sola consulta (sin JOIN en la consulta principal
+   * para no duplicar filas ni alterar paginado/total).
+   */
+  private async obtenerSolucionesPorUsuarios(
+    idsUsuarios: number[],
+  ): Promise<Map<number, { id: number; codigo: string; nombre: string }[]>> {
+    const mapa = new Map<number, { id: number; codigo: string; nombre: string }[]>();
+    const ids = [...new Set(idsUsuarios.map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+    if (ids.length === 0) return mapa;
+
+    const rows = await this.usuarioRepository.query(
+      `SELECT a.IdUsuario AS idUsuario, s.Id AS id, s.Codigo AS codigo, s.Nombre AS nombre
+         FROM AsignacionSoluciones a
+         INNER JOIN Soluciones s ON s.Id = a.IdSolucion
+        WHERE a.IdUsuario IN (${ids.map(() => '?').join(', ')})
+          AND a.Estatus = 1
+          AND s.Estatus = 1
+        ORDER BY s.Id ASC`,
+      ids,
+    );
+
+    for (const r of rows ?? []) {
+      const idUsuario = Number(r.idUsuario);
+      const lista = mapa.get(idUsuario) ?? [];
+      lista.push({ id: Number(r.id), codigo: String(r.codigo ?? ''), nombre: String(r.nombre ?? '') });
+      mapa.set(idUsuario, lista);
+    }
+    return mapa;
+  }
 
   // ========================================
   // 🔹 OBTENER USUARIOS POR PAGINACIÓN
@@ -167,11 +207,24 @@ ${excludeSelf}`;
 
       const total = Number(totalResult[0]?.total || 0);
 
+      const mapaSoluciones = this.puedeVerSoluciones(rol)
+        ? await this.obtenerSolucionesPorUsuarios(usuarios.map((item) => Number(item.Id)))
+        : null;
+
       const data = usuarios.map((item) => ({
         ...item,
         Id: Number(item.Id),
         IdRol: Number(item.IdRol),
         IdCliente: Number(item.IdCliente),
+        ...(mapaSoluciones
+          ? {
+              Soluciones: (mapaSoluciones.get(Number(item.Id)) ?? []).map((s) => ({
+                Id: s.id,
+                Codigo: s.codigo,
+                Nombre: s.nombre,
+              })),
+            }
+          : {}),
       }));
 
       const result: ApiResponseCommon = {
@@ -252,11 +305,24 @@ ORDER BY u.Id DESC
         [...tenant.params, ...rolesParams],
       );
 
+      const mapaSoluciones = this.puedeVerSoluciones(rol)
+        ? await this.obtenerSolucionesPorUsuarios(usuarios.map((item) => Number(item.Id)))
+        : null;
+
       const data = usuarios.map((item) => ({
         ...item,
         Id: Number(item.Id),
         IdRol: Number(item.IdRol),
         IdCliente: Number(item.IdCliente),
+        ...(mapaSoluciones
+          ? {
+              Soluciones: (mapaSoluciones.get(Number(item.Id)) ?? []).map((s) => ({
+                Id: s.id,
+                Codigo: s.codigo,
+                Nombre: s.nombre,
+              })),
+            }
+          : {}),
       }));
 
       const result: ApiResponseCommon = {
@@ -397,11 +463,23 @@ ORDER BY u.Id DESC`,
       if (usuarioData.length === 0) {
         throw new NotFoundException('Usuario no encontrado.');
       }
+      const mapaSoluciones = this.puedeVerSoluciones(rol)
+        ? await this.obtenerSolucionesPorUsuarios(usuarioData.map((item) => Number(item.id)))
+        : null;
       const usuario = usuarioData.map((item) => ({
         ...item,
         id: Number(item.id),
         idRol: Number(item.idRol),
         idCliente: Number(item.idCliente),
+        ...(mapaSoluciones
+          ? {
+              soluciones: (mapaSoluciones.get(Number(item.id)) ?? []).map((s) => ({
+                id: s.id,
+                codigo: s.codigo,
+                nombre: s.nombre,
+              })),
+            }
+          : {}),
       }));
 
       const permisoData = await this.usuariosPermisosRepository.find({
