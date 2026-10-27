@@ -2,6 +2,8 @@
 # Instalar: sudo cp deploy/logrotate/nextapi /etc/logrotate.d/nextapi && sudo logrotate -d /etc/logrotate.d/nextapi
 # copytruncate: systemd no reabre el archivo, así que se copia y se trunca en su lugar.
 /var/log/nextAPI.log /var/log/nextAPI-error.log /var/log/shiftControlAPI.log /var/log/shiftControlAPI-error.log {
+    # /var/log es root:syslog 775: sin `su` logrotate se niega a rotar
+    su root root
     daily
     rotate 60
     maxsize 1G
