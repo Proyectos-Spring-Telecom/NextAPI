@@ -5,7 +5,13 @@ import { Fotos } from 'src/entities/Fotos';
 import { Geocercas } from 'src/entities/Geocercas';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
+import { UltimaPosicion } from 'src/entities/UltimaPosicion';
 import { Videos } from 'src/entities/Videos';
+import { IncidentesAutoService } from 'src/incidentes/auto/incidentes-auto.service';
+import {
+  esEstadoAlertaConsola,
+  iniciaAlertaConsola,
+} from 'src/incidentes/incidentes-alerta.util';
 import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { isDuplicateKeyError } from '../core/db-errors.util';
 import {
@@ -16,6 +22,7 @@ import {
 import {
   debeAplicarTiempoDetenido,
   estadoPorMinutosDetenido,
+  inicioConteoDetenido,
   minutosEntre,
   VELOCIDAD_EN_MOVIMIENTO_MIN,
 } from './estado-tiempo-detenido.util';
@@ -45,6 +52,7 @@ export class PosicionIngestService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly monitoreoGateway: MonitoreoGateway,
+    private readonly incidentesAuto: IncidentesAutoService,
   ) {}
 
   /**
@@ -73,6 +81,8 @@ export class PosicionIngestService {
     req: PosicionIngestPositionRequest,
   ): Promise<PosicionIngestResult> {
     const posicionData: Partial<Posiciones> = { ...req.posicion, imei: req.imei };
+    /** true si esta posición inicia una alerta de Consola (se abre incidente). */
+    let abreIncidente = false;
 
     const result = await this.dataSource.transaction(async (manager) => {
       const logged = await this.tryInsertIngestLog(manager, req);
@@ -99,6 +109,9 @@ export class PosicionIngestService {
         posicionData,
       );
 
+      // Antes del INSERT: el trigger actualiza UltimaPosicion con esta fila.
+      abreIncidente = await this.iniciaAlerta(manager, req.imei, posicionData);
+
       const insertResult = await manager.insert(Posiciones, posicionData);
       const posicionId = Number(insertResult.identifiers[0]?.id);
 
@@ -117,9 +130,42 @@ export class PosicionIngestService {
 
     if (!result.duplicate && result.posicionId != null) {
       void this.monitoreoGateway.notificarImei(req.imei);
+      if (abreIncidente) {
+        // Fuera de la transacción y sin esperar: nunca frena el ingest.
+        void this.incidentesAuto.registrarDesdePosicion(
+          result.posicionId,
+          req.imei,
+          Number(posicionData.estado),
+        );
+      }
     }
 
     return result;
+  }
+
+  /**
+   * Solo consulta UltimaPosicion cuando el estado nuevo es de alerta (2, 3, 8,
+   * 9, 10, 11). Si falla la lectura no se abre incidente y el ingest sigue.
+   */
+  private async iniciaAlerta(
+    manager: EntityManager,
+    imei: string,
+    posicionData: Partial<Posiciones>,
+  ): Promise<boolean> {
+    if (!esEstadoAlertaConsola(posicionData.estado)) return false;
+    try {
+      const previo = await manager
+        .createQueryBuilder(UltimaPosicion, 'u')
+        .select('u.estado', 'estado')
+        .where('u.imei = :imei', { imei })
+        .getRawOne<{ estado: number | string | null }>();
+      return iniciaAlertaConsola(posicionData.estado, previo?.estado ?? null);
+    } catch (error) {
+      this.logger.warn(
+        `[PosicionIngest] no se pudo leer estado previo imei=${imei}: ${(error as Error)?.message}`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -175,6 +221,8 @@ export class PosicionIngestService {
   /**
    * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM/TRACKGAS).
    * Otros estados (alertas / geocerca) se conservan.
+   * Los minutos se cuentan desde el primer encendido de ignición posterior al
+   * último movimiento (detenido con motor encendido); sin encendido → Estado 0.
    */
   private async aplicarTiempoDetenidoSiCorresponde(
     manager: EntityManager,
@@ -206,7 +254,24 @@ export class PosicionIngestService {
       return;
     }
 
-    const minutos = minutosEntre(ultimaMovimiento, fechaActual);
+    // Regla SION: el tiempo detenido cuenta desde el primer encendido de
+    // ignición posterior al último movimiento. Sin encendido → se queda en 0.
+    const primerEncendido = await this.buscarPrimerEncendidoTrasMovimiento(
+      manager,
+      imei,
+      ultimaMovimiento,
+      fechaActual,
+    );
+    const inicioConteo = inicioConteoDetenido({
+      primerEncendidoTrasMovimiento: primerEncendido,
+      ignicionActual: posicionData.ignicion,
+      fechaActual,
+    });
+    if (!inicioConteo) {
+      return;
+    }
+
+    const minutos = minutosEntre(inicioConteo, fechaActual);
     if (minutos == null) {
       return;
     }
@@ -238,6 +303,30 @@ export class PosicionIngestService {
         estadoMov: 1,
       })
       .orderBy('p.fechaHora', 'DESC')
+      .limit(1)
+      .getRawOne<{ fechaHora: Date | string }>();
+
+    return row?.fechaHora ?? null;
+  }
+
+  /**
+   * Primera posición guardada con ignición encendida después del último
+   * movimiento y antes de la actual. Solo lectura; usa IMEI + FechaHora.
+   */
+  private async buscarPrimerEncendidoTrasMovimiento(
+    manager: EntityManager,
+    imei: string,
+    desde: Date | string,
+    fechaActual: Date | string,
+  ): Promise<Date | string | null> {
+    const row = await manager
+      .createQueryBuilder(Posiciones, 'p')
+      .select('p.fechaHora', 'fechaHora')
+      .where('p.imei = :imei', { imei })
+      .andWhere('p.fechaHora > :desde', { desde })
+      .andWhere('p.fechaHora < :fechaActual', { fechaActual })
+      .andWhere('p.ignicion = :encendida', { encendida: 1 })
+      .orderBy('p.fechaHora', 'ASC')
       .limit(1)
       .getRawOne<{ fechaHora: Date | string }>();
 

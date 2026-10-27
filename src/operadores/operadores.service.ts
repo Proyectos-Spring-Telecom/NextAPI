@@ -406,23 +406,20 @@ export class OperadoresService {
     idCliente: number,
     idUser: number,
     files: OperadorDocFiles = {},
+    rol?: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const entity = await this.repository.findOne({
-        where: { id, idCliente },
-      });
-      if (!entity) {
-        throw new NotFoundException('Operador no encontrado');
-      }
+      const entity = await this.resolveOperadorVisible(id, Number(idCliente), Number(rol));
+      const idClienteOperador = Number(entity.idCliente);
 
-      if (dto.idUsuario !== undefined && dto.idUsuario !== entity.idUsuario) {
+      if (dto.idUsuario !== undefined && Number(dto.idUsuario) !== Number(entity.idUsuario)) {
         const usuario = await this.usuariosRepo.findOne({
           where: { id: dto.idUsuario },
         });
         if (!usuario) {
           throw new BadRequestException('IdUsuario no existe');
         }
-        if (usuario.idCliente !== idCliente) {
+        if (Number(usuario.idCliente) !== idClienteOperador) {
           throw new BadRequestException(
             'El usuario debe pertenecer al mismo cliente',
           );
@@ -430,7 +427,7 @@ export class OperadoresService {
         const operadorConUsuario = await this.repository.findOne({
           where: { idUsuario: dto.idUsuario },
         });
-        if (operadorConUsuario && operadorConUsuario.id !== id) {
+        if (operadorConUsuario && Number(operadorConUsuario.id) !== Number(id)) {
           throw new BadRequestException(
             'El usuario ya está vinculado a otro operador',
           );
@@ -439,7 +436,7 @@ export class OperadoresService {
 
       if (dto.curp && dto.curp !== entity.curp) {
         const existeCURP = await this.repository.findOne({
-          where: { idCliente, curp: dto.curp },
+          where: { idCliente: idClienteOperador, curp: dto.curp },
         });
         if (existeCURP) {
           throw new BadRequestException('El CURP ya existe para este cliente');
@@ -448,7 +445,7 @@ export class OperadoresService {
 
       if (dto.nss && dto.nss !== entity.nss) {
         const existeNSS = await this.repository.findOne({
-          where: { idCliente, nss: dto.nss },
+          where: { idCliente: idClienteOperador, nss: dto.nss },
         });
         if (existeNSS) {
           throw new BadRequestException('El NSS ya existe para este cliente');
@@ -511,14 +508,10 @@ export class OperadoresService {
     id: number,
     idCliente: number,
     idUser: number,
+    rol?: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const entity = await this.repository.findOne({
-        where: { id, idCliente },
-      });
-      if (!entity) {
-        throw new NotFoundException('Operador no encontrado');
-      }
+      const entity = await this.resolveOperadorVisible(id, Number(idCliente), Number(rol));
 
       const estatusAnterior = Number(entity.estatus) === 1 ? 1 : 0;
       const estatus = estatusAnterior === 1 ? 0 : 1;

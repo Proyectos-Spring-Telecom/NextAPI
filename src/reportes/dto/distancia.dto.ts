@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -92,4 +93,28 @@ export class DistanciaDto {
       'fechaFinal debe ser YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO 8601',
   })
   fechaFinal!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Página (1..N). Si se envía `page` o `limit` la respuesta va paginada: ' +
+      '`data.filas` = solo esa página, `data.recorridos[].posiciones` = [] y se agrega `paginated`. ' +
+      'Sin ambos → respuesta completa como siempre (sin `filas` ni `paginated`).',
+    example: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({
+    description: 'Renglones por página (1..200). Default 20 cuando se pagina.',
+    example: 20,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
 }

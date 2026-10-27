@@ -207,7 +207,7 @@ export class OperadoresController {
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.operadoresService.updateEstatus(id, idCliente, idUser);
+    return this.operadoresService.updateEstatus(id, idCliente, idUser, Number(req.user.rol));
   }
 
   @Get(':page/:limit')
@@ -289,6 +289,6 @@ export class OperadoresController {
       comprobanteDomicilio: files?.comprobanteDomicilio?.[0],
       certificadoMedico: files?.certificadoMedico?.[0],
       antecedentesNoPenales: files?.antecedentesNoPenales?.[0],
-    });
+    }, Number(req.user.rol));
   }
 }

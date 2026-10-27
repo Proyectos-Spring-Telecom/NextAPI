@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import {
   ApiCrudResponse,
@@ -15,35 +15,48 @@ import {
 } from 'src/common/ApiResponse';
 import {
   EnumModulos,
+  EstatusEnum,
   EstatusIncidente,
   TipoOrigenIncidente,
 } from 'src/common/estatus.enum';
 import { imeiToString } from 'src/common/imei.util';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { CatMarcas } from 'src/entities/CatMarcas';
+import { CatModelos } from 'src/entities/CatModelos';
 import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
 import { Incidentes } from 'src/entities/Incidentes';
+import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
+import { Productos } from 'src/entities/Productos';
 import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
+import { Vehiculos } from 'src/entities/Vehiculos';
 import {
   isoUtcToMexicoCityMysql,
   nowMexicoCityMysql,
 } from 'src/utils/datetime-mexico.util';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { CreateSeguimientoIncidenteDto } from './dto/create-seguimiento-incidente.dto';
+import { FinalizarIncidenteDto } from './dto/finalizar-incidente.dto';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import {
   snapshotEventoAlarma,
   snapshotPosicion,
 } from './map-datos-origen.util';
 import {
+  imeiIncidente,
   mapIncidentePlano,
   mapSeguimientoPlano,
   nombreIncidente,
   RELACIONES_INCIDENTE_DETALLE,
   RELACIONES_INCIDENTE_LISTA,
+  UnidadIncidente,
 } from './map-incidentes.util';
+
+/** Medios de los seguimientos que guarda el reporte final. */
+export const MEDIO_SEGUIMIENTO_RESULTADO = 'Resultado final';
+export const MEDIO_SEGUIMIENTO_CIERRE = 'Cierre';
 
 @Injectable()
 export class IncidentesService {
@@ -60,9 +73,99 @@ export class IncidentesService {
     private readonly dispositivosRepo: Repository<Dispositivos>,
     @InjectRepository(Clientes)
     private readonly clientesRepo: Repository<Clientes>,
+    @InjectRepository(Instalaciones)
+    private readonly instalacionesRepo: Repository<Instalaciones>,
+    private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
   ) {}
+
+  /**
+   * Unidad (instalación activa) de cada IMEI, en un solo query.
+   * Si falla no rompe el listado: las columnas quedan vacías.
+   */
+  private async unidadesPorImei(
+    items: Incidentes[],
+  ): Promise<Map<string, UnidadIncidente>> {
+    const mapa = new Map<string, UnidadIncidente>();
+    const imeis = [
+      ...new Set(
+        items
+          .map((item) => imeiIncidente(item))
+          .filter((imei): imei is string => !!imei),
+      ),
+    ];
+    if (!imeis.length) return mapa;
+
+    try {
+      const rows = await this.instalacionesRepo
+        .createQueryBuilder('i')
+        .innerJoin(
+          Dispositivos,
+          'd',
+          'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+        )
+        .leftJoin(
+          Productos,
+          'p',
+          'p.id = i.idProducto AND p.idCliente = i.idCliente',
+        )
+        .leftJoin(
+          Vehiculos,
+          'v',
+          'v.idProducto = i.idProducto AND v.idCliente = i.idCliente',
+        )
+        .leftJoin(CatMarcas, 'mar', 'mar.id = v.idMarcaVehiculo')
+        .leftJoin(CatModelos, 'mod', 'mod.id = v.idModeloVehiculo')
+        .select('CAST(d.imei AS CHAR)', 'imei')
+        .addSelect('i.id', 'idInstalacion')
+        .addSelect('v.numeroEconomico', 'economico')
+        .addSelect('v.placa', 'placas')
+        .addSelect('mar.nombre', 'marca')
+        .addSelect('mod.nombre', 'modelo')
+        .addSelect('p.nombre', 'nombreProducto')
+        .where('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+        .andWhere('CAST(d.imei AS CHAR) IN (:...imeis)', { imeis })
+        .orderBy('i.id', 'DESC')
+        .getRawMany<Record<string, unknown>>();
+
+      const texto = (v: unknown): string | null => {
+        const s = v == null ? '' : String(v).trim();
+        return s || null;
+      };
+      for (const row of rows) {
+        const imei = texto(row.imei);
+        if (!imei || mapa.has(imei)) continue;
+        const idInstalacion = Number(row.idInstalacion);
+        mapa.set(imei, {
+          idInstalacion: Number.isFinite(idInstalacion) ? idInstalacion : null,
+          economico: texto(row.economico),
+          placas: texto(row.placas),
+          marca: texto(row.marca),
+          modelo: texto(row.modelo),
+          nombreProducto: texto(row.nombreProducto),
+        });
+      }
+    } catch {
+      // Datos de unidad son opcionales; el listado sigue sin ellos.
+    }
+    return mapa;
+  }
+
+  private async mapConUnidad(
+    items: Incidentes[],
+    incluirSeguimientos = false,
+  ) {
+    const unidades = await this.unidadesPorImei(items);
+    return items.map((item) => {
+      const imei = imeiIncidente(item);
+      return mapIncidentePlano(
+        item,
+        incluirSeguimientos,
+        imei ? (unidades.get(imei) ?? null) : null,
+      );
+    });
+  }
 
   private async assertClienteExiste(idCliente: number): Promise<void> {
     const cliente = await this.clientesRepo.findOne({
@@ -248,6 +351,7 @@ export class IncidentesService {
     idClienteFiltro?: number,
     tipoOrigen?: number,
     soloAbiertos = false,
+    estatus?: number,
   ): Promise<FindOptionsWhere<Incidentes> | null> {
     const tenant = await this.tenantFilter.forTypeOrmIdCliente(
       rol,
@@ -269,8 +373,9 @@ export class IncidentesService {
       idClienteWhere = idClienteFiltro;
     }
 
+    const estatusWhere = soloAbiertos ? EstatusIncidente.ABIERTO : estatus;
     return {
-      ...(soloAbiertos ? { estatus: EstatusIncidente.ABIERTO } : {}),
+      ...(estatusWhere != null ? { estatus: estatusWhere } : {}),
       ...(tipoOrigen != null ? { tipoOrigen } : {}),
       ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
     };
@@ -361,7 +466,7 @@ export class IncidentesService {
         order: { fechaInicio: 'DESC', id: 'DESC' },
       });
 
-      return { data: data.map((item) => mapIncidentePlano(item)) };
+      return { data: await this.mapConUnidad(data) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
@@ -388,7 +493,7 @@ export class IncidentesService {
         order: { fechaInicio: 'DESC', id: 'DESC' },
       });
 
-      return { data: data.map((item) => mapIncidentePlano(item)) };
+      return { data: await this.mapConUnidad(data) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
@@ -401,14 +506,17 @@ export class IncidentesService {
     page: number,
     limit: number,
     tipoOrigen?: number,
+    estatus?: number,
+    idClienteFiltro?: number,
   ): Promise<ApiResponseCommon> {
     try {
       const where = await this.whereListado(
         idClienteToken,
         rol,
-        undefined,
+        idClienteFiltro,
         tipoOrigen,
         false,
+        estatus,
       );
       if (!where) {
         return {
@@ -426,7 +534,7 @@ export class IncidentesService {
       });
 
       return {
-        data: data.map((item) => mapIncidentePlano(item)),
+        data: await this.mapConUnidad(data),
         paginated: {
           total,
           page,
@@ -446,7 +554,102 @@ export class IncidentesService {
     rol: number,
   ): Promise<{ data: ReturnType<typeof mapIncidentePlano> }> {
     const entity = await this.findVisibleOrFail(id, idClienteToken, rol, true);
-    return { data: mapIncidentePlano(entity, true) };
+    const [data] = await this.mapConUnidad([entity], true);
+    return { data };
+  }
+
+  /**
+   * Finaliza el reporte: guarda descripción / resultado / conclusión, cierra
+   * (estatus 0 + fechaCierre) y desde ese momento ya no admite seguimientos.
+   * Todo en una transacción. Si ya estaba cerrado → 400.
+   */
+  async finalizar(
+    id: number,
+    dto: FinalizarIncidenteDto,
+    idClienteToken: number,
+    rol: number,
+    idUser: number,
+  ): Promise<ApiCrudResponse> {
+    try {
+      const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
+      if (Number(entity.estatus) !== EstatusIncidente.ABIERTO) {
+        throw new BadRequestException('El reporte ya fue finalizado');
+      }
+
+      const idUsuario = Number.isFinite(idUser) && idUser > 0 ? idUser : null;
+      const ahora = nowMexicoCityMysql();
+      const resultado = dto.resultado?.trim();
+      const conclusion = dto.conclusion?.trim();
+
+      await this.dataSource.transaction(async (manager) => {
+        const seguimientos: Partial<SeguimientoIncidentes>[] = [];
+        if (resultado) {
+          seguimientos.push({
+            actividad: resultado,
+            medio: MEDIO_SEGUIMIENTO_RESULTADO,
+          });
+        }
+        if (conclusion) {
+          seguimientos.push({
+            actividad: conclusion,
+            medio: MEDIO_SEGUIMIENTO_CIERRE,
+          });
+        }
+        for (const s of seguimientos) {
+          await manager.save(
+            manager.create(SeguimientoIncidentes, {
+              ...s,
+              idIncidente: Number(entity.id),
+              idUsuario,
+              estatus: EstatusIncidente.ABIERTO,
+              fechaHora: ahora as unknown as Date,
+            }),
+          );
+        }
+
+        await manager.update(
+          Incidentes,
+          { id: entity.id, estatus: EstatusIncidente.ABIERTO },
+          {
+            estatus: EstatusIncidente.CERRADO,
+            fechaCierre: ahora as unknown as Date,
+            ...(dto.descripcion !== undefined
+              ? { descripcion: dto.descripcion.trim() || null }
+              : {}),
+          },
+        );
+      });
+
+      await this.bitacoraLogger.logToBitacora(
+        'Incidentes',
+        `Se finalizó el reporte del incidente ID: ${entity.id}`,
+        'UPDATE',
+        { dto },
+        idUser,
+        EnumModulos.REPORTES,
+        EstatusEnumBitcora.SUCCESS,
+      );
+
+      return {
+        status: 'success',
+        message: 'Reporte finalizado correctamente',
+        estatus: { estatus: EstatusIncidente.CERRADO },
+        data: { id: Number(entity.id), nombre: nombreIncidente(entity) },
+      };
+    } catch (error) {
+      await this.bitacoraLogger.logToBitacora(
+        'Incidentes',
+        `Error al finalizar el incidente ID: ${id}`,
+        'UPDATE',
+        { dto },
+        idUser,
+        EnumModulos.REPORTES,
+        EstatusEnumBitcora.ERROR,
+        (error as Error)?.message,
+      );
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
   }
 
   async update(
@@ -564,6 +767,11 @@ export class IncidentesService {
         idClienteToken,
         rol,
       );
+      if (Number(incidente.estatus) !== EstatusIncidente.ABIERTO) {
+        throw new BadRequestException(
+          'El reporte ya fue finalizado; no admite más seguimientos',
+        );
+      }
 
       const fechaHora = this.parseFechaHora(dto.fechaHora);
       const entity = this.seguimientoRepo.create({
