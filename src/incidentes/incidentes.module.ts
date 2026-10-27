@@ -6,6 +6,7 @@ import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
 import { Incidentes } from 'src/entities/Incidentes';
+import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import { IncidentesController } from './incidentes.controller';
@@ -20,6 +21,7 @@ import { IncidentesService } from './incidentes.service';
       EventoAlarma,
       Dispositivos,
       Clientes,
+      Instalaciones,
     ]),
     BitacoraModule,
     TenantFilterModule,

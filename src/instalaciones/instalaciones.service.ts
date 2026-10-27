@@ -16,6 +16,8 @@ import { Productos } from 'src/entities/Productos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { Usuarios } from 'src/entities/Usuarios';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
+import { Geocercas } from 'src/entities/Geocercas';
+import { UsuariosGeocerca } from 'src/entities/UsuariosGeocerca';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
@@ -391,6 +393,39 @@ export class InstalacionesService {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException(
         'No fue posible actualizar las asignaciones de usuarios de la instalación. La operación no se completó.',
+      );
+    }
+  }
+
+  /**
+   * Elimina las geocercas ligadas a la instalación y sus UsuariosGeocerca.
+   * Borrado explícito (no depende del ON DELETE de la FK). Usa el manager de la
+   * transacción del llamador.
+   */
+  private async eliminarGeocercasDeInstalacion(
+    manager: EntityManager,
+    idInstalacion: number,
+    idCliente: number,
+  ): Promise<{ id: number; nombre: string }[]> {
+    try {
+      const geocercas = await manager.find(Geocercas, {
+        where: { idInstalacion, idCliente },
+        select: { id: true, nombre: true },
+      });
+
+      if (geocercas.length === 0) {
+        return [];
+      }
+
+      const idsGeocerca = geocercas.map((g) => Number(g.id));
+      await manager.delete(UsuariosGeocerca, { idGeocerca: In(idsGeocerca) });
+      await manager.delete(Geocercas, { id: In(idsGeocerca) });
+
+      return geocercas.map((g) => ({ id: Number(g.id), nombre: g.nombre }));
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException(
+        'No fue posible eliminar las geocercas asociadas a la instalación. La operación no se completó.',
       );
     }
   }
@@ -1113,6 +1148,12 @@ export class InstalacionesService {
         Number(nueva.id),
       );
 
+      const geocercasEliminadas = await this.eliminarGeocercasDeInstalacion(
+        qr.manager,
+        Number(actual.id),
+        idCliente,
+      );
+
       await qr.manager.delete(Instalaciones, { id: actual.id, idCliente });
 
       if (cambiaProducto && estatusProductoSaliente != null) {
@@ -1171,7 +1212,13 @@ export class InstalacionesService {
         'Instalaciones',
         `Se actualizó la instalación ID: ${id} → nueva ID: ${nueva.id} (${accion})`,
         'UPDATE',
-        { idAnterior: id, idNuevo: Number(nueva.id), dto, idCliente },
+        {
+          idAnterior: id,
+          idNuevo: Number(nueva.id),
+          dto,
+          idCliente,
+          geocercasEliminadas,
+        },
         idUser,
         EnumModulos.INSTALACIONES,
         EstatusEnumBitcora.SUCCESS,
@@ -1319,6 +1366,11 @@ export class InstalacionesService {
         componentes,
         EnumEstatusProductoDispositivo.ACTIVO,
       );
+      const geocercasEliminadas = await this.eliminarGeocercasDeInstalacion(
+        qr.manager,
+        Number(actual.id),
+        idCliente,
+      );
 
       await qr.commitTransaction();
 
@@ -1331,7 +1383,7 @@ export class InstalacionesService {
         'Instalaciones',
         `Se cambió la instalación ID: ${id} a estatus ${etiqueta} (${dto.estatusInstalacion})`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, dto, idCliente, geocercasEliminadas },
         idUser,
         EnumModulos.INSTALACIONES,
         EstatusEnumBitcora.SUCCESS,

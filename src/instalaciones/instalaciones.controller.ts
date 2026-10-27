@@ -201,7 +201,9 @@ export class InstalacionesController {
       'Solo se permiten **0**, **1** y **5**.\n' +
       '- **0 (inactivo) / 5 (inservible):** `EstatusInstalacion` = valor enviado, ' +
       '`Estatus` de fila = 0 (así `SimActivo` y `DispositivoActivo` quedan nulos), ' +
-      'y producto/dispositivo/SIM pasan a disponible (1).\n' +
+      'y producto/dispositivo/SIM pasan a disponible (1). ' +
+      'Además se **eliminan permanentemente** las geocercas asociadas a la instalación ' +
+      '(y sus `UsuariosGeocerca`).\n' +
       '- **1 (activa):** todos los componentes vinculados deben estar en disponible (1); ' +
       'luego la instalación queda activa (`Estatus` = 1, columnas activas llenas) y ' +
       'los componentes pasan a asignado (2).\n' +
@@ -235,7 +237,8 @@ export class InstalacionesController {
     description:
       'En una transacción: archiva la vigente en `HistoricoInstalaciones` con el ' +
       '`estatusInstalacionAnterior` enviado, crea una nueva ACTIVA (1), migra ' +
-      '`UsuariosInstalaciones` al nuevo id, elimina la fila anterior. ' +
+      '`UsuariosInstalaciones` al nuevo id, **elimina permanentemente las geocercas** ' +
+      'asociadas a la instalación anterior (y sus `UsuariosGeocerca`) y elimina la fila anterior. ' +
       'Si cambia producto/dispositivo/SIM: el recurso nuevo debe tener estatus=1 ' +
       '(disponible) y mismo idCliente; el que sale recibe `estatus*Anterior` (0–5); ' +
       'el que entra queda en ASIGNADO (2). ' +
