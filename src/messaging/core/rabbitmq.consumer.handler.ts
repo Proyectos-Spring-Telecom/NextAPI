@@ -47,7 +47,7 @@ export async function handleConsumerMessage(
     await handler();
     metrics.recordSuccess(label);
     channel.ack(msg);
-    logger.log(
+    logger.debug(
       `${label} ok eventId=${eventId ?? 'n/a'} routingKey=${routingKey}`,
     );
   } catch (error) {

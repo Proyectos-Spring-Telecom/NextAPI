@@ -1,0 +1,14 @@
+# Rotación de los logs de las APIs de springfieldDev (systemd escribe con StandardOutput=append:).
+# Instalar: sudo cp deploy/logrotate/nextapi /etc/logrotate.d/nextapi && sudo logrotate -d /etc/logrotate.d/nextapi
+# copytruncate: systemd no reabre el archivo, así que se copia y se trunca en su lugar.
+/var/log/nextAPI.log /var/log/nextAPI-error.log /var/log/shiftControlAPI.log /var/log/shiftControlAPI-error.log {
+    daily
+    rotate 60
+    maxsize 1G
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    dateext
+}

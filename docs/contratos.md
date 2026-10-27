@@ -515,7 +515,8 @@ Validadas con Joi en `app.module.ts`.
 |----------|-------------|-----|
 | `PORT` | No (3004) | Puerto |
 | `DB_HOST`, `DB_USER`, `DB_DATABASE` | Sí | MySQL; `DB_DATABASE=Next` |
-| `DB_PORT`, `DB_PASSWORD`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | No (3306 / '' / 10 / false) | MySQL |
+| `DB_PORT`, `DB_PASSWORD`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | No (3306 / '' / 10 / false) | MySQL; las consultas SQL solo se registran con `DB_LOGGING=true` |
+| `LOG_LEVEL` | No (`log`) | `fatal\|error\|warn\|log\|debug\|verbose`; lo que se repite por mensaje de la cola va en `debug` |
 | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Sí | Access / refresh |
 | `THROTTLE_*_LIMIT` / `THROTTLE_*_TTL_MS` | Sí | Rate limit Auth (login, pin, verify, recuperación, confirmación, refresh, logout) |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` | Sí | S3 |

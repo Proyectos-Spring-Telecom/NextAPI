@@ -139,6 +139,9 @@ import * as jwt from 'jsonwebtoken';
         QUEUE_IDLE_WARN_SECONDS: Joi.number().default(900),
         DB_CONNECTION_LIMIT: Joi.number().default(10),
         DB_LOGGING: Joi.boolean().default(false),
+        LOG_LEVEL: Joi.string()
+          .valid('fatal', 'error', 'warn', 'log', 'debug', 'verbose')
+          .default('log'),
         DEVICE_LOOKUP_CACHE_TTL_SEC: Joi.number().default(600),
       }),
     }),
@@ -160,9 +163,8 @@ import * as jwt from 'jsonwebtoken';
         timezone: config.get<string>('DB_TZ'),
         // true: bigint fuera de MAX_SAFE_INTEGER (p. ej. IMEI/ICCID) llega como string
         bigNumberStrings: true,
-        logging:
-          config.get<boolean>('DB_LOGGING') === true ||
-          process.env.NODE_ENV !== 'production',
+        // Solo con DB_LOGGING=true: con NODE_ENV=development imprimía ~12 consultas por mensaje de la cola
+        logging: config.get<boolean>('DB_LOGGING') === true,
         extra: {
           decimalNumbers: true,
           connectionLimit: config.get<number>('DB_CONNECTION_LIMIT') ?? 10,
