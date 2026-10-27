@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { AuthModule } from './auth/auth.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
+import { TelemetriaHuerfanosModule } from './telemetria-huerfanos/telemetria-huerfanos.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { ModulosModule } from './modulos/modulos.module';
 import { PermisosModule } from './permisos/permisos.module';
@@ -177,6 +178,8 @@ import * as jwt from 'jsonwebtoken';
     AuthModule,
 
     BitacoraModule,
+
+    TelemetriaHuerfanosModule,
 
     ClientesModule,
 

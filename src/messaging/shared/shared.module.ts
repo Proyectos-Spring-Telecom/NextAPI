@@ -9,10 +9,12 @@ import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
 import { Videos } from 'src/entities/Videos';
 import { DeviceLookupService } from './device-lookup.service';
 import { PosicionIngestService } from './posicion-ingest.service';
+import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-huerfanos.module';
 
 @Module({
   imports: [
     MonitoreoModule,
+    TelemetriaHuerfanosModule,
     TypeOrmModule.forFeature([
       Dispositivos,
       Posiciones,
@@ -23,6 +25,6 @@ import { PosicionIngestService } from './posicion-ingest.service';
     ]),
   ],
   providers: [DeviceLookupService, PosicionIngestService],
-  exports: [DeviceLookupService, PosicionIngestService],
+  exports: [DeviceLookupService, PosicionIngestService, TelemetriaHuerfanosModule],
 })
 export class MessagingSharedModule {}
