@@ -198,6 +198,7 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Catálogos | §9 |
 | Sims | `POST /sims`, `GET /sims/list`, `GET /sims/:page/:limit`, `GET /sims/:id`, `PATCH /sims/estatus/:id`, `PATCH /sims/:id` (cambiar plan/teléfono, IMEI, cliente, compañía) |
 | Dispositivos | §14 |
+| Órdenes de servicio | `GET /ordenes-servicio/catalogo`, `GET /ordenes-servicio/paginado/:page/:limit`, `POST /ordenes-servicio`, `PATCH /ordenes-servicio/:id`, `POST /ordenes-servicio/:id/archivos/:clave`, `POST /ordenes-servicio/:id/cerrar`, `POST /ordenes-servicio/:id/cancelar`, `GET /ordenes-servicio/:id` (§14.1) |
 | Telemetría – equipos sin alta | `GET /telemetria/huerfanos/:page/:limit?protocolo=jt808\|jimi\|axpro&horas=N`, `DELETE /telemetria/huerfanos/:id` (roles 1–3; §12.6) |
 | Operadores | §10.2 |
 | Productos | `GET /productos/list`, `GET /productos/paginado/:page/:limit`, `GET /productos/cliente/:idCliente`, `GET /productos/:id`, `PATCH /productos/estatus/:id`, `PATCH /productos/:id` (nombre) |
@@ -507,6 +508,52 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 
 IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
 
+### 14.1 Órdenes de servicio (`/ordenes-servicio`)
+
+Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo inicial: `deploy/sql/OrdenesServicio.sql`. Reglas puras: `src/ordenes-servicio/ordenes-servicio.reglas.ts`.
+
+**Reglas de negocio**
+- **El cliente se da de alta en oficina** antes de salir a campo; la orden no crea clientes (400 si no existe o no está activo).
+- **Una orden = un tipo de servicio**: `instalacion` (alta), `revision`, `c_sim`, `c_equipo`, `desinstalacion`. El tipo no cambia después de crearla.
+- **Guardado parcial**: la orden nace en `borrador`, se llena con `PATCH` y archivos, y se **cierra** al final. Folio `OS-000001` asignado por el servidor al crearla.
+- **Idempotencia**: la app genera `claveApp` (UUID) al empezar; reenviar el `POST` devuelve la misma orden.
+- **Técnico** = usuario del token (no se envía). Escriben roles 1, 2, 3 y 8; el técnico solo ve y edita sus órdenes. Leen además 4 y 5.
+- **Monitorista** = `idMonitorista`, usuario activo con rol 4 o 5 (`GET /ordenes-servicio/catalogo` los lista).
+
+**Flujo**
+
+| Paso | Ruta | Notas |
+|------|------|-------|
+| Catálogo | `GET /ordenes-servicio/catalogo` | Opciones por sección y si la foto/firma es obligatoria; monitoristas. Las pantallas se arman con esto, no con listas fijas en la app |
+| Iniciar | `POST /ordenes-servicio` | `{ claveApp, tipoServicio, idCliente, idInstalacion?, idProducto? }`. `idInstalacion` vigente obligatorio salvo en `instalacion`; en los demás tipos `idProducto` se toma de la instalación |
+| Guardar | `PATCH /ordenes-servicio/:id` | Solo lo que cambia. `respuestas: [{ seccion, clave, valor }]` se agregan o reemplazan por (seccion, clave). `fechaCaptura` ISO 8601 con zona; `lat`/`lng` numéricos (null si no hay permiso). Campos que no aplican al tipo → 400 |
+| Archivo | `POST /ordenes-servicio/:id/archivos/:clave` | multipart `file`, PNG o JPG (WEBP/HEIC se convierten a JPG en la app). Misma clave = reemplazo. S3 privado, carpeta `ordenes-servicio/` |
+| Ver | `GET /ordenes-servicio/:id` | Respuestas, archivos con URL firmada (5 min) y, en borrador, `faltantesParaCerrar` |
+| Cerrar | `POST /ordenes-servicio/:id/cerrar` | Valida y aplica el movimiento **en la misma transacción** (abajo). Incompleta → 400 `{ message, faltantes[] }`. Repetir el cierre devuelve el mismo resultado |
+| Cancelar | `POST /ordenes-servicio/:id/cancelar` | Solo borrador; no toca la instalación |
+| Listar | `GET /ordenes-servicio/paginado/:page/:limit` | Query: `idCliente`, `idProducto` (historial de la unidad), `idInstalacion` (atendida o resultante), `idTecnico`, `tipoServicio`, `estatus` |
+
+**Qué se necesita para cerrar** (`faltantesParaCerrar`)
+- Respuesta (sí o no) para **cada** opción activa de `vehiculo_cuenta_con`, `funcionamiento_vehiculo`, `fallas_equipo` y `pruebas`. Se guardan también las apagadas: así se distingue "no tiene / no pasó" de "no se revisó". No se exige marcar al menos una falla ni un accesorio.
+- `fallas_equipo.otro = sí` → `observaciones` obligatorias.
+- Al menos una prueba correcta, salvo en `desinstalacion`.
+- Fotos y firmas con `Obligatorio = 1` en el catálogo: hoy `tablero_inicio`, `tablero_final`, `firma_cliente`, `firma_tecnico`.
+- `idMonitorista`, y los datos del movimiento según el tipo.
+
+**Movimiento al cerrar** (reutiliza `InstalacionesService` dentro de la transacción de la orden)
+
+| Tipo | Datos | Instalaciones |
+|------|-------|---------------|
+| `instalacion` | `idProducto`, `idDispositivoNuevo`, `idSimNuevo?` | Alta (`create`); producto, equipo y SIM deben estar disponibles (1) |
+| `c_equipo` | `idDispositivoNuevo`, `estatusSalienteAnterior` (0–5) | Nueva versión (`update`): la anterior se archiva con `EstatusInstalacion = 3` (baja por reemplazo) |
+| `c_sim` | `idSimNuevo`, `estatusSalienteAnterior` (0–5) | Igual que `c_equipo` con la SIM |
+| `desinstalacion` | `estatusInstalacionBaja` (0 inactiva / 5 inservible) | Baja (`baja`); componentes a disponible |
+| `revision` | — | Sin cambio; solo se verifica que siga vigente |
+
+La orden guarda `idInstalacion` (atendida), `idInstalacionResultado` (vigente después; el alta y los cambios crean Id nuevo) e `idHistoricoInstalacion` (versión archivada). El comentario del histórico lleva el folio y las observaciones. Si la instalación cambió por otra orden antes de cerrar → 400 "ya no está vigente".
+
+**Tablas**: `OrdenesServicio`, `OrdenServicioRespuestas`, `OrdenServicioArchivos`, `CatOrdenServicioOpciones`. Sin FK a `Instalaciones` a propósito (el `PATCH` de instalaciones borra la fila anterior). Agregar una opción o una foto obligatoria = un `INSERT` en el catálogo, sin publicar otra versión de la app.
+
 ---
 
 ## 15. Webhooks salientes
@@ -565,6 +612,7 @@ Plantilla: `.env.example`.
 | Esquema | `Next` (MySQL 8) |
 | Core | Clientes, Usuarios (refresh), Roles, Modulos, Permisos, UsuariosPermisos, AsignacionSoluciones, UsuariosInstalaciones, CodigoAutenticacion, Bitacora |
 | Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion, Fotos, Videos |
+| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, CatOrdenServicioOpciones (`deploy/sql/OrdenesServicio.sql`, §14.1) |
 | Operadores | Operadores, licencias |
 | Alarmas | EventoAlarma, UltimoEventoAlarma, PanelAlarma, GatewayIngestLog |
 | Ingest | TelemetryIngestLog, TelemetryHuerfanos (equipos sin alta, `deploy/sql/TelemetryHuerfanos.sql`) |
