@@ -3,7 +3,7 @@
 -- Aplicar una vez en la base `Next` antes de desplegar la rama.
 CREATE TABLE IF NOT EXISTS `TelemetryHuerfanos` (
   `Id` BIGINT NOT NULL AUTO_INCREMENT,
-  `Protocol` VARCHAR(16) NOT NULL COMMENT 'jt808 | jimi | axpro',
+  `Protocol` VARCHAR(16) NOT NULL COMMENT 'jt808 | jimi | axpro | fa100s',
   `DeviceId` VARCHAR(32) NOT NULL COMMENT 'NumeroSerie (jt808), IMEI (jimi) o cuenta SIA (axpro)',
   `Motivo` VARCHAR(32) NOT NULL COMMENT 'no_registrado | sin_imei',
   `PrimeraVez` DATETIME NOT NULL,

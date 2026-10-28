@@ -8,6 +8,9 @@ jest.mock('../jt808/jt808-events.consumer', () => ({
 jest.mock('../jimi/jimi-events.consumer', () => ({
   JimiEventsConsumer: class {},
 }));
+jest.mock('../fa100s/fa100s-events.consumer', () => ({
+  Fa100sEventsConsumer: class {},
+}));
 
 function buildMsg(opts: {
   routingKey: string;
@@ -24,6 +27,7 @@ function buildMsg(opts: {
 describe('AvlEventsConsumer', () => {
   const jt808 = { consume: jest.fn().mockResolvedValue(undefined) };
   const jimi = { consume: jest.fn().mockResolvedValue(undefined) };
+  const fa100s = { consume: jest.fn().mockResolvedValue(undefined) };
   const metrics = { recordProtocol: jest.fn() };
   let consumer: AvlEventsConsumer;
 
@@ -32,6 +36,7 @@ describe('AvlEventsConsumer', () => {
     consumer = new AvlEventsConsumer(
       jt808 as never,
       jimi as never,
+      fa100s as never,
       metrics as never,
     );
   });
@@ -176,5 +181,53 @@ describe('AvlEventsConsumer', () => {
     expect(jt808.consume).not.toHaveBeenCalled();
     expect(jimi.consume).not.toHaveBeenCalled();
     expect(metrics.recordProtocol).not.toHaveBeenCalled();
+  });
+
+  it('fa100s position en cola events → delega a fa100s', async () => {
+    const msg = buildMsg({
+      routingKey: 'fa100s.position',
+      headers: { protocol: 'fa100s', kind: 'position', deviceId: '863269078504617' },
+      body: { protocol: 'fa100s', kind: 'position' },
+    });
+
+    await consumer.consume(msg, 'position');
+
+    expect(fa100s.consume).toHaveBeenCalledWith(msg);
+    expect(jt808.consume).not.toHaveBeenCalled();
+    expect(metrics.recordProtocol).toHaveBeenCalledWith(
+      'avl:events',
+      'fa100s',
+      '863269078504617',
+    );
+  });
+
+  it('fa100s alarm_location en cola alarms → delega a fa100s', async () => {
+    const msg = buildMsg({
+      routingKey: 'fa100s.alarm.caida',
+      headers: { protocol: 'fa100s', kind: 'alarm_location' },
+      body: { protocol: 'fa100s', kind: 'alarm_location' },
+    });
+
+    await consumer.consume(msg, 'alarm');
+
+    expect(fa100s.consume).toHaveBeenCalledTimes(1);
+  });
+
+  it('alarm_location fuera de fa100s o en cola events → "incoherente"', async () => {
+    const enEvents = buildMsg({
+      routingKey: 'fa100s.position',
+      headers: { protocol: 'fa100s', kind: 'alarm_location' },
+      body: {},
+    });
+    const deJt808 = buildMsg({
+      routingKey: 'jt808.alarm.dsm',
+      headers: { protocol: 'jt808', kind: 'alarm_location' },
+      body: {},
+    });
+
+    await expect(consumer.consume(enEvents, 'position')).rejects.toThrow('incoherente');
+    await expect(consumer.consume(deJt808, 'alarm')).rejects.toThrow('incoherente');
+    expect(fa100s.consume).not.toHaveBeenCalled();
+    expect(jt808.consume).not.toHaveBeenCalled();
   });
 });

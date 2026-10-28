@@ -124,7 +124,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         queue:
           config.get<string>('RABBITMQ_QUEUE_AVL_EVENTS') ??
           'telemetry.avl.events',
-        bindings: ['jt808.position', 'jimi.position'],
+        bindings: ['jt808.position', 'jimi.position', 'fa100s.position'],
         prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
         dlqRoutingKey: 'telemetry.avl.failed',
       },
@@ -132,7 +132,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         queue:
           config.get<string>('RABBITMQ_QUEUE_AVL_ALARMS') ??
           'telemetry.avl.alarms',
-        bindings: ['jt808.alarm.*', 'jimi.alarm.*'],
+        bindings: ['jt808.alarm.*', 'jimi.alarm.*', 'fa100s.alarm.*'],
         prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
         dlqRoutingKey: 'telemetry.avl.failed',
       },

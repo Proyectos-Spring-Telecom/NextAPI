@@ -23,7 +23,7 @@ export class TelemetriaHuerfanosController {
   constructor(private readonly service: TelemetriaHuerfanosService) {}
 
   @Get(':page/:limit')
-  @ApiQuery({ name: 'protocolo', required: false, enum: ['jt808', 'jimi', 'axpro'] })
+  @ApiQuery({ name: 'protocolo', required: false, enum: ['jt808', 'jimi', 'axpro', 'fa100s'] })
   @ApiQuery({ name: 'horas', required: false, description: 'Solo los vistos en las últimas N horas' })
   findAll(
     @Param('page', ParseIntPipe) page: number,

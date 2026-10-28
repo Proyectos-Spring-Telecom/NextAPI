@@ -40,6 +40,10 @@ export enum EnumCatEventos {
   DSM_MIRAR_ABAJO = 28,
   CONDUCCION_ANORMAL = 29,
   CONDUCCION_BRUSCA = 30,
+  /** Relojes FA100S (springFA100S); el SOS usa HELP_ME y la batería baja BATERIA_BAJA. */
+  RELOJ_CAIDA = 35,
+  RELOJ_PULSERA_RETIRADA = 36,
+  RELOJ_RITMO_CARDIACO = 37,
 }
 
 /** Nombres de negocio CatEventos (UI / histórico monitoreo). */
@@ -74,6 +78,9 @@ export const CAT_EVENTOS_NOMBRE: Readonly<Record<EnumCatEventos, string>> = {
   [EnumCatEventos.DSM_MIRAR_ABAJO]: 'DSM Mirar Abajo',
   [EnumCatEventos.CONDUCCION_ANORMAL]: 'Conducción Anormal',
   [EnumCatEventos.CONDUCCION_BRUSCA]: 'Conducción Brusca',
+  [EnumCatEventos.RELOJ_CAIDA]: 'Caída',
+  [EnumCatEventos.RELOJ_PULSERA_RETIRADA]: 'Pulsera Retirada',
+  [EnumCatEventos.RELOJ_RITMO_CARDIACO]: 'Ritmo Cardiaco Anormal',
 };
 
 export function nombreCatEvento(

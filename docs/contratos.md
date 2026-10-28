@@ -330,8 +330,8 @@ Exchange: `telemetry` (topic). DLX: `telemetry.dlx`. Prefijo código: `src/messa
 
 | Grupo | Cola | Bindings | DLQ (routing key) |
 |-------|------|----------|-------------------|
-| AVL posiciones (JT808 + Jimi) | `telemetry.avl.events` | `jt808.position`, `jimi.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
-| AVL alarmas (JT808 + Jimi) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| AVL posiciones (JT808 + Jimi + FA100S) | `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| AVL alarmas (JT808 + Jimi + FA100S) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*`, `fa100s.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
 | AX PRO eventos | `telemetry.axpro.events` | `axpro.event` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
 | AX PRO heartbeats | `telemetry.axpro.heartbeats` | `axpro.heartbeat` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
 
@@ -353,6 +353,7 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 - Headers: `protocol` y `kind` (tienen prioridad sobre el body), `deviceId` opcional. `message_id` = `eventId`.
 - `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms); `protocol` ∉ {`jt808`, `jimi`} → DLQ.
 - **Jimi:** lookup `payload.Imei || deviceId` → `Dispositivos.Imei` (estatus 1 o 2). Alarm AMQP solo SOS (`jimi.alarm.*`).
+- **FA100S (relojes, springFA100S):** lookup por `Dispositivos.Imei` (`deviceId` = IMEI de 15 dígitos; dar de alta el reloj como Rastreador). `position` → `Posiciones`; sin GPS llega con la última posición válida y `positionValid=false`. `alarm` (SOS 5, caída 35, pulsera 36, ritmo 37, batería 3) → auditoría; la alarma se ve por la posición con su `IdEvento` y `Estado=2`. `alarm_location` (por `fa100s.alarm.*`) corrige `Lat/Lng` de la posición de la alarma (mismo Imei, `FechaHora` e `IdEvento`) sin crear otra ni abrir otro incidente; si la alarma no llegó a `Posiciones`, se inserta. Sin alta → `TelemetryHuerfanos` (`protocol=fa100s`). Código: `src/messaging/fa100s/`.
 - Payload Jimi position: `IdEvento` (number), `Lat`/`Lng` (number) y `FechaHora` (`YYYY-MM-DD HH:mm:ss` o `YYYY-MM-DDTHH:mm:ss`, hora de pared) obligatorios.
 
 ### 12.2 Publicador Server_Socket (`jimi.position`)

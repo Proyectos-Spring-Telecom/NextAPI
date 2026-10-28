@@ -4,7 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { ApiResponseCommon } from 'src/common/ApiResponse';
 import { TelemetryHuerfanos } from 'src/entities/TelemetryHuerfanos';
 
-export type HuerfanoProtocolo = 'jt808' | 'jimi' | 'axpro';
+export type HuerfanoProtocolo = 'jt808' | 'jimi' | 'axpro' | 'fa100s';
 export type HuerfanoMotivo = 'no_registrado' | 'sin_imei';
 
 export interface RegistrarHuerfanoRequest {

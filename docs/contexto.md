@@ -83,8 +83,8 @@ Exchange: **`telemetry`** (topic, durable). Dead-letter exchange: **`telemetry.d
 
 | Grupo | Cola | Bindings | DLQ (routing key) | Label métricas |
 |-------|------|----------|-------------------|----------------|
-| **AVL posiciones (JT808 + Jimi)** | `telemetry.avl.events` | `jt808.position`, `jimi.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) | `avl:events` |
-| **AVL alarmas (JT808 + Jimi)** | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) | `avl:alarms` |
+| **AVL posiciones (JT808 + Jimi + FA100S)** | `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) | `avl:events` |
+| **AVL alarmas (JT808 + Jimi + FA100S)** | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*`, `fa100s.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) | `avl:alarms` |
 | **AX PRO eventos** | `telemetry.axpro.events` | `axpro.event` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) | `axpro:event` |
 | **AX PRO heartbeats** | `telemetry.axpro.heartbeats` | `axpro.heartbeat` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) | `axpro:heartbeat` |
 
