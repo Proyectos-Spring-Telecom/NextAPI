@@ -9,7 +9,11 @@ export const RELOJ_CONFIG_KEYS = [
 
 export type RelojConfigKey = (typeof RELOJ_CONFIG_KEYS)[number];
 
-/** El reloj se identifica con un ID de fabricante de 10 dígitos (trama `[3G*ID*…]`). */
-export const RELOJ_NUMERO_SERIE_RE = /^\d{10}$/;
+/**
+ * Número de serie: el ID de 10 dígitos del reloj (trama `[3G*ID*…]`) o su IMEI.
+ * Solo identifica; la telemetría se asocia por IMEI. El primer reloj (28/10/2026)
+ * se dio de alta con el IMEI como número de serie.
+ */
+export const RELOJ_NUMERO_SERIE_RE = /^(\d{10}|\d{15})$/;
 /** La telemetría se busca por IMEI (15 dígitos, trama ICCID). */
 export const RELOJ_IMEI_RE = /^\d{15}$/;

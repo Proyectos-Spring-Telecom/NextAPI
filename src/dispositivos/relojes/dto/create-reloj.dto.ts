@@ -6,11 +6,11 @@ import { RelojConfigDto } from './reloj-config.dto';
 
 class RelojIdentidadDto {
   @ApiProperty({
-    description: 'ID del reloj de 10 dígitos (el que manda en cada trama `[3G*ID*…]`)',
+    description: 'ID del reloj de 10 dígitos (el que manda en cada trama `[3G*ID*…]`) o su IMEI',
     example: '6907850461',
   })
   @IsString()
-  @Matches(RELOJ_NUMERO_SERIE_RE, { message: 'numeroSerie del reloj: 10 dígitos' })
+  @Matches(RELOJ_NUMERO_SERIE_RE, { message: 'numeroSerie del reloj: ID de 10 dígitos o IMEI de 15' })
   numeroSerie: string;
 
   @ApiProperty({
