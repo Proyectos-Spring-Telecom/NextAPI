@@ -4,6 +4,7 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
+import { RelojConfig } from 'src/entities/RelojConfig';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import { Clientes } from 'src/entities/Clientes';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
@@ -11,6 +12,7 @@ import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.modul
 import { DispositivosController } from './dispositivos.controller';
 import { DispositivosService } from './dispositivos.service';
 import { PanelesModule } from './paneles/paneles.module';
+import { RelojesModule } from './relojes/relojes.module';
 import { TrackcamModule } from './trackcam/trackcam.module';
 
 @Module({
@@ -21,12 +23,14 @@ import { TrackcamModule } from './trackcam/trackcam.module';
       Instalaciones,
       HistoricoInstalaciones,
       TrackcamConfig,
+      RelojConfig,
       Clientes,
     ]),
     BitacoraModule,
     TenantFilterModule,
     PanelesModule,
     TrackcamModule,
+    RelojesModule,
   ],
   controllers: [DispositivosController],
   providers: [DispositivosService],

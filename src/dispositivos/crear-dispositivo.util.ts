@@ -9,6 +9,7 @@ import { EstatusEnum } from 'src/common/estatus.enum';
 
 const CODIGOS_TIPO_PANEL = ['PANEL', 'PANEL_ALARMA', 'PAN'];
 const CODIGOS_TIPO_TRACKCAM = ['TRACKCAM'];
+const CODIGOS_TIPO_RELOJ = ['RELOJ'];
 
 export async function assertClienteExiste(
   manager: EntityManager,
@@ -51,6 +52,22 @@ export async function obtenerTipoTrackcam(
   if (!tipo) {
     throw new BadRequestException(
       'No hay CatTipoDispositivo con codigo TRACKCAM',
+    );
+  }
+  return tipo;
+}
+
+export async function obtenerTipoReloj(
+  manager: EntityManager,
+): Promise<CatTipoDispositivo> {
+  const tipo = await manager
+    .getRepository(CatTipoDispositivo)
+    .createQueryBuilder('t')
+    .where('UPPER(t.codigo) IN (:...codigos)', { codigos: CODIGOS_TIPO_RELOJ })
+    .getOne();
+  if (!tipo) {
+    throw new BadRequestException(
+      'No hay CatTipoDispositivo con codigo RELOJ (aplicar deploy/sql/Relojes.sql)',
     );
   }
   return tipo;
