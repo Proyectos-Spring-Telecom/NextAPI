@@ -7,7 +7,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  FindOptionsWhere,
+  In,
+  QueryRunner,
+  Repository,
+} from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
@@ -458,11 +465,16 @@ export class InstalacionesService {
   async create(
     dto: CreateInstalacionesDto,
     idUser: number,
+    trx?: QueryRunner,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
-    const qr = this.dataSource.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
+    // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
+    const qr = trx ?? this.dataSource.createQueryRunner();
+    const propia = !trx;
+    if (propia) {
+      await qr.connect();
+      await qr.startTransaction();
+    }
     try {
       await this.validarProductoDisponibleParaAsignar(
         dto.idProducto,
@@ -523,7 +535,9 @@ export class InstalacionesService {
         idCliente,
       );
 
-      await qr.commitTransaction();
+      if (propia) {
+        await qr.commitTransaction();
+      }
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
@@ -544,7 +558,7 @@ export class InstalacionesService {
         },
       };
     } catch (error) {
-      if (qr.isTransactionActive) {
+      if (propia && qr.isTransactionActive) {
         await qr.rollbackTransaction();
       }
       await this.bitacoraLogger.logToBitacora(
@@ -562,7 +576,9 @@ export class InstalacionesService {
         'No fue posible crear la instalación. Verifique los datos e intente nuevamente.',
       );
     } finally {
-      await qr.release();
+      if (propia) {
+        await qr.release();
+      }
     }
   }
 
@@ -963,10 +979,15 @@ export class InstalacionesService {
     idClienteToken: number,
     rol: number,
     idUser: number,
+    trx?: QueryRunner,
   ): Promise<ApiCrudResponse> {
-    const qr = this.dataSource.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
+    // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
+    const qr = trx ?? this.dataSource.createQueryRunner();
+    const propia = !trx;
+    if (propia) {
+      await qr.connect();
+      await qr.startTransaction();
+    }
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(
         rol,
@@ -1206,7 +1227,9 @@ export class InstalacionesService {
         }
       }
 
-      await qr.commitTransaction();
+      if (propia) {
+        await qr.commitTransaction();
+      }
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
@@ -1233,7 +1256,7 @@ export class InstalacionesService {
         },
       };
     } catch (error) {
-      if (qr.isTransactionActive) {
+      if (propia && qr.isTransactionActive) {
         await qr.rollbackTransaction();
       }
       await this.bitacoraLogger.logToBitacora(
@@ -1249,7 +1272,9 @@ export class InstalacionesService {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
     } finally {
-      await qr.release();
+      if (propia) {
+        await qr.release();
+      }
     }
   }
 
@@ -1266,6 +1291,7 @@ export class InstalacionesService {
     idClienteToken: number,
     rol: number,
     idUser: number,
+    trx?: QueryRunner,
   ): Promise<ApiCrudResponse> {
     if (
       !ESTATUS_INSTALACION_PATCH.includes(
@@ -1292,9 +1318,13 @@ export class InstalacionesService {
         : {}),
     };
 
-    const qr = this.dataSource.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
+    // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
+    const qr = trx ?? this.dataSource.createQueryRunner();
+    const propia = !trx;
+    if (propia) {
+      await qr.connect();
+      await qr.startTransaction();
+    }
     try {
       const actual = await qr.manager.findOne(Instalaciones, { where });
       if (!actual) {
@@ -1331,7 +1361,9 @@ export class InstalacionesService {
           EnumEstatusProductoDispositivo.ASIGNADO,
         );
 
+        if (propia) {
         await qr.commitTransaction();
+      }
 
         await this.bitacoraLogger.logToBitacora(
           'Instalaciones',
@@ -1372,7 +1404,9 @@ export class InstalacionesService {
         idCliente,
       );
 
-      await qr.commitTransaction();
+      if (propia) {
+        await qr.commitTransaction();
+      }
 
       const etiqueta =
         dto.estatusInstalacion === EnumEstatusInstalacion.INACTIVO
@@ -1399,7 +1433,7 @@ export class InstalacionesService {
         data: { id, nombre: `Instalación ${id}` },
       };
     } catch (error) {
-      if (qr.isTransactionActive) {
+      if (propia && qr.isTransactionActive) {
         await qr.rollbackTransaction();
       }
       await this.bitacoraLogger.logToBitacora(
@@ -1417,7 +1451,9 @@ export class InstalacionesService {
         'No se pudo actualizar el estatus de la instalación. Intente de nuevo o contacte a soporte.',
       );
     } finally {
-      await qr.release();
+      if (propia) {
+        await qr.release();
+      }
     }
   }
 
