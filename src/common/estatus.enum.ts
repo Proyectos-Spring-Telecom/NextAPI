@@ -235,7 +235,7 @@ export enum EnumTipoDispositivo {
   TRACKCAM = 5,
   /** TrackGas / sensor gasolina (Concox VL802, springTrackGas) */
   TRACKGAS = 6,
-  /** Reloj FA100S (springFA100S) → Dispositivos + RelojConfig */
+  /** Reloj FA100S, codigo 'RELOJ INTELIGENTE' (springFA100S) → Dispositivos + RelojConfig */
   RELOJ = 7,
 }
 
@@ -266,6 +266,7 @@ export enum EnumCatProducto {
   ACTIVO = 3,
   TELEFONO = 4,
   PANEL = 5,
+  RELOJ_INTELIGENTE = 6,
 }
 
 /**

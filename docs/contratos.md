@@ -512,7 +512,7 @@ IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
 
 ### 14.2 Relojes FA100S (`/dispositivos/relojes`)
 
-Tipo `RELOJ` (`CatTipoDispositivo.Id = 7`) con su tabla 1:1 `RelojConfig`, igual que Trackcam. DDL: `deploy/sql/Relojes.sql` (incluye, comentado, cómo convertir un reloj dado de alta con otro tipo).
+Tipo `RELOJ INTELIGENTE` (`CatTipoDispositivo.Id = 7`, ya existe en producción) con su tabla 1:1 `RelojConfig`, igual que Trackcam. Marcas y modelos: `CatProductos` 6 'Reloj Inteligente'. DDL: `deploy/sql/Relojes.sql` (solo crea `RelojConfig`; incluye, comentado, cómo convertir un reloj dado de alta con otro tipo).
 
 | Campo | Regla |
 |---|---|
@@ -524,7 +524,7 @@ Tipo `RELOJ` (`CatTipoDispositivo.Id = 7`) con su tabla 1:1 `RelojConfig`, igual
 | `sensibilidadCaida` | `LSSET,n+6`: 1 a 6, **mayor = menos sensible**, por defecto 3 |
 
 - Rutas iguales a Trackcam: `POST /`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`.
-- En la instalación, el reloj va en un producto de tipo **Persona** (`CatProductos` 4), no en un vehículo.
+- En la instalación, el reloj va en un producto de tipo **Persona** (`CatTipoProducto` 4), no en un vehículo.
 - Ingesta: aplica geocerca; **no** aplica estados de tiempo detenido (son para vehículos).
 - **Pendiente:** que el socket aplique esta configuración al reloj. Hoy `springFA100S` usa valores globales de su `.env` (`FA100S_UPLOAD_INTERVAL_SEC`, `FA100S_GPS_WAKE_SEC`); la configuración por reloj queda guardada para cuando exista el canal Next → socket (springTrackCam `docs/cambios-back-next.md` §10.2).
 

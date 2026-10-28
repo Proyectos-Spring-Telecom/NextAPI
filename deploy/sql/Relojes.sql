@@ -1,15 +1,12 @@
--- Relojes FA100S: tipo de dispositivo RELOJ y su configuración (RelojConfig),
--- igual que TrackcamConfig para Trackcam. Docs: docs/contratos.md §14.2.
+-- Relojes FA100S: configuración por reloj (RelojConfig), igual que
+-- TrackcamConfig para Trackcam. Docs: docs/contratos.md §14.2.
 -- Aplicar una vez en la base `Next`.
 --
--- Antes de aplicar, confirmar que el Id 7 está libre o ya es RELOJ:
---   SELECT * FROM CatTipoDispositivo WHERE Id = 7 OR Codigo = 'RELOJ';
--- Si el Id 7 lo usa otro tipo, el INSERT falla y no se aplica nada más:
--- avisar antes de seguir (el código usa EnumTipoDispositivo.RELOJ = 7).
-
-INSERT INTO `CatTipoDispositivo` (`Id`, `Codigo`, `Nombre`, `Estatus`)
-SELECT 7, 'RELOJ', 'Reloj', 1 FROM DUAL
-WHERE NOT EXISTS (SELECT 1 FROM `CatTipoDispositivo` WHERE `Codigo` = 'RELOJ');
+-- Los catálogos ya existen en producción (dados de alta el 28/10/2026), este
+-- script no los toca:
+--   CatTipoDispositivo 7 'RELOJ INTELIGENTE' (EnumTipoDispositivo.RELOJ)
+--   CatProductos 6 'Reloj Inteligente' (marcas y modelos de relojes)
+--   CatTipoProducto 4 'PERSONA' (el reloj se instala en una persona)
 
 CREATE TABLE IF NOT EXISTS `RelojConfig` (
   `IdDispositivo` BIGINT NOT NULL,
