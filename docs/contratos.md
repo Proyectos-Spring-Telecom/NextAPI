@@ -514,6 +514,7 @@ Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo i
 
 **Reglas de negocio**
 - **El cliente se da de alta en oficina** antes de salir a campo; la orden no crea clientes (400 si no existe o no está activo).
+- **El vehículo puede darse de alta en oficina o en campo.** La orden lo referencia por `idProducto`. En campo, la app lo busca con `GET /productos/vehiculos/placa/:placa` y, si no existe, lo crea con `POST /productos/vehiculos` (cualquier rol autenticado, incluido el técnico; rechaza placa repetida en el cliente). Ese `POST` devuelve `data.id` = `idProducto`, que se manda en el `POST`/`PATCH` de la orden. Debe estar disponible (estatus 1) para cerrar el alta.
 - **Una orden = un tipo de servicio**: `instalacion` (alta), `revision`, `c_sim`, `c_equipo`, `desinstalacion`. El tipo no cambia después de crearla.
 - **Guardado parcial**: la orden nace en `borrador`, se llena con `PATCH` y archivos, y se **cierra** al final. Folio `OS-000001` asignado por el servidor al crearla.
 - **Idempotencia**: la app genera `claveApp` (UUID) al empezar; reenviar el `POST` devuelve la misma orden.
