@@ -9,7 +9,7 @@ import { EstatusEnum } from 'src/common/estatus.enum';
 
 const CODIGOS_TIPO_PANEL = ['PANEL', 'PANEL_ALARMA', 'PAN'];
 const CODIGOS_TIPO_TRACKCAM = ['TRACKCAM'];
-const CODIGOS_TIPO_RELOJ = ['RELOJ'];
+const CODIGOS_TIPO_RELOJ = ['RELOJ INTELIGENTE', 'RELOJ'];
 
 export async function assertClienteExiste(
   manager: EntityManager,
@@ -67,7 +67,7 @@ export async function obtenerTipoReloj(
     .getOne();
   if (!tipo) {
     throw new BadRequestException(
-      'No hay CatTipoDispositivo con codigo RELOJ (aplicar deploy/sql/Relojes.sql)',
+      'No hay CatTipoDispositivo con codigo RELOJ INTELIGENTE',
     );
   }
   return tipo;
