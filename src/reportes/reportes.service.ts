@@ -22,6 +22,7 @@ import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import type { Paginated } from 'src/common/ApiResponse';
 import {
   EnumTipoDispositivo,
   EnumTipoProducto,
@@ -35,6 +36,25 @@ import { VelocidadDto } from './dto/velocidad.dto';
 import { ReportePosicionesDto } from './dto/reporte-posiciones.dto';
 import { UltimaPosicionDto } from './dto/ultima-posicion.dto';
 import { DistanciaDto } from './dto/distancia.dto';
+import { ReporteSalidasGeocercaDto } from './dto/salidas-geocerca.dto';
+import { ReporteSalidasGeocercaInstalacionDto } from './dto/salidas-geocerca-instalacion.dto';
+import { Geocercas } from 'src/entities/Geocercas';
+import { Clientes } from 'src/entities/Clientes';
+import { nombreCliente as nombreClienteRelacion } from 'src/productos/map-relaciones.util';
+import { extractOuterRing } from 'src/messaging/shared/estado-geocerca.util';
+import {
+  codificarCursorRecorrido,
+  decodificarCursorRecorrido,
+  detectarHuecosTransmision,
+  detectarSalidasGeocerca,
+  duracionSegundosEntre,
+  estadoRespectoGeocerca,
+  fusionarSegmentosConsecutivos,
+  type PosicionCronologicaGeocerca,
+  type SalidaGeocercaDetectada,
+} from './helpers/salidas-geocerca.helpers';
+import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto';
+import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
 import { redondearKm } from 'src/utils/recorrido.utils';
 
@@ -228,6 +248,15 @@ export type UltimaPosicionResult = ReportePosicionesResult;
 export type DistanciaPosicionItem = ReportePosicionItem & {
   /** Km acumulados desde el punto más antiguo hasta este (2 decimales). */
   totalDistancia: number;
+  /** Km del tramo desde la posición anterior en el tiempo (0 en la más antigua). */
+  distanciaTramo: number;
+};
+
+/** Km recorridos en un día (hora de pared), para la gráfica. */
+export type DistanciaPorDiaItem = {
+  /** `YYYY-MM-DD` */
+  fecha: string;
+  km: number;
 };
 
 /** Recorrido de un IMEI / instalación en el periodo. */
@@ -236,11 +265,35 @@ export type DistanciaRecorridoItem = {
   idDispositivo: number;
   imei: string;
   numeroSerie: string | null;
+  placas: string | null;
+  economico: string | null;
+  /** Misma regla que velocidad: `nombreProducto ?? economico`. */
+  descripcion: string | null;
   /** Distancia total del recorrido (km, 2 decimales). */
   totalDistancia: number;
   total: number;
-  /** Orden DESC por fechaHora (más reciente primero), igual que histórico. */
+  /** Un punto por cada día del periodo (0 si no hubo movimiento). */
+  porDia: DistanciaPorDiaItem[];
+  /** Orden DESC por fechaHora (más reciente primero), igual que histórico. Vacío en modo paginado (usar `filas`). */
   posiciones: DistanciaPosicionItem[];
+};
+
+/** Renglón ligero de la tabla (modo paginado). */
+export type DistanciaFilaItem = {
+  idInstalacion: number;
+  idPosicion: number;
+  imei: string;
+  placas: string | null;
+  economico: string | null;
+  descripcion: string | null;
+  fechaHora: string | null;
+  lat: number;
+  lng: number;
+  velocidad: number | null;
+  ignicion: number | null;
+  estado: number | null;
+  distanciaTramo: number;
+  distanciaAcumulada: number;
 };
 
 export type DistanciaResult = {
@@ -252,6 +305,158 @@ export type DistanciaResult = {
   totalRecorridos: number;
   totalPosiciones: number;
   recorridos: DistanciaRecorridoItem[];
+  /** Solo en modo paginado: la página de renglones. */
+  filas?: DistanciaFilaItem[];
+};
+
+/** Evento de salida de geocerca (transición DENTRO → FUERA). */
+export type SalidaGeocercaItem = {
+  idCliente: number;
+  nombreCliente: string | null;
+  idInstalacion: number;
+  idDispositivo: number;
+  imei: string;
+  numeroSerie: string | null;
+  placas: string | null;
+  economico: string | null;
+  idGeocerca: number;
+  nombreGeocerca: string;
+  /** Geometría GeoJSON almacenada en `Geocercas.Geocerca` (polígono para mapa). */
+  geocercaGeometria: unknown;
+  /** Segundos fuera: hasta el reingreso o, sin reingreso, hasta la última posición del periodo. */
+  tiempoAcumuladoSegundos: number | null;
+  /** Fecha con la que se cerró `tiempoAcumuladoSegundos`. */
+  tiempoAcumuladoHasta: string | null;
+} & SalidaGeocercaDetectada;
+
+export type SalidasGeocercaResult = {
+  idCliente: number;
+  nombreCliente: string | null;
+  fechaInicio: string;
+  fechaFinal: string;
+  resumen: {
+    totalSalidas: number;
+    totalDispositivos: number;
+    totalGeocercas: number;
+    instalacionesEvaluadas: number;
+    geocercasEvaluadas: number;
+  };
+  salidas: SalidaGeocercaItem[];
+};
+
+type GeocercaAplicable = {
+  id: number;
+  nombre: string;
+  idInstalacion: number;
+  ring: Array<[number, number]>;
+  geometria: unknown;
+};
+
+/** Cabecera de la única instalación del reporte por instalación. */
+export type InstalacionSalidaGeocercaItem = {
+  idInstalacion: number;
+  idDispositivo: number | null;
+  imei: string | null;
+  numeroSerie: string | null;
+  placas: string | null;
+  economico: string | null;
+  idProducto: number | null;
+  nombreProducto: string | null;
+};
+
+export type SalidasGeocercaInstalacionResult = {
+  idCliente: number;
+  nombreCliente: string | null;
+  fechaInicio: string;
+  fechaFinal: string;
+  instalacion: InstalacionSalidaGeocercaItem | null;
+  /**
+   * Dispositivos asociados a la instalación dentro del periodo, según
+   * `Instalaciones` vigente + cadena de `HistoricoInstalaciones`.
+   * Más de uno cuando hubo cambio de dispositivo en el periodo.
+   */
+  dispositivosEnPeriodo: DispositivoEnPeriodoItem[];
+  resumen: {
+    totalSalidas: number;
+    /** Geocercas distintas con al menos una salida. */
+    totalGeocercas: number;
+    geocercasEvaluadas: number;
+  };
+  salidas: SalidaGeocercaItem[];
+};
+
+/** Tramo en que un dispositivo estuvo asociado a la instalación. */
+export type DispositivoEnPeriodoItem = {
+  idDispositivo: number;
+  idProducto: number | null;
+  imei: string;
+  numeroSerie: string | null;
+  placas: string | null;
+  economico: string | null;
+  /** Inicio de vigencia del tramo (asignación), `YYYY-MM-DD HH:mm:ss`. */
+  vigenteDesde: string | null;
+  /** Fin de vigencia del tramo; `null` = dispositivo actual. */
+  vigenteHasta: string | null;
+  /** Ventana efectiva consultada (intersección vigencia ∩ periodo). */
+  desde: string;
+  hasta: string;
+};
+
+/** Posición del recorrido posterior a una salida (GPS real, sin interpolar). */
+export type RecorridoPosicionItem = {
+  idPosicion: number;
+  idDispositivo: number;
+  imei: string;
+  fechaHora: string | null;
+  lat: number;
+  lng: number;
+  velocidad: number | null;
+  estado: number | null;
+  ignicion: number | null;
+  /** Respecto a la geocerca del evento, calculado con su geometría actual. */
+  estadoRespectoGeocerca: 'DENTRO' | 'FUERA' | null;
+};
+
+export type RecorridoSalidaGeocercaResult = {
+  instalacion: InstalacionSalidaGeocercaItem | null;
+  geocerca: {
+    idGeocerca: number;
+    nombre: string;
+    geometria: unknown;
+  };
+  eventoSeleccionado: SalidaGeocercaItem;
+  rangoEfectivo: {
+    fechaInicio: string;
+    fechaFinal: string;
+    hastaUltimaPosicion: boolean;
+  };
+  dispositivosEnPeriodo: DispositivoEnPeriodoItem[];
+  posiciones: RecorridoPosicionItem[];
+  transiciones: Array<{
+    tipo: 'SALIDA' | 'REINGRESO';
+    fechaHora: string | null;
+    idPosicion: number;
+    idGeocerca: number;
+  }>;
+  ultimaPosicion: RecorridoPosicionItem | null;
+  paginacion: {
+    limite: number;
+    devueltas: number;
+    hayMas: boolean;
+    cursorSiguiente: string | null;
+  };
+  avisos: {
+    posicionesInvalidasOmitidas: number;
+    posicionesDuplicadasOmitidas: number;
+    huecosTransmision: Array<{
+      desde: string;
+      hasta: string;
+      duracionSegundos: number;
+    }>;
+    ultimaPosicionDesactualizada: boolean;
+    segundosSinTransmisionAlFinDelRango: number | null;
+    limitaciones: string[];
+  };
 };
 
 type InstalacionCandidata = {
@@ -338,6 +543,46 @@ function mapProductoPlano(row: Record<string, unknown>): ProductoPlanoPasoPoi {
   };
 }
 
+function productoPlanoVacio(): ProductoPlanoPasoPoi {
+  return {
+    idProducto: null,
+    nombreProducto: null,
+    estatusProducto: null,
+    idTipoProducto: null,
+    nombreTipoProducto: null,
+    codigoTipoProducto: null,
+    placaVehiculo: null,
+    ecoVehiculo: null,
+    idMarcaVehiculo: null,
+    nombreMarcaVehiculo: null,
+    idModeloVehiculo: null,
+    nombreModeloVehiculo: null,
+    anioVehiculo: null,
+    colorVehiculo: null,
+    numeroSerieVehiculo: null,
+    fotoVehiculo: null,
+    fotoFrenteVehiculo: null,
+    tarjetaCirculacionVehiculo: null,
+    polizaSeguroVehiculo: null,
+    permisoCargaVehiculo: null,
+    idCombustibleVehiculo: null,
+    nombreCombustibleVehiculo: null,
+    kmVehiculo: null,
+    capacidadLitrosVehiculo: null,
+    nombreActivo: null,
+    descripcionActivo: null,
+    inmueble: null,
+    direccionFiscalInmueble: null,
+    nombreRepresentanteInmueble: null,
+    telefonoRepresentanteInmueble: null,
+    correoRepresentanteInmueble: null,
+    latInmueble: null,
+    lngInmueble: null,
+    nombrePersona: null,
+    telefonoPersona: null,
+  };
+}
+
 function pickProducto(
   c: InstalacionCandidata | PosicionPasoPoiItem,
 ): ProductoPlanoPasoPoi {
@@ -391,6 +636,12 @@ export class ReportesService {
     private readonly puntosRepo: Repository<PuntosInteres>,
     @InjectRepository(Instalaciones)
     private readonly instalacionesRepo: Repository<Instalaciones>,
+    @InjectRepository(Geocercas)
+    private readonly geocercasRepo: Repository<Geocercas>,
+    @InjectRepository(Clientes)
+    private readonly clientesRepo: Repository<Clientes>,
+    @InjectRepository(HistoricoInstalaciones)
+    private readonly historicoInstalacionesRepo: Repository<HistoricoInstalaciones>,
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
@@ -727,10 +978,17 @@ export class ReportesService {
     dto: DistanciaDto,
     idClienteToken: number,
     rol: number,
-  ): Promise<{ data: DistanciaResult }> {
+  ): Promise<{ data: DistanciaResult; paginated?: Paginated }> {
     try {
       const idCliente = Number(dto.idCliente);
       await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+
+      // Paginación opcional: sin page ni limit → respuesta completa (compatibilidad).
+      const paginar = dto.page != null || dto.limit != null;
+      const page = paginar ? Math.max(1, Math.trunc(Number(dto.page) || 1)) : 1;
+      const limit = paginar
+        ? Math.min(200, Math.max(1, Math.trunc(Number(dto.limit) || 20)))
+        : 0;
 
       let fechaInicio: string;
       let fechaFinal: string;
@@ -760,17 +1018,20 @@ export class ReportesService {
           : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
 
       if (!candidatos.length) {
-        return {
-          data: {
+        return this.armarRespuestaDistancia(
+          {
             idCliente,
             fechaInicio,
             fechaFinal,
             totalDistancia: 0,
             totalRecorridos: 0,
             totalPosiciones: 0,
-            recorridos: [],
           },
-        };
+          [],
+          paginar,
+          page,
+          limit,
+        );
       }
 
       const posiciones = await this.consultarPosicionesPorPeriodo({
@@ -813,10 +1074,21 @@ export class ReportesService {
           { yaOrdenadoDesc: true },
         );
 
-        const posicionesConKm: DistanciaPosicionItem[] = pts.map((p) => ({
-          ...p,
-          totalDistancia: distancia.acumuladoKmPorId.get(p.id) ?? 0,
-        }));
+        // pts viene en orden DESC: pts[i + 1] es el punto anterior en el tiempo.
+        // El tramo se deriva del acumulado (sin recalcular distancias).
+        const acum = (id: number) =>
+          distancia.acumuladoKmPorId.get(id) ?? 0;
+        const posicionesConKm: DistanciaPosicionItem[] = pts.map((p, i) => {
+          const tramo =
+            i < pts.length - 1 ? acum(pts[i].id) - acum(pts[i + 1].id) : 0;
+          const tramoRedondeado = redondearKm(tramo);
+          return {
+            ...p,
+            totalDistancia: acum(p.id),
+            // Negativo solo puede venir del redondeo: se deja en 0.
+            distanciaTramo: tramoRedondeado > 0 ? tramoRedondeado : 0,
+          };
+        });
 
         totalDistancia += distancia.totalDistanciaKm;
         totalPosiciones += posicionesConKm.length;
@@ -826,29 +1098,1462 @@ export class ReportesService {
           idDispositivo: cand.idDispositivo,
           imei: cand.imei,
           numeroSerie: cand.numeroSerie,
+          placas: cand.placaVehiculo,
+          economico: cand.ecoVehiculo,
+          descripcion: cand.nombreProducto ?? cand.ecoVehiculo,
           totalDistancia: distancia.totalDistanciaKm,
           total: posicionesConKm.length,
+          porDia: this.distanciaPorDia(
+            posicionesConKm,
+            fechaInicio,
+            fechaFinal,
+          ),
           posiciones: posicionesConKm,
         });
       }
 
       recorridos.sort((a, b) => a.idInstalacion - b.idInstalacion);
 
-      return {
-        data: {
+      return this.armarRespuestaDistancia(
+        {
           idCliente,
           fechaInicio,
           fechaFinal,
           totalDistancia: redondearKm(totalDistancia),
           totalRecorridos: recorridos.length,
           totalPosiciones,
-          recorridos,
+        },
+        recorridos,
+        paginar,
+        page,
+        limit,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  /**
+   * Km por día de un recorrido: suma `distanciaTramo` por día de la posición
+   * (el tramo se asigna al día del punto más reciente) y completa con 0
+   * todos los días del periodo para que las series compartan el eje X.
+   */
+  private distanciaPorDia(
+    posiciones: DistanciaPosicionItem[],
+    fechaInicio: string,
+    fechaFinal: string,
+  ): DistanciaPorDiaItem[] {
+    const kmPorDia = new Map<string, number>();
+    for (const p of posiciones) {
+      if (!p.fechaHora) continue;
+      const dia = p.fechaHora.slice(0, 10);
+      kmPorDia.set(dia, (kmPorDia.get(dia) ?? 0) + p.distanciaTramo);
+    }
+
+    const inicio = fechaInicio.slice(0, 10);
+    const fin = fechaFinal.slice(0, 10);
+    const [anioI, mesI, diaI] = inicio.split('-').map(Number);
+    const [anioF, mesF, diaF] = fin.split('-').map(Number);
+    const desdeMs = Date.UTC(anioI, (mesI ?? 1) - 1, diaI ?? 1);
+    const hastaMs = Date.UTC(anioF, (mesF ?? 1) - 1, diaF ?? 1);
+    if (!Number.isFinite(desdeMs) || !Number.isFinite(hastaMs) || desdeMs > hastaMs) {
+      return [];
+    }
+
+    const resultado: DistanciaPorDiaItem[] = [];
+    // Se avanza en UTC para no depender de la zona horaria del servidor.
+    for (let ms = desdeMs; ms <= hastaMs; ms += 86_400_000) {
+      const fecha = new Date(ms).toISOString().slice(0, 10);
+      resultado.push({ fecha, km: redondearKm(kmPorDia.get(fecha) ?? 0) });
+    }
+    return resultado;
+  }
+
+  /**
+   * Arma la respuesta de `distancia`: sin paginar devuelve los recorridos
+   * completos; paginando, aplana todas las posiciones en `filas` (orden
+   * estable), corta la página y deja `recorridos[].posiciones` vacío.
+   * Los totales y `porDia` siempre corresponden al periodo completo.
+   */
+  private armarRespuestaDistancia(
+    base: Omit<DistanciaResult, 'recorridos' | 'filas'>,
+    recorridos: DistanciaRecorridoItem[],
+    paginar: boolean,
+    page: number,
+    limit: number,
+  ): { data: DistanciaResult; paginated?: Paginated } {
+    if (!paginar) {
+      return { data: { ...base, recorridos } };
+    }
+
+    const filasTodas: DistanciaFilaItem[] = [];
+    for (const r of recorridos) {
+      for (const p of r.posiciones) {
+        filasTodas.push({
+          idInstalacion: r.idInstalacion,
+          idPosicion: p.id,
+          imei: r.imei,
+          placas: r.placas,
+          economico: r.economico,
+          descripcion: r.descripcion,
+          fechaHora: p.fechaHora,
+          lat: p.lat,
+          lng: p.lng,
+          velocidad: p.velocidad,
+          ignicion: p.ignicion,
+          estado: p.estado,
+          distanciaTramo: p.distanciaTramo,
+          distanciaAcumulada: p.totalDistancia,
+        });
+      }
+    }
+    filasTodas.sort(
+      (a, b) =>
+        String(b.fechaHora ?? '').localeCompare(String(a.fechaHora ?? '')) ||
+        a.idInstalacion - b.idInstalacion ||
+        b.idPosicion - a.idPosicion,
+    );
+
+    const total = filasTodas.length;
+    const inicio = (page - 1) * limit;
+    return {
+      data: {
+        ...base,
+        recorridos: recorridos.map((r) => ({ ...r, posiciones: [] })),
+        filas: filasTodas.slice(inicio, inicio + limit),
+      },
+      paginated: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  /**
+   * Salidas de geocerca a partir del historial de `Posiciones`.
+   * Solo lectura: no altera posiciones, estado de monitoreo ni genera alertas.
+   * Una geocerca aplica únicamente a su `IdInstalacion` (igual que el ingest
+   * en tiempo real); las de `IdInstalacion` NULL no se atribuyen a dispositivos.
+   */
+  async salidasGeocerca(
+    dto: ReporteSalidasGeocercaDto,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<{ data: SalidasGeocercaResult; paginated?: Paginated }> {
+    try {
+      const idCliente = Number(dto.idCliente);
+      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+
+      // Paginación opcional: sin page ni limit → todas las salidas (export / compatibilidad).
+      const paginar = dto.page != null || dto.limit != null;
+      const page = paginar ? Math.max(1, Math.trunc(Number(dto.page) || 1)) : 1;
+      const limit = paginar
+        ? Math.min(200, Math.max(1, Math.trunc(Number(dto.limit) || 20)))
+        : 0;
+
+      let fechaInicio: string;
+      let fechaFinal: string;
+      try {
+        fechaInicio = parseFechaHistorico(dto.fechaInicio);
+        fechaFinal = parseFechaHistorico(dto.fechaFinal);
+      } catch {
+        throw new BadRequestException(
+          'fechaInicio / fechaFinal tienen un formato inválido',
+        );
+      }
+      if (fechaInicio > fechaFinal) {
+        throw new BadRequestException(
+          'fechaInicio no puede ser posterior a fechaFinal',
+        );
+      }
+
+      const cliente = await this.clientesRepo.findOne({
+        where: { id: idCliente },
+      });
+      const nombreCliente = nombreClienteRelacion(cliente);
+
+      const geocercasCliente = await this.cargarGeocercasDelCliente(
+        idCliente,
+        this.normalizeIds(dto.idsGeocerca),
+      );
+
+      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
+        idCliente,
+        dto.filtro,
+        dto.valores,
+      );
+
+      const candidatos =
+        idsFiltro !== null && idsFiltro.length === 0
+          ? []
+          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+
+      const resumenVacio = {
+        totalSalidas: 0,
+        totalDispositivos: 0,
+        totalGeocercas: 0,
+        instalacionesEvaluadas: candidatos.length,
+        geocercasEvaluadas: 0,
+      };
+      if (!candidatos.length || !geocercasCliente.length) {
+        return this.armarRespuestaSalidas(
+          { idCliente, nombreCliente, fechaInicio, fechaFinal, resumen: resumenVacio },
+          [],
+          paginar,
+          page,
+          limit,
+        );
+      }
+
+      // Solo geocercas vinculadas a una instalación autorizada/candidata,
+      // con geometría válida (anillo extraído una sola vez por geocerca).
+      const idsCandidatos = new Set(candidatos.map((c) => c.idInstalacion));
+      const aplicables: GeocercaAplicable[] = [];
+      for (const g of geocercasCliente) {
+        if (g.idInstalacion == null) continue;
+        const idInstalacion = Number(g.idInstalacion);
+        if (!idsCandidatos.has(idInstalacion)) continue;
+        const ring = extractOuterRing(g.geocerca);
+        if (!ring) continue;
+        aplicables.push({
+          id: Number(g.id),
+          nombre: g.nombre,
+          idInstalacion,
+          ring,
+          geometria: g.geocerca,
+        });
+      }
+      if (!aplicables.length) {
+        return this.armarRespuestaSalidas(
+          {
+            idCliente,
+            nombreCliente,
+            fechaInicio,
+            fechaFinal,
+            resumen: { ...resumenVacio, geocercasEvaluadas: 0 },
+          },
+          [],
+          paginar,
+          page,
+          limit,
+        );
+      }
+
+      const porInstalacion = new Map<number, GeocercaAplicable[]>();
+      for (const g of aplicables) {
+        const list = porInstalacion.get(g.idInstalacion);
+        if (list) list.push(g);
+        else porInstalacion.set(g.idInstalacion, [g]);
+      }
+      const candidatosConGeocerca = candidatos.filter((c) =>
+        porInstalacion.has(c.idInstalacion),
+      );
+
+      const salidas = await this.detectarSalidasParaCandidatos({
+        candidatos: candidatosConGeocerca,
+        porInstalacion,
+        idCliente,
+        nombreCliente,
+        fechaInicio,
+        fechaFinal,
+      });
+
+      return this.armarRespuestaSalidas(
+        {
+          idCliente,
+          nombreCliente,
+          fechaInicio,
+          fechaFinal,
+          resumen: {
+            totalSalidas: salidas.length,
+            totalDispositivos: new Set(salidas.map((s) => s.idDispositivo))
+              .size,
+            totalGeocercas: new Set(salidas.map((s) => s.idGeocerca)).size,
+            instalacionesEvaluadas: candidatosConGeocerca.length,
+            geocercasEvaluadas: aplicables.length,
+          },
+        },
+        salidas,
+        paginar,
+        page,
+        limit,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  /**
+   * Arma la respuesta de `salidasGeocerca`: ordena de la salida más reciente a
+   * la más antigua y, si se pidió, corta la página. El resumen se recibe ya
+   * calculado sobre el total.
+   */
+  private armarRespuestaSalidas(
+    base: Omit<SalidasGeocercaResult, 'salidas'>,
+    salidas: SalidaGeocercaItem[],
+    paginar: boolean,
+    page: number,
+    limit: number,
+  ): { data: SalidasGeocercaResult; paginated?: Paginated } {
+    const ordenadas = [...salidas].sort(
+      (a, b) =>
+        String(b.fechaSalida ?? '').localeCompare(String(a.fechaSalida ?? '')) ||
+        a.idDispositivo - b.idDispositivo ||
+        a.idGeocerca - b.idGeocerca,
+    );
+    if (!paginar) {
+      return { data: { ...base, salidas: ordenadas } };
+    }
+    const total = ordenadas.length;
+    const inicio = (page - 1) * limit;
+    return {
+      data: { ...base, salidas: ordenadas.slice(inicio, inicio + limit) },
+      paginated: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  /**
+   * Salidas de geocerca de UNA sola instalación.
+   * El cliente se deriva de la instalación y se valida contra el token:
+   * instalación inexistente → 404; cliente fuera de alcance → 403.
+   * Solo lectura, igual que `salidasGeocerca`.
+   */
+  async obtenerSalidasGeocercaPorInstalacion(
+    dto: ReporteSalidasGeocercaInstalacionDto,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<{ data: SalidasGeocercaInstalacionResult }> {
+    try {
+      const idInstalacion = Number(dto.idInstalacion);
+
+      let fechaInicio: string;
+      let fechaFinal: string;
+      try {
+        fechaInicio = parseFechaHistorico(dto.fechaInicio);
+        fechaFinal = parseFechaHistorico(dto.fechaFinal);
+      } catch {
+        throw new BadRequestException(
+          'fechaInicio / fechaFinal tienen un formato inválido',
+        );
+      }
+      if (fechaInicio > fechaFinal) {
+        throw new BadRequestException(
+          'fechaInicio no puede ser posterior a fechaFinal',
+        );
+      }
+
+      const instalacionRaw = await this.instalacionesRepo.findOne({
+        where: { id: idInstalacion },
+        select: [
+          'id',
+          'idCliente',
+          'idDispositivo',
+          'idProducto',
+          'vigenteDesde',
+          'idHistoricoInstalacion',
+        ],
+      });
+      if (!instalacionRaw) {
+        throw new NotFoundException('Instalación no encontrada');
+      }
+      const idCliente = Number(instalacionRaw.idCliente);
+      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+
+      const cliente = await this.clientesRepo.findOne({
+        where: { id: idCliente },
+      });
+      const nombreCliente = nombreClienteRelacion(cliente);
+
+      const candidatos = await this.cargarInstalacionesCandidatas(idCliente, [
+        idInstalacion,
+      ]);
+      const cand = candidatos[0] ?? null;
+      const instalacion: InstalacionSalidaGeocercaItem | null = cand
+        ? {
+            idInstalacion: cand.idInstalacion,
+            idDispositivo: cand.idDispositivo,
+            imei: cand.imei,
+            numeroSerie: cand.numeroSerie,
+            placas: cand.placaVehiculo,
+            economico: cand.ecoVehiculo,
+            idProducto: cand.idProducto,
+            nombreProducto: cand.nombreProducto,
+          }
+        : {
+            idInstalacion,
+            idDispositivo: null,
+            imei: null,
+            numeroSerie: null,
+            placas: null,
+            economico: null,
+            idProducto: null,
+            nombreProducto: null,
+          };
+
+      const idsSolicitados = this.normalizeIds(dto.idsGeocerca);
+      const geocercasCliente = await this.cargarGeocercasDelCliente(
+        idCliente,
+        idsSolicitados,
+      );
+
+      // Explícitas de este cliente pero asociadas a otra instalación (o sin
+      // instalación) no son aplicables a la seleccionada → 400.
+      if (idsSolicitados?.length) {
+        const noAplicables = geocercasCliente.filter(
+          (g) => g.idInstalacion == null || Number(g.idInstalacion) !== idInstalacion,
+        );
+        if (noAplicables.length) {
+          throw new BadRequestException(
+            `Las geocercas no están asociadas a la instalación ${idInstalacion}: ${noAplicables
+              .map((g) => Number(g.id))
+              .join(', ')}`,
+          );
+        }
+      }
+
+      const aplicables: GeocercaAplicable[] = [];
+      for (const g of geocercasCliente) {
+        if (g.idInstalacion == null || Number(g.idInstalacion) !== idInstalacion) {
+          continue;
+        }
+        const ring = extractOuterRing(g.geocerca);
+        if (!ring) continue;
+        aplicables.push({
+          id: Number(g.id),
+          nombre: g.nombre,
+          idInstalacion,
+          ring,
+          geometria: g.geocerca,
+        });
+      }
+
+      // Dispositivo(s) de ESTA instalación durante el periodo, según la
+      // cadena Instalaciones vigente → HistoricoInstalaciones. Nunca se
+      // recorren las demás instalaciones ni dispositivos del cliente.
+      const dispositivosEnPeriodo =
+        await this.resolverDispositivosEnPeriodo({
+          instalacionRaw,
+          idCliente,
+          fechaInicio,
+          fechaFinal,
+        });
+
+      if (!cand || !aplicables.length || !dispositivosEnPeriodo.length) {
+        return {
+          data: {
+            idCliente,
+            nombreCliente,
+            fechaInicio,
+            fechaFinal,
+            instalacion,
+            dispositivosEnPeriodo,
+            resumen: {
+              totalSalidas: 0,
+              totalGeocercas: 0,
+              geocercasEvaluadas: aplicables.length,
+            },
+            salidas: [],
+          },
+        };
+      }
+
+      const salidas = await this.detectarSalidasPorTramos({
+        idCliente,
+        nombreCliente,
+        idInstalacion,
+        cand,
+        tramos: dispositivosEnPeriodo,
+        geocercas: aplicables,
+      });
+
+      return {
+        data: {
+          idCliente,
+          nombreCliente,
+          fechaInicio,
+          fechaFinal,
+          instalacion,
+          dispositivosEnPeriodo,
+          resumen: {
+            totalSalidas: salidas.length,
+            totalGeocercas: new Set(salidas.map((s) => s.idGeocerca)).size,
+            geocercasEvaluadas: aplicables.length,
+          },
+          salidas,
         },
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
     }
+  }
+
+  /**
+   * Recorrido posterior a una salida de geocerca de una instalación.
+   *
+   * A diferencia del listado, NO se detiene en el reingreso: devuelve las
+   * posiciones GPS cronológicas de la instalación desde el evento hasta
+   * `fechaFinal` (o la última disponible en modo explícito), incluyendo
+   * reingresos y nuevas salidas, con paginación por cursor.
+   *
+   * Seguridad: instalación 404 si no existe, 403 si su cliente está fuera
+   * del alcance del token, geocerca 404 si no es del cliente y 400 si no
+   * aplica a la instalación. `UsuariosGeocerca` es solo una asociación
+   * administrativa (los listados de geocercas filtran por cliente, no por
+   * usuario), por lo que no se usa como regla de visibilidad.
+   * El evento se verifica re-ejecutando el mismo detector del listado.
+   */
+  async obtenerRecorridoSalidaGeocerca(
+    dto: RecorridoSalidaGeocercaDto,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<{ data: RecorridoSalidaGeocercaResult }> {
+    try {
+      const idInstalacion = Number(dto.idInstalacion);
+      const idGeocerca = Number(dto.idGeocerca);
+      const hastaUltima = dto.hastaUltimaPosicion === true;
+      const limite = dto.limite != null ? Number(dto.limite) : 500;
+
+      const parse = (raw: string | undefined, campo: string): string => {
+        try {
+          return parseFechaHistorico(raw ?? '');
+        } catch {
+          throw new BadRequestException(
+            `${campo} tiene un formato inválido`,
+          );
+        }
+      };
+      const fechaSalidaNorm = parse(dto.fechaSalida, 'fechaSalida');
+      const fechaInicioCtx = dto.fechaInicio
+        ? parse(dto.fechaInicio, 'fechaInicio')
+        : fechaSalidaNorm;
+      let fechaFinalNorm = dto.fechaFinal
+        ? parse(dto.fechaFinal, 'fechaFinal')
+        : null;
+      if (!fechaFinalNorm && !hastaUltima) {
+        throw new BadRequestException(
+          'fechaFinal es obligatoria salvo que hastaUltimaPosicion sea true',
+        );
+      }
+      if (fechaFinalNorm && fechaSalidaNorm > fechaFinalNorm) {
+        throw new BadRequestException(
+          'fechaSalida no puede ser posterior a fechaFinal',
+        );
+      }
+      if (fechaFinalNorm && fechaInicioCtx > fechaFinalNorm) {
+        throw new BadRequestException(
+          'fechaInicio no puede ser posterior a fechaFinal',
+        );
+      }
+
+      let cursorDecodificado: { fechaHora: string; idPosicion: number } | null =
+        null;
+      if (dto.cursor) {
+        try {
+          cursorDecodificado = decodificarCursorRecorrido(dto.cursor);
+        } catch {
+          throw new BadRequestException('cursor de paginación inválido');
+        }
+      }
+
+      const instalacionRaw = await this.instalacionesRepo.findOne({
+        where: { id: idInstalacion },
+        select: [
+          'id',
+          'idCliente',
+          'idDispositivo',
+          'idProducto',
+          'vigenteDesde',
+          'idHistoricoInstalacion',
+        ],
+      });
+      if (!instalacionRaw) {
+        throw new NotFoundException('Instalación no encontrada');
+      }
+      const idCliente = Number(instalacionRaw.idCliente);
+      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+
+      const cliente = await this.clientesRepo.findOne({
+        where: { id: idCliente },
+      });
+      const nombreCliente = nombreClienteRelacion(cliente);
+
+      const candidatos = await this.cargarInstalacionesCandidatas(idCliente, [
+        idInstalacion,
+      ]);
+      const cand = candidatos[0] ?? null;
+      if (!cand) {
+        throw new NotFoundException(
+          'Evento de salida no encontrado para esa instalación',
+        );
+      }
+      const instalacion: InstalacionSalidaGeocercaItem = {
+        idInstalacion: cand.idInstalacion,
+        idDispositivo: cand.idDispositivo,
+        imei: cand.imei,
+        numeroSerie: cand.numeroSerie,
+        placas: cand.placaVehiculo,
+        economico: cand.ecoVehiculo,
+        idProducto: cand.idProducto,
+        nombreProducto: cand.nombreProducto,
+      };
+
+      const [geocerca] = await this.cargarGeocercasDelCliente(idCliente, [
+        idGeocerca,
+      ]);
+      if (
+        geocerca.idInstalacion == null ||
+        Number(geocerca.idInstalacion) !== idInstalacion
+      ) {
+        throw new BadRequestException(
+          'La geocerca no está asociada a la instalación seleccionada',
+        );
+      }
+      const ring = extractOuterRing(geocerca.geocerca);
+      if (!ring) {
+        throw new BadRequestException(
+          'La geocerca no tiene una geometría válida para evaluar posiciones',
+        );
+      }
+      const aplicable: GeocercaAplicable = {
+        id: Number(geocerca.id),
+        nombre: geocerca.nombre,
+        idInstalacion,
+        ring,
+        geometria: geocerca.geocerca,
+      };
+
+      // Ventana de verificación: desde el contexto hasta el fin efectivo.
+      const ventanaInicio =
+        fechaInicioCtx < fechaSalidaNorm ? fechaInicioCtx : fechaSalidaNorm;
+      const CAP_FUTURO = '9999-12-31 23:59:59';
+      const tramosVentana = await this.resolverDispositivosEnPeriodo({
+        instalacionRaw,
+        idCliente,
+        fechaInicio: ventanaInicio,
+        fechaFinal: fechaFinalNorm ?? CAP_FUTURO,
+      });
+      if (!tramosVentana.length) {
+        throw new NotFoundException(
+          'Evento de salida no encontrado para esa instalación',
+        );
+      }
+
+      // Modo explícito hasta última posición: el fin efectivo es la última
+      // posición GPS disponible de los tramos (nunca una consulta abierta
+      // sin este modo y sin fechaFinal).
+      let fechaFinalEfectiva = fechaFinalNorm;
+      if (!fechaFinalEfectiva) {
+        const ultima = await this.consultarUltimaPosicionDeTramos({
+          tramos: tramosVentana,
+          desde: fechaSalidaNorm,
+          hasta: CAP_FUTURO,
+          ring,
+        });
+        fechaFinalEfectiva = ultima
+          ? (ultima.fechaHora ?? fechaSalidaNorm).replace('T', ' ')
+          : fechaSalidaNorm;
+      }
+
+      const tramosDeteccion =
+        fechaFinalNorm == null
+          ? await this.resolverDispositivosEnPeriodo({
+              instalacionRaw,
+              idCliente,
+              fechaInicio: ventanaInicio,
+              fechaFinal: fechaFinalEfectiva,
+            })
+          : tramosVentana;
+
+      const eventos = await this.detectarSalidasPorTramos({
+        idCliente,
+        nombreCliente,
+        idInstalacion,
+        cand,
+        tramos: tramosDeteccion,
+        geocercas: [aplicable],
+      });
+      const fechaSalidaT = fechaSalidaNorm.replace(' ', 'T');
+      const evento = eventos.find(
+        (e) =>
+          e.fechaSalida === fechaSalidaT &&
+          (dto.idPosicionSalida == null ||
+            e.primeraPosicionFuera.idPosicion ===
+              Number(dto.idPosicionSalida)),
+      );
+      if (!evento) {
+        throw new NotFoundException(
+          'Evento de salida no encontrado para esa instalación, geocerca y fecha indicada',
+        );
+      }
+
+      // El recorrido inicia siempre en la salida seleccionada.
+      const desdeRecorrido = fechaSalidaNorm;
+      const tramosRecorrido: DispositivoEnPeriodoItem[] = tramosDeteccion
+        .map((t) => ({
+          ...t,
+          desde: t.desde > desdeRecorrido ? t.desde : desdeRecorrido,
+          hasta:
+            t.hasta < fechaFinalEfectiva ? t.hasta : fechaFinalEfectiva,
+        }))
+        .filter((t) => t.desde <= t.hasta);
+
+      const crudas: Array<Record<string, unknown> & { __imei: string; __idDispositivo: number }> = [];
+      for (const tramo of tramosRecorrido) {
+        const filas = await this.consultarPosicionesRecorridoTramo({
+          imei: tramo.imei,
+          desde: tramo.desde,
+          hasta: tramo.hasta,
+          cursor: cursorDecodificado,
+          limiteMasUno: limite + 1,
+        });
+        for (const f of filas) {
+          crudas.push({
+            ...f,
+            fechaHora:
+              formatFechaPosicion(
+                f.fechaHora as string | Date | null | undefined,
+              ) ?? '',
+            __imei: tramo.imei,
+            __idDispositivo: tramo.idDispositivo,
+          });
+        }
+      }
+      crudas.sort(
+        (a, b) =>
+          String(a.fechaHora ?? '').localeCompare(
+            String(b.fechaHora ?? ''),
+          ) || Number(a.id) - Number(b.id),
+      );
+
+      let invalidas = 0;
+      let duplicadas = 0;
+      const vistos = new Set<string>();
+      const validas: RecorridoPosicionItem[] = [];
+      for (const row of crudas) {
+        const lat = Number(row.lat);
+        const lng = Number(row.lng);
+        const fechaHora = formatFechaPosicion(
+          row.fechaHora as string | Date | null | undefined,
+        );
+        const estadoRel = estadoRespectoGeocerca(lat, lng, ring);
+        if (estadoRel == null || !fechaHora) {
+          invalidas += 1;
+          continue;
+        }
+        const clave = `${row.__imei}|${fechaHora}|${lat}|${lng}`;
+        if (vistos.has(clave)) {
+          duplicadas += 1;
+          continue;
+        }
+        vistos.add(clave);
+        validas.push({
+          idPosicion: Number(row.id),
+          idDispositivo: row.__idDispositivo,
+          imei: row.__imei,
+          fechaHora,
+          lat,
+          lng,
+          velocidad: num(row.velocidad),
+          estado: num(row.estado),
+          ignicion: num(row.ignicion),
+          estadoRespectoGeocerca: estadoRel,
+        });
+      }
+
+      const posiciones = validas.slice(0, limite);
+      const hayMas = validas.length > limite;
+      const ultimaPagina = posiciones[posiciones.length - 1] ?? null;
+      const cursorSiguiente =
+        hayMas && ultimaPagina?.fechaHora
+          ? codificarCursorRecorrido(
+              ultimaPagina.fechaHora,
+              ultimaPagina.idPosicion,
+            )
+          : null;
+
+      const transiciones: RecorridoSalidaGeocercaResult['transiciones'] = [];
+      for (const e of eventos) {
+        if (!e.fechaSalida || e.fechaSalida < fechaSalidaT) continue;
+        transiciones.push({
+          tipo: 'SALIDA',
+          fechaHora: e.fechaSalida,
+          idPosicion: e.primeraPosicionFuera.idPosicion,
+          idGeocerca,
+        });
+        if (e.fechaReingreso && e.posicionReingreso) {
+          transiciones.push({
+            tipo: 'REINGRESO',
+            fechaHora: e.fechaReingreso,
+            idPosicion: e.posicionReingreso.idPosicion,
+            idGeocerca,
+          });
+        }
+      }
+      transiciones.sort(
+        (a, b) =>
+          String(a.fechaHora ?? '').localeCompare(
+            String(b.fechaHora ?? ''),
+          ) || a.idPosicion - b.idPosicion,
+      );
+
+      const ultimaPosicion = await this.consultarUltimaPosicionDeTramos({
+        tramos: tramosRecorrido,
+        desde: desdeRecorrido,
+        hasta: fechaFinalEfectiva,
+        ring,
+      });
+      const fechaFinalT = fechaFinalEfectiva.replace(' ', 'T');
+      const segSinTransmision = ultimaPosicion?.fechaHora
+        ? duracionSegundosEntre(ultimaPosicion.fechaHora, fechaFinalT)
+        : null;
+
+      return {
+        data: {
+          instalacion,
+          geocerca: {
+            idGeocerca,
+            nombre: geocerca.nombre,
+            geometria: geocerca.geocerca,
+          },
+          eventoSeleccionado: evento,
+          rangoEfectivo: {
+            fechaInicio: desdeRecorrido,
+            fechaFinal: fechaFinalEfectiva,
+            hastaUltimaPosicion: hastaUltima,
+          },
+          dispositivosEnPeriodo: tramosRecorrido,
+          posiciones,
+          transiciones,
+          ultimaPosicion,
+          paginacion: {
+            limite,
+            devueltas: posiciones.length,
+            hayMas,
+            cursorSiguiente,
+          },
+          avisos: {
+            posicionesInvalidasOmitidas: invalidas,
+            posicionesDuplicadasOmitidas: duplicadas,
+            huecosTransmision: detectarHuecosTransmision(posiciones, 900),
+            ultimaPosicionDesactualizada:
+              segSinTransmision != null && segSinTransmision > 900,
+            segundosSinTransmisionAlFinDelRango: segSinTransmision,
+            limitaciones: [
+              'La última posición es el último GPS dentro del rango: no confirma el estado actual en tiempo real si no hay transmisión reciente.',
+              'En eventos SIN_REINGRESO, duracionFueraSegundos es null: no equivale al tiempo transcurrido hasta fechaFinal ni hasta hoy.',
+              'Sin historial de geometrías de geocercas: estadoRespectoGeocerca se calcula con la geometría actual de la geocerca, no necesariamente la vigente en la fecha de cada posición.',
+              'Los huecos de transmisión (> 900 s entre posiciones de esta página) indican ausencia de evidencia de trayectoria continua; no se interpolan posiciones.',
+            ],
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException((error as Error)?.message);
+    }
+  }
+
+  /** Posiciones crudas de un tramo para el recorrido (con cursor). */
+  private async consultarPosicionesRecorridoTramo(args: {
+    imei: string;
+    desde: string;
+    hasta: string;
+    cursor: { fechaHora: string; idPosicion: number } | null;
+    limiteMasUno: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const { imei, desde, hasta, cursor, limiteMasUno } = args;
+    const qb = this.instalacionesRepo.manager
+      .getRepository(Posiciones)
+      .createQueryBuilder('p')
+      .select([
+        'p.id AS id',
+        'CAST(p.imei AS CHAR) AS imei',
+        'p.lat AS lat',
+        'p.lng AS lng',
+        'p.fechaHora AS fechaHora',
+        'p.velocidad AS velocidad',
+        'p.estado AS estado',
+        'p.ignicion AS ignicion',
+      ])
+      .where('CAST(p.imei AS CHAR) = :imei', { imei })
+      .andWhere('p.fechaHora >= :desde', { desde })
+      .andWhere('p.fechaHora <= :hasta', { hasta });
+    if (cursor) {
+      const cursorFechaDb = cursor.fechaHora.replace('T', ' ');
+      qb.andWhere(
+        '(p.fechaHora > :cursorFecha OR (p.fechaHora = :cursorFecha AND p.id > :cursorId))',
+        { cursorFecha: cursorFechaDb, cursorId: cursor.idPosicion },
+      );
+    }
+    return qb
+      .orderBy('p.fechaHora', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .limit(limiteMasUno)
+      .getRawMany<Record<string, unknown>>();
+  }
+
+  /** Última posición válida de los tramos en [desde, hasta] (o null). */
+  private async consultarUltimaPosicionDeTramos(args: {
+    tramos: DispositivoEnPeriodoItem[];
+    desde: string;
+    hasta: string;
+    ring: Array<[number, number]>;
+  }): Promise<RecorridoPosicionItem | null> {
+    const { tramos, desde, hasta, ring } = args;
+    let mejor: RecorridoPosicionItem | null = null;
+    for (const tramo of tramos) {
+      const desdeT = tramo.desde > desde ? tramo.desde : desde;
+      const hastaT = tramo.hasta < hasta ? tramo.hasta : hasta;
+      if (desdeT > hastaT) continue;
+      const row = await this.instalacionesRepo.manager
+        .getRepository(Posiciones)
+        .createQueryBuilder('p')
+        .select([
+          'p.id AS id',
+          'p.lat AS lat',
+          'p.lng AS lng',
+          'p.fechaHora AS fechaHora',
+          'p.velocidad AS velocidad',
+          'p.estado AS estado',
+          'p.ignicion AS ignicion',
+        ])
+        .where('CAST(p.imei AS CHAR) = :imei', { imei: tramo.imei })
+        .andWhere('p.fechaHora >= :desde', { desde: desdeT })
+        .andWhere('p.fechaHora <= :hasta', { hasta: hastaT })
+        .andWhere('p.lat BETWEEN -90 AND 90')
+        .andWhere('p.lng BETWEEN -180 AND 180')
+        .andWhere('NOT (p.lat = 0 AND p.lng = 0)')
+        .orderBy('p.fechaHora', 'DESC')
+        .addOrderBy('p.id', 'DESC')
+        .limit(1)
+        .getRawOne<Record<string, unknown>>();
+      if (!row) continue;
+      const fechaHora = formatFechaPosicion(
+        row.fechaHora as string | Date | null | undefined,
+      );
+      if (!fechaHora) continue;
+      const item: RecorridoPosicionItem = {
+        idPosicion: Number(row.id),
+        idDispositivo: tramo.idDispositivo,
+        imei: tramo.imei,
+        fechaHora,
+        lat: Number(row.lat),
+        lng: Number(row.lng),
+        velocidad: num(row.velocidad),
+        estado: num(row.estado),
+        ignicion: num(row.ignicion),
+        estadoRespectoGeocerca: estadoRespectoGeocerca(
+          Number(row.lat),
+          Number(row.lng),
+          ring,
+        ),
+      };
+      if (
+        !mejor ||
+        String(item.fechaHora).localeCompare(String(mejor.fechaHora)) > 0 ||
+        (item.fechaHora === mejor.fechaHora &&
+          item.idPosicion > mejor.idPosicion)
+      ) {
+        mejor = item;
+      }
+    }
+    return mejor;
+  }
+
+  /**
+   * Dispositivos asociados a UNA instalación durante el periodo.
+   *
+   * El sistema conserva las asociaciones en dos niveles (ver
+   * `InstalacionesService.update`): la fila vigente de `Instalaciones`
+   * (dispositivo actual, `VigenteDesde`) y la cadena de
+   * `HistoricoInstalaciones` enlazada por `IdHistoricoInstalacion`
+   * (versiones anteriores con `VigenteDesde`/`VigenteHasta` e
+   * `IdInstalacionOriginal`). Cada versión aporta un tramo; solo se
+   * consultan posiciones del IMEI de cada tramo dentro de su vigencia
+   * intersectada con el periodo — nunca otros dispositivos del cliente.
+   */
+  private async resolverDispositivosEnPeriodo(args: {
+    instalacionRaw: Instalaciones;
+    idCliente: number;
+    fechaInicio: string;
+    fechaFinal: string;
+  }): Promise<DispositivoEnPeriodoItem[]> {
+    const { instalacionRaw, idCliente, fechaInicio, fechaFinal } = args;
+
+    const aPared = (v: Date | string | null | undefined): string | null => {
+      const f = formatFechaPosicion(v as string | Date | null | undefined);
+      return f ? f.replace('T', ' ') : null;
+    };
+
+    type Version = {
+      idDispositivo: number | null;
+      idProducto: number | null;
+      vigenteDesde: Date | string | null;
+      vigenteHasta: Date | string | null;
+    };
+    const versiones: Version[] = [
+      {
+        idDispositivo:
+          instalacionRaw.idDispositivo != null
+            ? Number(instalacionRaw.idDispositivo)
+            : null,
+        idProducto:
+          instalacionRaw.idProducto != null
+            ? Number(instalacionRaw.idProducto)
+            : null,
+        vigenteDesde: instalacionRaw.vigenteDesde ?? null,
+        vigenteHasta: null,
+      },
+    ];
+
+    const visitados = new Set<number>();
+    let cursor: number | null =
+      instalacionRaw.idHistoricoInstalacion != null
+        ? Number(instalacionRaw.idHistoricoInstalacion)
+        : null;
+    while (cursor != null && !visitados.has(cursor)) {
+      visitados.add(cursor);
+      const hist = await this.historicoInstalacionesRepo.findOne({
+        where: { id: cursor, idCliente },
+      });
+      if (!hist) break;
+      versiones.push({
+        idDispositivo:
+          hist.idDispositivo != null ? Number(hist.idDispositivo) : null,
+        idProducto: hist.idProducto != null ? Number(hist.idProducto) : null,
+        vigenteDesde: hist.vigenteDesde ?? null,
+        vigenteHasta: hist.vigenteHasta ?? null,
+      });
+      cursor =
+        hist.idHistoricoInstalacion != null
+          ? Number(hist.idHistoricoInstalacion)
+          : null;
+    }
+
+    type Tramo = DispositivoEnPeriodoItem & { idTipoDispositivo: number | null };
+    const tramosBase: Array<{
+      idDispositivo: number;
+      idProducto: number | null;
+      vigenteDesde: string | null;
+      vigenteHasta: string | null;
+      desde: string;
+      hasta: string;
+    }> = [];
+    for (const v of versiones) {
+      if (v.idDispositivo == null) continue;
+      const vigDesde = aPared(v.vigenteDesde);
+      const vigHasta = aPared(v.vigenteHasta);
+      const desde = vigDesde && vigDesde > fechaInicio ? vigDesde : fechaInicio;
+      const hasta = vigHasta && vigHasta < fechaFinal ? vigHasta : fechaFinal;
+      if (desde > hasta) continue;
+      tramosBase.push({
+        idDispositivo: v.idDispositivo,
+        idProducto: v.idProducto,
+        vigenteDesde: vigDesde,
+        vigenteHasta: vigHasta,
+        desde,
+        hasta,
+      });
+    }
+    if (!tramosBase.length) return [];
+
+    // Una sola consulta por los dispositivos de los tramos (no del cliente).
+    const idsDispositivo = [
+      ...new Set(tramosBase.map((t) => t.idDispositivo)),
+    ];
+    const dispRows = await this.instalacionesRepo.manager
+      .getRepository(Dispositivos)
+      .createQueryBuilder('d')
+      .select([
+        'd.id AS id',
+        'CAST(d.imei AS CHAR) AS imei',
+        'd.numeroSerie AS numeroSerie',
+        'd.idTipoDispositivo AS idTipoDispositivo',
+      ])
+      .where('d.id IN (:...ids)', { ids: idsDispositivo })
+      .andWhere('d.idCliente = :idCliente', { idCliente })
+      .getRawMany<Record<string, unknown>>();
+    const dispById = new Map(
+      dispRows.map((r) => [
+        Number(r.id),
+        {
+          imei: imeiToString(r.imei) ?? '',
+          numeroSerie: str(r.numeroSerie),
+          idTipoDispositivo: num(r.idTipoDispositivo),
+        },
+      ]),
+    );
+
+    // Placas/económico del producto vigente en cada tramo (una consulta).
+    const idsProducto = [
+      ...new Set(
+        tramosBase
+          .map((t) => t.idProducto)
+          .filter((id): id is number => id != null),
+      ),
+    ];
+    const vehByProducto = new Map<
+      number,
+      { placas: string | null; economico: string | null }
+    >();
+    if (idsProducto.length) {
+      const vehRows = await this.instalacionesRepo.manager
+        .getRepository(Vehiculos)
+        .createQueryBuilder('v')
+        .select([
+          'v.idProducto AS idProducto',
+          'v.placa AS placa',
+          'v.numeroEconomico AS numeroEconomico',
+        ])
+        .where('v.idProducto IN (:...ids)', { ids: idsProducto })
+        .andWhere('v.idCliente = :idCliente', { idCliente })
+        .getRawMany<Record<string, unknown>>();
+      for (const r of vehRows) {
+        vehByProducto.set(Number(r.idProducto), {
+          placas: str(r.placa),
+          economico: str(r.numeroEconomico),
+        });
+      }
+    }
+
+    const tramos: Tramo[] = [];
+    for (const t of tramosBase) {
+      const disp = dispById.get(t.idDispositivo);
+      if (!disp || !disp.imei) continue;
+      if (disp.idTipoDispositivo === EnumTipoDispositivo.PANEL_ALARMA) {
+        continue;
+      }
+      const veh = t.idProducto != null ? vehByProducto.get(t.idProducto) : undefined;
+      tramos.push({
+        idDispositivo: t.idDispositivo,
+        idProducto: t.idProducto,
+        imei: disp.imei,
+        numeroSerie: disp.numeroSerie,
+        placas: veh?.placas ?? null,
+        economico: veh?.economico ?? null,
+        vigenteDesde: t.vigenteDesde,
+        vigenteHasta: t.vigenteHasta,
+        desde: t.desde,
+        hasta: t.hasta,
+        idTipoDispositivo: disp.idTipoDispositivo,
+      });
+    }
+
+    return fusionarSegmentosConsecutivos(tramos).map(
+      ({ idTipoDispositivo: _omit, ...resto }) => resto,
+    );
+  }
+
+  /**
+   * Detección por tramos de dispositivo de una sola instalación.
+   * Por cada tramo: una consulta de posiciones de su IMEI restringida en BD
+   * a [desde, hasta] (vigencia ∩ periodo) y la posición anterior solo dentro
+   * de la misma asignación (no evidencia de otro dispositivo/instalación).
+   */
+  private async detectarSalidasPorTramos(args: {
+    idCliente: number;
+    nombreCliente: string | null;
+    idInstalacion: number;
+    cand: InstalacionCandidata;
+    tramos: DispositivoEnPeriodoItem[];
+    geocercas: GeocercaAplicable[];
+  }): Promise<SalidaGeocercaItem[]> {
+    const { idCliente, nombreCliente, idInstalacion, tramos, geocercas } =
+      args;
+    const salidas: SalidaGeocercaItem[] = [];
+
+    for (const tramo of tramos) {
+      const candidatoTramo: InstalacionCandidata = {
+        idInstalacion,
+        idDispositivo: tramo.idDispositivo,
+        imei: tramo.imei,
+        numeroSerie: tramo.numeroSerie,
+        ...productoPlanoVacio(),
+        idProducto: tramo.idProducto,
+        placaVehiculo: tramo.placas,
+        ecoVehiculo: tramo.economico,
+      };
+
+      const posiciones = await this.consultarPosicionesCronologicas({
+        candidatos: [candidatoTramo],
+        fechaInicio: tramo.desde,
+        fechaFinal: tramo.hasta,
+      });
+      const serie = posiciones.map((p) => p.row);
+      if (!serie.length) continue;
+
+      const posicionAnterior = await this.consultarPosicionAnterior(
+        tramo.imei,
+        tramo.desde,
+        tramo.vigenteDesde,
+      );
+
+      for (const geocerca of geocercas) {
+        const detectadas = detectarSalidasGeocerca({
+          posiciones: serie,
+          posicionAnterior,
+          ring: geocerca.ring,
+        });
+        for (const d of detectadas) {
+          // Sin reingreso: tiempo comprobado hasta la última posición del periodo (está fuera).
+          const hasta =
+            d.fechaReingreso ?? serie[serie.length - 1]?.fechaHora ?? null;
+          const tiempoAcumuladoSegundos =
+            d.duracionFueraSegundos ??
+            (d.fechaSalida && hasta
+              ? duracionSegundosEntre(d.fechaSalida, hasta)
+              : null);
+          salidas.push({
+            idCliente,
+            nombreCliente,
+            idInstalacion,
+            idDispositivo: tramo.idDispositivo,
+            imei: tramo.imei,
+            numeroSerie: tramo.numeroSerie,
+            placas: tramo.placas,
+            economico: tramo.economico,
+            idGeocerca: geocerca.id,
+            nombreGeocerca: geocerca.nombre,
+            geocercaGeometria: geocerca.geometria,
+            tiempoAcumuladoSegundos,
+            tiempoAcumuladoHasta: hasta,
+            ...d,
+          });
+        }
+      }
+    }
+
+    salidas.sort(
+      (a, b) =>
+        String(a.fechaSalida ?? '').localeCompare(
+          String(b.fechaSalida ?? ''),
+        ) ||
+        a.idDispositivo - b.idDispositivo ||
+        a.idGeocerca - b.idGeocerca,
+    );
+    return salidas;
+  }
+
+  /**
+   * Núcleo de detección compartido por los reportes de salidas de geocerca.
+   * Una sola consulta histórica para todos los IMEI (índice
+   * `IX_Posiciones_Imei_Fecha`), orden cronológico ASC + id ASC.
+   */
+  private async detectarSalidasParaCandidatos(args: {
+    candidatos: InstalacionCandidata[];
+    porInstalacion: Map<number, GeocercaAplicable[]>;
+    idCliente: number;
+    nombreCliente: string | null;
+    fechaInicio: string;
+    fechaFinal: string;
+  }): Promise<SalidaGeocercaItem[]> {
+    const { candidatos, porInstalacion, idCliente, nombreCliente } = args;
+    const { fechaInicio, fechaFinal } = args;
+    if (!candidatos.length) return [];
+
+    const posiciones = await this.consultarPosicionesCronologicas({
+      candidatos,
+      fechaInicio,
+      fechaFinal,
+    });
+    const porImei = new Map<string, PosicionCronologicaGeocerca[]>();
+    for (const p of posiciones) {
+      const list = porImei.get(p.imei);
+      if (list) list.push(p.row);
+      else porImei.set(p.imei, [p.row]);
+    }
+
+    const salidas: SalidaGeocercaItem[] = [];
+    for (const cand of candidatos) {
+      const imei = imeiToString(cand.imei) ?? cand.imei;
+      const serie = porImei.get(imei) ?? [];
+      if (!serie.length) continue;
+
+      const geocercas = porInstalacion.get(cand.idInstalacion) ?? [];
+      // Última posición previa al periodo (1 query indexada por IMEI y solo
+      // para dispositivos con posiciones en el periodo): permite confirmar
+      // la salida si la primera posición ya está fuera.
+      const posicionAnterior = await this.consultarPosicionAnterior(
+        imei,
+        fechaInicio,
+      );
+
+      for (const geocerca of geocercas) {
+        const detectadas = detectarSalidasGeocerca({
+          posiciones: serie,
+          posicionAnterior,
+          ring: geocerca.ring,
+        });
+        for (const d of detectadas) {
+          // Sin reingreso: tiempo comprobado hasta la última posición del periodo (está fuera).
+          const hasta =
+            d.fechaReingreso ?? serie[serie.length - 1]?.fechaHora ?? null;
+          const tiempoAcumuladoSegundos =
+            d.duracionFueraSegundos ??
+            (d.fechaSalida && hasta
+              ? duracionSegundosEntre(d.fechaSalida, hasta)
+              : null);
+          salidas.push({
+            idCliente,
+            nombreCliente,
+            idInstalacion: cand.idInstalacion,
+            idDispositivo: cand.idDispositivo,
+            imei: cand.imei,
+            numeroSerie: cand.numeroSerie,
+            placas: cand.placaVehiculo,
+            economico: cand.ecoVehiculo,
+            idGeocerca: geocerca.id,
+            nombreGeocerca: geocerca.nombre,
+            geocercaGeometria: geocerca.geometria,
+            tiempoAcumuladoSegundos,
+            tiempoAcumuladoHasta: hasta,
+            ...d,
+          });
+        }
+      }
+    }
+
+    salidas.sort(
+      (a, b) =>
+        String(a.fechaSalida ?? '').localeCompare(
+          String(b.fechaSalida ?? ''),
+        ) ||
+        a.idDispositivo - b.idDispositivo ||
+        a.idGeocerca - b.idGeocerca,
+    );
+    return salidas;
+  }
+
+  /**
+   * Geocercas activas del cliente. Con `ids` explícitos, todos deben existir
+   * y pertenecer al cliente (404 en caso contrario, igual que paso-por-poi).
+   */
+  private async cargarGeocercasDelCliente(
+    idCliente: number,
+    ids: number[] | null,
+  ): Promise<Geocercas[]> {
+    if (!ids?.length) {
+      return this.geocercasRepo.find({
+        where: { idCliente, estatus: EstatusEnum.ACTIVO },
+        order: { id: 'ASC' },
+      });
+    }
+    const rows = await this.geocercasRepo.find({
+      where: { id: In(ids), idCliente, estatus: EstatusEnum.ACTIVO },
+    });
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+    const missing = ids.filter((id) => !byId.has(id));
+    if (missing.length) {
+      throw new NotFoundException(
+        `Geocercas no encontradas, inactivas o no pertenecen al cliente: ${missing.join(', ')}`,
+      );
+    }
+    return ids.map((id) => byId.get(id)!);
+  }
+
+  /** Posiciones del periodo en orden cronológico (ASC fechaHora, ASC id). */
+  private async consultarPosicionesCronologicas(args: {
+    candidatos: InstalacionCandidata[];
+    fechaInicio: string;
+    fechaFinal: string;
+  }): Promise<Array<{ imei: string; row: PosicionCronologicaGeocerca }>> {
+    const { candidatos, fechaInicio, fechaFinal } = args;
+    const imeis = [
+      ...new Set(
+        candidatos
+          .map((c) => imeiToString(c.imei) ?? c.imei)
+          .filter((imei) => imei !== ''),
+      ),
+    ];
+    if (!imeis.length) return [];
+
+    const rows = await this.instalacionesRepo.manager
+      .getRepository(Posiciones)
+      .createQueryBuilder('p')
+      .select([
+        'p.id AS id',
+        'CAST(p.imei AS CHAR) AS imei',
+        'p.lat AS lat',
+        'p.lng AS lng',
+        'p.fechaHora AS fechaHora',
+      ])
+      .where('p.imei IN (:...imeis)', { imeis })
+      .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
+      .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+      .orderBy('p.fechaHora', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .getRawMany<Record<string, unknown>>();
+
+    const result: Array<{
+      imei: string;
+      row: PosicionCronologicaGeocerca;
+    }> = [];
+    for (const row of rows) {
+      const imei = imeiToString(row.imei);
+      if (!imei) continue;
+      result.push({
+        imei,
+        row: {
+          id: Number(row.id),
+          lat: Number(row.lat),
+          lng: Number(row.lng),
+          fechaHora: formatFechaPosicion(
+            row.fechaHora as string | Date | null | undefined,
+          ),
+        },
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Última posición previa a `fechaInicio` para un IMEI (o null).
+   * `fechaMinima` (inicio de vigencia del tramo) evita usar como evidencia
+   * posiciones de cuando el dispositivo aún no estaba en esta instalación.
+   */
+  private async consultarPosicionAnterior(
+    imei: string,
+    fechaInicio: string,
+    fechaMinima?: string | null,
+  ): Promise<PosicionCronologicaGeocerca | null> {
+    const qb = this.instalacionesRepo.manager
+      .getRepository(Posiciones)
+      .createQueryBuilder('p')
+      .select([
+        'p.id AS id',
+        'p.lat AS lat',
+        'p.lng AS lng',
+        'p.fechaHora AS fechaHora',
+      ])
+      .where('CAST(p.imei AS CHAR) = :imei', { imei })
+      .andWhere('p.fechaHora < :fechaInicio', { fechaInicio });
+    if (fechaMinima && fechaMinima < fechaInicio) {
+      qb.andWhere('p.fechaHora >= :fechaMinima', { fechaMinima });
+    }
+    const row = await qb
+      .orderBy('p.fechaHora', 'DESC')
+      .addOrderBy('p.id', 'DESC')
+      .limit(1)
+      .getRawOne<Record<string, unknown>>();
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      lat: Number(row.lat),
+      lng: Number(row.lng),
+      fechaHora: formatFechaPosicion(
+        row.fechaHora as string | Date | null | undefined,
+      ),
+    };
   }
 
   private async assertClienteEnAlcance(

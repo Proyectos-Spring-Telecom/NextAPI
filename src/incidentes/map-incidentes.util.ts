@@ -1,4 +1,6 @@
+import { TipoOrigenIncidente } from 'src/common/estatus.enum';
 import { Incidentes } from 'src/entities/Incidentes';
+import { etiquetaEstadoPosicion } from './incidentes-alerta.util';
 import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import {
   nombreCliente,
@@ -32,9 +34,42 @@ export function mapSeguimientoPlano(item: SeguimientoIncidentes) {
   };
 }
 
+/** Datos de la unidad (instalación activa del IMEI) para el grid / PDF de Consola. */
+export type UnidadIncidente = {
+  idInstalacion: number | null;
+  economico: string | null;
+  placas: string | null;
+  marca: string | null;
+  modelo: string | null;
+  nombreProducto: string | null;
+};
+
+function datoOrigen(item: Incidentes, key: string): unknown {
+  const origen = item.datosOrigen;
+  return origen && typeof origen === 'object' ? origen[key] : undefined;
+}
+
+/** IMEI del snapshot (solo incidentes de posición). */
+export function imeiIncidente(item: Incidentes): string | null {
+  if (Number(item.tipoOrigen) !== TipoOrigenIncidente.POSICION) return null;
+  const raw = datoOrigen(item, 'imei');
+  const imei = raw == null ? '' : String(raw).trim();
+  return imei || null;
+}
+
+/** Estado de la posición que originó el incidente (2 = alerta primaria, 8 = geocerca…). */
+export function estadoIncidente(item: Incidentes): number | null {
+  if (Number(item.tipoOrigen) !== TipoOrigenIncidente.POSICION) return null;
+  const raw = datoOrigen(item, 'estado');
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : null;
+}
+
 export function mapIncidentePlano(
   item: Incidentes,
   incluirSeguimientos = false,
+  unidad: UnidadIncidente | null = null,
 ) {
   const seguimientos = incluirSeguimientos
     ? [...(item.seguimientoIncidentes ?? [])]
@@ -70,6 +105,16 @@ export function mapIncidentePlano(
     estatus: Number(item.estatus),
     fechaCreacion: item.fechaCreacion,
     fechaActualizacion: item.fechaActualizacion,
+    // Datos planos para Consola (estado de alerta + unidad).
+    estado: estadoIncidente(item),
+    nombreEstado: etiquetaEstadoPosicion(estadoIncidente(item)),
+    imei: imeiIncidente(item),
+    idInstalacion: unidad?.idInstalacion ?? null,
+    economico: unidad?.economico ?? null,
+    placas: unidad?.placas ?? null,
+    marca: unidad?.marca ?? null,
+    modelo: unidad?.modelo ?? null,
+    nombreProducto: unidad?.nombreProducto ?? null,
     ...(incluirSeguimientos ? { seguimientos } : {}),
   };
 }

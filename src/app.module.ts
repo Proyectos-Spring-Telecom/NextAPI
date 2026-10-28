@@ -27,6 +27,7 @@ import { NumerosEmergenciaModule } from './numeros-emergencia/numeros-emergencia
 import { IncidentesModule } from './incidentes/incidentes.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ConsolaModule } from './consola/consola.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import Joi from 'joi';
@@ -220,6 +221,8 @@ import * as jwt from 'jsonwebtoken';
     ReportesModule,
 
     DashboardModule,
+
+    ConsolaModule,
 
     MessagingModule,
 

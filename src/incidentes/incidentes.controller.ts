@@ -34,6 +34,7 @@ import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { CreateSeguimientoIncidenteDto } from './dto/create-seguimiento-incidente.dto';
+import { FinalizarIncidenteDto } from './dto/finalizar-incidente.dto';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import { IncidentesService } from './incidentes.service';
 
@@ -179,6 +180,18 @@ export class IncidentesController {
     required: false,
     enum: TipoOrigenIncidente,
   })
+  @ApiQuery({
+    name: 'estatus',
+    required: false,
+    enum: EstatusIncidente,
+    description: '1 = activos (abiertos), 0 = concluidos. Sin valor: ambos.',
+  })
+  @ApiQuery({
+    name: 'idCliente',
+    required: false,
+    type: Number,
+    description: 'Debe estar en el alcance del rol; fuera de alcance → lista vacía.',
+  })
   @ApiOkResponse({ description: 'Lista paginada' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findAll(
@@ -186,15 +199,52 @@ export class IncidentesController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('tipoOrigen') tipoOrigen?: string,
+    @Query('estatus') estatus?: string,
+    @Query('idCliente') idCliente?: string,
   ): Promise<ApiResponseCommon> {
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(200, Math.max(1, Number(limit) || 20));
+    const estatusNum = this.parseOptionalInt(estatus);
     return this.service.findAll(
       Number(req.user.idCliente),
       Number(req.user.rol),
       pageNum,
       limitNum,
       this.parseOptionalInt(tipoOrigen),
+      estatusNum === EstatusIncidente.ABIERTO ||
+        estatusNum === EstatusIncidente.CERRADO
+        ? estatusNum
+        : undefined,
+      this.parseOptionalInt(idCliente),
+    );
+  }
+
+  @Patch(':id/finalizar')
+  @ApiOperation({
+    summary: 'Finalizar reporte',
+    description: [
+      'Cierra el incidente (`estatus = 0`, `fechaCierre`) y ya no admite seguimientos.',
+      '`descripcion` reemplaza la descripción; `resultado` y `conclusion` se registran',
+      'como seguimientos con medio "Resultado final" y "Cierre". Ya finalizado → 400.',
+    ].join('\n'),
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: FinalizarIncidenteDto })
+  @ApiOkResponse({ description: 'Reporte finalizado' })
+  @ApiBadRequestResponse({ description: 'El reporte ya fue finalizado' })
+  @ApiNotFoundResponse({ description: 'No encontrado o fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async finalizar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FinalizarIncidenteDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.service.finalizar(
+      id,
+      dto,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 

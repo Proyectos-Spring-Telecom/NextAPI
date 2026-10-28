@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MonitoreoModule } from 'src/monitoreo/monitoreo.module';
+import { IncidentesAutoModule } from 'src/incidentes/auto/incidentes-auto.module';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Fotos } from 'src/entities/Fotos';
 import { Geocercas } from 'src/entities/Geocercas';
@@ -15,6 +16,7 @@ import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-h
   imports: [
     MonitoreoModule,
     TelemetriaHuerfanosModule,
+    IncidentesAutoModule,
     TypeOrmModule.forFeature([
       Dispositivos,
       Posiciones,

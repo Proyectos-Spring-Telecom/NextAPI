@@ -52,6 +52,29 @@ export function estadoPorMinutosDetenido(
   return EnumEstadoTiempoDetenido.DETENIDO;
 }
 
+/**
+ * Desde cuándo se cuenta el tiempo detenido (regla SION: detenido con motor
+ * encendido). El conteo empieza en el primer encendido de ignición posterior
+ * al último movimiento:
+ * - Hubo un encendido guardado después del último movimiento → ese.
+ * - No hubo, pero la posición actual llega con ignición 1 → la actual (0 min).
+ * - El motor no se ha encendido desde que se detuvo → null: se queda en
+ *   Detenido (0, gris) aunque lleve días estacionado.
+ */
+export function inicioConteoDetenido(input: {
+  primerEncendidoTrasMovimiento: Date | string | null | undefined;
+  ignicionActual: number | null | undefined;
+  fechaActual: Date | string;
+}): Date | string | null {
+  if (input.primerEncendidoTrasMovimiento != null) {
+    return input.primerEncendidoTrasMovimiento;
+  }
+  if (input.ignicionActual != null && Number(input.ignicionActual) === 1) {
+    return input.fechaActual;
+  }
+  return null;
+}
+
 export function minutosEntre(
   desde: Date | string,
   hasta: Date | string,
