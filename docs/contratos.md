@@ -510,7 +510,7 @@ IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
 
 ### 14.1 Órdenes de servicio (`/ordenes-servicio`)
 
-Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo inicial: `deploy/sql/OrdenesServicio.sql`. Reglas puras: `src/ordenes-servicio/ordenes-servicio.reglas.ts`.
+Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo inicial: `deploy/sql/OrdenesServicio.sql`. Reglas puras: `src/ordenes-servicio/ordenes-servicio.reglas.ts`. Especificación completa (ejemplos, errores, despliegue): [ordenes-servicio.md](ordenes-servicio.md).
 
 **Reglas de negocio**
 - **El cliente se da de alta en oficina** antes de salir a campo; la orden no crea clientes (400 si no existe o no está activo).
