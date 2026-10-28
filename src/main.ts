@@ -4,11 +4,18 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { HttpStringResponseFilter } from './utils/http-string-response.filter';
+import { ConfigService } from '@nestjs/config';
+import { logLevels } from './utils/log-levels.util';
 
 async function bootstrap() {
   process.env.TZ = process.env.TZ || 'America/Mexico_City';
   console.log('TZ', process.env.TZ);
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    bufferLogs: true,
+  });
+  // LOG_LEVEL puede venir del .env, que se carga con el ConfigModule
+  app.useLogger(logLevels(app.get(ConfigService).get<string>('LOG_LEVEL')));
   app.useWebSocketAdapter(new IoAdapter(app));
 
   // Prefijo global: todas las rutas bajo /api (auth, mesas, clientes, etc.)

@@ -5,6 +5,7 @@ import {
   DeviceNotFoundError,
 } from '../shared/device-lookup.service';
 import { PosicionIngestService } from '../shared/posicion-ingest.service';
+import { TelemetriaHuerfanosService } from 'src/telemetria-huerfanos/telemetria-huerfanos.service';
 import {
   extractJt808Audit,
   mapAcometidasToPosicion,
@@ -23,6 +24,7 @@ export class Jt808IngestService {
   constructor(
     private readonly deviceLookup: DeviceLookupService,
     private readonly posicionIngest: PosicionIngestService,
+    private readonly huerfanos: TelemetriaHuerfanosService,
   ) {}
 
   async handleEnvelope(
@@ -40,7 +42,15 @@ export class Jt808IngestService {
         error instanceof DeviceNotFoundError ||
         error instanceof DeviceImeiMissingError
       ) {
-        this.logger.warn((error as Error).message);
+        await this.huerfanos.registrar({
+          protocol: 'jt808',
+          deviceId: envelope.deviceId,
+          motivo:
+            error instanceof DeviceImeiMissingError ? 'sin_imei' : 'no_registrado',
+          routingKey,
+          lat: envelope.payload?.Lat,
+          lng: envelope.payload?.Lng,
+        });
         return {};
       }
       throw error;

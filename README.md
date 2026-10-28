@@ -68,7 +68,7 @@ Se validan con Joi al arrancar (`src/app.module.ts`); si falta una obligatoria, 
 
 | Grupo | Variables | Obligatorias |
 |-------|-----------|--------------|
-| Servidor | `PORT` (3004), `NODE_ENV`, `TZ` (`America/Mexico_City`) | No |
+| Servidor | `PORT` (3004), `NODE_ENV`, `TZ` (`America/Mexico_City`), `LOG_LEVEL` (`log`) | No |
 | MySQL | `DB_HOST`, `DB_USER`, `DB_DATABASE` · `DB_PORT`, `DB_PASSWORD`, `DB_TZ`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | Las tres primeras |
 | JWT | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` · `JWT_CONFIRMACION` | Las tres primeras |
 | Rate limit | `THROTTLE_*_LIMIT` / `THROTTLE_*_TTL_MS` (login, pin, verify, recuperación, confirmación, refresh, logout) · `THROTTLE_VALIDATE_FACE_*` | Sí, salvo `VALIDATE_FACE` |
@@ -82,7 +82,9 @@ Se validan con Joi al arrancar (`src/app.module.ts`); si falta una obligatoria, 
 | Consumidor | `RABBITMQ_MAX_RETRIES`, `RABBITMQ_HEARTBEAT`, `RABBITMQ_RECONNECT_MAX_DELAY`, `RABBITMQ_MAX_CONCURRENT_DB`, `CONSUMER_WATCHDOG_MINUTES`, `QUEUE_IDLE_WARN_SECONDS`, `DEVICE_LOOKUP_CACHE_TTL_SEC` | No (con default) |
 
 Notas:
-- En producción usa `NODE_ENV=production`; con otro valor se registran en log todas las consultas SQL.
+- Las consultas SQL solo se registran con `DB_LOGGING=true` (ya no dependen de `NODE_ENV`).
+- `LOG_LEVEL` (`fatal|error|warn|log|debug|verbose`, default `log`): lo que se repite por mensaje de la cola (ingesta, caché de equipos, JWT aceptado) va en `debug`.
+- Logs en `/var/log/nextAPI*.log`: rotación con [`deploy/logrotate/nextapi`](./deploy/logrotate/nextapi) (60 días).
 - `DB_CONNECTION_LIMIT` debe ser mayor que `RABBITMQ_MAX_CONCURRENT_DB` para que el consumidor no deje sin conexiones a la API.
 - `.env` y `.env.example` están en `.gitignore`. No subas credenciales al repositorio.
 

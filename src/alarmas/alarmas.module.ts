@@ -14,6 +14,7 @@ import { AlarmasIngestService } from './alarmas-ingest.service';
 import { AlarmasService } from './alarmas.service';
 import { GatewayHmacGuard } from './gateway/gateway-hmac.guard';
 import { PanelOnlineScheduler } from './panel-online.scheduler';
+import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-huerfanos.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PanelOnlineScheduler } from './panel-online.scheduler';
     AuthModule,
     MonitoreoModule,
     TenantFilterModule,
+    TelemetriaHuerfanosModule,
   ],
   controllers: [AlarmasIngestController, AlarmasController],
   providers: [
