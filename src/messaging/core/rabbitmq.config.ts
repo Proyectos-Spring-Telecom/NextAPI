@@ -17,6 +17,10 @@ export interface RabbitMqRuntimeConfig {
   reconnectMaxDelayMs: number;
   watchdogMinutes: number;
   maxConcurrentDb: number;
+  /** Tope de la espera creciente entre intentos cuando MySQL no responde. */
+  dbRetryMaxDelayMs: number;
+  /** Máximo que un mensaje espera en memoria a MySQL antes de devolverse a la cola. */
+  dbHoldMaxMs: number;
   axpro: {
     events: RabbitMqQueueDefinition;
     heartbeats: RabbitMqQueueDefinition;
@@ -87,6 +91,10 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       Number(config.get('CONSUMER_WATCHDOG_MINUTES') ?? 15) || 15,
     maxConcurrentDb:
       Number(config.get('RABBITMQ_MAX_CONCURRENT_DB') ?? 5) || 5,
+    dbRetryMaxDelayMs:
+      Number(config.get('RABBITMQ_DB_RETRY_MAX_DELAY_MS') ?? 30000) || 30000,
+    dbHoldMaxMs:
+      Number(config.get('RABBITMQ_DB_HOLD_MAX_MS') ?? 300000) || 300000,
     axpro: {
       events: {
         queue:

@@ -407,8 +407,9 @@ Recomendado: `eventId` determinista por posición (reenvío = duplicado); `recei
 | Caso | Resultado |
 |------|-----------|
 | Éxito o duplicado | ack |
-| Dispositivo desconocido | warning en log + ack (no DLQ) |
-| Error transitorio de BD | Reintento (republica con la routing key original) hasta `RABBITMQ_MAX_RETRIES` |
+| Dispositivo desconocido | upsert en `TelemetryHuerfanos` + ack (no DLQ), ver §12.6 |
+| MySQL no disponible (caído, reiniciando, `Server shutdown in progress`, `ECONNREFUSED`, `Too many connections`, `Pool is closed`) | **No gasta reintentos.** El mensaje se queda sin confirmar y todos los consumidores esperan (1 s, 2 s, 4 s… hasta `RABBITMQ_DB_RETRY_MAX_DELAY_MS`) a que MySQL vuelva; la cola absorbe lo que siga llegando. Si un mensaje lleva más de `RABBITMQ_DB_HOLD_MAX_MS` esperando, vuelve a la cola (nack con requeue) para no rebasar el `consumer_timeout` del broker. El watchdog no reconecta mientras MySQL está caído. Log: un `MySQL no disponible` al caer y un `MySQL disponible de nuevo tras X s` al volver. |
+| Otro error transitorio de BD (deadlock, lock wait timeout) | Reintento (republica con la routing key original) hasta `RABBITMQ_MAX_RETRIES` |
 | Error permanente (`BadRequestException`, JSON inválido, BD permanente, "incoherente"/"inválido") o reintentos agotados | DLQ con headers `x-death-reason`, `x-original-routing-key`, `x-retry-count` |
 
 Catálogos Estado/Evento: [`contexto.md` §5](./contexto.md).
@@ -548,6 +549,7 @@ Validadas con Joi en `app.module.ts`.
 | `RABBITMQ_QUEUE_AVL_EVENTS`, `…_ALARMS`, `…_DLQ` | No | Colas AVL |
 | `RABBITMQ_PREFETCH`, `…_EVENTS`, `…_HEARTBEATS`, `…_AVL` | No (10 / 10 / 50 / 10) | Prefetch |
 | `RABBITMQ_MAX_RETRIES`, `RABBITMQ_RECONNECT_MAX_DELAY`, `RABBITMQ_MAX_CONCURRENT_DB` | No (3 / 30000 / 5) | Reintentos / reconexión / concurrencia BD |
+| `RABBITMQ_DB_RETRY_MAX_DELAY_MS`, `RABBITMQ_DB_HOLD_MAX_MS` | No (30000 / 300000) | Tope de espera entre intentos con MySQL caído / máximo que un mensaje espera antes de volver a la cola |
 | `CONSUMER_WATCHDOG_MINUTES` | No (15) | Reconexión preventiva |
 | `QUEUE_IDLE_WARN_SECONDS` | No (900) | Idle y ventana de fallos/DLQ en `/health/rabbitmq/queues` |
 | `DEVICE_LOOKUP_CACHE_TTL_SEC` | No (600) | Cache de lookup de dispositivos |
