@@ -144,6 +144,52 @@ export class PosicionIngestService {
   }
 
   /**
+   * Ubicación que llegó después para una alarma sin GPS (relojes FA100S):
+   * corrige Lat/Lng de la posición de esa alarma (mismo Imei, FechaHora e
+   * IdEvento) sin crear otra fila ni abrir otro incidente. Si la alarma no
+   * llegó a Posiciones (no había posición previa), se inserta como posición.
+   */
+  async ingestAlarmLocation(
+    req: PosicionIngestPositionRequest,
+  ): Promise<PosicionIngestResult> {
+    const { fechaHora, idEvento, lat, lng } = req.posicion;
+    if (fechaHora == null || idEvento == null) {
+      return this.ingestPosition(req);
+    }
+    const original = await this.dataSource.getRepository(Posiciones).findOne({
+      select: { id: true },
+      where: { imei: req.imei, fechaHora, idEvento },
+      order: { id: 'DESC' },
+    });
+    if (!original) {
+      return this.ingestPosition(req);
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const logged = await this.tryInsertIngestLog(manager, req);
+      if (logged.duplicate) return logged;
+
+      await manager.update(Posiciones, { id: original.id }, { lat, lng });
+      // Solo si la alarma sigue siendo la última posición del equipo.
+      await manager.update(UltimaPosicion, { imei: req.imei, fechaHora }, { lat, lng });
+      await manager.update(
+        TelemetryIngestLog,
+        { eventId: req.eventId },
+        { posicionId: original.id },
+      );
+      this.logger.debug(
+        `[PosicionIngest] alarm_location protocol=${req.protocol} eventId=${req.eventId} → PosicionId=${original.id} corregida`,
+      );
+      return { posicionId: original.id };
+    });
+
+    if (!result.duplicate) {
+      void this.monitoreoGateway.notificarImei(req.imei);
+    }
+    return result;
+  }
+
+  /**
    * Solo consulta UltimaPosicion cuando el estado nuevo es de alerta (2, 3, 8,
    * 9, 10, 11). Si falla la lectura no se abre incidente y el ingest sigue.
    */

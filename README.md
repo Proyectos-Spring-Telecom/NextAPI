@@ -159,8 +159,8 @@ Exchange `telemetry` (topic) y dead-letter exchange `telemetry.dlx`.
 
 | Cola | Bindings | Origen |
 |------|----------|--------|
-| `telemetry.avl.events` | `jt808.position`, `jimi.position` | springTrackCam, springTrackGas, Server_Socket |
-| `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | springTrackCam, springTrackGas |
+| `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position` | springTrackCam, springTrackGas, Server_Socket, springFA100S |
+| `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*`, `fa100s.alarm.*` | springTrackCam, springTrackGas, springFA100S |
 | `telemetry.axpro.events` / `telemetry.axpro.heartbeats` | `axpro.event` / `axpro.heartbeat` | AX PRO |
 | `telemetry.avl.dlq` / `telemetry.axpro.dlq` | Mensajes con error | — |
 
