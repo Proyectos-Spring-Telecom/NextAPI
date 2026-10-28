@@ -104,6 +104,7 @@ Nombres configurables: `RABBITMQ_QUEUE_AVL_*`, `RABBITMQ_QUEUE_AXPRO_*`. Prefetc
 - `kind=alarm` (JT808/Jimi) → auditoría en `TelemetryIngestLog`; **no** INSERT `Posiciones` (evita GPS duplicado). Jimi: solo SOS en `jimi.alarm.*`.
 - Idempotencia global por `eventId` (SHA-256 hex 64) en `TelemetryIngestLog`.
 - Reintentos: hasta `RABBITMQ_MAX_RETRIES` (republica con la routing key original). Errores permanentes (`BadRequestException`, JSON inválido, errores de BD permanentes, mensajes con "incoherente"/"inválido") van directo a la DLQ con headers `x-death-reason`, `x-original-routing-key`, `x-retry-count`.
+- MySQL no disponible (caído o reiniciando) no gasta reintentos ni manda a la DLQ: los consumidores esperan con backoff (`RABBITMQ_DB_RETRY_MAX_DELAY_MS`) y los mensajes se quedan en la cola hasta que vuelve (`db-availability.gate.ts`).
 - Concurrencia de BD limitada por `RABBITMQ_MAX_CONCURRENT_DB`.
 - Watchdog: reconexión preventiva tras `CONSUMER_WATCHDOG_MINUTES` sin mensajes; reconexión con backoff hasta `RABBITMQ_RECONNECT_MAX_DELAY`.
 - Dispositivo desconocido (IMEI / NumeroSerie no encontrado o con estatus distinto de 1/2) → warning en log y ack (no DLQ).
