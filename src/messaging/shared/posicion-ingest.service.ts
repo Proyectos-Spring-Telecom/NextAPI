@@ -65,7 +65,7 @@ export class PosicionIngestService {
       const logged = await this.tryInsertIngestLog(manager, req);
       if (logged.duplicate) return logged;
 
-      this.logger.log(
+      this.logger.debug(
         `[PosicionIngest] alarm protocol=${req.protocol} eventId=${req.eventId} deviceId=${req.deviceId} imei=${req.imei} rk=${req.routingKey} (sin Posiciones)`,
       );
       return { audited: true as const };
@@ -121,7 +121,7 @@ export class PosicionIngestService {
         { posicionId },
       );
 
-      this.logger.log(
+      this.logger.debug(
         `[PosicionIngest] ${req.kind} protocol=${req.protocol} eventId=${req.eventId} → PosicionId=${posicionId} Estado=${posicionData.estado ?? 'NULL'}`,
       );
 

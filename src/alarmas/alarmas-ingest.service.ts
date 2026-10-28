@@ -14,6 +14,7 @@ import { IngestHeartbeatDto } from './dto/ingest-heartbeat.dto';
 import { AlarmasGateway } from './alarmas.gateway';
 import { mapEventoItem } from './alarmas-mapper';
 import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
+import { TelemetriaHuerfanosService } from 'src/telemetria-huerfanos/telemetria-huerfanos.service';
 import { isoUtcToMexicoCityAsUtcDate, isoUtcToMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 
 const UPSERT_ULTIMO_SQL = `
@@ -48,6 +49,7 @@ export class AlarmasIngestService {
     private readonly panelRepo: Repository<PanelAlarma>,
     private readonly gateway: AlarmasGateway,
     private readonly monitoreoGateway: MonitoreoGateway,
+    private readonly huerfanos: TelemetriaHuerfanosService,
   ) {}
 
   async ingestEvento(
@@ -112,9 +114,16 @@ export class AlarmasIngestService {
       await qr.commitTransaction();
 
       if (idPanel == null) {
-        this.logger.warn(
+        // El evento queda en EventoAlarma con Estatus=0; aquí se reporta el panel sin alta
+        this.logger.debug(
           `evento huérfano cuentaSia=${dto.cuentaSia} idEvento=${saved.id}`,
         );
+        await this.huerfanos.registrar({
+          protocol: 'axpro',
+          deviceId: dto.cuentaSia,
+          motivo: 'no_registrado',
+          routingKey: 'axpro.event',
+        });
         return { accepted: true };
       }
 
@@ -211,7 +220,12 @@ export class AlarmasIngestService {
 
       if (idPanel == null) {
         await qr.commitTransaction();
-        this.logger.warn(`heartbeat sin panel cuentaSia=${dto.cuentaSia}`);
+        await this.huerfanos.registrar({
+          protocol: 'axpro',
+          deviceId: dto.cuentaSia,
+          motivo: 'no_registrado',
+          routingKey: 'axpro.heartbeat',
+        });
         return { accepted: true };
       }
 

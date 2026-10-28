@@ -198,6 +198,7 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Catálogos | §9 |
 | Sims | `POST /sims`, `GET /sims/list`, `GET /sims/:page/:limit`, `GET /sims/:id`, `PATCH /sims/estatus/:id`, `PATCH /sims/:id` (cambiar plan/teléfono, IMEI, cliente, compañía) |
 | Dispositivos | §14 |
+| Telemetría – equipos sin alta | `GET /telemetria/huerfanos/:page/:limit?protocolo=jt808\|jimi\|axpro&horas=N`, `DELETE /telemetria/huerfanos/:id` (roles 1–3; §12.6) |
 | Operadores | §10.2 |
 | Productos | `GET /productos/list`, `GET /productos/paginado/:page/:limit`, `GET /productos/cliente/:idCliente`, `GET /productos/:id`, `PATCH /productos/estatus/:id`, `PATCH /productos/:id` (nombre) |
 | Vehículos | `POST /productos/vehiculos`, `GET …/list`, `GET …/placa/:placa`, `GET …/:page/:limit`, `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
@@ -463,6 +464,21 @@ Público (misma política que `/health/rabbitmq`). Solo observabilidad: consulta
 
 ---
 
+### 12.6 Equipos que transmiten sin alta (`TelemetryHuerfanos`)
+
+Los sockets no filtran equipos (salvo TrackCam, que tiene registro propio): **NextAPI es la fuente de verdad del alta**. Cuando un mensaje no se puede asociar, el consumidor ya no lo descarta en silencio:
+
+| Protocolo | Clave | Cuándo |
+|---|---|---|
+| `jt808` (TrackCam) | `NumeroSerie` | No existe en `Dispositivos` con estatus ACTIVO/ASIGNADO (`no_registrado`) o no tiene IMEI (`sin_imei`) |
+| `jimi` (TrackGas) | IMEI | Igual, buscando por `Dispositivos.Imei` |
+| `axpro` (Panel) | Cuenta SIA | No hay `PanelAlarma` activo. El evento sigue guardándose en `EventoAlarma` con `Estatus=0`; el heartbeat se descarta |
+
+- Upsert por `Protocol + DeviceId`: primera y última vez, número de mensajes, último routing key y última posición si la trae.
+- El mensaje **se confirma** (no va a la DLQ). Un fallo al escribir la tabla solo se registra en log; no frena la cola.
+- Log: `warn` solo la primera vez que aparece un equipo (`Equipo sin alta: …`); las repeticiones van en `debug`.
+- Al darlo de alta, deja de registrarse (su `UltimaVez` se queda fija). `DELETE` lo quita de la lista; si sigue transmitiendo sin alta, vuelve a aparecer.
+
 ## 13. Alarmas (panel SIA / AX PRO)
 
 Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
@@ -515,7 +531,8 @@ Validadas con Joi en `app.module.ts`.
 |----------|-------------|-----|
 | `PORT` | No (3004) | Puerto |
 | `DB_HOST`, `DB_USER`, `DB_DATABASE` | Sí | MySQL; `DB_DATABASE=Next` |
-| `DB_PORT`, `DB_PASSWORD`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | No (3306 / '' / 10 / false) | MySQL |
+| `DB_PORT`, `DB_PASSWORD`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | No (3306 / '' / 10 / false) | MySQL; las consultas SQL solo se registran con `DB_LOGGING=true` |
+| `LOG_LEVEL` | No (`log`) | `fatal\|error\|warn\|log\|debug\|verbose`; lo que se repite por mensaje de la cola va en `debug` |
 | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Sí | Access / refresh |
 | `THROTTLE_*_LIMIT` / `THROTTLE_*_TTL_MS` | Sí | Rate limit Auth (login, pin, verify, recuperación, confirmación, refresh, logout) |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` | Sí | S3 |
@@ -548,7 +565,7 @@ Plantilla: `.env.example`.
 | Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion, Fotos, Videos |
 | Operadores | Operadores, licencias |
 | Alarmas | EventoAlarma, UltimoEventoAlarma, PanelAlarma, GatewayIngestLog |
-| Ingest | TelemetryIngestLog |
+| Ingest | TelemetryIngestLog, TelemetryHuerfanos (equipos sin alta, `deploy/sql/TelemetryHuerfanos.sql`) |
 | Soft delete | `Estatus` 0/1 |
 | Triggers posición | Completan NULL + espejo `UltimaPosicion` (NextAPI no upsert en app) |
 
