@@ -13,6 +13,7 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
+import { RelojConfig } from 'src/entities/RelojConfig';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import { Clientes } from 'src/entities/Clientes';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
@@ -35,6 +36,7 @@ import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.u
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
+  obtenerTipoReloj,
   obtenerTipoTrackcam,
   validarFksDispositivo,
 } from './crear-dispositivo.util';
@@ -142,6 +144,15 @@ export class DispositivosService {
       ) {
         throw new BadRequestException(
           'El tipo Trackcam requiere configuración operativa. Use POST /dispositivos/trackcam',
+        );
+      }
+
+      const tipoReloj = await obtenerTipoReloj(this.repository.manager).catch(
+        () => null,
+      );
+      if (tipoReloj && Number(dto.idTipoDispositivo) === Number(tipoReloj.id)) {
+        throw new BadRequestException(
+          'El tipo Reloj requiere configuración propia. Use POST /dispositivos/relojes',
         );
       }
 
@@ -340,7 +351,7 @@ export class DispositivosService {
   }
 
   /**
-   * PanelAlarma y TrackcamConfig apuntan a (IdCliente, IdDispositivo) con NO ACTION, por eso se
+   * PanelAlarma, TrackcamConfig y RelojConfig apuntan a (IdCliente, IdDispositivo) con NO ACTION, por eso se
    * desactivan las FK solo en esta conexión. Los demás campos se guardan antes, con FK activas,
    * para que el ON UPDATE CASCADE de UltimaPosicion siga al IMEI.
    */
@@ -385,6 +396,11 @@ export class DispositivosService {
       );
       await qr.manager.update(
         TrackcamConfig,
+        { idDispositivo: id, idCliente: idClienteAnterior },
+        { idCliente: idClienteNuevo },
+      );
+      await qr.manager.update(
+        RelojConfig,
         { idDispositivo: id, idCliente: idClienteAnterior },
         { idCliente: idClienteNuevo },
       );

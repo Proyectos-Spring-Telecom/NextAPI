@@ -498,16 +498,35 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 
 ---
 
-## 14. Dispositivos / Trackcam / Paneles
+## 14. Dispositivos / Trackcam / Paneles / Relojes
 
 | Ruta | Notas |
 |------|--------|
-| CRUD `/dispositivos` | `POST /`, `GET /list`, `GET /paginado/:page/:limit`, `GET /cliente/:idCliente`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`. Alta genérica; **rechaza** tipo TRACKCAM |
+| CRUD `/dispositivos` | `POST /`, `GET /list`, `GET /paginado/:page/:limit`, `GET /cliente/:idCliente`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`. Alta genérica; **rechaza** tipos TRACKCAM y RELOJ |
 | `GET /dispositivos/:id` | Busca por ID **sin** validar el `idCliente` del token |
 | CRUD `/dispositivos/trackcam` | 1:1 con `TrackcamConfig` + webhook saliente |
 | CRUD `/dispositivos/paneles` | Panel alarma (SIA) |
+| CRUD `/dispositivos/relojes` | Reloj FA100S: 1:1 con `RelojConfig` (§14.2). Sin webhook |
 
 IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
+
+### 14.2 Relojes FA100S (`/dispositivos/relojes`)
+
+Tipo `RELOJ` (`CatTipoDispositivo.Id = 7`) con su tabla 1:1 `RelojConfig`, igual que Trackcam. DDL: `deploy/sql/Relojes.sql` (incluye, comentado, cómo convertir un reloj dado de alta con otro tipo).
+
+| Campo | Regla |
+|---|---|
+| `numeroSerie` | ID del reloj, **10 dígitos** (el que manda en `[3G*ID*…]`) |
+| `imei` | **Obligatorio, 15 dígitos**: la telemetría (`fa100s.*`) se asocia por IMEI |
+| `intervaloReporteSegundos` | `UPLOAD`, por defecto 300, mínimo 60 |
+| `intervaloGpsSegundos` | Cada cuánto el servidor enciende el GPS (`CR`), por defecto 600; 0 = solo en SOS/caída. El reloj no enciende el GPS por su cuenta |
+| `deteccionCaida` / `llamadaPorCaida` | `FALLDOWN,x,y` (0/1), por defecto 1/1 |
+| `sensibilidadCaida` | `LSSET,n+6`: 1 a 6, **mayor = menos sensible**, por defecto 3 |
+
+- Rutas iguales a Trackcam: `POST /`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`.
+- En la instalación, el reloj va en un producto de tipo **Persona** (`CatProductos` 4), no en un vehículo.
+- Ingesta: aplica geocerca; **no** aplica estados de tiempo detenido (son para vehículos).
+- **Pendiente:** que el socket aplique esta configuración al reloj. Hoy `springFA100S` usa valores globales de su `.env` (`FA100S_UPLOAD_INTERVAL_SEC`, `FA100S_GPS_WAKE_SEC`); la configuración por reloj queda guardada para cuando exista el canal Next → socket (springTrackCam `docs/cambios-back-next.md` §10.2).
 
 ### 14.1 Órdenes de servicio (`/ordenes-servicio`)
 
