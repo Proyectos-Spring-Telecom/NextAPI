@@ -516,7 +516,7 @@ Tipo `RELOJ INTELIGENTE` (`CatTipoDispositivo.Id = 7`, ya existe en producción)
 
 | Campo | Regla |
 |---|---|
-| `numeroSerie` | ID del reloj, **10 dígitos** (el que manda en `[3G*ID*…]`) |
+| `numeroSerie` | ID del reloj de **10 dígitos** (el que manda en `[3G*ID*…]`) o su IMEI de 15. Solo identifica |
 | `imei` | **Obligatorio, 15 dígitos**: la telemetría (`fa100s.*`) se asocia por IMEI |
 | `intervaloReporteSegundos` | `UPLOAD`, por defecto 300, mínimo 60 |
 | `intervaloGpsSegundos` | Cada cuánto el servidor enciende el GPS (`CR`), por defecto 600; 0 = solo en SOS/caída. El reloj no enciende el GPS por su cuenta |

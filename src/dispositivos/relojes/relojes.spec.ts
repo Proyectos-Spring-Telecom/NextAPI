@@ -25,11 +25,15 @@ describe('Relojes', () => {
     expect(
       errores(CreateRelojDto, {
         ...valido,
-        numeroSerie: '863269078504617',
+        numeroSerie: '86326907850461',
         imei: '6907850461',
         sensibilidadCaida: 7,
       }).sort(),
     ).toEqual(['imei', 'numeroSerie', 'sensibilidadCaida']);
+  });
+
+  it('acepta el IMEI como número de serie (así se dio de alta el primero)', () => {
+    expect(errores(UpdateRelojDto, { numeroSerie: '863269078504617' })).toEqual([]);
   });
 
   it('el IMEI es obligatorio al crear (la telemetría se busca por IMEI)', () => {

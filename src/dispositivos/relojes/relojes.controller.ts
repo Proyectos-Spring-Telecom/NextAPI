@@ -45,7 +45,7 @@ export class RelojesController {
     summary: 'Crear reloj (FA100S)',
     description:
       'Crea el dispositivo (datos comunes) y `RelojConfig` (reporte, GPS y sensor de caída) en una transacción. ' +
-      'Requiere `idCliente`. El tipo se asigna como RELOJ. `numeroSerie` = ID de 10 dígitos del reloj; ' +
+      'Requiere `idCliente`. El tipo se asigna como RELOJ. `numeroSerie` = ID de 10 dígitos del reloj o su IMEI; ' +
       '`imei` (15 dígitos) obligatorio: con él se asocia la telemetría. Se instala en un producto tipo Persona.',
   })
   @ApiResponse({ status: 201, description: 'Reloj creado correctamente' })
