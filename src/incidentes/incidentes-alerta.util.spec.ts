@@ -4,6 +4,7 @@ import {
   etiquetaEstadoPosicion,
   eventoIncidente,
   iniciaAlertaConsola,
+  seguimientoAlertaRepetida,
 } from './incidentes-alerta.util';
 
 describe('incidentes-alerta.util', () => {
@@ -47,6 +48,15 @@ describe('incidentes-alerta.util', () => {
     expect(descripcionAlertaAutomatica(2, 35)).toBe('Alerta automática: Caída');
     expect(descripcionAlertaAutomatica(2, 5)).toBe('Alerta automática: Help Me');
     expect(descripcionAlertaAutomatica(2, 7)).toBe('Alerta automática: Alerta primaria');
+  });
+
+  it('arma el seguimiento de una alerta repetida', () => {
+    expect(
+      seguimientoAlertaRepetida(2, 35, { id: 1633421, lat: 18.953261, lng: -99.235965 }),
+    ).toBe('Nueva alerta: Caída · ubicación 18.953261, -99.235965 · posición 1633421');
+    expect(seguimientoAlertaRepetida(10, null, { id: 9, lat: 0, lng: 0 })).toBe(
+      'Nueva alerta: Falta de energía · sin ubicación · posición 9',
+    );
   });
 
   it('arma etiquetas y descripción', () => {

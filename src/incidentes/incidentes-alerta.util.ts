@@ -80,6 +80,28 @@ export function etiquetaEstadoPosicion(estado: unknown): string | null {
   return n != null ? (ETIQUETAS_ESTADO_POSICION[n] ?? null) : null;
 }
 
+/**
+ * Seguimiento que se agrega al incidente abierto cuando la misma alerta vuelve
+ * a empezar (p. ej. otra caída antes de finalizar el reporte).
+ */
+export function seguimientoAlertaRepetida(
+  estado: unknown,
+  idEvento: unknown,
+  posicion: { id: number | string; lat: unknown; lng: unknown },
+): string {
+  const etiqueta = descripcionAlertaAutomatica(estado, idEvento).replace(
+    'Alerta automática: ',
+    '',
+  );
+  const lat = Number(posicion.lat);
+  const lng = Number(posicion.lng);
+  const ubicacion =
+    Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
+      ? `ubicación ${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      : 'sin ubicación';
+  return `Nueva alerta: ${etiqueta} · ${ubicacion} · posición ${posicion.id}`;
+}
+
 /** Descripción del incidente creado automáticamente por una alerta. */
 export function descripcionAlertaAutomatica(
   estado: unknown,
