@@ -22,7 +22,7 @@ Referencia única de `IdEvento` (tabla `CatEventos` de MySQL), de qué equipo lo
 |---|---|---|---|
 | 0 | Detenido | No | Socket (velocidad < 5 km/h) |
 | 1 | Movimiento | No | Socket |
-| 2 | Alerta primaria | **Sí** | Socket (pánico, colisión, volcadura, SOS, caída, ritmo cardiaco) |
+| 2 | Alerta primaria | **Sí** | Socket (pánico, colisión, volcadura, robo, encendido y desplazamiento ilegal, SOS, caída, ritmo cardiaco) |
 | 3 | Alerta secundaria | **Sí** | Socket (GNSS y sobrecupo de la cámara) |
 | 4 / 5 / 6 | Detenido más de 30 / 60 / 90 min | No | NextAPI (AVL, TrackCam, TrackGas) |
 | 7 | Exceso de velocidad | No | Socket |
@@ -35,7 +35,7 @@ Referencia única de `IdEvento` (tabla `CatEventos` de MySQL), de qué equipo lo
 ## 3. Incidentes automáticos
 
 - Se abre uno cuando una posición **entra** en un estado de alerta (2, 3, 8, 9, 10, 11) y antes no lo estaba.
-- **Incidente propio:** pánico/SOS (5), caída (35), ritmo cardiaco (37), colisión (32), volcadura (33), GNSS (34, 40, 41) y sobrecupo (20). En la cámara son las mismas alertas que disparan la ráfaga de fotos. Cada uno tiene su incidente aunque compartan estado, y la descripción dice el evento ("Alerta automática: Volcadura").
+- **Incidente propio:** pánico/SOS (5), caída (35), ritmo cardiaco (37), colisión (32), volcadura (33), GNSS (34, 40, 41), sobrecupo (20), robo (68), encendido ilegal (69) y desplazamiento ilegal (70). En la cámara son las alertas que disparan la ráfaga de fotos más las tres de seguridad del vehículo. Cada uno tiene su incidente aunque compartan estado, y la descripción dice el evento ("Alerta automática: Volcadura").
 - El resto de alertas se agrupa por estado ("Alerta automática: Batería baja").
 - Si ya hay un incidente **abierto** de esa misma alerta, no se abre otro: se agrega un seguimiento `Medio = "Alerta automática"` con la alerta, la ubicación y el Id de la posición.
 - Solo se cierran con `PATCH /incidentes/:id/finalizar` (front); no hay cierre automático.
@@ -115,9 +115,9 @@ Tratamiento sugerido para el front: **Urgente** = suena y exige atención; **Avi
 | 65 | Tiempo de tramo fuera de rango | Cámara | 0/1 | No | Informativo |
 | 66 | Desvío de ruta | Cámara | 0/1 | No | Aviso |
 | 67 | Falla del sensor de velocidad | Cámara | 0/1 | No | Aviso técnico |
-| 68 | Robo de vehículo | Cámara | 0/1 | No (pendiente, §6) | Aviso |
-| 69 | Encendido ilegal | Cámara | 0/1 | No | Aviso |
-| 70 | Desplazamiento ilegal | Cámara | 0/1 | No | Aviso |
+| 68 | Robo de vehículo | Cámara | 2 | **Sí, propio** | **Urgente** |
+| 69 | Encendido ilegal | Cámara | 2 | **Sí, propio** | **Urgente** |
+| 70 | Desplazamiento ilegal | Cámara | 2 | **Sí, propio** | **Urgente** |
 | 71 | Apertura ilegal de puerta | Cámara | 0/1 | No | Aviso |
 
 Equipos: **Cámara** = TrackCam AE-DI5052 (springTrackCam); **TrackGas** = VL802 + UL212 (springTrackGas); **AVL legacy** = los ~150 equipos que llegan por Server_Socket de Sion; **Reloj** = FA100S (springFA100S); **S18** = springS18.
@@ -177,5 +177,4 @@ No usan `CatEventos`: cada evento trae `codigoSia`, `severidad` (3 urgente, 2 av
 
 1. **AVL legacy:** confirmar con Sion por qué 13 equipos de la base legacy no llegan a Next (§5.4).
 2. **TrackGas:** detección de carga y descarga de combustible en el socket (38/39).
-3. **Decidir** si robo de vehículo (68), encendido ilegal (69) y desplazamiento ilegal (70) de la cámara deben abrir incidente; hoy no están en la regla de fotos.
-4. **Front:** finalizar incidentes (sin eso, las alertas repetidas solo se agregan como seguimiento) y tratamiento por evento de la §4.
+3. **Front:** finalizar incidentes (sin eso, las alertas repetidas solo se agregan como seguimiento) y tratamiento por evento de la §4.

@@ -51,6 +51,7 @@ describe('incidentes-alerta.util', () => {
     expect(descripcionAlertaAutomatica(2, 33)).toBe('Alerta automática: Volcadura');
     expect(descripcionAlertaAutomatica(3, 40)).toBe('Alerta automática: Antena GNSS desconectada');
     expect(iniciaAlertaConsola(2, 2, 32, 5)).toBe(true);
+    expect(descripcionAlertaAutomatica(2, 68)).toBe('Alerta automática: Robo de vehículo');
   });
 
   it('arma el seguimiento de una alerta repetida', () => {

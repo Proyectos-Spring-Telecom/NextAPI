@@ -32,7 +32,8 @@ export const ETIQUETAS_ESTADO_POSICION: Readonly<Record<number, string>> = {
 /**
  * Eventos con incidente propio: comparten el estado de alerta (2 o 3) pero el
  * monitorista debe distinguirlos, así que uno abierto no bloquea al otro.
- * Cámara: las mismas alertas que disparan la ráfaga de fotos.
+ * Cámara: las mismas alertas que disparan la ráfaga de fotos, más robo,
+ * encendido ilegal y desplazamiento ilegal.
  */
 export const EVENTOS_INCIDENTE_PROPIO: ReadonlySet<number> = new Set([
   EnumCatEventos.HELP_ME,
@@ -44,6 +45,9 @@ export const EVENTOS_INCIDENTE_PROPIO: ReadonlySet<number> = new Set([
   EnumCatEventos.GNSS_ANTENA_DESCONECTADA,
   EnumCatEventos.GNSS_ANTENA_CORTO,
   EnumCatEventos.SOBRECUPO,
+  EnumCatEventos.ROBO_VEHICULO,
+  EnumCatEventos.ENCENDIDO_ILEGAL,
+  EnumCatEventos.DESPLAZAMIENTO_ILEGAL,
 ]);
 
 /** IdEvento si abre incidente propio; null para el resto (cuenta solo el estado). */
