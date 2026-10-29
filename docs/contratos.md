@@ -198,6 +198,7 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Catálogos | §9 |
 | Sims | `POST /sims`, `GET /sims/list`, `GET /sims/:page/:limit`, `GET /sims/:id`, `PATCH /sims/estatus/:id`, `PATCH /sims/:id` (cambiar plan/teléfono, IMEI, cliente, compañía) |
 | Dispositivos | §14 |
+| Órdenes de servicio | `GET /ordenes-servicio/catalogo`, `GET /ordenes-servicio/paginado/:page/:limit`, `POST /ordenes-servicio`, `PATCH /ordenes-servicio/:id`, `POST /ordenes-servicio/:id/archivos/:clave`, `POST /ordenes-servicio/:id/cerrar`, `POST /ordenes-servicio/:id/cancelar`, `GET /ordenes-servicio/:id` (§14.1) |
 | Telemetría – equipos sin alta | `GET /telemetria/huerfanos/:page/:limit?protocolo=jt808\|jimi\|axpro&horas=N`, `DELETE /telemetria/huerfanos/:id` (roles 1–3; §12.6) |
 | Operadores | §10.2 |
 | Productos | `GET /productos/list`, `GET /productos/paginado/:page/:limit`, `GET /productos/cliente/:idCliente`, `GET /productos/:id`, `PATCH /productos/estatus/:id`, `PATCH /productos/:id` (nombre) |
@@ -329,8 +330,8 @@ Exchange: `telemetry` (topic). DLX: `telemetry.dlx`. Prefijo código: `src/messa
 
 | Grupo | Cola | Bindings | DLQ (routing key) |
 |-------|------|----------|-------------------|
-| AVL posiciones (JT808 + Jimi) | `telemetry.avl.events` | `jt808.position`, `jimi.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
-| AVL alarmas (JT808 + Jimi) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| AVL posiciones (JT808 + Jimi + FA100S) | `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| AVL alarmas (JT808 + Jimi + FA100S) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*`, `fa100s.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
 | AX PRO eventos | `telemetry.axpro.events` | `axpro.event` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
 | AX PRO heartbeats | `telemetry.axpro.heartbeats` | `axpro.heartbeat` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
 
@@ -352,6 +353,7 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 - Headers: `protocol` y `kind` (tienen prioridad sobre el body), `deviceId` opcional. `message_id` = `eventId`.
 - `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms); `protocol` ∉ {`jt808`, `jimi`} → DLQ.
 - **Jimi:** lookup `payload.Imei || deviceId` → `Dispositivos.Imei` (estatus 1 o 2). Alarm AMQP solo SOS (`jimi.alarm.*`).
+- **FA100S (relojes, springFA100S):** lookup por `Dispositivos.Imei` (`deviceId` = IMEI de 15 dígitos; dar de alta el reloj como Rastreador). `position` → `Posiciones`; sin GPS llega con la última posición válida y `positionValid=false`. `alarm` (SOS 5, caída 35, pulsera 36, ritmo 37, batería 3) → auditoría; la alarma se ve por la posición con su `IdEvento` y `Estado=2`. `alarm_location` (por `fa100s.alarm.*`) corrige `Lat/Lng` de la posición de la alarma (mismo Imei, `FechaHora` e `IdEvento`) sin crear otra ni abrir otro incidente; si la alarma no llegó a `Posiciones`, se inserta. Sin alta → `TelemetryHuerfanos` (`protocol=fa100s`). Código: `src/messaging/fa100s/`.
 - Payload Jimi position: `IdEvento` (number), `Lat`/`Lng` (number) y `FechaHora` (`YYYY-MM-DD HH:mm:ss` o `YYYY-MM-DDTHH:mm:ss`, hora de pared) obligatorios.
 
 ### 12.2 Publicador Server_Socket (`jimi.position`)
@@ -407,8 +409,9 @@ Recomendado: `eventId` determinista por posición (reenvío = duplicado); `recei
 | Caso | Resultado |
 |------|-----------|
 | Éxito o duplicado | ack |
-| Dispositivo desconocido | warning en log + ack (no DLQ) |
-| Error transitorio de BD | Reintento (republica con la routing key original) hasta `RABBITMQ_MAX_RETRIES` |
+| Dispositivo desconocido | upsert en `TelemetryHuerfanos` + ack (no DLQ), ver §12.6 |
+| MySQL no disponible (caído, reiniciando, `Server shutdown in progress`, `ECONNREFUSED`, `Too many connections`, `Pool is closed`) | **No gasta reintentos.** El mensaje se queda sin confirmar y todos los consumidores esperan (1 s, 2 s, 4 s… hasta `RABBITMQ_DB_RETRY_MAX_DELAY_MS`) a que MySQL vuelva; la cola absorbe lo que siga llegando. Si un mensaje lleva más de `RABBITMQ_DB_HOLD_MAX_MS` esperando, vuelve a la cola (nack con requeue) para no rebasar el `consumer_timeout` del broker. El watchdog no reconecta mientras MySQL está caído. Log: un `MySQL no disponible` al caer y un `MySQL disponible de nuevo tras X s` al volver. |
+| Otro error transitorio de BD (deadlock, lock wait timeout) | Reintento (republica con la routing key original) hasta `RABBITMQ_MAX_RETRIES` |
 | Error permanente (`BadRequestException`, JSON inválido, BD permanente, "incoherente"/"inválido") o reintentos agotados | DLQ con headers `x-death-reason`, `x-original-routing-key`, `x-retry-count` |
 
 Catálogos Estado/Evento: [`contexto.md` §5](./contexto.md).
@@ -491,20 +494,92 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 | Persistencia | `EventoAlarma`, `UltimoEventoAlarma`, `PanelAlarma`, `GatewayIngestLog` |
 | AX PRO AMQP | Misma familia de paneles vía `messaging/axpro` |
 
-**Incidentes** (`/incidentes`): expediente abierto **manualmente** desde una `Posicion` o un `EventoAlarma` (snapshot `DatosOrigen`), con seguimientos.
+**Incidentes** (`/incidentes`): expediente abierto manualmente o **automáticamente** desde una `Posicion` o un `EventoAlarma` (snapshot `DatosOrigen`), con seguimientos.
+
+**Incidentes automáticos** (`src/incidentes/auto/`): al ingerir una posición cuyo `Estado` entra en alerta de Consola (2, 3, 8, 9, 10, 11; antes no lo estaba), NextAPI abre un incidente con `Descripcion` "Alerta automática: <alerta>".
+- Una alerta = IMEI + `Estado`, y además `IdEvento` si es de incidente propio (SOS, caída, ritmo cardiaco, colisión, volcadura, GNSS, sobrecupo): cada uno tiene su incidente aunque compartan estado.
+- Si ya hay uno **abierto** de esa misma alerta no se abre otro: la alerta nueva se agrega como seguimiento (`Medio` = "Alerta automática", `IdUsuario` null, `FechaHora` = la de la posición) con el texto "Nueva alerta: <alerta> · ubicación <lat>, <lng> · posición <Id>".
+- Un incidente solo se cierra con `PATCH /incidentes/:id/finalizar` (o `PATCH /incidentes/estatus/:id`); no hay cierre automático.
+- Qué eventos abren incidente propio y el catálogo completo por equipo: [catalogo-eventos.md](./catalogo-eventos.md).
 
 ---
 
-## 14. Dispositivos / Trackcam / Paneles
+## 14. Dispositivos / Trackcam / Paneles / Relojes
 
 | Ruta | Notas |
 |------|--------|
-| CRUD `/dispositivos` | `POST /`, `GET /list`, `GET /paginado/:page/:limit`, `GET /cliente/:idCliente`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`. Alta genérica; **rechaza** tipo TRACKCAM |
+| CRUD `/dispositivos` | `POST /`, `GET /list`, `GET /paginado/:page/:limit`, `GET /cliente/:idCliente`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`. Alta genérica; **rechaza** tipos TRACKCAM y RELOJ |
 | `GET /dispositivos/:id` | Busca por ID **sin** validar el `idCliente` del token |
 | CRUD `/dispositivos/trackcam` | 1:1 con `TrackcamConfig` + webhook saliente |
 | CRUD `/dispositivos/paneles` | Panel alarma (SIA) |
+| CRUD `/dispositivos/relojes` | Reloj FA100S: 1:1 con `RelojConfig` (§14.2). Sin webhook |
 
 IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
+
+### 14.2 Relojes FA100S (`/dispositivos/relojes`)
+
+Tipo `RELOJ INTELIGENTE` (`CatTipoDispositivo.Id = 7`, ya existe en producción) con su tabla 1:1 `RelojConfig`, igual que Trackcam. Marcas y modelos: `CatProductos` 6 'Reloj Inteligente'. DDL: `deploy/sql/Relojes.sql` (solo crea `RelojConfig`; incluye, comentado, cómo convertir un reloj dado de alta con otro tipo).
+
+| Campo | Regla |
+|---|---|
+| `numeroSerie` | ID del reloj de **10 dígitos** (el que manda en `[3G*ID*…]`) o su IMEI de 15. Solo identifica |
+| `imei` | **Obligatorio, 15 dígitos**: la telemetría (`fa100s.*`) se asocia por IMEI |
+| `intervaloReporteSegundos` | `UPLOAD`, por defecto 300, mínimo 60 |
+| `intervaloGpsSegundos` | Cada cuánto el servidor enciende el GPS (`CR`), por defecto 600; 0 = solo en SOS/caída. El reloj no enciende el GPS por su cuenta |
+| `deteccionCaida` / `llamadaPorCaida` | `FALLDOWN,x,y` (0/1), por defecto 1/1 |
+| `sensibilidadCaida` | `LSSET,n+6`: 1 a 6, **mayor = menos sensible**, por defecto 3 |
+
+- Rutas iguales a Trackcam: `POST /`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`.
+- En la instalación, el reloj va en un producto de tipo **Persona** (`CatTipoProducto` 4), no en un vehículo.
+- Ingesta: aplica geocerca; **no** aplica estados de tiempo detenido (son para vehículos).
+- **Pendiente:** que el socket aplique esta configuración al reloj. Hoy `springFA100S` usa valores globales de su `.env` (`FA100S_UPLOAD_INTERVAL_SEC`, `FA100S_GPS_WAKE_SEC`); la configuración por reloj queda guardada para cuando exista el canal Next → socket (springTrackCam `docs/cambios-back-next.md` §10.2).
+
+### 14.1 Órdenes de servicio (`/ordenes-servicio`)
+
+Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo inicial: `deploy/sql/OrdenesServicio.sql`. Reglas puras: `src/ordenes-servicio/ordenes-servicio.reglas.ts`. Especificación completa (ejemplos, errores, despliegue): [ordenes-servicio.md](ordenes-servicio.md).
+
+**Reglas de negocio**
+- **El cliente se da de alta en oficina** antes de salir a campo; la orden no crea clientes (400 si no existe o no está activo).
+- **El vehículo puede darse de alta en oficina o en campo.** La orden lo referencia por `idProducto`. En campo, la app lo busca con `GET /productos/vehiculos/placa/:placa` y, si no existe, lo crea con `POST /productos/vehiculos` (cualquier rol autenticado, incluido el técnico; rechaza placa repetida en el cliente). Ese `POST` devuelve `data.id` = `idProducto`, que se manda en el `POST`/`PATCH` de la orden. Debe estar disponible (estatus 1) para cerrar el alta.
+- **Una orden = un tipo de servicio**: `instalacion` (alta), `revision`, `c_sim`, `c_equipo`, `desinstalacion`. El tipo no cambia después de crearla.
+- **Guardado parcial**: la orden nace en `borrador`, se llena con `PATCH` y archivos, y se **cierra** al final. Folio `OS-000001` asignado por el servidor al crearla.
+- **Idempotencia**: la app genera `claveApp` (UUID) al empezar; reenviar el `POST` devuelve la misma orden.
+- **Técnico** = usuario del token (no se envía). Escriben roles 1, 2, 3 y 8; el técnico solo ve y edita sus órdenes. Leen además 4 y 5.
+- **Monitorista** = `idMonitorista`, usuario activo con rol 4 o 5 (`GET /ordenes-servicio/catalogo` los lista).
+
+**Flujo**
+
+| Paso | Ruta | Notas |
+|------|------|-------|
+| Catálogo | `GET /ordenes-servicio/catalogo` | Opciones por sección y si la foto/firma es obligatoria; monitoristas. Las pantallas se arman con esto, no con listas fijas en la app |
+| Iniciar | `POST /ordenes-servicio` | `{ claveApp, tipoServicio, idCliente, idInstalacion?, idProducto? }`. `idInstalacion` vigente obligatorio salvo en `instalacion`; en los demás tipos `idProducto` se toma de la instalación |
+| Guardar | `PATCH /ordenes-servicio/:id` | Solo lo que cambia. `respuestas: [{ seccion, clave, valor }]` se agregan o reemplazan por (seccion, clave). `fechaCaptura` ISO 8601 con zona; `lat`/`lng` numéricos (null si no hay permiso). Campos que no aplican al tipo → 400 |
+| Archivo | `POST /ordenes-servicio/:id/archivos/:clave` | multipart `file`, PNG o JPG (WEBP/HEIC se convierten a JPG en la app). Misma clave = reemplazo. S3 privado, carpeta `ordenes-servicio/` |
+| Ver | `GET /ordenes-servicio/:id` | Respuestas, archivos con URL firmada (5 min) y, en borrador, `faltantesParaCerrar` |
+| Cerrar | `POST /ordenes-servicio/:id/cerrar` | Valida y aplica el movimiento **en la misma transacción** (abajo). Incompleta → 400 `{ message, faltantes[] }`. Repetir el cierre devuelve el mismo resultado |
+| Cancelar | `POST /ordenes-servicio/:id/cancelar` | Solo borrador; no toca la instalación |
+| Listar | `GET /ordenes-servicio/paginado/:page/:limit` | Query: `idCliente`, `idProducto` (historial de la unidad), `idInstalacion` (atendida o resultante), `idTecnico`, `tipoServicio`, `estatus` |
+
+**Qué se necesita para cerrar** (`faltantesParaCerrar`)
+- Respuesta (sí o no) para **cada** opción activa de `vehiculo_cuenta_con`, `funcionamiento_vehiculo`, `fallas_equipo` y `pruebas`. Se guardan también las apagadas: así se distingue "no tiene / no pasó" de "no se revisó". No se exige marcar al menos una falla ni un accesorio.
+- `fallas_equipo.otro = sí` → `observaciones` obligatorias.
+- Al menos una prueba correcta, salvo en `desinstalacion`.
+- Fotos y firmas con `Obligatorio = 1` en el catálogo: hoy `tablero_inicio`, `tablero_final`, `firma_cliente`, `firma_tecnico`.
+- `idMonitorista`, y los datos del movimiento según el tipo.
+
+**Movimiento al cerrar** (reutiliza `InstalacionesService` dentro de la transacción de la orden)
+
+| Tipo | Datos | Instalaciones |
+|------|-------|---------------|
+| `instalacion` | `idProducto`, `idDispositivoNuevo`, `idSimNuevo?` | Alta (`create`); producto, equipo y SIM deben estar disponibles (1) |
+| `c_equipo` | `idDispositivoNuevo`, `estatusSalienteAnterior` (0–5) | Nueva versión (`update`): la anterior se archiva con `EstatusInstalacion = 3` (baja por reemplazo) |
+| `c_sim` | `idSimNuevo`, `estatusSalienteAnterior` (0–5) | Igual que `c_equipo` con la SIM |
+| `desinstalacion` | `estatusInstalacionBaja` (0 inactiva / 5 inservible) | Baja (`baja`); componentes a disponible |
+| `revision` | — | Sin cambio; solo se verifica que siga vigente |
+
+La orden guarda `idInstalacion` (atendida), `idInstalacionResultado` (vigente después; el alta y los cambios crean Id nuevo) e `idHistoricoInstalacion` (versión archivada). El comentario del histórico lleva el folio y las observaciones. Si la instalación cambió por otra orden antes de cerrar → 400 "ya no está vigente".
+
+**Tablas**: `OrdenesServicio`, `OrdenServicioRespuestas`, `OrdenServicioArchivos`, `CatOrdenServicioOpciones`. Sin FK a `Instalaciones` a propósito (el `PATCH` de instalaciones borra la fila anterior). Agregar una opción o una foto obligatoria = un `INSERT` en el catálogo, sin publicar otra versión de la app.
 
 ---
 
@@ -548,6 +623,7 @@ Validadas con Joi en `app.module.ts`.
 | `RABBITMQ_QUEUE_AVL_EVENTS`, `…_ALARMS`, `…_DLQ` | No | Colas AVL |
 | `RABBITMQ_PREFETCH`, `…_EVENTS`, `…_HEARTBEATS`, `…_AVL` | No (10 / 10 / 50 / 10) | Prefetch |
 | `RABBITMQ_MAX_RETRIES`, `RABBITMQ_RECONNECT_MAX_DELAY`, `RABBITMQ_MAX_CONCURRENT_DB` | No (3 / 30000 / 5) | Reintentos / reconexión / concurrencia BD |
+| `RABBITMQ_DB_RETRY_MAX_DELAY_MS`, `RABBITMQ_DB_HOLD_MAX_MS` | No (30000 / 300000) | Tope de espera entre intentos con MySQL caído / máximo que un mensaje espera antes de volver a la cola |
 | `CONSUMER_WATCHDOG_MINUTES` | No (15) | Reconexión preventiva |
 | `QUEUE_IDLE_WARN_SECONDS` | No (900) | Idle y ventana de fallos/DLQ en `/health/rabbitmq/queues` |
 | `DEVICE_LOOKUP_CACHE_TTL_SEC` | No (600) | Cache de lookup de dispositivos |
@@ -563,6 +639,7 @@ Plantilla: `.env.example`.
 | Esquema | `Next` (MySQL 8) |
 | Core | Clientes, Usuarios (refresh), Roles, Modulos, Permisos, UsuariosPermisos, AsignacionSoluciones, UsuariosInstalaciones, CodigoAutenticacion, Bitacora |
 | Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion, Fotos, Videos |
+| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, CatOrdenServicioOpciones (`deploy/sql/OrdenesServicio.sql`, §14.1) |
 | Operadores | Operadores, licencias |
 | Alarmas | EventoAlarma, UltimoEventoAlarma, PanelAlarma, GatewayIngestLog |
 | Ingest | TelemetryIngestLog, TelemetryHuerfanos (equipos sin alta, `deploy/sql/TelemetryHuerfanos.sql`) |

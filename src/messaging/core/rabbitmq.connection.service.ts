@@ -9,6 +9,7 @@ import amqp, { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
 import { AvlEventsConsumer } from '../avl/avl-events.consumer';
 import { AxproEventsConsumer } from '../axpro/axpro-events.consumer';
 import { AxproHeartbeatsConsumer } from '../axpro/axpro-heartbeats.consumer';
+import { DbAvailabilityGate } from './db-availability.gate';
 import { DbConcurrencyLimiter } from './db-concurrency.util';
 import {
   dlqArgs,
@@ -41,6 +42,9 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectDelayMs = 1000;
   private dbLimiter = new DbConcurrencyLimiter(5);
+  private dbGate = new DbAvailabilityGate(this.logger);
+  /** Canales cerrados: un mensaje en espera de MySQL deja de intentar (el broker lo reentrega). */
+  private readonly closedChannels = new WeakSet<Channel>();
 
   constructor(
     private readonly config: ConfigService,
@@ -58,6 +62,9 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     }
 
     this.dbLimiter = new DbConcurrencyLimiter(this.cfg.maxConcurrentDb);
+    this.dbGate = new DbAvailabilityGate(this.logger, {
+      maxDelayMs: this.cfg.dbRetryMaxDelayMs,
+    });
     this.startWatchdog();
     void this.connectWithRetry('inicio');
   }
@@ -173,6 +180,10 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     if (!snapshot.connected) {
       return;
     }
+    // Silencio por MySQL caído, no por el broker: reconectar soltaría los mensajes en espera.
+    if (!this.dbGate.isOpen) {
+      return;
+    }
 
     const referenceIso = snapshot.lastMessageAt ?? snapshot.lastReconnectAt;
     if (!referenceIso) {
@@ -239,6 +250,9 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     const channels = [...new Set(this.consumers.map((c) => c.channel))];
     this.consumers = [];
     for (const ch of channels) {
+      this.closedChannels.add(ch);
+    }
+    for (const ch of channels) {
       await ch.close().catch(() => undefined);
     }
     if (this.connection) {
@@ -262,6 +276,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   private bindChannelEvents(channel: Channel, name: string) {
+    channel.on('close', () => this.closedChannels.add(channel));
     channel.on('error', (err) => {
       this.logger.error(`RabbitMQ channel ${name} error: ${err.message}`);
       void this.teardown().then(() => this.scheduleReconnect(`channel ${name} error`));
@@ -345,7 +360,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     );
 
     this.logger.log(
-      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, avl=${cfg.avl.events.prefetch}/${cfg.avl.alarms.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries})`,
+      `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, avl=${cfg.avl.events.prefetch}/${cfg.avl.alarms.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries}, esperaBD<=${cfg.dbRetryMaxDelayMs}ms)`,
     );
   }
 
@@ -361,7 +376,14 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
         if (!msg) {
           return;
         }
-        void this.onMessage(msg, channel, label, queueDef, () => handler(msg));
+        this.onMessage(msg, channel, label, queueDef, () => handler(msg)).catch(
+          (error: unknown) => {
+            // ack/nack sobre un canal ya cerrado: el broker reentrega el mensaje.
+            this.logger.warn(
+              `${label} no se pudo confirmar el mensaje: ${(error as Error)?.message}`,
+            );
+          },
+        );
       },
       { noAck: false },
     );
@@ -406,6 +428,9 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       label,
       maxRetries: this.cfg!.maxRetries,
       dbSemaphore: this.dbLimiter,
+      dbGate: this.dbGate,
+      dbHoldMaxMs: this.cfg!.dbHoldMaxMs,
+      isChannelClosed: () => this.closedChannels.has(channel),
     }, handler);
   }
 }

@@ -1,5 +1,6 @@
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
+import { RelojConfig } from 'src/entities/RelojConfig';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import { imeiToString } from 'src/common/imei.util';
 import { nombreCliente } from 'src/productos/map-relaciones.util';
@@ -7,6 +8,7 @@ import {
   TRACKCAM_CONFIG_KEYS,
   TrackcamConfigKey,
 } from './trackcam/trackcam-config.keys';
+import { RELOJ_CONFIG_KEYS, RelojConfigKey } from './relojes/reloj-config.keys';
 
 export { nombreCliente };
 
@@ -27,6 +29,20 @@ export const RELACIONES_DETALLE_PANEL = {
 } as const;
 
 export const RELACIONES_DETALLE_TRACKCAM = RELACIONES_DETALLE_PANEL;
+export const RELACIONES_DETALLE_RELOJ = RELACIONES_DETALLE_PANEL;
+
+export function pickRelojConfig(
+  source: Partial<Record<RelojConfigKey, unknown>>,
+): Partial<Record<RelojConfigKey, number | null>> {
+  const out: Partial<Record<RelojConfigKey, number | null>> = {};
+  for (const key of RELOJ_CONFIG_KEYS) {
+    if (source[key] !== undefined) {
+      const value = source[key];
+      out[key] = value == null ? null : Number(value);
+    }
+  }
+  return out;
+}
 
 export function pickTrackcamConfig(
   source: Partial<Record<TrackcamConfigKey, unknown>>,
@@ -147,6 +163,41 @@ export function mapTrackcamPlano(item: TrackcamConfig) {
   return {
     ...plano,
     ...pickTrackcamConfig(item),
+    id: Number(item.idDispositivo),
+    idCliente: Number(item.idCliente),
+    fechaCreacion: item.fechaCreacion ?? plano.fechaCreacion,
+    fechaActualizacion: item.fechaActualizacion ?? plano.fechaActualizacion,
+  };
+}
+
+/** Reloj: datos comunes del dispositivo + RelojConfig, plano. */
+export function mapRelojPlano(item: RelojConfig) {
+  const dispositivo = item.idDispositivo2;
+  const plano = dispositivo
+    ? mapDispositivoPlano(dispositivo)
+    : {
+        id: Number(item.idDispositivo),
+        numeroSerie: null,
+        imei: null,
+        eco: null,
+        camara: 0,
+        estatus: null,
+        idCliente: Number(item.idCliente),
+        nombreCliente: null,
+        idTipoDispositivo: null,
+        nombreTipoDispositivo: null,
+        codigoTipoDispositivo: null,
+        idMarca: null,
+        nombreMarca: null,
+        idModelo: null,
+        nombreModelo: null,
+        fechaCreacion: item.fechaCreacion ?? null,
+        fechaActualizacion: item.fechaActualizacion ?? null,
+      };
+
+  return {
+    ...plano,
+    ...pickRelojConfig(item),
     id: Number(item.idDispositivo),
     idCliente: Number(item.idCliente),
     fechaCreacion: item.fechaCreacion ?? plano.fechaCreacion,

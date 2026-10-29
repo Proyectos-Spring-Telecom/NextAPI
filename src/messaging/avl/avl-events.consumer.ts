@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConsumeMessage } from 'amqplib';
 import { RabbitMqMetricsService } from '../core/rabbitmq-metrics.service';
 import { QUEUE_LABEL } from '../core/rabbitmq-queue-labels';
+import { Fa100sEventsConsumer } from '../fa100s/fa100s-events.consumer';
 import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
 
@@ -22,6 +23,7 @@ export class AvlEventsConsumer {
   constructor(
     private readonly jt808: Jt808EventsConsumer,
     private readonly jimi: JimiEventsConsumer,
+    private readonly fa100s: Fa100sEventsConsumer,
     private readonly metrics: RabbitMqMetricsService,
   ) {}
 
@@ -44,7 +46,11 @@ export class AvlEventsConsumer {
     const protocol = headerString(headers.protocol) ?? fromBody('protocol');
     const kind = headerString(headers.kind) ?? fromBody('kind');
 
-    if (kind !== expectedKind) {
+    // FA100S: la ubicación posterior de una alarma viaja por la cola de alarmas.
+    const kindOk =
+      kind === expectedKind ||
+      (protocol === 'fa100s' && expectedKind === 'alarm' && kind === 'alarm_location');
+    if (!kindOk) {
       throw new Error(
         `kind=${String(kind)} incoherente con cola avl (${routingKey})`,
       );
@@ -54,6 +60,8 @@ export class AvlEventsConsumer {
       await this.jt808.consume(msg);
     } else if (protocol === 'jimi') {
       await this.jimi.consume(msg);
+    } else if (protocol === 'fa100s') {
+      await this.fa100s.consume(msg);
     } else {
       throw new Error(
         `protocol=${String(protocol)} inválido para cola avl (${routingKey})`,

@@ -1,0 +1,43 @@
+-- Extensión de CatEventos (28/10/2026): todos los códigos conocidos.
+-- 32–34 y 40–71: cámara TrackCam (springTrackCam src/adapters/jt808/cat-evento.map.ts).
+-- 38–39: combustible (TrackGas UL212; aún sin detección en el socket). 35–37: relojes.
+-- Abren incidente las mismas alertas que disparan la ráfaga de fotos de la
+-- cámara: 5 pánico, 32 colisión, 33 volcadura, 34/40/41 GNSS, 20 sobrecupo.
+INSERT IGNORE INTO `CatEventos` (`Id`, `Nombre`) VALUES
+  (32, 'Colisión'),
+  (33, 'Volcadura'),
+  (34, 'Falla del módulo GNSS'),
+  (38, 'Carga de combustible'),
+  (39, 'Descarga de combustible (posible robo)'),
+  (40, 'Antena GNSS desconectada'),
+  (41, 'Antena GNSS en cortocircuito'),
+  (42, 'Advertencia de peligro'),
+  (43, 'Falla de pantalla'),
+  (44, 'Falla del módulo de voz'),
+  (45, 'Falla de cámara'),
+  (46, 'Falla del lector de tarjeta IC'),
+  (47, 'Video pérdida de señal'),
+  (48, 'Video falla de almacenamiento'),
+  (49, 'Video falla de dispositivo'),
+  (50, 'Video memoria de alarmas llena'),
+  (51, 'Aceleración brusca'),
+  (52, 'Frenado brusco'),
+  (53, 'Giro brusco'),
+  (54, 'Ralentí prolongado'),
+  (55, 'Apagado anormal del motor'),
+  (56, 'Punto muerto en marcha'),
+  (57, 'Sobrerrevolución del motor'),
+  (58, 'DSM Sin cubrebocas'),
+  (59, 'DSM Captura facial'),
+  (60, 'DSM Bloqueo infrarrojo (gafas)'),
+  (61, 'Tiempo de conducción excedido'),
+  (62, 'Tiempo de estacionamiento excedido'),
+  (63, 'Entrada o salida de área'),
+  (64, 'Entrada o salida de ruta'),
+  (65, 'Tiempo de tramo fuera de rango'),
+  (66, 'Desvío de ruta'),
+  (67, 'Falla del sensor de velocidad'),
+  (68, 'Robo de vehículo'),
+  (69, 'Encendido ilegal'),
+  (70, 'Desplazamiento ilegal'),
+  (71, 'Apertura ilegal de puerta');

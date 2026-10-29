@@ -17,6 +17,10 @@ export interface RabbitMqRuntimeConfig {
   reconnectMaxDelayMs: number;
   watchdogMinutes: number;
   maxConcurrentDb: number;
+  /** Tope de la espera creciente entre intentos cuando MySQL no responde. */
+  dbRetryMaxDelayMs: number;
+  /** Máximo que un mensaje espera en memoria a MySQL antes de devolverse a la cola. */
+  dbHoldMaxMs: number;
   axpro: {
     events: RabbitMqQueueDefinition;
     heartbeats: RabbitMqQueueDefinition;
@@ -87,6 +91,10 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       Number(config.get('CONSUMER_WATCHDOG_MINUTES') ?? 15) || 15,
     maxConcurrentDb:
       Number(config.get('RABBITMQ_MAX_CONCURRENT_DB') ?? 5) || 5,
+    dbRetryMaxDelayMs:
+      Number(config.get('RABBITMQ_DB_RETRY_MAX_DELAY_MS') ?? 30000) || 30000,
+    dbHoldMaxMs:
+      Number(config.get('RABBITMQ_DB_HOLD_MAX_MS') ?? 300000) || 300000,
     axpro: {
       events: {
         queue:
@@ -116,7 +124,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         queue:
           config.get<string>('RABBITMQ_QUEUE_AVL_EVENTS') ??
           'telemetry.avl.events',
-        bindings: ['jt808.position', 'jimi.position'],
+        bindings: ['jt808.position', 'jimi.position', 'fa100s.position'],
         prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
         dlqRoutingKey: 'telemetry.avl.failed',
       },
@@ -124,7 +132,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         queue:
           config.get<string>('RABBITMQ_QUEUE_AVL_ALARMS') ??
           'telemetry.avl.alarms',
-        bindings: ['jt808.alarm.*', 'jimi.alarm.*'],
+        bindings: ['jt808.alarm.*', 'jimi.alarm.*', 'fa100s.alarm.*'],
         prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
         dlqRoutingKey: 'telemetry.avl.failed',
       },

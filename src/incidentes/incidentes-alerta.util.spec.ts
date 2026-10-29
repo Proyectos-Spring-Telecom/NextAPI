@@ -2,7 +2,9 @@ import {
   descripcionAlertaAutomatica,
   esEstadoAlertaConsola,
   etiquetaEstadoPosicion,
+  eventoIncidente,
   iniciaAlertaConsola,
+  seguimientoAlertaRepetida,
 } from './incidentes-alerta.util';
 
 describe('incidentes-alerta.util', () => {
@@ -29,6 +31,36 @@ describe('incidentes-alerta.util', () => {
   it('no inicia si el estado actual no es alerta', () => {
     expect(iniciaAlertaConsola(0, 2)).toBe(false);
     expect(iniciaAlertaConsola(7, 0)).toBe(false);
+  });
+
+  it('SOS y caída con el mismo estado inician cada uno su alerta', () => {
+    expect(iniciaAlertaConsola(2, 2, 5, 35)).toBe(true);
+    expect(iniciaAlertaConsola(2, 2, 35, 5)).toBe(true);
+    expect(iniciaAlertaConsola(2, 2, 35, 35)).toBe(false);
+    // Otros eventos siguen la regla por estado (flota AVL: 5 ↔ 7 no reabre).
+    expect(iniciaAlertaConsola(2, 2, 5, 7)).toBe(false);
+    expect(iniciaAlertaConsola(2, 2, 7, 5)).toBe(false);
+  });
+
+  it('describe el incidente con el evento cuando es SOS o caída', () => {
+    expect(eventoIncidente(35)).toBe(35);
+    expect(eventoIncidente(7)).toBeNull();
+    expect(descripcionAlertaAutomatica(2, 35)).toBe('Alerta automática: Caída');
+    expect(descripcionAlertaAutomatica(2, 5)).toBe('Alerta automática: Help Me');
+    expect(descripcionAlertaAutomatica(2, 7)).toBe('Alerta automática: Alerta primaria');
+    expect(descripcionAlertaAutomatica(2, 33)).toBe('Alerta automática: Volcadura');
+    expect(descripcionAlertaAutomatica(3, 40)).toBe('Alerta automática: Antena GNSS desconectada');
+    expect(iniciaAlertaConsola(2, 2, 32, 5)).toBe(true);
+    expect(descripcionAlertaAutomatica(2, 68)).toBe('Alerta automática: Robo de vehículo');
+  });
+
+  it('arma el seguimiento de una alerta repetida', () => {
+    expect(
+      seguimientoAlertaRepetida(2, 35, { id: 1633421, lat: 18.953261, lng: -99.235965 }),
+    ).toBe('Nueva alerta: Caída · ubicación 18.953261, -99.235965 · posición 1633421');
+    expect(seguimientoAlertaRepetida(10, null, { id: 9, lat: 0, lng: 0 })).toBe(
+      'Nueva alerta: Falta de energía · sin ubicación · posición 9',
+    );
   });
 
   it('arma etiquetas y descripción', () => {

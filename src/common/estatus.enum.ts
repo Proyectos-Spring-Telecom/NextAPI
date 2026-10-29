@@ -221,6 +221,7 @@ export enum EnumTipoProducto {
  * 2 → Dispositivos + PanelAlarma.
  * 5 TRACKCAM → Dispositivos + TrackcamConfig.
  * 6 TRACKGAS → Dispositivos (telemetría Jimi / VL802).
+ * 7 RELOJ → Dispositivos + RelojConfig (FA100S; sin estados de tiempo detenido).
  */
 export enum EnumTipoDispositivo {
   /** Rastreador GPS */
@@ -234,6 +235,8 @@ export enum EnumTipoDispositivo {
   TRACKCAM = 5,
   /** TrackGas / sensor gasolina (Concox VL802, springTrackGas) */
   TRACKGAS = 6,
+  /** Reloj FA100S, codigo 'RELOJ INTELIGENTE' (springFA100S) → Dispositivos + RelojConfig */
+  RELOJ = 7,
 }
 
 /** Tipos que aplican estados 4/5/6 (tiempo detenido) en ingest. */
@@ -253,6 +256,7 @@ export const TIPOS_DISPOSITIVO_GEOCERCA: readonly number[] = [
   EnumTipoDispositivo.TELEFONO,
   EnumTipoDispositivo.TRACKCAM,
   EnumTipoDispositivo.TRACKGAS,
+  EnumTipoDispositivo.RELOJ,
 ] as const;
 
 /** Valores de CatProductos.Id (categoría de marcas) */
@@ -262,6 +266,7 @@ export enum EnumCatProducto {
   ACTIVO = 3,
   TELEFONO = 4,
   PANEL = 5,
+  RELOJ_INTELIGENTE = 6,
 }
 
 /**

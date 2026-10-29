@@ -2,6 +2,7 @@ import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import {
   assertJimiEnvelope,
   extractJimiAudit,
+  estadoJimi,
   mapJimiToPosicion,
   parseJimiEnvelope,
   resolveJimiImei,
@@ -26,7 +27,7 @@ function basePayload(overrides: Record<string, unknown> = {}) {
     Alarma1: 201 as number | null,
     Alarma2: null as number | null,
     Energia: null as number | null,
-    IdEvento: EnumCatEventos.GEOCERCA,
+    IdEvento: EnumCatEventos.PUERTA,
     IdFoto: null as number | null,
     Bateria: null as number | null,
     Alimentacion: null as number | null,
@@ -125,7 +126,7 @@ describe('jimi-envelope.mapper', () => {
     expect(pos.imei).toBe(imeiConcox);
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
-    expect(pos.idEvento).toBe(EnumCatEventos.GEOCERCA);
+    expect(pos.idEvento).toBe(EnumCatEventos.PUERTA);
     expect(pos.combustible).toBe(10.7);
     expect(pos.lat).toBeCloseTo(18.953311111111113);
 
@@ -192,6 +193,18 @@ describe('jimi-envelope.mapper', () => {
         Alarma1: 1,
       }).estado,
     ).toBe(2);
+  });
+
+  it('SOS/energía/batería sin estado de alerta (Server_Socket) → 2/10/9', () => {
+    expect(estadoJimi(0, 5)).toBe(2);
+    expect(estadoJimi(1, 5)).toBe(2);
+    expect(estadoJimi(null, 4)).toBe(10);
+    expect(estadoJimi(0, 3)).toBe(9);
+    // Alertas ya puestas y otros eventos se respetan.
+    expect(estadoJimi(2, 4)).toBe(2);
+    expect(estadoJimi(8, 5)).toBe(8);
+    expect(estadoJimi(7, 6)).toBe(7);
+    expect(estadoJimi(0, 9)).toBe(0);
   });
 
   it('alarm SOS válido; otros codes → BadRequest permanente', () => {
