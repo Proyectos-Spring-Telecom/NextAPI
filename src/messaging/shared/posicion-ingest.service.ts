@@ -136,6 +136,7 @@ export class PosicionIngestService {
           result.posicionId,
           req.imei,
           Number(posicionData.estado),
+          posicionData.idEvento ?? null,
         );
       }
     }
@@ -203,9 +204,18 @@ export class PosicionIngestService {
       const previo = await manager
         .createQueryBuilder(UltimaPosicion, 'u')
         .select('u.estado', 'estado')
+        .addSelect('u.idEvento', 'idEvento')
         .where('u.imei = :imei', { imei })
-        .getRawOne<{ estado: number | string | null }>();
-      return iniciaAlertaConsola(posicionData.estado, previo?.estado ?? null);
+        .getRawOne<{
+          estado: number | string | null;
+          idEvento: number | string | null;
+        }>();
+      return iniciaAlertaConsola(
+        posicionData.estado,
+        previo?.estado ?? null,
+        posicionData.idEvento,
+        previo?.idEvento ?? null,
+      );
     } catch (error) {
       this.logger.warn(
         `[PosicionIngest] no se pudo leer estado previo imei=${imei}: ${(error as Error)?.message}`,

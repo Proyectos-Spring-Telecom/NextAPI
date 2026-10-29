@@ -2,6 +2,7 @@ import {
   descripcionAlertaAutomatica,
   esEstadoAlertaConsola,
   etiquetaEstadoPosicion,
+  eventoIncidente,
   iniciaAlertaConsola,
 } from './incidentes-alerta.util';
 
@@ -29,6 +30,23 @@ describe('incidentes-alerta.util', () => {
   it('no inicia si el estado actual no es alerta', () => {
     expect(iniciaAlertaConsola(0, 2)).toBe(false);
     expect(iniciaAlertaConsola(7, 0)).toBe(false);
+  });
+
+  it('SOS y caída con el mismo estado inician cada uno su alerta', () => {
+    expect(iniciaAlertaConsola(2, 2, 5, 35)).toBe(true);
+    expect(iniciaAlertaConsola(2, 2, 35, 5)).toBe(true);
+    expect(iniciaAlertaConsola(2, 2, 35, 35)).toBe(false);
+    // Otros eventos siguen la regla por estado (flota AVL: 5 ↔ 7 no reabre).
+    expect(iniciaAlertaConsola(2, 2, 5, 7)).toBe(false);
+    expect(iniciaAlertaConsola(2, 2, 7, 5)).toBe(false);
+  });
+
+  it('describe el incidente con el evento cuando es SOS o caída', () => {
+    expect(eventoIncidente(35)).toBe(35);
+    expect(eventoIncidente(7)).toBeNull();
+    expect(descripcionAlertaAutomatica(2, 35)).toBe('Alerta automática: Caída');
+    expect(descripcionAlertaAutomatica(2, 5)).toBe('Alerta automática: Help Me');
+    expect(descripcionAlertaAutomatica(2, 7)).toBe('Alerta automática: Alerta primaria');
   });
 
   it('arma etiquetas y descripción', () => {
