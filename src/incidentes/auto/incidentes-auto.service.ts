@@ -9,11 +9,16 @@ import { imeiToString } from 'src/common/imei.util';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Incidentes } from 'src/entities/Incidentes';
 import { Posiciones } from 'src/entities/Posiciones';
+import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import {
   descripcionAlertaAutomatica,
   esEstadoAlertaConsola,
   eventoIncidente,
+  seguimientoAlertaRepetida,
 } from '../incidentes-alerta.util';
+
+/** Medio de los seguimientos que agrega el sistema (no un usuario). */
+export const MEDIO_SEGUIMIENTO_ALERTA = 'Alerta automática';
 import { snapshotPosicion } from '../map-datos-origen.util';
 
 /**
@@ -24,8 +29,9 @@ import { snapshotPosicion } from '../map-datos-origen.util';
  *
  * Regla: un incidente ABIERTO por IMEI + estado de alerta (+ IdEvento si es
  * de EVENTOS_INCIDENTE_PROPIO: SOS y caída no se bloquean entre sí). Si ya
- * hay uno abierto para esa misma alerta no se duplica; el siguiente se crea
- * cuando la alerta vuelve a empezar después de finalizar el reporte.
+ * hay uno abierto para esa misma alerta no se duplica: la alerta nueva se
+ * agrega como seguimiento (MEDIO_SEGUIMIENTO_ALERTA) para que el monitorista
+ * la vea. El siguiente incidente se crea cuando se finaliza el reporte.
  */
 @Injectable()
 export class IncidentesAutoService {
@@ -40,6 +46,8 @@ export class IncidentesAutoService {
     private readonly posicionesRepo: Repository<Posiciones>,
     @InjectRepository(Dispositivos)
     private readonly dispositivosRepo: Repository<Dispositivos>,
+    @InjectRepository(SeguimientoIncidentes)
+    private readonly seguimientosRepo: Repository<SeguimientoIncidentes>,
   ) {}
 
   async registrarDesdePosicion(
@@ -61,12 +69,28 @@ export class IncidentesAutoService {
       const idCliente = await this.idClientePorImei(imei);
       if (idCliente == null) return;
 
-      if (await this.existeAbierto(idCliente, imei, estado, evento)) return;
+      const abierto = await this.buscarAbierto(idCliente, imei, estado, evento);
 
       const posicion = await this.posicionesRepo.findOne({
         where: { id: posicionId },
       });
       if (!posicion) return;
+
+      if (abierto != null) {
+        await this.seguimientosRepo.save(
+          this.seguimientosRepo.create({
+            idIncidente: abierto,
+            idUsuario: null,
+            fechaHora: posicion.fechaHora,
+            actividad: seguimientoAlertaRepetida(estado, evento, posicion),
+            medio: MEDIO_SEGUIMIENTO_ALERTA,
+          }),
+        );
+        this.logger.log(
+          `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} posicion=${posicionId} → seguimiento en Incidente=${abierto} (ya abierto)`,
+        );
+        return;
+      }
 
       const entity = this.incidentesRepo.create({
         idCliente,
@@ -107,14 +131,16 @@ export class IncidentesAutoService {
     return Number.isFinite(idCliente) && idCliente > 0 ? idCliente : null;
   }
 
-  private async existeAbierto(
+  /** Id del incidente abierto más reciente de esta alerta, o null. */
+  private async buscarAbierto(
     idCliente: number,
     imei: string,
     estado: number,
     evento: number | null,
-  ): Promise<boolean> {
+  ): Promise<number | null> {
     const query = this.incidentesRepo
       .createQueryBuilder('inc')
+      .select('inc.id', 'id')
       .where('inc.idCliente = :idCliente', { idCliente })
       .andWhere('inc.estatus = :abierto', {
         abierto: EstatusIncidente.ABIERTO,
@@ -135,6 +161,11 @@ export class IncidentesAutoService {
         { evento },
       );
     }
-    return (await query.getCount()) > 0;
+    const row = await query
+      .orderBy('inc.id', 'DESC')
+      .limit(1)
+      .getRawOne<{ id: string | number }>();
+    const id = Number(row?.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
   }
 }
