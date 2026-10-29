@@ -51,8 +51,8 @@ Tratamiento sugerido para el front: **Urgente** = suena y exige atención; **Avi
 | 1 | Ignición On | AVL legacy, TrackGas, Cámara | 0/1 | No | Informativo |
 | 2 | Ignición Off | AVL legacy, TrackGas, Cámara | 0/1 | No | Informativo |
 | 3 | Batería baja | TrackGas, Cámara, Reloj, S18 | 9 | Sí (por estado) | Aviso |
-| 4 | Alarma de energía (corte o desconexión) | TrackGas, Cámara, S18 | 10 ({S}: 0/1) | Sí (por estado) | **Urgente** |
-| 5 | Help Me (pánico / SOS) | AVL legacy, TrackGas, Cámara, Reloj, S18 | 2 ({A}: 0/1/6, ver §4.5) | **Sí, propio** | **Urgente** |
+| 4 | Alarma de energía (corte o desconexión) | TrackGas, Cámara, S18 | 10 (S18: 0/1) | Sí (por estado) | **Urgente** |
+| 5 | Help Me (pánico / SOS) | AVL legacy, TrackGas, Cámara, Reloj, S18 | 2 | **Sí, propio** | **Urgente** |
 | 6 | Exceso de velocidad | AVL legacy, TrackGas, Cámara, S18 | 7 | No | Aviso |
 | 7 | Movimiento / reporte normal | TrackGas, Reloj, S18 | 0/1 | No | Informativo |
 | 8 | Puerta | TrackGas | 0/1 | No | Aviso |
@@ -159,8 +159,13 @@ Lo que llegó en 7 días (al 28/10/2026, tipo de dispositivo 3):
 | 5 Help Me | 0, 1, 6 | 5 |
 
 - Server_Socket solo usa 1, 5, 6 y 9; nunca mandó 2 (ignición off), 3, 4, 7 u 8.
-- **El SOS (5) llega sin estado de alerta** (0, 1 o 6, no 2): no aparece como alerta en consola ni abre incidente. Hay que confirmar con el catálogo legacy si es un pánico real o una restauración, y corregirlo en Server_Socket o en el mapper de NextAPI.
-- Su catálogo de origen está en la base legacy de Sion (SQL Server); falta compararlo con este.
+- **El SOS (5) llegaba sin estado de alerta** (0 o 1; NextAPI lo pasaba a 6 por tiempo detenido): no aparecía como alerta ni abría incidente. En la base legacy el mismo SOS tiene estado 2 (allá lo corrige un trigger). **Corregido en NextAPI:** `estadoJimi` (`src/messaging/jimi/jimi-envelope.mapper.ts`) pone 2 al SOS, 10 a energía y 9 a batería cuando llegan con estado de circulación (0/1/null), la misma regla de los demás sockets.
+
+**Base legacy (SQL Server de Sion, consultada el 28/10/2026, solo lectura):**
+- `CatEventos` legacy = 1–11, idéntico al de Next. No hay más catálogo de eventos para AVL; `CatEventosCamara` (16 estados de la cámara FTP legacy: "Foto enviada", "Cámara no responde"…) y `CatEstatusIncidentes` (Pendiente, Proceso, Resuelto) son de procesos que Next resuelve distinto.
+- En 24 h la tabla `Posiciones` legacy usa 1, 2, 4, 6, 9, 10 y posiciones **sin IdEvento** (41 mil, 82 equipos), con estados 0, 1 y 10; el SOS con 2.
+- 13 equipos con IMEI de 15 dígitos (`35444209…`, `35704206…`) mandan ignición off (2), energía (4) y cámara (10) en la base legacy, pero **no llegan a Next** (ni como equipo sin alta). Revisar con Sion si Server_Socket los publica.
+- El legacy sirve para saber qué manda hoy la flota, no como norma: el catálogo de Next (1–71) cubre equipos que Sion no contemplaba.
 
 ### 5.5 Paneles AX PRO
 
@@ -170,7 +175,7 @@ No usan `CatEventos`: cada evento trae `codigoSia`, `severidad` (3 urgente, 2 av
 
 ## 6. Pendientes
 
-1. **AVL legacy:** comparar con el catálogo de la base legacy y resolver el SOS sin estado de alerta (§5.4).
+1. **AVL legacy:** confirmar con Sion por qué 13 equipos de la base legacy no llegan a Next (§5.4).
 2. **TrackGas:** detección de carga y descarga de combustible en el socket (38/39).
 3. **Decidir** si robo de vehículo (68), encendido ilegal (69) y desplazamiento ilegal (70) de la cámara deben abrir incidente; hoy no están en la regla de fotos.
 4. **Front:** finalizar incidentes (sin eso, las alertas repetidas solo se agregan como seguimiento) y tratamiento por evento de la §4.

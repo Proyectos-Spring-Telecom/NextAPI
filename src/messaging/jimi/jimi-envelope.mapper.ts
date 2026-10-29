@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import { Posiciones } from '../../entities/Posiciones';
 import { imeiToString } from '../../common/imei.util';
 import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
@@ -103,8 +104,34 @@ export function resolveJimiImei(envelope: JimiTelemetryEnvelope): string {
 }
 
 /**
+ * Estado de alerta que exige cada IdEvento (misma regla que springTrackGas,
+ * springTrackCam y los relojes). Server_Socket (AVL legacy) manda el SOS con
+ * Estado 0/1 —la base legacy lo corrige con un trigger—; sin esto no se ve
+ * como alerta ni abre incidente (28/10/2026: 5 SOS en 7 días).
+ */
+const ESTADO_POR_EVENTO: Readonly<Record<number, number>> = {
+  [EnumCatEventos.HELP_ME]: 2,
+  [EnumCatEventos.ENERGY_ALARM]: 10,
+  [EnumCatEventos.BATERIA_BAJA]: 9,
+};
+
+/** Solo corrige estados de circulación (null, 0, 1); una alerta ya puesta se respeta. */
+export function estadoJimi(
+  estado: unknown,
+  idEvento: unknown,
+): number | null {
+  const actual = estado != null ? Number(estado) : null;
+  const exigido = ESTADO_POR_EVENTO[Number(idEvento)];
+  if (exigido != null && (actual == null || actual === 0 || actual === 1)) {
+    return exigido;
+  }
+  return actual;
+}
+
+/**
  * Mapea payload Jimi → Posiciones.
- * Estado/Ignicion del gateway tal cual (no forzar NULL).
+ * Estado/Ignicion del gateway tal cual (no forzar NULL), salvo SOS, energía y
+ * batería sin estado de alerta (estadoJimi).
  * Combustible: litros float (columna MySQL float).
  */
 export function mapJimiToPosicion(
@@ -115,7 +142,7 @@ export function mapJimiToPosicion(
     imei,
     lat: aco.Lat,
     lng: aco.Lng,
-    estado: aco.Estado != null ? Number(aco.Estado) : null,
+    estado: estadoJimi(aco.Estado, aco.IdEvento),
     fechaHora: parseFechaHoraPared(String(aco.FechaHora)),
     velocidad: Math.round(Number(aco.Velocidad)) || 0,
     direccion: Math.round(Number(aco.Direccion)) || 0,
