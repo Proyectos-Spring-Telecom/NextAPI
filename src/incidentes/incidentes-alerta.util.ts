@@ -1,3 +1,8 @@
+import {
+  EnumCatEventos,
+  nombreCatEvento,
+} from 'src/common/cat-eventos.enum';
+
 /**
  * Estados de Posiciones que la Consola trata como alerta de vehículo
  * (mismos que el grid / botones del header en el front).
@@ -24,6 +29,21 @@ export const ETIQUETAS_ESTADO_POSICION: Readonly<Record<number, string>> = {
   11: 'Alerta de movimiento',
 };
 
+/**
+ * Eventos con incidente propio: comparten el estado de alerta (2) pero el
+ * monitorista debe distinguirlos, así que uno abierto no bloquea al otro.
+ */
+export const EVENTOS_INCIDENTE_PROPIO: ReadonlySet<number> = new Set([
+  EnumCatEventos.HELP_ME,
+  EnumCatEventos.RELOJ_CAIDA,
+]);
+
+/** IdEvento si abre incidente propio; null para el resto (cuenta solo el estado). */
+export function eventoIncidente(idEvento: unknown): number | null {
+  const n = estadoEntero(idEvento);
+  return n != null && EVENTOS_INCIDENTE_PROPIO.has(n) ? n : null;
+}
+
 function estadoEntero(estado: unknown): number | null {
   if (estado == null || estado === '') return null;
   const n = Number(estado);
@@ -44,9 +64,15 @@ export function esEstadoAlertaConsola(estado: unknown): boolean {
 export function iniciaAlertaConsola(
   estadoActual: unknown,
   estadoPrevio: unknown,
+  idEventoActual?: unknown,
+  idEventoPrevio?: unknown,
 ): boolean {
   if (!esEstadoAlertaConsola(estadoActual)) return false;
-  return estadoEntero(estadoActual) !== estadoEntero(estadoPrevio);
+  if (estadoEntero(estadoActual) !== estadoEntero(estadoPrevio)) return true;
+  // Mismo estado: solo inicia si pasa de un evento propio a otro (caída → SOS).
+  const actual = eventoIncidente(idEventoActual);
+  const previo = eventoIncidente(idEventoPrevio);
+  return actual != null && previo != null && actual !== previo;
 }
 
 export function etiquetaEstadoPosicion(estado: unknown): string | null {
@@ -55,7 +81,14 @@ export function etiquetaEstadoPosicion(estado: unknown): string | null {
 }
 
 /** Descripción del incidente creado automáticamente por una alerta. */
-export function descripcionAlertaAutomatica(estado: unknown): string {
-  const etiqueta = etiquetaEstadoPosicion(estado) ?? 'Alerta';
+export function descripcionAlertaAutomatica(
+  estado: unknown,
+  idEvento?: unknown,
+): string {
+  const evento = eventoIncidente(idEvento);
+  const etiqueta =
+    (evento != null ? nombreCatEvento(evento) : null) ??
+    etiquetaEstadoPosicion(estado) ??
+    'Alerta';
   return `Alerta automática: ${etiqueta}`;
 }

@@ -12,6 +12,7 @@ import { Posiciones } from 'src/entities/Posiciones';
 import {
   descripcionAlertaAutomatica,
   esEstadoAlertaConsola,
+  eventoIncidente,
 } from '../incidentes-alerta.util';
 import { snapshotPosicion } from '../map-datos-origen.util';
 
@@ -21,9 +22,10 @@ import { snapshotPosicion } from '../map-datos-origen.util';
  * Lo llama el ingest de posiciones FUERA de su transacción y sin esperar:
  * cualquier error aquí se registra en log y nunca afecta la llegada de datos.
  *
- * Regla: un incidente ABIERTO por IMEI + estado de alerta. Si ya hay uno
- * abierto para esa misma alerta no se duplica; el siguiente se crea cuando
- * la alerta vuelve a empezar después de finalizar el reporte.
+ * Regla: un incidente ABIERTO por IMEI + estado de alerta (+ IdEvento si es
+ * de EVENTOS_INCIDENTE_PROPIO: SOS y caída no se bloquean entre sí). Si ya
+ * hay uno abierto para esa misma alerta no se duplica; el siguiente se crea
+ * cuando la alerta vuelve a empezar después de finalizar el reporte.
  */
 @Injectable()
 export class IncidentesAutoService {
@@ -44,12 +46,14 @@ export class IncidentesAutoService {
     posicionId: number,
     imeiRaw: string,
     estado: number,
+    idEvento?: number | null,
   ): Promise<void> {
     if (!esEstadoAlertaConsola(estado)) return;
     const imei = imeiToString(imeiRaw);
     if (!imei || !Number.isFinite(posicionId) || posicionId < 1) return;
+    const evento = eventoIncidente(idEvento);
 
-    const clave = `${imei}|${estado}`;
+    const clave = `${imei}|${estado}|${evento ?? ''}`;
     if (this.enCurso.has(clave)) return;
     this.enCurso.add(clave);
 
@@ -57,7 +61,7 @@ export class IncidentesAutoService {
       const idCliente = await this.idClientePorImei(imei);
       if (idCliente == null) return;
 
-      if (await this.existeAbierto(idCliente, imei, estado)) return;
+      if (await this.existeAbierto(idCliente, imei, estado, evento)) return;
 
       const posicion = await this.posicionesRepo.findOne({
         where: { id: posicionId },
@@ -73,7 +77,7 @@ export class IncidentesAutoService {
         idEventoAlarmaOrigen: null,
         datosOrigen: snapshotPosicion(posicion),
         idUsuario: null,
-        descripcion: descripcionAlertaAutomatica(estado),
+        descripcion: descripcionAlertaAutomatica(estado, evento),
         fechaInicio: posicion.fechaHora,
         fechaCierre: null,
         estatus: EstatusIncidente.ABIERTO,
@@ -81,7 +85,7 @@ export class IncidentesAutoService {
       const saved = await this.incidentesRepo.save(entity);
 
       this.logger.log(
-        `[IncidenteAuto] imei=${imei} estado=${estado} posicion=${posicionId} → Incidente=${saved.id}`,
+        `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} posicion=${posicionId} → Incidente=${saved.id}`,
       );
     } catch (error) {
       this.logger.warn(
@@ -107,8 +111,9 @@ export class IncidentesAutoService {
     idCliente: number,
     imei: string,
     estado: number,
+    evento: number | null,
   ): Promise<boolean> {
-    const count = await this.incidentesRepo
+    const query = this.incidentesRepo
       .createQueryBuilder('inc')
       .where('inc.idCliente = :idCliente', { idCliente })
       .andWhere('inc.estatus = :abierto', {
@@ -123,8 +128,13 @@ export class IncidentesAutoService {
       )
       .andWhere("CAST(JSON_EXTRACT(inc.DatosOrigen, '$.estado') AS SIGNED) = :estado", {
         estado,
-      })
-      .getCount();
-    return count > 0;
+      });
+    if (evento != null) {
+      query.andWhere(
+        "CAST(JSON_EXTRACT(inc.DatosOrigen, '$.idEvento') AS SIGNED) = :evento",
+        { evento },
+      );
+    }
+    return (await query.getCount()) > 0;
   }
 }
