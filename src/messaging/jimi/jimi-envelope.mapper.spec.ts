@@ -2,6 +2,7 @@ import { EnumCatEventos } from '../../common/cat-eventos.enum';
 import {
   assertJimiEnvelope,
   extractJimiAudit,
+  estadoJimi,
   mapJimiToPosicion,
   parseJimiEnvelope,
   resolveJimiImei,
@@ -192,6 +193,18 @@ describe('jimi-envelope.mapper', () => {
         Alarma1: 1,
       }).estado,
     ).toBe(2);
+  });
+
+  it('SOS/energía/batería sin estado de alerta (Server_Socket) → 2/10/9', () => {
+    expect(estadoJimi(0, 5)).toBe(2);
+    expect(estadoJimi(1, 5)).toBe(2);
+    expect(estadoJimi(null, 4)).toBe(10);
+    expect(estadoJimi(0, 3)).toBe(9);
+    // Alertas ya puestas y otros eventos se respetan.
+    expect(estadoJimi(2, 4)).toBe(2);
+    expect(estadoJimi(8, 5)).toBe(8);
+    expect(estadoJimi(7, 6)).toBe(7);
+    expect(estadoJimi(0, 9)).toBe(0);
   });
 
   it('alarm SOS válido; otros codes → BadRequest permanente', () => {
