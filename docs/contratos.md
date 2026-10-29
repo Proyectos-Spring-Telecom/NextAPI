@@ -497,9 +497,10 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 **Incidentes** (`/incidentes`): expediente abierto manualmente o **automáticamente** desde una `Posicion` o un `EventoAlarma` (snapshot `DatosOrigen`), con seguimientos.
 
 **Incidentes automáticos** (`src/incidentes/auto/`): al ingerir una posición cuyo `Estado` entra en alerta de Consola (2, 3, 8, 9, 10, 11; antes no lo estaba), NextAPI abre un incidente con `Descripcion` "Alerta automática: <alerta>".
-- Una alerta = IMEI + `Estado`, y además `IdEvento` si es SOS (5) o caída (35): esos dos tienen incidente propio aunque compartan el estado 2.
+- Una alerta = IMEI + `Estado`, y además `IdEvento` si es de incidente propio (SOS, caída, ritmo cardiaco, colisión, volcadura, GNSS, sobrecupo): cada uno tiene su incidente aunque compartan estado.
 - Si ya hay uno **abierto** de esa misma alerta no se abre otro: la alerta nueva se agrega como seguimiento (`Medio` = "Alerta automática", `IdUsuario` null, `FechaHora` = la de la posición) con el texto "Nueva alerta: <alerta> · ubicación <lat>, <lng> · posición <Id>".
 - Un incidente solo se cierra con `PATCH /incidentes/:id/finalizar` (o `PATCH /incidentes/estatus/:id`); no hay cierre automático.
+- Qué eventos abren incidente propio y el catálogo completo por equipo: [catalogo-eventos.md](./catalogo-eventos.md).
 
 ---
 
