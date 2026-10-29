@@ -37,6 +37,7 @@ export const ETIQUETAS_ESTADO_POSICION: Readonly<Record<number, string>> = {
 export const EVENTOS_INCIDENTE_PROPIO: ReadonlySet<number> = new Set([
   EnumCatEventos.HELP_ME,
   EnumCatEventos.RELOJ_CAIDA,
+  EnumCatEventos.RELOJ_RITMO_CARDIACO,
   EnumCatEventos.COLISION,
   EnumCatEventos.VOLCADURA,
   EnumCatEventos.GNSS_FALLA_MODULO,
