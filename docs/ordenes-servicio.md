@@ -1,6 +1,6 @@
 # Órdenes de servicio e instalaciones — especificación de cambios en NextAPI
 
-**Rama:** `dev-isra` (commits `e396fb6`, `e0d06ec`). **Desplegado** en springfieldDev el 27/10/2026.
+**Rama:** `dev-isra` (commits `beb837d`, `533ed11`). **Desplegado** en springfieldDev el 27/10/2026.
 **DDL:** `deploy/sql/OrdenesServicio.sql`. **Contrato resumido:** [contratos.md §14.1](contratos.md).
 **Código:** `src/ordenes-servicio/` y `src/instalaciones/instalaciones.service.ts`.
 
