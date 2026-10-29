@@ -26,7 +26,7 @@ function basePayload(overrides: Record<string, unknown> = {}) {
     Alarma1: 201 as number | null,
     Alarma2: null as number | null,
     Energia: null as number | null,
-    IdEvento: EnumCatEventos.GEOCERCA,
+    IdEvento: EnumCatEventos.PUERTA,
     IdFoto: null as number | null,
     Bateria: null as number | null,
     Alimentacion: null as number | null,
@@ -125,7 +125,7 @@ describe('jimi-envelope.mapper', () => {
     expect(pos.imei).toBe(imeiConcox);
     expect(pos.estado).toBe(0);
     expect(pos.ignicion).toBe(1);
-    expect(pos.idEvento).toBe(EnumCatEventos.GEOCERCA);
+    expect(pos.idEvento).toBe(EnumCatEventos.PUERTA);
     expect(pos.combustible).toBe(10.7);
     expect(pos.lat).toBeCloseTo(18.953311111111113);
 
