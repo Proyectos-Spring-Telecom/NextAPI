@@ -124,3 +124,26 @@ describe('Fa100sIngestService', () => {
     expect(posicionIngest.ingestPosition).not.toHaveBeenCalled();
   });
 });
+
+describe('fa100s FuentePosicion / RadioM', () => {
+  it('usa los campos raíz del socket', () => {
+    const row = mapFa100sToPosicion('863269078504617', {
+      ...posicion.payload,
+      positionValid: false,
+      FuentePosicion: 1,
+      RadioM: 30,
+    });
+    expect(row).toMatchObject({ fuentePosicion: 1, radioM: 30 });
+  });
+
+  it('sin campos raíz (socket anterior) los deduce de fa100s.positionSource', () => {
+    expect(mapFa100sToPosicion('863269078504617', posicion.payload)).toMatchObject({
+      fuentePosicion: 0,
+      radioM: null,
+    });
+    expect(mapFa100sToPosicion('863269078504617', posicionDeAlarma.payload)).toMatchObject({
+      fuentePosicion: 3,
+      radioM: null,
+    });
+  });
+});

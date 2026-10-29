@@ -532,6 +532,7 @@ Tipo `RELOJ INTELIGENTE` (`CatTipoDispositivo.Id = 7`, ya existe en producción)
 - Rutas iguales a Trackcam: `POST /`, `GET /list`, `GET /:page/:limit`, `GET /:id`, `PATCH /estatus/:id`, `PATCH /:id`.
 - En la instalación, el reloj va en un producto de tipo **Persona** (`CatTipoProducto` 4), no en un vehículo.
 - Ingesta: aplica geocerca; **no** aplica estados de tiempo detenido (son para vehículos).
+- **Ubicación sin GPS:** `Posiciones` y `UltimaPosicion` traen `FuentePosicion` (0 GPS, 1 WiFi, 2 antena celular, 3 última válida; NULL = no informado, cámaras y AVL) y `RadioM` (radio en metros de la ubicación aproximada). Las calcula springGeoloc en spPenta0m con las redes WiFi y antenas que ve el reloj. Salen en el monitoreo, el historial y los reportes de posiciones como `fuentePosicion` / `radioM`. El front dibuja un círculo con `radioM` cuando `fuentePosicion` es 1 o 2. DDL: `deploy/sql/PosicionesFuente.sql`.
 - **Pendiente:** que el socket aplique esta configuración al reloj. Hoy `springFA100S` usa valores globales de su `.env` (`FA100S_UPLOAD_INTERVAL_SEC`, `FA100S_GPS_WAKE_SEC`); la configuración por reloj queda guardada para cuando exista el canal Next → socket (springTrackCam `docs/cambios-back-next.md` §10.2).
 
 ### 14.1 Órdenes de servicio (`/ordenes-servicio`)

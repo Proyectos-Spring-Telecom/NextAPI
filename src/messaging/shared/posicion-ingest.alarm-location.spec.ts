@@ -45,11 +45,11 @@ describe('PosicionIngestService.ingestAlarmLocation', () => {
     );
     expect(manager.insert).toHaveBeenCalledWith(TelemetryIngestLog, expect.anything());
     expect(manager.insert).not.toHaveBeenCalledWith(Posiciones, expect.anything());
-    expect(manager.update).toHaveBeenCalledWith(Posiciones, { id: 777 }, { lat: 18.953224, lng: -99.235805 });
+    expect(manager.update).toHaveBeenCalledWith(Posiciones, { id: 777 }, { lat: 18.953224, lng: -99.235805, fuentePosicion: 0, radioM: null });
     expect(manager.update).toHaveBeenCalledWith(
       UltimaPosicion,
       { imei: req.imei, fechaHora },
-      { lat: 18.953224, lng: -99.235805 },
+      { lat: 18.953224, lng: -99.235805, fuentePosicion: 0, radioM: null },
     );
     expect(ingestPosition).not.toHaveBeenCalled();
     expect(gateway.notificarImei).toHaveBeenCalledWith(req.imei);

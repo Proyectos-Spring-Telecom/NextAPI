@@ -106,4 +106,12 @@ export class Posiciones {
 
   @Column('bigint', { name: 'IdVideo3', nullable: true })
   idVideo3: number | null;
+
+  /** Origen de la ubicación (FuentePosicion: 0 GPS, 1 WiFi, 2 antena, 3 última válida); NULL = no informado. */
+  @Column('tinyint', { name: 'FuentePosicion', nullable: true })
+  fuentePosicion: number | null;
+
+  /** Radio en metros de una ubicación aproximada (WiFi/antena). */
+  @Column('smallint', { name: 'RadioM', nullable: true, unsigned: true })
+  radioM: number | null;
 }

@@ -56,6 +56,10 @@ export type HistoricoPosicionItem = {
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
+  /** 0 GPS, 1 WiFi, 2 antena, 3 última válida; null = no informado. */
+  fuentePosicion: number | null;
+  /** Radio (m) de una ubicación aproximada. */
+  radioM: number | null;
   rutaFoto: string | null;
   rutaFoto1: string | null;
   rutaFoto2: string | null;
@@ -149,6 +153,8 @@ export function mapHistoricoPosicionItem(
     idVideo1: num(row.idVideo1),
     idVideo2: num(row.idVideo2),
     idVideo3: num(row.idVideo3),
+    fuentePosicion: num(row.fuentePosicion),
+    radioM: num(row.radioM),
     rutaFoto: str(row.rutaFoto),
     rutaFoto1: str(row.rutaFoto1),
     rutaFoto2: str(row.rutaFoto2),

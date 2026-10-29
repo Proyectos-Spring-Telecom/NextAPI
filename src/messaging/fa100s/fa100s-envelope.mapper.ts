@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { fuentePosicionDe } from '../../common/fuente-posicion';
 import { Posiciones } from '../../entities/Posiciones';
 import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
 import {
@@ -107,6 +108,27 @@ export function mapFa100sToPosicion(
     idVideo1: null,
     idVideo2: null,
     idVideo3: null,
+    ...fuenteYRadio(p),
+  };
+}
+
+/**
+ * Origen y radio de la ubicación. Campos raíz del socket; si faltan (socket
+ * anterior), se deducen de `fa100s.positionSource` / `fa100s.approxRadiusM`.
+ */
+export function fuenteYRadio(
+  p: Fa100sPayload,
+): Pick<Posiciones, 'fuentePosicion' | 'radioM'> {
+  const meta = p.fa100s ?? {};
+  const fuente =
+    p.FuentePosicion != null && Number.isInteger(Number(p.FuentePosicion))
+      ? Number(p.FuentePosicion)
+      : fuentePosicionDe(meta.positionSource);
+  const radio = Number(p.RadioM ?? meta.approxRadiusM);
+  return {
+    fuentePosicion: fuente,
+    radioM:
+      Number.isFinite(radio) && radio > 0 ? Math.min(65535, Math.round(radio)) : null,
   };
 }
 

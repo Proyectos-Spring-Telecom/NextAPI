@@ -145,6 +145,10 @@ export type PosicionPasoPoiItem = {
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
+  /** 0 GPS, 1 WiFi, 2 antena, 3 última válida; null = no informado. */
+  fuentePosicion: number | null;
+  /** Radio (m) de una ubicación aproximada. */
+  radioM: number | null;
 } & ProductoPlanoPasoPoi;
 
 export type PasoPorPoiPuntoItem = {
@@ -231,6 +235,10 @@ export type ReportePosicionItem = {
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
+  /** 0 GPS, 1 WiFi, 2 antena, 3 última válida; null = no informado. */
+  fuentePosicion: number | null;
+  /** Radio (m) de una ubicación aproximada. */
+  radioM: number | null;
 } & ProductoPlanoPasoPoi;
 
 export type ReportePosicionesResult = {
@@ -2924,6 +2932,8 @@ export class ReportesService {
         'p.idVideo1 AS idVideo1',
         'p.idVideo2 AS idVideo2',
         'p.idVideo3 AS idVideo3',
+        'p.fuentePosicion AS fuentePosicion',
+        'p.radioM AS radioM',
       ])
       .where('p.imei IN (:...imeis)', { imeis })
       .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
@@ -2988,6 +2998,8 @@ export class ReportesService {
         idVideo1: num(row.idVideo1),
         idVideo2: num(row.idVideo2),
         idVideo3: num(row.idVideo3),
+        fuentePosicion: num(row.fuentePosicion),
+        radioM: num(row.radioM),
       });
     }
 
@@ -3038,6 +3050,8 @@ export class ReportesService {
         'p.idVideo1 AS idVideo1',
         'p.idVideo2 AS idVideo2',
         'p.idVideo3 AS idVideo3',
+        'p.fuentePosicion AS fuentePosicion',
+        'p.radioM AS radioM',
       ])
       .where('p.imei IN (:...imeis)', { imeis })
       .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
@@ -3091,6 +3105,8 @@ export class ReportesService {
         idVideo1: num(row.idVideo1),
         idVideo2: num(row.idVideo2),
         idVideo3: num(row.idVideo3),
+        fuentePosicion: num(row.fuentePosicion),
+        radioM: num(row.radioM),
       });
     }
 
@@ -3141,6 +3157,8 @@ export class ReportesService {
         'up.idVideo1 AS idVideo1',
         'up.idVideo2 AS idVideo2',
         'up.idVideo3 AS idVideo3',
+        'up.fuentePosicion AS fuentePosicion',
+        'up.radioM AS radioM',
       ])
       .where('up.imei IN (:...imeis)', { imeis })
       .andWhere('up.fechaHora >= :fechaInicio', { fechaInicio })
@@ -3194,6 +3212,8 @@ export class ReportesService {
         idVideo1: num(row.idVideo1),
         idVideo2: num(row.idVideo2),
         idVideo3: num(row.idVideo3),
+        fuentePosicion: num(row.fuentePosicion),
+        radioM: num(row.radioM),
       });
     }
 

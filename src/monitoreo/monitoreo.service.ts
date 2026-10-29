@@ -101,6 +101,10 @@ export type ConsolaUltimaPosicionItem = {
   idVideo1: number | null;
   idVideo2: number | null;
   idVideo3: number | null;
+  /** 0 GPS, 1 WiFi, 2 antena, 3 última válida; null = no informado. */
+  fuentePosicion: number | null;
+  /** Radio (m) de una ubicación aproximada. */
+  radioM: number | null;
   idInstalacion: number | null;
   idCliente: number | null;
   idDispositivo: number | null;
@@ -238,6 +242,8 @@ export class MonitoreoService {
         'up.idVideo1 AS idVideo1',
         'up.idVideo2 AS idVideo2',
         'up.idVideo3 AS idVideo3',
+        'up.fuentePosicion AS fuentePosicion',
+        'up.radioM AS radioM',
         'i.id AS idInstalacion',
         'i.idCliente AS idCliente',
         'd.id AS idDispositivo',
@@ -280,6 +286,8 @@ export class MonitoreoService {
       idVideo1: num(row.idVideo1),
       idVideo2: num(row.idVideo2),
       idVideo3: num(row.idVideo3),
+      fuentePosicion: num(row.fuentePosicion),
+      radioM: num(row.radioM),
       idInstalacion: num(row.idInstalacion),
       idCliente: num(row.idCliente),
       idDispositivo: num(row.idDispositivo),
@@ -630,6 +638,8 @@ export class MonitoreoService {
           'p.idVideo1 AS idVideo1',
           'p.idVideo2 AS idVideo2',
           'p.idVideo3 AS idVideo3',
+          'p.fuentePosicion AS fuentePosicion',
+          'p.radioM AS radioM',
           'f0.ruta AS rutaFoto',
           'f1.ruta AS rutaFoto1',
           'f2.ruta AS rutaFoto2',

@@ -1,7 +1,8 @@
 /**
  * Contrato AMQP de springFA100S (relojes). Mismo envelope que jt808/jimi;
  * docs: springTrackCam docs/cambios-back-next.md §10.
- * - position: Lat/Lng reales o la última posición válida (`positionValid=false`).
+ * - position: Lat/Lng reales, aproximadas por WiFi/antena o la última posición
+ *   válida (`positionValid=false`); el origen va en `FuentePosicion` / `RadioM`.
  * - alarm: puede venir sin coordenadas (`Lat/Lng = null`) si nunca hubo GPS.
  * - alarm_location: ubicación que llegó después para una alarma sin GPS;
  *   corrige la alarma original (`alarmEventId`), no es una alarma nueva.
@@ -24,6 +25,10 @@ export interface Fa100sPayload {
   GSM?: number | null;
   Movimiento?: number | null;
   positionValid?: boolean;
+  /** 0 GPS, 1 WiFi, 2 antena, 3 última válida (springFA100S 29/10/2026+). */
+  FuentePosicion?: number | null;
+  /** Radio en metros de la ubicación aproximada. */
+  RadioM?: number | null;
   /** Solo alarm_location: eventId de la alarma original. */
   alarmEventId?: string;
   fa100s?: Record<string, unknown>;

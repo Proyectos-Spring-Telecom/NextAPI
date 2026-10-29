@@ -40,6 +40,8 @@ export function snapshotPosicion(posicion: Posiciones): Record<string, unknown> 
     idVideo1: num(posicion.idVideo1),
     idVideo2: num(posicion.idVideo2),
     idVideo3: num(posicion.idVideo3),
+    fuentePosicion: num(posicion.fuentePosicion),
+    radioM: num(posicion.radioM),
   };
 }
 

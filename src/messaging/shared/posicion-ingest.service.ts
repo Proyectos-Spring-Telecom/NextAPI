@@ -33,6 +33,7 @@ import {
   PosicionIngestPositionRequest,
   PosicionIngestResult,
 } from './posicion-ingest.types';
+import { FuentePosicion } from 'src/common/fuente-posicion';
 
 /**
  * Núcleo compartido: cualquier gateway GPS/dashcam inserta aquí.
@@ -170,9 +171,16 @@ export class PosicionIngestService {
       const logged = await this.tryInsertIngestLog(manager, req);
       if (logged.duplicate) return logged;
 
-      await manager.update(Posiciones, { id: original.id }, { lat, lng });
+      // La ubicación posterior es GPS: también corrige el origen y el radio.
+      const ubicacion = {
+        lat,
+        lng,
+        fuentePosicion: req.posicion.fuentePosicion ?? FuentePosicion.GPS,
+        radioM: req.posicion.radioM ?? null,
+      };
+      await manager.update(Posiciones, { id: original.id }, ubicacion);
       // Solo si la alarma sigue siendo la última posición del equipo.
-      await manager.update(UltimaPosicion, { imei: req.imei, fechaHora }, { lat, lng });
+      await manager.update(UltimaPosicion, { imei: req.imei, fechaHora }, ubicacion);
       await manager.update(
         TelemetryIngestLog,
         { eventId: req.eventId },
