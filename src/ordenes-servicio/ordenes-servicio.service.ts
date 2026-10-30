@@ -356,6 +356,8 @@ export class OrdenesServicioService {
             valor: Number(r.valor) === 1,
           })),
           archivos: archivosConUrl,
+          // Solo administración y monitoreo ven las notas internas.
+          ...(this.esTecnico(user) ? {} : { notasInternas: orden.notasInternas }),
           pruebas: pruebas.map((p) => ({
             clave: p.clave,
             estatus: p.estatus,

@@ -401,7 +401,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 |--------|------|-----|
 | POST | `/` | Programar: `{ referenciaCrm, idCliente, tipo, unidades?, idInstalacion?, cita, citaFin?, idTecnico, idOrdenOrigen?, observaciones?, usuario? }` → N órdenes `programada`. Idempotente por (`referenciaCrm`, `unidad`) |
 | PATCH | `/:id` | Reprogramar cita o técnico; solo en `programada` (si no, 409 con el estado) |
-| POST | `/:id/cancelar` | `{ claveMotivo, observaciones? }`; solo en `programada` |
+| POST | `/:id/cancelar` | `{ claveMotivo, observaciones? }`; solo en `programada`. Repetirla sobre una ya cancelada responde 200 ("ya estaba cancelada"): el reintento del CRM tras una respuesta perdida no es un error |
 | POST | `/:id/autorizacion/decision` | `{ autorizada: bool, observaciones? }` |
 | GET | `/cambios?desde=<fecha>&despuesDe=<id>&limite=200` | Órdenes creadas o modificadas, ordenadas por (`fechaActualizacion`, `id`), de cualquier origen. Cursor compuesto: pasar `hasta` y `despuesDe` de la respuesta anterior; nunca se atasca aunque muchas órdenes compartan el segundo. El CRM relee con 2 min de traslape (lo confirmado tarde) y procesa de forma idempotente. `hayMas` = pedir otra página |
 | GET | `/por-referencia/:referencia` | Estado actual de las órdenes de una referencia y sus tandas (`OI-12`, `OI-12-2`…); el CRM lo consulta antes de reagendar |
@@ -428,6 +428,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | PATCH | `/:id/reprogramar` | Cita, técnico o vehículo; solo `programada` |
 | GET | `/codigos-pendientes` | Códigos vigentes para dictar |
 | POST | `/:id/codigo/ver` | Muestra el código y registra quién lo vio |
+| POST | `/:id/codigo/reiniciar` | Roles 1–3: reinicia el tope de 5 códigos de la orden (el técnico lo agotó) |
 | GET | `/autorizaciones-pendientes` | Desinstalaciones por decidir |
 | POST | `/:id/autorizacion/decision` | Igual que el del CRM, desde el front |
 | POST | `/:id/cancelar`, `/:id/no-cumplida` | Con motivo (`claveMotivo`, `observaciones?`, `cobrable?`) |
@@ -569,3 +570,10 @@ Ver [remediacion-ordenes-servicio.md](remediacion-ordenes-servicio.md): bugs, se
 - Pruebas pedidas se anulan si la orden se cierra sin hacer el trabajo; el operador solo valida pruebas pedidas.
 - Compartir y ver el código no "cambian" la orden para el CRM.
 - DDL: `deploy/sql/OrdenesServicioEtapa4.sql`.
+
+Segunda revisión (29/10/2026):
+- **`notasInternas`** (columna `NotasInternas`): lo que decide operación o el CRM (autorización, sobreprecio, motivo de cancelación) va ahí y no a `observaciones`, que sale en el PDF del cliente. El detalle la devuelve a todos menos al técnico.
+- Validar el código correcto responde **409** si mientras tanto se emitió otro (el técnico lo pidió de nuevo); pedir el nuevo.
+- `POST /:id/codigo/reiniciar` (roles 1–3) cuando el técnico agota los 5 códigos.
+- Cancelar desde el CRM una orden ya cancelada responde 200 (reintentos idempotentes).
+- Las órdenes de la etapa 1 (creadas por la App) no piden el faltante "vehículo con equipo".

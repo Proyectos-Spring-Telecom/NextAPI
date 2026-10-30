@@ -6,7 +6,7 @@ Ruta para quitar los bugs, vicios y deuda técnica que encontró la revisión in
 
 Estado: ⬜ pendiente · 🟨 en curso · ✅ hecho (con la prueba que lo demuestra).
 
-**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026: 47/47 sobre el esquema real de producción, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
+**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026 (tras la segunda revisión): 57/57 sobre el esquema real de producción, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
 
 **Otros hallazgos de la propia batería:** bitácora demasiado larga al programar muchas unidades (500 después de guardar) → resumen y la bitácora ya no tumba una operación confirmada; dos peticiones idénticas del CRM en el mismo milisegundo → nonce por petición.
 
@@ -60,6 +60,29 @@ Estado: ⬜ pendiente · 🟨 en curso · ✅ hecho (con la prueba que lo demues
 | 3.4 | La lista del CRM sincroniza en línea; N+1; `uno()` recorre toda la lista | Sincronización en segundo plano; consultas por lote | ✅ |
 | 3.5 | Lógica de transición de la App etapa 1 repartida | Una sola función, con criterio de retiro | ✅ |
 | 3.6 | Paro de motor obligatorio siempre | Solo si el vehículo tiene inmovilizador | ✅ |
+
+## Segunda revisión (29/10/2026)
+
+Una segunda revisión independiente, sobre las correcciones anteriores, encontró que varias no se sostenían del todo y algunos bugs nuevos. Pruebas: `robustez.e2e-spec.ts`, bloque "Segunda revisión" (`[R2.n]`).
+
+| # | Dónde | Hallazgo | Remedio | Estado |
+|---|-------|----------|---------|--------|
+| R2.1 | CRM | El outbox podía mandar un cambio de cita viejo después del nuevo, o la misma operación dos veces | Una operación nueva reemplaza la pendiente que ya no aplica (`reemplazada`); se toma con `en_curso` antes de llamar a Next; en orden por Id; si una falla, las siguientes de esa orden esperan; las `en_curso` abandonadas (> 5 min) se recuperan | ✅ |
+| R2.2 | Next/CRM | Respuesta perdida: Next canceló, el reintento recibía 409 y daba un aviso falso | Cancelar una ya cancelada es idempotente (200) | ✅ |
+| R2.3 | CRM | Una operación que Next rechaza siempre (401, 500) se reintentaba sin fin | Espera creciente (`ProximoIntento`, `NEXT_OUTBOX_ESPERA_MS`, hasta 15 min) y tope (`NEXT_OUTBOX_MAX_INTENTOS`, 20): queda `rechazada` con aviso | ✅ |
+| R2.4 | CRM | El último cierre copiado al reagendar no contaba como cambio: la orden no quedaba instalada | Barrido independiente del cursor: órdenes abiertas con todas sus unidades hechas | ✅ |
+| R2.5 | CRM | Cancelar una orden a medias cancelaba el cobro de una unidad ya hecha | Solo se cancelan los sobreprecios de unidades no cerradas en Next | ✅ |
+| R2.6 | Next | El código correcto se aceptaba aunque ya se hubiera emitido otro; el tope de códigos no tenía salida | Validación condicional al código vigente (409); `POST /:id/codigo/reiniciar` para roles 1–3 | ✅ |
+| R2.7 | Next | Notas de autorización, sobreprecio y cancelación salían en el PDF del cliente | Columna `NotasInternas` | ✅ |
+| R2.8 | CRM | Con Next lento, mover una orden de N unidades hacía esperar N × 15 s | Tiempo de espera `NEXT_API_TIMEOUT_MS` (8 s); tras la primera falla las demás solo se encolan | ✅ |
+| R2.9 | CRM | Cancelar con una unidad ya iniciada encolaba una cancelación que Next siempre rechaza (avisos repetidos) | Solo se cancela lo `programada`; un aviso para lo iniciado | ✅ |
+| R2.10 | CRM | Registrar dos veces el sobreprecio de una autorización: `INSERT IGNORE` ocultaba la diferencia | 409 antes de llamar a Next | ✅ |
+| R2.11 | CRM | Transiciones del CRM sin condición (cancelar vs cierre de la app, regreso a por agendar vs reagendado) | `UPDATE … WHERE Estatus IN (…)` / misma cita; 0 filas → 409 o se omite (unitarias de `instalaciones.service.spec.ts`) | ✅ |
+| R2.12 | CRM | Orden de bloqueo distinto entre cobrar y cancelar (deadlock) | Ambos bloquean primero la orden (`FOR UPDATE`) | ✅ |
+| R2.13 | CRM | Un registro malo de Next tumbaba toda la sincronización; sobreprecios "con el corte" que fallaban no se reintentaban | Revisión por orden con aviso y se sigue; el barrido reintenta los diferidos sin avisar otra vez; el último error queda en `SincronizacionNext` | ✅ |
+| R2.14 | Next | `os_cambiar_indice` no era idempotente con columnas distintas; las órdenes de la etapa 1 pedían "vehículo con equipo" | Compara columnas y cambia en un solo `ALTER`; el faltante no aplica a la etapa 1 | ✅ |
+
+DDL: `deploy/sql/OrdenesServicioEtapa4.sql` (Next, agrega `NotasInternas`) y `crmAPI/sql/028_remediacion_next.sql` (reescrito: idempotente, `ProximoIntento`, estatus `en_curso`/`reemplazada`). Ninguno se había aplicado en producción.
 
 ## Fase 4 — Práctica permanente
 

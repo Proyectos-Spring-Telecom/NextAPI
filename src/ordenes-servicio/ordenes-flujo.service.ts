@@ -411,6 +411,22 @@ export class OrdenesFlujoService {
     return { ...this.ok(orden, 'Código generado: el operador en turno lo tiene en su pantalla'), expira };
   }
 
+  /**
+   * Operación reinicia el tope de códigos de una orden (p. ej. el técnico se
+   * equivocó de vehículo varias veces y ya se aclaró por teléfono).
+   */
+  async reiniciarCodigos(id: number, user: UsuarioToken): Promise<ApiCrudResponse> {
+    const orden = await this.ordenExistente(id);
+    await this.transicion(
+      orden,
+      { estatus: [ESTATUS_ORDEN.BORRADOR] },
+      { codigosEmitidos: 0, codigo: null, codigoExpira: null, codigoIntentos: 0 },
+      'reiniciar los códigos',
+    );
+    await this.bitacora(`Se reiniciaron los códigos de ${this.folio(orden)}`, 'UPDATE', { id }, { tipo: 'usuario', user });
+    return this.ok(orden, 'Tope de códigos reiniciado: el técnico puede pedir otro');
+  }
+
   /** Códigos vigentes para que el operador en turno los dicte. No incluye el código. */
   async codigosPendientes() {
     const ahora = nowMexicoCityAsUtcDate();
@@ -470,10 +486,11 @@ export class OrdenesFlujoService {
     const a = Buffer.from(dto.codigo);
     const b = Buffer.from(actual.codigo ?? '');
     if (a.length === b.length && timingSafeEqual(a, b)) {
-      await this.ordenesRepo.update(
+      const r = await this.ordenesRepo.update(
         { id: orden.id, codigo: actual.codigo! },
         { codigo: null, codigoExpira: null, fechaCodigoValidado: nowMexicoCityAsUtcDate() },
       );
+      if (!r.affected) throw new ConflictException('Se emitió otro código mientras tanto: captura el nuevo');
       await this.bitacora(`Código validado en la orden ${this.folio(orden)}`, 'UPDATE', { id }, { tipo: 'usuario', user });
       return this.ok(orden, 'Código correcto: vehículo confirmado');
     }
@@ -552,7 +569,7 @@ export class OrdenesFlujoService {
       nombreAutorizo: quien.nombre,
       fechaAutorizacion: nowMexicoCityAsUtcDate(),
       origenAutorizacion: actor.tipo === 'crm' ? ORIGEN_ORDEN.CRM : ORIGEN_ORDEN.NEXT,
-      observaciones: this.agregarNota(orden.observaciones, `Autorización ${decision}`, dto.observaciones),
+      notasInternas: this.agregarNota(orden.notasInternas, `Autorización ${decision}`, dto.observaciones),
     };
     if (!dto.autorizada) {
       const motivo = await this.motivosRepo.findOne({ where: { clave: MOTIVO_SIN_AUTORIZACION } });
@@ -722,6 +739,8 @@ export class OrdenesFlujoService {
    */
   async cancelar(id: number, dto: CancelarOrdenDto, actor: Actor): Promise<ApiCrudResponse> {
     const orden = actor.tipo === 'crm' ? await this.ordenDelActor(id, actor) : await this.ordenEditable(id, actor.user);
+    // Idempotente: el CRM reintenta si se perdió la respuesta.
+    if (orden.estatus === ESTATUS_ORDEN.CANCELADA) return this.ok(orden, 'La orden ya estaba cancelada');
     const operacion = actor.tipo === 'usuario' && esAdmin(actor.user);
     const etapa1 = esEtapa1(orden) && orden.estatus === ESTATUS_ORDEN.BORRADOR;
 
@@ -756,7 +775,7 @@ export class OrdenesFlujoService {
         actorMotivo,
         actor.tipo === 'crm' || operacion,
       );
-      cambios.observaciones = this.agregarNota(orden.observaciones, 'Cancelada', dto.observaciones);
+      cambios.notasInternas = this.agregarNota(orden.notasInternas, 'Cancelada', dto.observaciones);
     }
     // Se cancela solo si sigue como se leyó: si el técnico la cerró o la inició
     // mientras tanto, 409.

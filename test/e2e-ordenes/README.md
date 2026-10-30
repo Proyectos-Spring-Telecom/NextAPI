@@ -38,5 +38,5 @@ Para agregar un escenario: un `describe` nuevo en `flujo-ordenes.e2e-spec.ts` us
 
 | Suite | Qué valida |
 |-------|------------|
-| `robustez.e2e-spec.ts` | Un caso por hallazgo de la revisión (concurrencia, Next caído con el proxy de fallas, repeticiones de firma, permisos); numerados como en `docs/remediacion-ordenes-servicio.md` |
+| `robustez.e2e-spec.ts` | Un caso por hallazgo de la revisión (concurrencia, Next caído, lento, respuesta perdida o 401 con el proxy de fallas, repeticiones de firma, permisos); numerados como en `docs/remediacion-ordenes-servicio.md` |
 | `reglas-flujo.e2e-spec.ts` | Reglas del flujo contra MySQL real y la comparación del esquema |

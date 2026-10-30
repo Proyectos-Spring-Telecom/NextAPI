@@ -16,30 +16,32 @@ BEGIN
     PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
   END IF;
 END$$
--- Quita el índice si existe y lo crea con la definición nueva.
-CREATE PROCEDURE os_cambiar_indice(IN tabla VARCHAR(64), IN indice VARCHAR(64), IN definicion TEXT)
+-- Deja el índice con las columnas `columnas` (separadas por coma). Si ya está
+-- así no hace nada; si existe con otras columnas lo cambia en un solo ALTER.
+CREATE PROCEDURE os_cambiar_indice(IN tabla VARCHAR(64), IN indice VARCHAR(64), IN columnas VARCHAR(255))
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tabla AND INDEX_NAME = indice
-  ) THEN
-    SET @ddl = CONCAT('ALTER TABLE `', tabla, '` DROP INDEX `', indice, '`');
+  DECLARE actuales VARCHAR(255);
+  SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) INTO actuales
+    FROM information_schema.STATISTICS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tabla AND INDEX_NAME = indice;
+  IF actuales IS NULL THEN
+    SET @ddl = CONCAT('ALTER TABLE `', tabla, '` ADD KEY `', indice, '` (`', REPLACE(columnas, ',', '`,`'), '`)');
+    PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
+  ELSEIF actuales <> columnas THEN
+    SET @ddl = CONCAT('ALTER TABLE `', tabla, '` DROP INDEX `', indice, '`, ADD KEY `', indice, '` (`', REPLACE(columnas, ',', '`,`'), '`)');
     PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
   END IF;
-  SET @ddl = CONCAT('ALTER TABLE `', tabla, '` ADD ', definicion);
-  PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 END$$
 DELIMITER ;
 
 CALL os_add_column('OrdenesServicio', 'IdProductoAutorizacion', "BIGINT NULL COMMENT 'Vehículo por el que se pidió la autorización de desinstalar'");
 CALL os_add_column('OrdenesServicio', 'CodigosEmitidos', "TINYINT NOT NULL DEFAULT 0 COMMENT 'Códigos de verificación emitidos (tope 5)'");
 
-CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_FechaActualizacion',
-  'KEY `IX_OrdenesServicio_FechaActualizacion` (`FechaActualizacion`, `Id`)');
-CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_Estatus_CodigoExpira',
-  'KEY `IX_OrdenesServicio_Estatus_CodigoExpira` (`Estatus`, `CodigoExpira`)');
-CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_Estatus_Autorizacion',
-  'KEY `IX_OrdenesServicio_Estatus_Autorizacion` (`Estatus`, `Autorizacion`)');
+CALL os_add_column('OrdenesServicio', 'NotasInternas', "TEXT NULL COMMENT 'Notas de operación/CRM (autorización, sobreprecio, cancelación); no salen en el PDF'");
+
+CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_FechaActualizacion', 'FechaActualizacion,Id');
+CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_Estatus_CodigoExpira', 'Estatus,CodigoExpira');
+CALL os_cambiar_indice('OrdenesServicio', 'IX_OrdenesServicio_Estatus_Autorizacion', 'Estatus,Autorizacion');
 
 DROP PROCEDURE os_add_column;
 DROP PROCEDURE os_cambiar_indice;

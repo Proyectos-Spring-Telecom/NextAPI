@@ -77,11 +77,16 @@ async function puertoLibre(): Promise<number> {
 }
 
 /**
- * Proxy entre crmAPI y NextAPI para simular fallas de red: `normal` reenvía,
- * `caido` responde 503 sin tocar Next (como si Next no respondiera).
+ * Proxy entre crmAPI y NextAPI para simular fallas:
+ * - `normal`: reenvía.
+ * - `caido`: 503 sin tocar Next (Next no responde).
+ * - `perdida`: Next aplica la petición, pero el CRM recibe 504 (respuesta perdida).
+ * - `rechazo401`: 401 sin tocar Next (p. ej. relojes desfasados).
+ * - `lento`: reenvía después de `retrasoMs` (más que el tiempo de espera del CRM).
  */
 export class ProxyFallas {
-  modo: 'normal' | 'caido' = 'normal';
+  modo: 'normal' | 'caido' | 'perdida' | 'rechazo401' | 'lento' = 'normal';
+  retrasoMs = 2500;
   peticiones = 0;
   private servidor: Server | null = null;
   puerto = 0;
@@ -90,20 +95,28 @@ export class ProxyFallas {
     this.puerto = await puertoLibre();
     this.servidor = crearServidorHttp((req, res) => {
       this.peticiones++;
-      if (this.modo === 'caido') {
-        res.writeHead(503, { 'content-type': 'text/plain' }).end('Next no disponible (simulado)');
+      if (this.modo === 'caido' || this.modo === 'rechazo401') {
+        const codigo = this.modo === 'caido' ? 503 : 401;
+        res.writeHead(codigo, { 'content-type': 'text/plain' }).end(`Simulado: ${codigo}`);
         req.resume();
         return;
       }
+      const perder = this.modo === 'perdida';
+      const retraso = this.modo === 'lento' ? this.retrasoMs : 0;
       const fwd = peticionHttp(
         { host: '127.0.0.1', port: destino(), path: req.url, method: req.method, headers: req.headers },
         (r) => {
+          if (perder) {
+            r.resume();
+            res.writeHead(504, { 'content-type': 'text/plain' }).end('Simulado: respuesta perdida');
+            return;
+          }
           res.writeHead(r.statusCode ?? 502, r.headers);
           r.pipe(res);
         },
       );
-      fwd.on('error', () => res.writeHead(502).end());
-      req.pipe(fwd);
+      fwd.on('error', () => (res.headersSent ? res.end() : res.writeHead(502).end()));
+      setTimeout(() => req.pipe(fwd), retraso);
     });
     await new Promise<void>((ok) => this.servidor!.listen(this.puerto, '127.0.0.1', ok));
   }
@@ -405,6 +418,9 @@ export class Entorno {
       NEXT_DB_USER: '',
       NEXT_DB_PASSWORD: '',
       INSTALACIONES_SYNC_MIN_MS: '0',
+      NEXT_OUTBOX_MAX_INTENTOS: '3',
+      NEXT_OUTBOX_ESPERA_MS: '0',
+      NEXT_API_TIMEOUT_MS: '1000',
     };
     this.crm = spawn(process.execPath, [join(CRM_DIR, 'dist/src/main.js')], { cwd: this.sinEnv, env, stdio: ['ignore', 'pipe', 'pipe'] });
     this.crm.stdout?.on('data', (d) => (this.crmLog = (this.crmLog + d).slice(-20000)));

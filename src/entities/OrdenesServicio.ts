@@ -82,6 +82,13 @@ export class OrdenesServicio {
   @Column('text', { name: 'Observaciones', nullable: true })
   observaciones: string | null;
 
+  /**
+   * Notas de operación y del CRM (autorización, sobreprecio, cancelación): no
+   * salen en el PDF del cliente ni las ve el técnico.
+   */
+  @Column('text', { name: 'NotasInternas', nullable: true })
+  notasInternas: string | null;
+
   @Column('datetime', {
     name: 'FechaCreacion',
     default: () => 'CURRENT_TIMESTAMP',

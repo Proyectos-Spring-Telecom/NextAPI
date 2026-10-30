@@ -275,6 +275,14 @@ export class OrdenesServicioController {
     return this.flujo.solicitarCodigo(id, req.user);
   }
 
+  @Post(':id/codigo/reiniciar')
+  @Roles(...OPERACION)
+  @ApiOperation({ summary: 'Reiniciar el tope de códigos de una orden (operación)' })
+  @ApiParam({ name: 'id' })
+  reiniciarCodigos(@Param('id', ParseIntPipe) id: number, @Request() req): Promise<ApiCrudResponse> {
+    return this.flujo.reiniciarCodigos(id, req.user);
+  }
+
   @Post(':id/codigo/ver')
   @Roles(...ROLES_CODIGO)
   @ApiOperation({ summary: 'Ver el código para dictarlo (registra quién lo vio)' })

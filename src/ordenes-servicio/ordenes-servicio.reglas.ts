@@ -285,7 +285,12 @@ export function faltantesParaCerrar(
   }
   if (orden.autorizacion === AUTORIZACION.PENDIENTE) {
     faltan.push('La desinstalación del equipo existente está pendiente de autorización');
-  } else if (tipo === 'instalacion' && orden.vehiculoConEquipo && orden.autorizacion !== AUTORIZACION.AUTORIZADA) {
+  } else if (
+    tipo === 'instalacion' &&
+    orden.vehiculoConEquipo &&
+    !esEtapa1(orden) &&
+    orden.autorizacion !== AUTORIZACION.AUTORIZADA
+  ) {
     faltan.push('El vehículo ya tiene un equipo instalado: pide autorización para desinstalarlo');
   }
   return faltan;

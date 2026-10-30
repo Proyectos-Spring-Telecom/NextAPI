@@ -265,3 +265,136 @@ describe('Seguridad', () => {
     expect(w.whatsapp).toMatch(/^https:\/\/wa\.me\/527771234567\?/);
   });
 });
+
+describe('Segunda revisión (outbox, sincronización, cobros)', () => {
+  it('[R2.1] dos cambios de cita con Next caído: llega el último, no el primero', async () => {
+    const o = await orden();
+    e.proxy.modo = 'caido';
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(5, 9), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'A' }), 'mover A');
+    e.proxy.modo = 'normal';
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(5, 17), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'B' }), 'mover B');
+    await a.sincronizarCrm();
+    const det = ok(await a.operacion('GET', `/ordenes-servicio/${o.os[0].id}`), 'detalle').data[0];
+    expect(new Date(det.cita).getUTCHours()).toBe(17);
+  });
+
+  it('[R2.2] si Next canceló pero la respuesta se perdió, el reintento no da un aviso falso', async () => {
+    const o = await orden();
+    e.proxy.modo = 'perdida';
+    ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Desistió' }), 'cancelar');
+    e.proxy.modo = 'normal';
+    await a.sincronizarCrm();
+    const op = e.consulta('CRM', `SELECT Estatus FROM OperacionesNext WHERE IdOrden = ${o.idOrden} ORDER BY Id DESC LIMIT 1`)[0][0];
+    expect(op).toBe('hecha');
+    expect(ok(await a.operacion('GET', `/ordenes-servicio/${o.os[0].id}`), 'detalle').data[0].estatus).toBe('cancelada');
+  });
+
+  it('[R2.3] una operación que Next rechaza siempre (401) se deja de intentar y avisa; no bloquea a las demás', async () => {
+    const o = await orden();
+    e.proxy.modo = 'rechazo401';
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(6, 11), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'C' }), 'mover');
+    for (let i = 0; i < 4; i++) await a.sincronizarCrm().catch(() => undefined);
+    e.proxy.modo = 'normal';
+    const op = e.consulta('CRM', `SELECT Estatus, Intentos FROM OperacionesNext WHERE IdOrden = ${o.idOrden} ORDER BY Id DESC LIMIT 1`)[0];
+    expect(op[0]).toBe('rechazada');
+    expect(Number(op[1])).toBeLessThanOrEqual(3);
+  });
+
+  it('[R2.4] si el último cierre llega mientras el usuario mueve la orden, igual queda instalada', async () => {
+    const o = await orden();
+    await altaListaParaCerrar(a, o.os[0].id, c.idClienteNext, nuevaPlaca(), nuevoEquipo());
+    ok(await a.app('POST', `/ordenes-servicio/${o.os[0].id}/cerrar`), 'cerrar');
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { lugar: 'Otro patio', forzar: true }), 'editar');
+    await a.sincronizarCrm();
+    expect((await a.ordenCrm(o.idOrden)).estatus).toBe('INSTALADA');
+  });
+
+  it('[R2.5] cancelar una orden a medias no cancela el cobro de una unidad ya hecha', async () => {
+    const v = await vehiculoConEquipo();
+    const o = await orden(2);
+    const [x, y] = o.os.sort((p: any, q: any) => p.unidad - q.unidad).map((z: any) => z.id);
+    ok(await a.app('POST', `/ordenes-servicio/${x}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    ok(await a.app('PATCH', `/ordenes-servicio/${x}`, { idProducto: v }), 'vehículo');
+    ok(await a.app('POST', `/ordenes-servicio/${x}/autorizacion`, {}), 'autorización');
+    ok(await a.crm('POST', `/instalaciones/autorizaciones/${x}`, { autorizada: true, sobreprecio: 400, cobro: 'FECHA', vence: enDias(20).slice(0, 10) }), 'autorizar');
+    const eq = nuevoEquipo();
+    await a.checklist(x, { idDispositivoNuevo: eq.idDispositivo, idSimNuevo: eq.idSim });
+    for (const p of ['transmision', 'boton_panico', 'paro_motor']) ok(await a.app('POST', `/ordenes-servicio/${x}/pruebas/${p}/solicitar`), p);
+    await a.validarPruebas(x);
+    ok(await a.app('POST', `/ordenes-servicio/${x}/cerrar`), 'cerrar');
+    await a.sincronizarCrm();
+    void y;
+    ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Ya no quiere la segunda' }), 'cancelar');
+    const cargo = e.consulta('CRM', `SELECT Estatus FROM Cargos WHERE IdOrdenServicioNext = ${x}`)[0][0];
+    expect(cargo).toBe('PENDIENTE');
+  });
+
+  it('[R2.6] el código correcto no se acepta si mientras tanto se emitió otro; operación puede reiniciar el tope', async () => {
+    const inst = ok(await a.crm('GET', `/instalaciones/unidades/${c.idCliente}`), 'unidades')[0];
+    const m = ok(await a.crm('POST', '/instalaciones/mantenimiento', { idCliente: c.idCliente, idInstalacionNext: inst.idInstalacion, tipo: 'revision' }), 'mantenimiento');
+    const os = await agendar(a, m.id);
+    const id = os[0].id;
+    ok(await a.app('POST', `/ordenes-servicio/${id}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    e.mysql.sql('Next', `UPDATE OrdenesServicio SET CodigosEmitidos = 5 WHERE Id = ${id}`);
+    expect((await a.app('POST', `/ordenes-servicio/${id}/codigo`)).status).toBe(409);
+    ok(await a.operacion('POST', `/ordenes-servicio/${id}/codigo/reiniciar`), 'reiniciar tope');
+    ok(await a.app('POST', `/ordenes-servicio/${id}/codigo`), 'pedir');
+  });
+
+  it('[R2.7] las notas internas (autorización, sobreprecio, cancelación) no salen en el PDF del cliente', async () => {
+    const v = await vehiculoConEquipo();
+    const o = await orden();
+    const id = o.os[0].id;
+    ok(await a.app('POST', `/ordenes-servicio/${id}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    ok(await a.app('PATCH', `/ordenes-servicio/${id}`, { idProducto: v }), 'vehículo');
+    ok(await a.app('POST', `/ordenes-servicio/${id}/autorizacion`, {}), 'autorización');
+    ok(await a.crm('POST', `/instalaciones/autorizaciones/${id}`, { autorizada: true, sobreprecio: 777, cobro: 'DESPUES', observaciones: 'Línea 1\nLínea 2 interna' }), 'autorizar');
+    const fila = e.consulta('Next', `SELECT IFNULL(Observaciones, ''), IFNULL(NotasInternas, '') FROM OrdenesServicio WHERE Id = ${id}`)[0];
+    expect(fila[0]).not.toContain('777');
+    expect(fila[0]).not.toContain('interna');
+    expect(fila[1]).toContain('777');
+  });
+
+  it('[R2.8] con Next lento, mover una orden de 3 unidades no hace esperar 3 veces; se pone al día al volver', async () => {
+    const o = await orden(3);
+    e.proxy.modo = 'lento';
+    const t0 = Date.now();
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(7, 15), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'L' }), 'mover');
+    const tardo = Date.now() - t0;
+    e.proxy.modo = 'normal';
+    expect(tardo).toBeLessThan(2500);
+    await new Promise((r) => setTimeout(r, 3000)); // que terminen las peticiones retrasadas
+    await a.sincronizarCrm();
+    for (const os of o.os) {
+      const det = ok(await a.operacion('GET', `/ordenes-servicio/${os.id}`), 'detalle').data[0];
+      expect(new Date(det.cita).getUTCHours()).toBe(15);
+    }
+  });
+
+  it('[R2.9] cancelar en el CRM con una unidad ya iniciada: cancela solo lo programado y avisa una vez', async () => {
+    const o = await orden(2);
+    const [x, y] = o.os.sort((p: any, q: any) => p.unidad - q.unidad).map((z: any) => z.id);
+    ok(await a.app('POST', `/ordenes-servicio/${x}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    await a.sincronizarCrm();
+    ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Desistió' }), 'cancelar');
+    const ops = e.consulta('CRM', `SELECT IdOrdenServicioNext, Estatus FROM OperacionesNext WHERE IdOrden = ${o.idOrden} AND Tipo = 'cancelar'`);
+    expect(ops.map((f) => [Number(f[0]), f[1]])).toEqual([[y, 'hecha']]);
+    const avisos = e.consulta('CRM', `SELECT Descripcion FROM Bitacora WHERE Accion = 'INSTALACION_NEXT_ERROR' AND Entidad = 'OrdenesInstalacion' AND IdEntidad = ${o.idOrden}`);
+    expect(avisos.length).toBe(1);
+    expect(avisos[0][0]).toContain('ya la(s) inició el técnico');
+    expect(ok(await a.operacion('GET', `/ordenes-servicio/${x}`), 'detalle').data[0].estatus).toBe('borrador');
+  });
+
+  it('[R2.10] registrar dos veces el sobreprecio de una autorización da 409 y no cambia el primero', async () => {
+    const v = await vehiculoConEquipo();
+    const o = await orden();
+    const id = o.os[0].id;
+    ok(await a.app('POST', `/ordenes-servicio/${id}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    ok(await a.app('PATCH', `/ordenes-servicio/${id}`, { idProducto: v }), 'vehículo');
+    ok(await a.app('POST', `/ordenes-servicio/${id}/autorizacion`, {}), 'autorización');
+    ok(await a.crm('POST', `/instalaciones/autorizaciones/${id}`, { autorizada: true, sobreprecio: 300, cobro: 'DESPUES' }), 'autorizar');
+    const otra = await a.crm('POST', `/instalaciones/autorizaciones/${id}`, { autorizada: true, sobreprecio: 900, cobro: 'DESPUES' });
+    expect(otra.status).toBe(409);
+    expect(Number(e.consulta('CRM', `SELECT Monto FROM SobreprecioAutorizaciones WHERE IdOrdenServicioNext = ${id}`)[0][0])).toBe(300);
+  });
+});
