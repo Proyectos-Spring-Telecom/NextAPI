@@ -528,3 +528,19 @@ Reglas:
 | GET | `/integracion/sims` | SIMs con su instalación vigente (`iccid` = `Sims.IMEI`) |
 | GET | `/integracion/ordenes-realizadas?tecnicos=&clientes=&desde=&tipo=&pagables=1` | Órdenes cerradas (y con `pagables=1`, las no cumplidas cobrables) con técnico, cliente, `estatus`, `motivo`, `referenciaCrm` |
 | GET | `/integracion/ordenes-servicio/autorizaciones-pendientes` | Para decidir desde el CRM (§12.6) |
+
+## 15. Guía para la App de instaladores (resumen del flujo)
+
+Todo con el JWT del técnico (rol 8). Detalle de cada llamada en §5 y §12–§13.
+
+1. **Agenda:** `GET /ordenes-servicio/paginado/1/50?estatus=programada` (ordenadas por cita). Mostrar cliente, tipo programado, vehículo (`idInstalacionProgramada`) y cita.
+2. **Iniciar en el lugar:** `POST /:id/iniciar { claveApp, tipoServicio?, idInstalacion? }`. El técnico confirma o corrige el tipo (solo entre mantenimientos) y el vehículo. En un alta, el vehículo se busca o crea como hoy (§2 regla 2) y se manda `idProducto` en el `PATCH`.
+3. **Mantenimientos — código:** `POST /:id/codigo`; el operador en turno lo dicta; `POST /:id/codigo/validar { codigo }`. Sin código validado no se cierra.
+4. **Alta sobre un vehículo con equipo:** foto `equipo_existente` (`POST /:id/archivos/equipo_existente`) y `POST /:id/autorizacion { observaciones }`. Esperar la decisión (`GET /:id` → `autorizacion`): `autorizada` sigue; `rechazada` deja la orden no cumplida (ya no se edita).
+5. **Checklist, fotos y firmas:** como hoy (`PATCH`, archivos). En órdenes programadas **no** se mandan respuestas de `pruebas` (400), salvo en desinstalación.
+6. **Pruebas con el operador:** `POST /:id/pruebas/:clave/solicitar { observaciones? }` para `transmision`, `boton_panico` y `paro_motor` (es la solicitud del paro). Mostrar el estado con `GET /:id` → `pruebas[]` (solicitada / correcta / fallida, nota del operador). Si falló, se puede volver a pedir.
+7. **Cerrar:** `POST /:id/cerrar`; si responde 400, mostrar `faltantes`.
+8. **No se pudo hacer:** `POST /:id/no-cumplida { claveMotivo, observaciones? }` con los motivos de `GET /ordenes-servicio/motivos` donde `quien` incluye `tecnico`.
+9. **Compartir:** `POST /:id/compartir { telefono? }` → abrir `whatsapp`; o `POST /:id/enviar-correo { correos }`. `GET /:id/pdf` para verlo.
+
+Mientras la App migra, `POST /` (crear la orden en campo) sigue funcionando con las reglas de la etapa 1.
