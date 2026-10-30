@@ -16,6 +16,7 @@
 | [BACKEND-CONTEXT.md](./BACKEND-CONTEXT.md) | Arquitectura del backend: módulos, auth, filtro por cliente, catálogos |
 | [catalogo-eventos.md](./catalogo-eventos.md) | **Catálogo de eventos por equipo:** IdEvento, Estado, qué abre incidente y tratamiento en el front |
 | [ordenes-servicio.md](./ordenes-servicio.md) | Órdenes de servicio: modelo, flujo con el CRM, código, autorizaciones, pruebas, PDF, despliegue |
+| [diagnostico-modelo.md](./diagnostico-modelo.md) | Diagnóstico del modelo de datos, integridad, visibilidad por rol y datos reales (fase 0 del motor de activos) |
 | [remediacion-ordenes-servicio.md](./remediacion-ordenes-servicio.md) | Hallazgos de las revisiones independientes de órdenes de servicio y la prueba que demuestra cada corrección |
 | [consumo-instalaciones-paginado-angular.md](./consumo-instalaciones-paginado-angular.md) | Front: listado paginado de instalaciones |
 | [consumo-vehiculo-por-placa.md](./consumo-vehiculo-por-placa.md) | Consulta de vehículo por placa |
