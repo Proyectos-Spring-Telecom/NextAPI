@@ -127,3 +127,9 @@ describe('No cumplida y cancelar', () => {
     ok(await a.app('POST', `/ordenes-servicio/${o.id}/cerrar`), 'cerrar sin paro de motor');
   });
 });
+
+describe('Esquema', () => {
+  it('las tablas de órdenes de servicio de producción + los SQL de despliegue coinciden con las entidades', () => {
+    expect(e.diferenciasEsquema).toEqual([]);
+  });
+});

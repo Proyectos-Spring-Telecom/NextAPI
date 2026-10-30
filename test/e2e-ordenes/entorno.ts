@@ -182,22 +182,15 @@ export class Entorno {
       process.env[`${k}_TTL_MS`] = '60000';
     }
 
-    // Esquema de Next desde sus entidades (solo en la base desechable).
-    const { DataSource } = require('typeorm');
-    const ds = new DataSource({
-      type: 'mysql',
-      host: '127.0.0.1',
-      port: this.mysql.puerto,
-      username: 'root',
-      database: 'Next',
-      entities: [join(RAIZ_NEXT, 'src/entities/*.ts')],
-      synchronize: true,
-    });
-    await ds.initialize();
-    await ds.destroy();
+    // Esquema de Next igual al de producción (dump sin datos) + los SQL de
+    // despliegue que producción aún no tenga. Después se compara contra las
+    // entidades: si el código espera algo que la base real no tiene, la
+    // batería falla aquí y no en producción.
+    this.mysql.archivo('Next', join(__dirname, 'esquema/next-produccion.sql'));
     for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
+    await this.compararEsquema();
     this.sembrarNext();
 
     // Arranca sin .env a la vista: ConfigModule lee el del directorio actual.
@@ -227,6 +220,65 @@ export class Entorno {
     }
     this.nextUrl = `http://127.0.0.1:${puerto}/api`;
   }
+
+  /**
+   * Lo que el código espera de las tablas de órdenes de servicio y la base real
+   * (producción + SQL de despliegue) no tiene: columnas, tipo, si acepta nulos
+   * e índices declarados en las entidades. Comentarios y llaves foráneas que
+   * solo existen en el DDL no cuentan.
+   */
+  private async compararEsquema(): Promise<void> {
+    const { DataSource } = require('typeorm');
+    const ds = new DataSource({
+      type: 'mysql',
+      host: '127.0.0.1',
+      port: this.mysql.puerto,
+      username: 'root',
+      database: 'Next',
+      entities: [join(RAIZ_NEXT, 'src/entities/*.ts')],
+      synchronize: false,
+    });
+    await ds.initialize();
+    const tablas = /^(OrdenesServicio|OrdenServicio\w+|CatOrdenServicioOpciones|CatMotivosOrdenServicio)$/;
+    const difs: string[] = [];
+    try {
+      for (const meta of ds.entityMetadatas.filter((m: any) => tablas.test(m.tableName))) {
+        const cols = this.consulta(
+          'Next',
+          `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='Next' AND TABLE_NAME='${meta.tableName}'`,
+        );
+        if (!cols.length) {
+          difs.push(`${meta.tableName}: la tabla no existe`);
+          continue;
+        }
+        for (const c of meta.columns) {
+          const db = cols.find((x) => x[0] === c.databaseName);
+          const tipo = String(typeof c.type === 'function' ? c.type.name : c.type).toLowerCase();
+          if (!db) difs.push(`${meta.tableName}.${c.databaseName}: falta la columna`);
+          else {
+            if (db[1] !== tipo && !(tipo === 'number' && /int$/.test(db[1])) && !(tipo === 'string' && /char|text/.test(db[1]))) {
+              difs.push(`${meta.tableName}.${c.databaseName}: tipo ${db[1]} y el código espera ${tipo}`);
+            }
+            if ((db[2] === 'YES') !== Boolean(c.isNullable) && !c.isPrimary) {
+              difs.push(`${meta.tableName}.${c.databaseName}: ${db[2] === 'YES' ? 'acepta' : 'no acepta'} nulos y el código espera lo contrario`);
+            }
+          }
+        }
+        const indices = new Set(
+          this.consulta('Next', `SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='Next' AND TABLE_NAME='${meta.tableName}'`).map((x) => x[0]),
+        );
+        for (const ix of meta.indices) {
+          if (ix.name && !indices.has(ix.name)) difs.push(`${meta.tableName}: falta el índice ${ix.name}`);
+        }
+      }
+    } finally {
+      await ds.destroy();
+    }
+    this.diferenciasEsquema = difs;
+  }
+
+  /** Lo que el código espera y la base real (más los SQL de despliegue) no tiene. */
+  diferenciasEsquema: string[] = [];
 
   /** Datos mínimos de Next: cuenta raíz, roles, usuarios, catálogos e inventario. */
   private sembrarNext(): void {

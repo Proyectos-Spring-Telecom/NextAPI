@@ -13,7 +13,13 @@ Requisitos:
 - crmAPI compilado (`npm run build`) en `../crmAPI` (como en springfieldDev) o donde indique `CRM_API_DIR`.
 
 Qué hace:
-1. Crea las bases `Next` (esquema desde `src/entities` + `deploy/sql/OrdenesServicio*.sql`) y `CRM` (`crmAPI/sql/NNN_*.sql`), y siembra lo mínimo (roles, usuarios, catálogos, inventario).
+1. Crea la base `Next` con **el esquema real de producción** (`esquema/next-produccion.sql`, `mysqldump --no-data --routines --triggers` sin `DEFINER`) más los `deploy/sql/OrdenesServicio*.sql`, y comprueba que las tablas de órdenes coincidan con las entidades (columnas, tipos, nulos e índices; la prueba "Esquema" falla si falta un SQL de despliegue). Crea `CRM` con `crmAPI/sql/NNN_*.sql` y siembra lo mínimo (roles, usuarios, catálogos, inventario). La zona horaria es la de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
+
+   Para regenerar el esquema cuando cambie producción:
+   ```bash
+   mysqldump -u root -p --no-data --routines --triggers Next > ~/next-esquema.sql
+   ```
+   y reemplazar `esquema/next-produccion.sql` quitando las cláusulas `DEFINER`.
 2. Arranca NextAPI dentro de la prueba y crmAPI como proceso, **desde un directorio sin `.env`**, con secretos de prueba, RabbitMQ apagado y S3 y correo simulados.
 3. Los actores usan solo sus endpoints reales: el CRM con su sesión, la App con la del técnico (rol 8), monitoreo (rol 5) y operación (rol 3).
 
@@ -27,3 +33,10 @@ Qué hace:
 | 4 | Cancelaciones | El técnico no cancela; cancelar en el CRM una programada la cancela en la App; si ya inició, queda anotado y operación la cancela en Next con motivo |
 
 Para agregar un escenario: un `describe` nuevo en `flujo-ordenes.e2e-spec.ts` usando `Actores` (llamadas de cada actor) y `Narrador` (pasos del reporte). Los escenarios corren en orden y comparten el cliente del escenario 1.
+
+## Otras suites
+
+| Suite | Qué valida |
+|-------|------------|
+| `robustez.e2e-spec.ts` | Un caso por hallazgo de la revisión (concurrencia, Next caído con el proxy de fallas, repeticiones de firma, permisos); numerados como en `docs/remediacion-ordenes-servicio.md` |
+| `reglas-flujo.e2e-spec.ts` | Reglas del flujo contra MySQL real y la comparación del esquema |

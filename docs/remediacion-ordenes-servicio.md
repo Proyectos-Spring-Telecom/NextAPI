@@ -6,11 +6,11 @@ Ruta para quitar los bugs, vicios y deuda técnica que encontró la revisión in
 
 Estado: ⬜ pendiente · 🟨 en curso · ✅ hecho (con la prueba que lo demuestra).
 
-**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026: 46/46, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
+**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026: 47/47 sobre el esquema real de producción, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
 
 **Otros hallazgos de la propia batería:** bitácora demasiado larga al programar muchas unidades (500 después de guardar) → resumen y la bitácora ya no tumba una operación confirmada; dos peticiones idénticas del CRM en el mismo milisegundo → nonce por petición.
 
-**Pendiente:** 0.3 (requiere el dump del esquema de producción), 0.5 (requiere OK).
+**Pendiente:** 0.5 (subir crmAPI y CrmWEB a un repositorio remoto; lo decide Israel). El esquema de producción (0.3) se cargó el 29/10/2026: la batería corre sobre él y comprueba que coincida con las entidades.
 
 ## Fase 0 — Red de seguridad
 
@@ -18,7 +18,7 @@ Estado: ⬜ pendiente · 🟨 en curso · ✅ hecho (con la prueba que lo demues
 |---|-----|--------|
 | 0.1 | Proxy de fallas entre CRM y NextAPI en la batería (caído, lento, error) | ✅ |
 | 0.2 | Pruebas de concurrencia (peticiones simultáneas sobre la misma orden) | ✅ |
-| 0.3 | Esquema de la batería desde el dump real de producción (`mysqldump --no-data`) + `deploy/sql`; `synchronize` solo para detectar diferencias | ⬜ |
+| 0.3 | Esquema de la batería desde el dump real de producción (`mysqldump --no-data`) + `deploy/sql`; `synchronize` solo para detectar diferencias | ✅ |
 | 0.4 | Zona horaria de la batería igual a producción | ✅ |
 | 0.5 | crmAPI y CrmWEB en un repositorio remoto | ⬜ (requiere OK) |
 
