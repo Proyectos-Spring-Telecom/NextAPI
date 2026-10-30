@@ -1,4 +1,11 @@
-import { faltantesParaCerrar, folioDe, OrdenParaCierre } from './ordenes-servicio.reglas';
+import {
+  cambioDeTipoPermitido,
+  estadoCodigo,
+  faltantesParaCerrar,
+  folioDe,
+  motivoPermitido,
+  OrdenParaCierre,
+} from './ordenes-servicio.reglas';
 
 const catalogo = [
   { seccion: 'vehiculo_cuenta_con', clave: 'alarma', obligatorio: 0 },
@@ -85,5 +92,53 @@ describe('faltantesParaCerrar', () => {
 
   it('folio', () => {
     expect(folioDe(42)).toBe('OS-000042');
+  });
+});
+
+describe('etapa 2: código y autorización al cerrar', () => {
+  it('una orden programada de mantenimiento no cierra sin código validado', () => {
+    const f = faltantesParaCerrar(orden({ origen: 'crm', codigoValidado: false }), completas, archivos, catalogo);
+    expect(f).toContain('Falta validar el código de verificación con el operador');
+    expect(faltantesParaCerrar(orden({ origen: 'crm', codigoValidado: true }), completas, archivos, catalogo)).toEqual([]);
+  });
+
+  it('las órdenes de la etapa 1 (sin origen) y las altas no piden código', () => {
+    expect(faltantesParaCerrar(orden({ origen: null }), completas, archivos, catalogo)).toEqual([]);
+    const alta = orden({ tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 3, origen: 'next' });
+    expect(faltantesParaCerrar(alta, completas, archivos, catalogo)).toEqual([]);
+  });
+
+  it('una autorización pendiente impide cerrar', () => {
+    const alta = orden({ tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 3, autorizacion: 'pendiente' });
+    expect(faltantesParaCerrar(alta, completas, archivos, catalogo)).toEqual([
+      'La desinstalación del equipo existente está pendiente de autorización',
+    ]);
+  });
+});
+
+describe('etapa 2: reglas puras', () => {
+  it('en campo el tipo cambia solo entre mantenimientos', () => {
+    expect(cambioDeTipoPermitido('revision', 'c_equipo')).toBe(true);
+    expect(cambioDeTipoPermitido('instalacion', 'instalacion')).toBe(true);
+    expect(cambioDeTipoPermitido('instalacion', 'revision')).toBe(false);
+    expect(cambioDeTipoPermitido('desinstalacion', 'instalacion')).toBe(false);
+  });
+
+  it('el motivo debe aplicar al resultado y al actor', () => {
+    const m = { clave: 'cliente_ausente', resultado: 'no_cumplida', quien: 'tecnico,operacion', estatus: 1 };
+    expect(motivoPermitido(m, 'no_cumplida', 'tecnico')).toBeNull();
+    expect(motivoPermitido(m, 'cancelada', 'tecnico')).toMatch(/no aplica/);
+    expect(motivoPermitido(m, 'no_cumplida', 'crm')).toMatch(/no lo puede aplicar crm/);
+    expect(motivoPermitido({ ...m, estatus: 0 }, 'no_cumplida', 'tecnico')).toMatch(/no está activo/);
+    expect(motivoPermitido(null, 'no_cumplida', 'tecnico')).toMatch(/no existe/);
+  });
+
+  it('estado del código según vigencia e intentos', () => {
+    const ahora = new Date('2026-10-30T10:00:00Z');
+    const vigente = { codigo: '123456', codigoExpira: new Date('2026-10-30T10:10:00Z'), codigoIntentos: 0 };
+    expect(estadoCodigo(vigente, ahora)).toBe('vigente');
+    expect(estadoCodigo({ ...vigente, codigoExpira: new Date('2026-10-30T09:59:00Z') }, ahora)).toBe('vencido');
+    expect(estadoCodigo({ ...vigente, codigoIntentos: 5 }, ahora)).toBe('agotado');
+    expect(estadoCodigo({ codigo: null, codigoExpira: null, codigoIntentos: 0 }, ahora)).toBe('sin_codigo');
   });
 });

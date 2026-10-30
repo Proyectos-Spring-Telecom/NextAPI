@@ -21,11 +21,38 @@ export const SECCIONES_RESPUESTA = [
 ] as const;
 export const SECCIONES_ARCHIVO = ['fotos', 'firmas'] as const;
 
+/**
+ * programada (CRM u operación) → borrador (el técnico la inició) → cerrada |
+ * no_cumplida; cancelada antes de iniciar o por operación. Ver
+ * docs/ordenes-servicio.md §12.7.
+ */
 export const ESTATUS_ORDEN = {
+  PROGRAMADA: 'programada',
   BORRADOR: 'borrador',
   CERRADA: 'cerrada',
+  NO_CUMPLIDA: 'no_cumplida',
   CANCELADA: 'cancelada',
 } as const;
+
+/** Quién programó la orden: el CRM por API o la operación desde el front. */
+export const ORIGEN_ORDEN = { CRM: 'crm', NEXT: 'next' } as const;
+
+/** Autorización de desinstalar un equipo existente antes de un alta (§12.6). */
+export const AUTORIZACION = {
+  PENDIENTE: 'pendiente',
+  AUTORIZADA: 'autorizada',
+  RECHAZADA: 'rechazada',
+} as const;
+
+/** Quién aplica un motivo de no cumplida o cancelación (columna `Quien`). */
+export const ACTOR_MOTIVO = { TECNICO: 'tecnico', OPERACION: 'operacion', CRM: 'crm' } as const;
+export type ActorMotivo = (typeof ACTOR_MOTIVO)[keyof typeof ACTOR_MOTIVO];
+
+/** Motivo con el que se cierra sola una orden cuya desinstalación se rechazó. */
+export const MOTIVO_SIN_AUTORIZACION = 'sin_autorizacion_desinstalacion';
+
+/** Código de verificación de mantenimientos (§12.5). */
+export const CODIGO = { DIGITOS: 6, VIGENCIA_MIN: 15, INTENTOS: 5 } as const;
 
 /** Desinstalación: la instalación queda inactiva (0) o inservible (5). */
 export const ESTATUS_BAJA_PERMITIDOS = [0, 5] as const;
@@ -46,6 +73,10 @@ export interface OrdenParaCierre {
   estatusInstalacionBaja: number | null;
   idMonitorista: number | null;
   observaciones: string | null;
+  /** Etapa 2: solo las órdenes programadas (con origen) exigen el código. */
+  origen?: string | null;
+  codigoValidado?: boolean;
+  autorizacion?: string | null;
 }
 
 export function esTipoServicio(value: unknown): value is TipoServicio {
@@ -55,6 +86,54 @@ export function esTipoServicio(value: unknown): value is TipoServicio {
 /** Alta: la instalación nace al cerrar. Los demás tipos atienden una existente. */
 export function requiereInstalacionExistente(tipo: TipoServicio): boolean {
   return tipo !== 'instalacion';
+}
+
+/** Mantenimientos: atienden un vehículo con equipo y piden código de verificación. */
+export function esMantenimiento(tipo: string): boolean {
+  return esTipoServicio(tipo) && tipo !== 'instalacion';
+}
+
+/**
+ * En campo el técnico confirma o corrige el tipo programado, pero no cruza
+ * entre alta y mantenimiento: eso es otro trabajo y lo programa operación.
+ */
+export function cambioDeTipoPermitido(programado: string, real: string): boolean {
+  return programado === real || (esMantenimiento(programado) && esMantenimiento(real));
+}
+
+export interface MotivoCatalogo {
+  clave: string;
+  resultado: string;
+  quien: string;
+  estatus: number;
+}
+
+/** El motivo existe, está activo, lleva a ese resultado y ese actor lo puede usar. */
+export function motivoPermitido(
+  motivo: MotivoCatalogo | null | undefined,
+  resultado: 'no_cumplida' | 'cancelada',
+  actor: ActorMotivo,
+): string | null {
+  if (!motivo || Number(motivo.estatus) !== 1) return 'El motivo no existe o no está activo';
+  const resultados = motivo.resultado.split(',').map((r) => r.trim());
+  if (!resultados.includes(resultado)) {
+    return `El motivo ${motivo.clave} no aplica a una orden ${resultado}`;
+  }
+  const actores = motivo.quien.split(',').map((q) => q.trim());
+  if (!actores.includes(actor)) {
+    return `El motivo ${motivo.clave} no lo puede aplicar ${actor}`;
+  }
+  return null;
+}
+
+/** Estado del código de verificación a una hora dada. */
+export function estadoCodigo(
+  o: { codigo: string | null; codigoExpira: Date | null; codigoIntentos: number | null },
+  ahora: Date,
+): 'sin_codigo' | 'vigente' | 'vencido' | 'agotado' {
+  if (!o.codigo || !o.codigoExpira) return 'sin_codigo';
+  if (Number(o.codigoIntentos ?? 0) >= CODIGO.INTENTOS) return 'agotado';
+  return o.codigoExpira.getTime() > ahora.getTime() ? 'vigente' : 'vencido';
 }
 
 /**
@@ -141,6 +220,14 @@ export function faltantesParaCerrar(
   }
   if (requiereInstalacionExistente(tipo) && orden.idInstalacion == null) {
     faltan.push('Falta la instalación atendida (idInstalacion)');
+  }
+  // Las órdenes que la app crea sola (sin origen, etapa 1) no piden código
+  // mientras la app migra a programada + iniciar.
+  if (orden.origen && esMantenimiento(tipo) && !orden.codigoValidado) {
+    faltan.push('Falta validar el código de verificación con el operador');
+  }
+  if (orden.autorizacion === AUTORIZACION.PENDIENTE) {
+    faltan.push('La desinstalación del equipo existente está pendiente de autorización');
   }
   return faltan;
 }

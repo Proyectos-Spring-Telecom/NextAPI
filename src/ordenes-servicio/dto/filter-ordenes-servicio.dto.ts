@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional } from 'class-validator';
-import { ESTATUS_ORDEN, TIPOS_SERVICIO } from '../ordenes-servicio.reglas';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ESTATUS_ORDEN, ORIGEN_ORDEN, TIPOS_SERVICIO } from '../ordenes-servicio.reglas';
 
 export class FilterOrdenesServicioDto {
   @ApiPropertyOptional()
@@ -37,4 +37,15 @@ export class FilterOrdenesServicioDto {
   @IsOptional()
   @IsIn(Object.values(ESTATUS_ORDEN))
   estatus?: string;
+
+  @ApiPropertyOptional({ enum: Object.values(ORIGEN_ORDEN), description: 'Quién programó la orden' })
+  @IsOptional()
+  @IsIn(Object.values(ORIGEN_ORDEN))
+  origen?: string;
+
+  @ApiPropertyOptional({ description: 'Referencia de la orden en el CRM' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  referenciaCrm?: string;
 }

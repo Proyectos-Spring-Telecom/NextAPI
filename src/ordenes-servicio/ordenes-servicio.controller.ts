@@ -29,12 +29,25 @@ import { EnumRoles } from 'src/common/estatus.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
+import {
+  CancelarOrdenDto,
+  DecisionAutorizacionDto,
+  IniciarOrdenDto,
+  MotivoOrdenDto,
+  ProgramarOrdenDto,
+  ReprogramarOrdenDto,
+  SolicitarAutorizacionDto,
+  ValidarCodigoDto,
+} from './dto/flujo-orden-servicio.dto';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
 import { OrdenesServicioService } from './ordenes-servicio.service';
+import { OrdenesFlujoService, ROLES_AUTORIZAN, ROLES_CODIGO } from './ordenes-flujo.service';
 
 const ESCRIBEN = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.TECNICO];
 const LEEN = [...ESCRIBEN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO];
+/** Programan, reprograman y cancelan desde el front: administración. */
+const OPERACION = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
 const uploadMax = Number(process.env.UPLOAD_MAX_SIZE) || 10 * 1024 * 1024;
 
 @ApiTags('Órdenes de servicio')
@@ -42,7 +55,10 @@ const uploadMax = Number(process.env.UPLOAD_MAX_SIZE) || 10 * 1024 * 1024;
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('ordenes-servicio')
 export class OrdenesServicioController {
-  constructor(private readonly service: OrdenesServicioService) {}
+  constructor(
+    private readonly service: OrdenesServicioService,
+    private readonly flujo: OrdenesFlujoService,
+  ) {}
 
   @Get('catalogo')
   @Roles(...LEEN)
@@ -55,12 +71,52 @@ export class OrdenesServicioController {
     return this.service.catalogo();
   }
 
+  @Get('motivos')
+  @Roles(...LEEN)
+  @ApiOperation({
+    summary: 'Motivos de no cumplida y cancelación',
+    description: 'Catálogo homologado entre la app, el front y el CRM: a qué resultado lleva, quién lo aplica y si es cobrable por defecto.',
+  })
+  motivos() {
+    return this.flujo.motivos();
+  }
+
+  @Get('codigos-pendientes')
+  @Roles(...ROLES_CODIGO)
+  @ApiOperation({
+    summary: 'Códigos de verificación por dictar',
+    description: 'Mantenimientos con código vigente, con cliente, placa, económico y técnico. El código se abre con POST /:id/codigo/ver.',
+  })
+  codigosPendientes() {
+    return this.flujo.codigosPendientes();
+  }
+
+  @Get('autorizaciones-pendientes')
+  @Roles(...ROLES_CODIGO)
+  @ApiOperation({ summary: 'Altas que esperan autorización para desinstalar el equipo existente' })
+  autorizacionesPendientes() {
+    return this.flujo.autorizacionesPendientes();
+  }
+
+  @Post('programar')
+  @Roles(...OPERACION)
+  @ApiOperation({
+    summary: 'Programar orden(es) desde el front (operación)',
+    description:
+      'Para trabajos que no pasan por el CRM. Queda con origen `next`; el CRM la recibe en su consulta de cambios para pagarla y cobrarla. ' +
+      'Alta de N unidades = N órdenes independientes.',
+  })
+  programar(@Body() dto: ProgramarOrdenDto, @Request() req) {
+    return this.flujo.programar(dto, { tipo: 'usuario', user: req.user });
+  }
+
   @Get('paginado/:page/:limit')
   @Roles(...LEEN)
   @ApiOperation({
     summary: 'Órdenes de servicio paginadas',
     description:
-      'Filtros opcionales por query. `idProducto` da el historial completo de la unidad. El técnico (rol 8) solo ve sus órdenes.',
+      'Filtros opcionales por query. `idProducto` da el historial completo de la unidad. El técnico (rol 8) solo ve sus órdenes. ' +
+      'Con `estatus=programada` se ordena por cita (la agenda del técnico).',
   })
   findPaginado(
     @Param('page', ParseIntPipe) page: number,
@@ -74,11 +130,12 @@ export class OrdenesServicioController {
   @Post()
   @Roles(...ESCRIBEN)
   @ApiOperation({
-    summary: 'Iniciar orden de servicio (borrador)',
+    summary: 'Crear orden en borrador desde la app (etapa 1, en transición)',
     description:
       'Crea la orden en `borrador` con folio `OS-000001`. El técnico es el usuario del token. ' +
       'El cliente debe existir y estar activo. `idInstalacion` es obligatorio salvo en `instalacion` (alta). ' +
-      'Idempotente por `claveApp`: reenviar con la misma clave devuelve la orden existente.',
+      'Idempotente por `claveApp`: reenviar con la misma clave devuelve la orden existente. ' +
+      'En la etapa 2 la app usa las órdenes programadas y POST /:id/iniciar.',
   })
   @ApiResponse({ status: 201, description: 'Orden creada (o existente con la misma claveApp)' })
   create(@Body() dto: CreateOrdenServicioDto, @Request() req): Promise<ApiCrudResponse> {
@@ -144,10 +201,124 @@ export class OrdenesServicioController {
 
   @Post(':id/cancelar')
   @Roles(...ESCRIBEN)
-  @ApiOperation({ summary: 'Cancelar orden en borrador (no toca la instalación)' })
+  @ApiOperation({
+    summary: 'Cancelar orden',
+    description:
+      'Programada: operación, con `claveMotivo`. Iniciada: solo operación (el técnico usa no cumplida). ' +
+      'Las órdenes de la etapa 1 (sin origen) el técnico las cancela en borrador sin motivo. No toca la instalación.',
+  })
   @ApiParam({ name: 'id' })
-  cancelar(@Param('id', ParseIntPipe) id: number, @Request() req): Promise<ApiCrudResponse> {
-    return this.service.cancelar(id, req.user);
+  cancelar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CancelarOrdenDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.cancelar(id, dto ?? {}, { tipo: 'usuario', user: req.user });
+  }
+
+  @Patch(':id/reprogramar')
+  @Roles(...OPERACION)
+  @ApiOperation({ summary: 'Reprogramar cita, técnico o vehículo (solo `programada`)' })
+  @ApiParam({ name: 'id' })
+  reprogramar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReprogramarOrdenDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.reprogramar(id, dto, { tipo: 'usuario', user: req.user });
+  }
+
+  @Post(':id/iniciar')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({
+    summary: 'Iniciar en campo una orden programada',
+    description:
+      'Pasa a `borrador`. El técnico confirma o corrige el tipo (solo entre mantenimientos) y el vehículo; se guarda lo programado y lo real. ' +
+      'Idempotente por `claveApp`.',
+  })
+  @ApiParam({ name: 'id' })
+  iniciar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: IniciarOrdenDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.iniciar(id, dto, req.user);
+  }
+
+  @Post(':id/codigo')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({
+    summary: 'Pedir código de verificación (mantenimientos)',
+    description: '6 dígitos, 15 min, 5 intentos. Lo ve cualquier operador en turno; el técnico lo recibe dictado.',
+  })
+  @ApiParam({ name: 'id' })
+  solicitarCodigo(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.flujo.solicitarCodigo(id, req.user);
+  }
+
+  @Post(':id/codigo/ver')
+  @Roles(...ROLES_CODIGO)
+  @ApiOperation({ summary: 'Ver el código para dictarlo (registra quién lo vio)' })
+  @ApiParam({ name: 'id' })
+  verCodigo(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.flujo.verCodigo(id, req.user);
+  }
+
+  @Post(':id/codigo/validar')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({ summary: 'Validar el código dictado por el operador' })
+  @ApiParam({ name: 'id' })
+  validarCodigo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ValidarCodigoDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.validarCodigo(id, dto, req.user);
+  }
+
+  @Post(':id/autorizacion')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({
+    summary: 'Pedir autorización para desinstalar el equipo existente (alta)',
+    description: 'La orden no se puede cerrar hasta la decisión. Foto con la clave `equipo_existente`.',
+  })
+  @ApiParam({ name: 'id' })
+  solicitarAutorizacion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SolicitarAutorizacionDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.solicitarAutorizacion(id, dto, req.user);
+  }
+
+  @Post(':id/autorizacion/decision')
+  @Roles(...ROLES_AUTORIZAN)
+  @ApiOperation({
+    summary: 'Autorizar o rechazar la desinstalación',
+    description: 'Autorizada: al cerrar se da de baja la instalación existente y se hace el alta. Rechazada: la orden queda no cumplida, cobrable.',
+  })
+  @ApiParam({ name: 'id' })
+  decidirAutorizacion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DecisionAutorizacionDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.decidirAutorizacion(id, dto, { tipo: 'usuario', user: req.user });
+  }
+
+  @Post(':id/no-cumplida')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({
+    summary: 'Cerrar sin hacer el trabajo, con motivo',
+    description: 'Técnico u operación. El motivo define si es cobrable; solo operación lo puede cambiar (`cobrable`).',
+  })
+  @ApiParam({ name: 'id' })
+  noCumplida(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MotivoOrdenDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.noCumplida(id, dto, req.user);
   }
 
   @Get(':id')

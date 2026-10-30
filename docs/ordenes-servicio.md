@@ -4,7 +4,7 @@
 **DDL:** `deploy/sql/OrdenesServicio.sql`. **Contrato resumido:** [contratos.md §14.1](contratos.md).
 **Código:** `src/ordenes-servicio/` y `src/instalaciones/instalaciones.service.ts`.
 
-> **Etapa 2 en diseño (§12, sin implementar):** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. Las §1–§11 describen lo que ya está desplegado.
+> **Etapa 2 (§12) implementada en `dev-isra` el 29/10/2026, pendiente de desplegar:** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`. Las §1–§11 describen la etapa 1, ya desplegada.
 
 ## 1. Objetivo
 
@@ -246,9 +246,9 @@ Verificación: existen las 4 tablas y el catálogo tiene 24 filas (5/4/5/3/5/2 p
 
 ---
 
-## 12. Etapa 2 — órdenes desde el CRM, código, autorización y no cumplida (DISEÑO, sin implementar)
+## 12. Etapa 2 — órdenes desde el CRM, código, autorización y no cumplida
 
-**Estado:** propuesta acordada en lo general con Israel el 29/10/2026. Está para que la revisen el front de Next, la App y el CRM antes de escribir código. Las preguntas abiertas están en §12.12.
+**Estado:** diseño revisado e **implementado** en `dev-isra` el 29/10/2026; falta desplegarlo (§12.13). Código: `src/ordenes-servicio/ordenes-flujo.service.ts` (flujo), `integracion-ordenes.controller.ts` + `crm-hmac.guard.ts` (CRM), reglas puras en `ordenes-servicio.reglas.ts`. Lo que quedó distinto del diseño original está marcado como **(implementado)**.
 
 ### 12.1 Quién hace qué
 
@@ -272,7 +272,8 @@ Principios:
 ### 12.3 Origen y unidades
 
 - `Origen`: `crm` (programada por el CRM vía API) o `next` (programada por operación en el front). Las órdenes de operación cubren casos como falta de técnico, de equipo o de señal, o un técnico eventual. El CRM las recibe en la consulta de cambios (§12.9) para pagarlas y cobrarlas.
-- **Instalación nueva de N unidades:** el CRM manda una sola petición con `unidades: N` y Next crea N órdenes `programada` independientes. Todas llevan el mismo `IdOrdenCrm` y su `Unidad` (1..N). El CRM cuenta las que se cerraron por `IdOrdenCrm`; no hay grupos que mantener.
+- **Instalación nueva de N unidades:** el CRM manda una sola petición con `unidades: N` y Next crea N órdenes `programada` independientes. Todas llevan la misma `referenciaCrm` y su `unidad` (1..N). El CRM cuenta las que se cerraron por `referenciaCrm`; no hay grupos que mantener.
+- **(implementado) `referenciaCrm` es texto, no un Id numérico:** el CRM tiene tablas distintas para instalaciones y (en el futuro) mantenimientos, y sus Id chocarían. Se recomienda un prefijo por tabla: `OI-123` para `OrdenesInstalacion`, `MT-45` para mantenimientos. La llave única (`referenciaCrm`, `unidad`) hace idempotente la programación.
 - **Mantenimiento:** el CRM levanta el servicio con el cliente, **el vehículo** (`idInstalacion`) y el **tipo probable** (`revision`, `c_sim`, `c_equipo`, `desinstalacion`), y asigna técnico.
 
 ### 12.4 Confirmar o corregir en campo
@@ -286,12 +287,14 @@ En campo, el técnico confirma o corrige lo que se programó:
 Sirve para asegurar que el técnico trabaja el vehículo correcto. Ocurre cuando el cliente tiene muchas unidades o hay varios servicios el mismo día.
 
 1. El técnico elige el vehículo en la App → `POST /:id/codigo`.
-2. NextAPI genera un código de **6 dígitos**, válido **15 min** y con **5 intentos**. Guarda solo su hash.
+2. NextAPI genera un código de **6 dígitos**, válido **15 min** y con **5 intentos**. **(implementado)** Se guarda en claro mientras está vigente, porque el operador lo tiene que leer para dictarlo; se borra al validarlo, al agotar los intentos o al cerrar la orden, y nunca sale en las respuestas que ve el técnico.
 3. **Cualquier operador en turno** (roles 3, 4, 5) lo ve en el front, en la lista de códigos pendientes con cliente, placa, económico y técnico. Al abrirlo se registra quién lo vio (`IdUsuarioCodigo`, `FechaCodigoVisto`).
 4. El operador se lo dicta al técnico, y éste lo captura → `POST /:id/codigo/validar`.
 5. Si es correcto, se guarda `FechaCodigoValidado` y la orden queda ligada a ese vehículo. Si vence o se agotan los intentos, se pide otro.
 
 **Aplica a:** `revision`, `c_sim`, `c_equipo` y `desinstalacion`. No se puede cerrar un mantenimiento sin código validado (se agrega a `faltantesParaCerrar`). **No aplica** a `instalacion`, porque el vehículo se captura ahí mismo.
+
+**(implementado) Transición:** el código solo se exige en las órdenes programadas (con `origen`). Las que la app sigue creando sola con `POST /` (etapa 1) cierran sin código mientras la app migra.
 
 ### 12.6 Instalación nueva sobre un vehículo con equipo
 
@@ -299,7 +302,7 @@ La negociación (y el sobreprecio) es de operación o administración, nunca del
 
 1. El técnico encuentra un equipo instalado → `POST /:id/autorizacion` con evidencia (foto del equipo existente). La orden queda con `Autorizacion = pendiente` y no se puede cerrar.
 2. La decisión la toma la operación en el front de Next o el CRM por API (`POST /:id/autorizacion/decision`). Se guarda quién decidió, cuándo y desde dónde.
-3. **Autorizada:** el técnico desinstala y sigue con el alta. Si el equipo existente está registrado en Next (instalación vigente en ese vehículo), el cierre aplica la baja de esa instalación y el alta nueva en la misma transacción. Hoy el alta se rechaza porque el producto está ASIGNADO (`validarProductoDisponibleParaAsignar`).
+3. **Autorizada:** el técnico desinstala y sigue con el alta. Si el equipo existente está registrado en Next (instalación vigente en ese vehículo), el cierre aplica la baja de esa instalación (estatus 0, con sus geocercas) y el alta nueva en la misma transacción, y guarda `idInstalacionRetirada`. Si es de terceros (no está en Next), solo queda la evidencia: observaciones y la foto `equipo_existente`.
 4. **Rechazada:** la orden se cierra como `no_cumplida` con motivo `sin_autorizacion_desinstalacion`, cobrable (el técnico sí cobra la visita).
 
 ### 12.7 Estados y motivos homologados
@@ -329,6 +332,8 @@ programada ──iniciar──► borrador ──cerrar──► cerrada
 | `borrador` | Cerrar | Sí | Sí (roles 1–3) | — |
 | `borrador` | No cumplida | Sí | Sí | — |
 | `borrador` | Cancelar | — | Sí, con motivo | **No:** responde 409 con el estado actual; el CRM pide a operación que la cierre |
+
+**(implementado) Roles:** "operación" en el front = roles 1–3 (programar, reprogramar, cancelar, no cumplida por otro y ajustar `cobrable`). Ver y dictar el código: roles 1–5 (cualquier operador en turno). Decidir la autorización: roles 1–4. Las órdenes de la etapa 1 (sin origen) el técnico las sigue cancelando en borrador sin motivo.
 
 Una vez iniciada, la orden solo la cierran el técnico o la operación, que es quien sabe qué pasó en campo. El CRM se entera por la consulta de cambios.
 
@@ -369,7 +374,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | `Estatus` | VARCHAR(12) | Agrega `programada` y `no_cumplida` |
 | `ClaveApp` | CHAR(36) | Pasa a ser NULL hasta que la App inicia la orden |
 | `Origen` | VARCHAR(5) | `crm` \| `next` |
-| `IdOrdenCrm` | BIGINT NULL | Id de `CRM.OrdenesInstalacion` (o del servicio de mantenimiento) |
+| `ReferenciaCrm` | VARCHAR(40) NULL | Referencia de la orden en el CRM (`OI-123`, `MT-45`); UQ con `Unidad` |
 | `Unidad` / `UnidadesTotal` | SMALLINT NULL | 1..N de la orden del CRM |
 | `IdOrdenOrigen` | BIGINT NULL | Orden no cumplida o cancelada que ésta reprograma |
 | `TipoProgramado` | VARCHAR(20) | Lo que se programó; `TipoServicio` queda como lo que se hizo |
@@ -377,32 +382,38 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | `Cita` / `CitaFin` | DATETIME NULL | Hora de Ciudad de México |
 | `IdTecnico` | BIGINT | Ahora se asigna al programar (ya no es solo el usuario del token) |
 | `IdUsuarioProgramo` | BIGINT NULL | Usuario de Next o del CRM que programó |
-| `CodigoHash`, `CodigoExpira`, `CodigoIntentos` | | Código vigente (§12.5) |
+| `Codigo`, `CodigoExpira`, `CodigoIntentos` | | Código vigente (§12.5) |
 | `IdUsuarioCodigo`, `FechaCodigoVisto`, `FechaCodigoValidado` | | Quién lo vio y cuándo se validó |
-| `Autorizacion` | VARCHAR(10) NULL | `pendiente` \| `autorizada` \| `rechazada` |
-| `IdUsuarioAutorizo`, `FechaAutorizacion`, `OrigenAutorizacion` | | `OrigenAutorizacion`: `next` \| `crm` |
+| `FechaInicio` | DATETIME NULL | Cuando el técnico la inició |
+| `Autorizacion`, `FechaSolicitudAutorizacion` | | `pendiente` \| `autorizada` \| `rechazada` |
+| `IdUsuarioAutorizo`, `NombreAutorizo`, `FechaAutorizacion`, `OrigenAutorizacion` | | `OrigenAutorizacion`: `next` \| `crm`. Del CRM: `IdUsuarioAutorizo` NULL y `NombreAutorizo = "CRM: <usuario>"` |
+| `IdInstalacionRetirada` | BIGINT NULL | Instalación de Next dada de baja al cerrar un alta autorizada |
 | `ClaveMotivo` | VARCHAR(40) NULL | → `CatMotivosOrdenServicio` (no cumplida o cancelada) |
 | `Cobrable` | TINYINT NULL | 1/0; nace del motivo y operación lo puede ajustar |
 
-Índices nuevos: `IdOrdenCrm`, (`IdTecnico`, `Estatus`, `Cita`), `FechaActualizacion` (para la consulta de cambios).
+Índices nuevos: UQ (`ReferenciaCrm`, `Unidad`), (`IdTecnico`, `Estatus`, `Cita`), `FechaActualizacion` (para la consulta de cambios). Catálogo nuevo `CatMotivosOrdenServicio` (13 motivos) y foto opcional `equipo_existente` en `CatOrdenServicioOpciones`.
 
 ### 12.9 Endpoints nuevos
 
-**Para el CRM** (`/api/integracion/ordenes-servicio`; firma HMAC con el mismo esquema que el CRM ya usa con springContactAPI; solo desde la red interna):
+**Para el CRM** (`/api/integracion/ordenes-servicio`; solo desde la red interna). **Firma (implementado):** el mismo esquema que el CRM ya usa con springContactAPI. Headers `x-crm-timestamp` (ms) y `x-crm-signature` = HMAC-SHA256 hex de `${timestamp}.${cuerpo}` con `CRM_HMAC_SECRET`; en un GET (sin cuerpo) se firma `${METODO} ${ruta}` (`GET /integracion/ordenes-servicio/cambios?desde=…`, con o sin `/api`). Tolerancia de 5 min. Sin `CRM_HMAC_SECRET` responde 503.
 
 | Método | Ruta | Uso |
 |--------|------|-----|
-| POST | `/` | Programar: `{ idOrdenCrm, idCliente, tipo, unidades?, idInstalacion?, cita, citaFin?, idTecnico }` → N órdenes `programada`. Idempotente por (`idOrdenCrm`, `unidad`) |
+| POST | `/` | Programar: `{ referenciaCrm, idCliente, tipo, unidades?, idInstalacion?, cita, citaFin?, idTecnico, idOrdenOrigen?, observaciones?, usuario? }` → N órdenes `programada`. Idempotente por (`referenciaCrm`, `unidad`) |
 | PATCH | `/:id` | Reprogramar cita o técnico; solo en `programada` (si no, 409 con el estado) |
 | POST | `/:id/cancelar` | `{ claveMotivo, observaciones? }`; solo en `programada` |
 | POST | `/:id/autorizacion/decision` | `{ autorizada: bool, observaciones? }` |
-| GET | `/cambios?desde=<fecha>` | Órdenes creadas o modificadas desde esa fecha, de cualquier origen, con estado, tipo programado y real, motivo, cobrable, técnico, `idInstalacionResultado` y fechas. Reemplaza la lectura directa de la base y la liga por aproximación |
+| GET | `/cambios?desde=<fecha>&limite=200` | Órdenes creadas o modificadas desde esa fecha (inclusive), de cualquier origen, con estado, tipo programado y real, motivo, cobrable, técnico, `idInstalacionResultado` y fechas. Devuelve `hasta` (pasarlo como `desde` la siguiente vez; deduplicar por `id`) y `hayMas`. Reemplaza la lectura directa de la base y la liga por aproximación |
+| GET | `/motivos` | El catálogo de motivos |
+
+`usuario` (opcional en todas las escrituras) es el nombre del usuario del CRM, para el registro. Con `CRM_ID_USUARIO` (Id de un usuario de Next) las acciones del CRM también quedan en la bitácora.
 
 **Para la App** (`/api/ordenes-servicio`, rol 8):
 
 | Método | Ruta | Uso |
 |--------|------|-----|
-| GET | `/paginado/...?estatus=programada` | Sus órdenes programadas (ya filtra por técnico) |
+| GET | `/paginado/...?estatus=programada` | Sus órdenes programadas (ya filtra por técnico), ordenadas por cita |
+| GET | `/motivos` | Motivos para no cumplida |
 | POST | `/:id/iniciar` | `{ claveApp, tipoServicio, idInstalacion? }` → `borrador`. Sustituye a `POST /` para el técnico |
 | POST | `/:id/codigo` y `/:id/codigo/validar` | §12.5 |
 | POST | `/:id/autorizacion` | §12.6 |
@@ -412,20 +423,24 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 
 | Método | Ruta | Uso |
 |--------|------|-----|
-| POST | `/programar` | Operación programa una orden (`Origen = next`) |
+| POST | `/programar` | Operación programa una orden (`Origen = next`); mismo cuerpo que el del CRM sin `referenciaCrm` |
+| PATCH | `/:id/reprogramar` | Cita, técnico o vehículo; solo `programada` |
 | GET | `/codigos-pendientes` | Códigos vigentes para dictar |
 | POST | `/:id/codigo/ver` | Muestra el código y registra quién lo vio |
 | GET | `/autorizaciones-pendientes` | Desinstalaciones por decidir |
 | POST | `/:id/autorizacion/decision` | Igual que el del CRM, desde el front |
-| POST | `/:id/cancelar`, `/:id/no-cumplida` | Con motivo |
+| POST | `/:id/cancelar`, `/:id/no-cumplida` | Con motivo (`claveMotivo`, `observaciones?`, `cobrable?`) |
+
+Filtros nuevos en `GET /paginado`: `origen`, `referenciaCrm`. Las respuestas de la orden agregan: `origen`, `referenciaCrm`, `unidad`, `unidadesTotal`, `idOrdenOrigen`, `tipoProgramado`, `idInstalacionProgramada`, `tipoDistinto`, `vehiculoDistinto`, `cita`, `citaFin`, `nombreProgramo`, `fechaInicio`, `codigoValidado`, `autorizacion`, `nombreAutorizo`, `fechaAutorizacion`, `idInstalacionRetirada`, `claveMotivo`, `cobrable`, `fechaActualizacion`.
 
 **Transición:** `POST /` (el técnico crea el borrador él mismo) se mantiene mientras la App migra a `programada` + `iniciar`. Después queda solo para los roles 1–3.
 
 ### 12.10 Cambios en el CRM (referencia; se hacen en `crmAPI`)
 
 - Al formalizar la venta: alta del cliente en Next por API y guardar `IdClienteNext` (ya existe la columna).
-- Al agendar: `POST /integracion/ordenes-servicio` con `IdOrdenInstalacion` como `idOrdenCrm`. Al reprogramar o cancelar la cita, `PATCH` o `cancelar`.
-- `sincronizarConApp` deja de emparejar por aproximación: lee `GET /cambios` y liga por `idOrdenCrm`. Las órdenes con `Origen = next` llegan sin `idOrdenCrm`, y el CRM las registra para pagarlas y cobrarlas.
+- Al agendar: `POST /integracion/ordenes-servicio` con `referenciaCrm = "OI-<IdOrdenInstalacion>"`. Guardar los Id devueltos (ya existe `OrdenesInstalacionApp.IdOrdenServicioNext`). Al reprogramar o cancelar la cita, `PATCH` o `cancelar`.
+- `sincronizarConApp` deja de emparejar por aproximación: lee `GET /cambios` y liga por `referenciaCrm`. Las órdenes con `origen = next` llegan sin `referenciaCrm`, y el CRM las registra para pagarlas y cobrarlas.
+- Configurar en `crmAPI` la URL de NextAPI por localhost (`http://127.0.0.1:3004/api`) y el mismo secreto que `CRM_HMAC_SECRET` de NextAPI.
 - `PagosInstaladorDetalle` toma también las `no_cumplida` con `cobrable = 1`.
 - `OrdenesInstalacion.Tecnico` (texto libre) se reemplaza por `IdTecnicoNext`.
 
@@ -440,9 +455,27 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 - "Reasignar" en la fila de instalación es del **dispositivo**: debe usar `PATCH /instalaciones/:id` (cambio con histórico). Ese cambio crea un Id nuevo y **borra las geocercas** de la versión anterior, así que hay que avisarlo en pantalla. No debe usar la reasignación de cliente de `/dispositivos`.
 - En Next, estatus 1 de equipo o SIM significa *disponible en almacén*; instalado y operando es **2 ASIGNADO**.
 
-### 12.12 Preguntas abiertas
+### 12.12 Decisiones tomadas al implementar (ajustables)
 
-1. **Equipo existente de terceros (§12.6):** si no está registrado en Next, el cierre solo deja evidencia (foto). ¿Hace falta registrar marca o modelo del equipo retirado?
-2. **Motivos (§12.7):** validar la lista y los valores de `Cobrable` marcados con "?".
-3. **Mantenimientos del CRM:** confirmar cómo nace el servicio en el CRM (hoy `OrdenesInstalacion` solo cubre instalaciones) y qué Id manda como `idOrdenCrm`.
-4. **Códigos:** confirmar 6 dígitos, 15 min y 5 intentos, y si el front avisa con sonido o notificación al llegar uno nuevo.
+1. **Equipo de terceros (§12.6):** solo evidencia (observaciones + foto `equipo_existente`); no se registra marca ni modelo.
+2. **Motivos (§12.7):** los "?" quedaron así en el catálogo: `sin_senal` cobrable, `vehiculo_equivocado` no cobrable, `otro` no cobrable (operación lo ajusta). Se cambian con `UPDATE CatMotivosOrdenServicio`, sin publicar código.
+3. **Mantenimientos del CRM:** `referenciaCrm` de texto (`MT-<id>`), para cuando el CRM tenga su tabla de mantenimientos.
+4. **Código:** 6 dígitos, 15 min, 5 intentos (`CODIGO` en `ordenes-servicio.reglas.ts`). El aviso con sonido queda a cargo del front (consultar `GET /codigos-pendientes` cada pocos segundos mientras la pantalla está abierta).
+
+### 12.13 Despliegue (springfieldDev)
+
+1. `git pull` de `dev-isra`.
+2. SQL (idempotente; probado dos veces seguidas sobre una copia del esquema): `mysql -u root -p Next < deploy/sql/OrdenesServicioEtapa2.sql`.
+3. `.env` de NextAPI: `CRM_HMAC_SECRET` (mín. 16 caracteres, el mismo que se configure en `crmAPI`) y, opcional, `CRM_ID_USUARIO` (usuario de Next para la bitácora del CRM). Sin el secreto, `/api/integracion/*` responde 503 y lo demás funciona igual.
+4. Nginx: no publicar `/api/integracion/` (el CRM llama por localhost), igual que ya se hace con `/crmAPI/integracion/`.
+5. `npm run build && sudo systemctl restart nextAPI.service`.
+
+Verificación: 13 filas en `CatMotivosOrdenServicio`, 25 en `CatOrdenServicioOpciones`; `GET /api/ordenes-servicio/motivos` con un JWT responde el catálogo.
+
+### 12.14 Pruebas
+
+- `ordenes-servicio.reglas.spec.ts`: código y autorización en `faltantesParaCerrar`, cambio de tipo, motivos, estado del código.
+- `ordenes-flujo.service.spec.ts`: programar N unidades e idempotencia, iniciar con corrección, código (ver, validar, agotar), autorización (rechazo → no cumplida), no cumplida y cobro, cancelar (CRM con 409, etapa 1).
+- `ordenes-servicio.service.spec.ts`: cierre de un alta autorizada (baja + alta en la misma transacción) y mantenimiento sin código.
+- `crm-hmac.guard.spec.ts`: firma de POST y GET (con y sin `/api`), timestamp vencido, secreto ausente.
+- Resultado: 28 suites y 195 pruebas pasan; `nest build` OK.

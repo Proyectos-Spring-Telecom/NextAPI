@@ -14,11 +14,17 @@ const respuestas = [{ seccion: 'pruebas', clave: 'transmision', valor: 1 }];
 const archivos = [{ clave: 'firma_cliente' }];
 const tecnico = { userId: 50, idCliente: 1, rol: 8 };
 
-function build(orden: Record<string, unknown>, extra: { instalacionVigente?: boolean } = {}) {
+function build(
+  orden: Record<string, unknown>,
+  extra: { instalacionVigente?: boolean; equipoExistente?: boolean } = {},
+) {
   const updates: Array<Record<string, unknown>> = [];
   const manager = {
-    findOne: jest.fn(async (entity: { name: string }, opts: { where: { id: number } }) => {
+    findOne: jest.fn(async (entity: { name: string }, opts: { where: { id?: number; idProducto?: number } }) => {
       if (entity.name === 'OrdenesServicio') return orden;
+      if (entity.name === 'Instalaciones' && opts.where.idProducto != null) {
+        return extra.equipoExistente ? { id: 40, idProducto: opts.where.idProducto } : null;
+      }
       if (entity.name === 'Instalaciones') {
         if (opts.where.id === 99) return { id: 99, idHistoricoInstalacion: 777 };
         return extra.instalacionVigente === false ? null : { id: opts.where.id };
@@ -141,5 +147,31 @@ describe('OrdenesServicioService.cerrar', () => {
   it('otro técnico no puede cerrarla', async () => {
     const { service } = build({ ...base, tipoServicio: 'revision' });
     await expect(service.cerrar(1, { userId: 51, idCliente: 1, rol: 8 })).rejects.toThrow('no encontrada');
+  });
+
+  it('alta autorizada sobre un vehículo con equipo: baja de la existente y alta en la misma transacción', async () => {
+    const { service, qr, instalaciones, updates } = build(
+      { ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', origen: 'crm' },
+      { equipoExistente: true },
+    );
+    await service.cerrar(1, tecnico);
+    expect(instalaciones.baja).toHaveBeenCalledWith(40, expect.objectContaining({ estatusInstalacion: 0 }), 1, 8, 50, qr);
+    expect(instalaciones.baja.mock.invocationCallOrder[0]).toBeLessThan(instalaciones.create.mock.invocationCallOrder[0]);
+    expect(updates[0]).toMatchObject({ estatus: 'cerrada', idInstalacionResultado: 98, idInstalacionRetirada: 40 });
+  });
+
+  it('alta autorizada con equipo de terceros (no registrado en Next): solo el alta', async () => {
+    const { service, instalaciones, updates } = build({
+      ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', origen: 'crm',
+    });
+    await service.cerrar(1, tecnico);
+    expect(instalaciones.baja).not.toHaveBeenCalled();
+    expect(updates[0]).toMatchObject({ idInstalacionRetirada: null });
+  });
+
+  it('mantenimiento programado sin código validado: 400', async () => {
+    const { service, qr } = build({ ...base, tipoServicio: 'revision', origen: 'crm', fechaCodigoValidado: null });
+    await expect(service.cerrar(1, tecnico)).rejects.toThrow(BadRequestException);
+    expect(qr.commitTransaction).not.toHaveBeenCalled();
   });
 });

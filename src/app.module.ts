@@ -111,6 +111,9 @@ import * as jwt from 'jsonwebtoken';
         TRACKCAM_GATEWAY_URL: Joi.string().allow('').default(''),
         GATEWAY_HMAC_SECRET: Joi.string().min(16).required(),
         GATEWAY_API_KEY: Joi.string().allow('').optional(),
+        // Integración CRM → órdenes de servicio (vacío = /integracion responde 503).
+        CRM_HMAC_SECRET: Joi.string().allow('').default(''),
+        CRM_ID_USUARIO: Joi.number().integer().optional(),
         SIA_OFFLINE_THRESHOLD_MS: Joi.number().default(600000),
         RABBITMQ_ENABLED: Joi.boolean().default(false),
         RABBITMQ_HOST: Joi.string().default('127.0.0.1'),

@@ -582,6 +582,8 @@ La orden guarda `idInstalacion` (atendida), `idInstalacionResultado` (vigente de
 
 **Tablas**: `OrdenesServicio`, `OrdenServicioRespuestas`, `OrdenServicioArchivos`, `CatOrdenServicioOpciones`. Sin FK a `Instalaciones` a propósito (el `PATCH` de instalaciones borra la fila anterior). Agregar una opción o una foto obligatoria = un `INSERT` en el catálogo, sin publicar otra versión de la app.
 
+**Etapa 2** ([ordenes-servicio.md §12](ordenes-servicio.md)): la orden nace `programada` (CRM por `POST /integracion/ordenes-servicio` con firma HMAC `CRM_HMAC_SECRET`, u operación por `POST /ordenes-servicio/programar`); el técnico la inicia (`POST /:id/iniciar`) y confirma o corrige tipo y vehículo. Mantenimientos con código de verificación (`/:id/codigo`, `/:id/codigo/ver`, `/:id/codigo/validar`; pendientes en `GET /codigos-pendientes`). Alta sobre un vehículo con equipo: `/:id/autorizacion` y `/:id/autorizacion/decision`. Estados `programada → borrador → cerrada | no_cumplida | cancelada`, con motivos de `CatMotivosOrdenServicio` (`GET /motivos`) y `cobrable`. El CRM lee los cambios con `GET /integracion/ordenes-servicio/cambios?desde=`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`.
+
 ---
 
 ## 15. Webhooks salientes
@@ -615,6 +617,8 @@ Validadas con Joi en `app.module.ts`.
 | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD` | Sí | Nodemailer |
 | `MAIL_FRONTEND_URL`, `MAIL_FRONTEND_URL_NEXT` | No | Base enlaces front |
 | `GATEWAY_HMAC_SECRET` | Sí (mín. 16) | Ingest paneles |
+| `CRM_HMAC_SECRET` | No (mín. 16 para activar) | Integración CRM → órdenes de servicio (`/integracion/*`); vacío = 503 |
+| `CRM_ID_USUARIO` | No | Usuario de Next con el que el CRM queda en la bitácora |
 | `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` | No (— / 600000) | Ingest paneles / offline |
 | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`, `TRACKCAM_WEBHOOK_URL`, `TRACKCAM_GATEWAY_URL` | No | Webhooks / proxy |
 | `RABBITMQ_ENABLED` | No (false) | Activa consumers |
@@ -640,7 +644,7 @@ Plantilla: `.env.example`.
 | Esquema | `Next` (MySQL 8) |
 | Core | Clientes, Usuarios (refresh), Roles, Modulos, Permisos, UsuariosPermisos, AsignacionSoluciones, UsuariosInstalaciones, CodigoAutenticacion, Bitacora |
 | Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion, Fotos, Videos |
-| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, CatOrdenServicioOpciones (`deploy/sql/OrdenesServicio.sql`, §14.1) |
+| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, CatOrdenServicioOpciones, CatMotivosOrdenServicio (`deploy/sql/OrdenesServicio.sql` + `OrdenesServicioEtapa2.sql`, §14.1) |
 | Operadores | Operadores, licencias |
 | Alarmas | EventoAlarma, UltimoEventoAlarma, PanelAlarma, GatewayIngestLog |
 | Ingest | TelemetryIngestLog, TelemetryHuerfanos (equipos sin alta, `deploy/sql/TelemetryHuerfanos.sql`) |

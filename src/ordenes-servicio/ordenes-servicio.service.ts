@@ -35,7 +35,9 @@ import {
 import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
+import { mapOrden } from './ordenes-servicio.map';
 import {
+  AUTORIZACION,
   ESTATUS_ORDEN,
   SECCIONES_ARCHIVO,
   SECCIONES_RESPUESTA,
@@ -331,7 +333,7 @@ export class OrdenesServicioService {
     return {
       data: [
         {
-          ...this.mapOrden(orden),
+          ...mapOrden(orden),
           respuestas: respuestas.map((r) => ({
             seccion: r.seccion,
             clave: r.clave,
@@ -357,16 +359,22 @@ export class OrdenesServicioService {
     }
     if (filtros.tipoServicio) qb.andWhere('o.tipoServicio = :tipo', { tipo: filtros.tipoServicio });
     if (filtros.estatus) qb.andWhere('o.estatus = :estatus', { estatus: filtros.estatus });
+    if (filtros.origen) qb.andWhere('o.origen = :origen', { origen: filtros.origen });
+    if (filtros.referenciaCrm) qb.andWhere('o.referenciaCrm = :ref', { ref: filtros.referenciaCrm });
     // El técnico solo ve sus órdenes; admin y monitoreo ven todas.
     const idTecnico = this.esTecnico(user) ? user.userId : filtros.idTecnico;
     if (idTecnico != null) qb.andWhere('o.idTecnico = :idTecnico', { idTecnico });
     const [rows, total] = await qb
-      .orderBy('o.fechaCreacion', 'DESC')
+      // Programadas: la agenda del técnico, por cita; lo demás, lo más reciente primero.
+      .orderBy(
+        filtros.estatus === ESTATUS_ORDEN.PROGRAMADA ? 'o.cita' : 'o.fechaCreacion',
+        filtros.estatus === ESTATUS_ORDEN.PROGRAMADA ? 'ASC' : 'DESC',
+      )
       .skip(skip)
       .take(take)
       .getManyAndCount();
     return {
-      data: rows.map((o) => this.mapOrden(o)),
+      data: rows.map((o) => mapOrden(o)),
       paginated: { total, page: Math.max(page, 1), limit: take },
     };
   }
@@ -417,6 +425,7 @@ export class OrdenesServicioService {
           idInstalacion: resultado.idInstalacion,
           idInstalacionResultado: resultado.idInstalacionResultado,
           idHistoricoInstalacion: resultado.idHistoricoInstalacion,
+          idInstalacionRetirada: resultado.idInstalacionRetirada ?? null,
           fechaCierre: nowMexicoCityAsUtcDate(),
           idUsuarioCierre: user.userId,
         },
@@ -442,23 +451,17 @@ export class OrdenesServicioService {
     }
   }
 
-  async cancelar(id: number, user: UsuarioToken): Promise<ApiCrudResponse> {
-    const orden = await this.ordenEditable(id, user);
-    await this.ordenesRepo.update({ id: orden.id }, { estatus: ESTATUS_ORDEN.CANCELADA });
-    await this.bitacora(`Se canceló la orden de servicio ${orden.folio}`, 'UPDATE', { id }, user);
-    return {
-      status: 'success',
-      message: 'Orden de servicio cancelada',
-      data: { id: Number(orden.id), nombre: orden.folio ?? folioDe(Number(orden.id)) },
-    };
-  }
-
   private async aplicarMovimiento(
     orden: OrdenesServicio,
     folio: string,
     user: UsuarioToken,
     qr: QueryRunner,
-  ): Promise<{ idInstalacion: number; idInstalacionResultado: number; idHistoricoInstalacion: number | null }> {
+  ): Promise<{
+    idInstalacion: number;
+    idInstalacionResultado: number;
+    idHistoricoInstalacion: number | null;
+    idInstalacionRetirada?: number | null;
+  }> {
     const comentario = [`Orden de servicio ${folio} (${orden.tipoServicio})`, orden.observaciones]
       .filter(Boolean)
       .join(': ')
@@ -467,6 +470,25 @@ export class OrdenesServicioService {
     const idCliente = Number(orden.idCliente);
 
     if (tipo === 'instalacion') {
+      // Alta autorizada sobre un vehículo con equipo de Next: primero la baja
+      // de la instalación existente, en la misma transacción (§12.6).
+      let idInstalacionRetirada: number | null = null;
+      if (orden.autorizacion === AUTORIZACION.AUTORIZADA) {
+        const existente = await qr.manager.findOne(Instalaciones, {
+          where: { idProducto: Number(orden.idProducto), estatus: EstatusEnum.ACTIVO },
+        });
+        if (existente) {
+          await this.instalacionesService.baja(
+            Number(existente.id),
+            { estatusInstalacion: EnumEstatusInstalacion.INACTIVO, comentario: `${comentario} (desinstalación autorizada)` },
+            user.idCliente,
+            user.rol,
+            user.userId,
+            qr,
+          );
+          idInstalacionRetirada = Number(existente.id);
+        }
+      }
       const alta = await this.instalacionesService.create(
         {
           idCliente,
@@ -479,7 +501,7 @@ export class OrdenesServicioService {
         qr,
       );
       const nueva = Number(alta.data!.id);
-      return { idInstalacion: nueva, idInstalacionResultado: nueva, idHistoricoInstalacion: null };
+      return { idInstalacion: nueva, idInstalacionResultado: nueva, idHistoricoInstalacion: null, idInstalacionRetirada };
     }
 
     const idInstalacion = Number(orden.idInstalacion);
@@ -632,33 +654,9 @@ export class OrdenesServicioService {
       estatusInstalacionBaja: n(o.estatusInstalacionBaja),
       idMonitorista: n(o.idMonitorista),
       observaciones: o.observaciones,
-    };
-  }
-
-  private mapOrden(o: OrdenesServicio) {
-    const n = (v: number | null) => (v == null ? null : Number(v));
-    return {
-      id: Number(o.id),
-      folio: o.folio,
-      tipoServicio: o.tipoServicio,
-      estatus: o.estatus,
-      idCliente: Number(o.idCliente),
-      idInstalacion: n(o.idInstalacion),
-      idInstalacionResultado: n(o.idInstalacionResultado),
-      idHistoricoInstalacion: n(o.idHistoricoInstalacion),
-      idProducto: n(o.idProducto),
-      idDispositivoNuevo: n(o.idDispositivoNuevo),
-      idSimNuevo: n(o.idSimNuevo),
-      estatusSalienteAnterior: n(o.estatusSalienteAnterior),
-      estatusInstalacionBaja: n(o.estatusInstalacionBaja),
-      idTecnico: Number(o.idTecnico),
-      idMonitorista: n(o.idMonitorista),
-      fechaCaptura: o.fechaCaptura,
-      lat: o.lat,
-      lng: o.lng,
-      observaciones: o.observaciones,
-      fechaCreacion: o.fechaCreacion,
-      fechaCierre: o.fechaCierre,
+      origen: o.origen,
+      codigoValidado: o.fechaCodigoValidado != null,
+      autorizacion: o.autorizacion,
     };
   }
 
