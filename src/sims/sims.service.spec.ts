@@ -39,7 +39,7 @@ describe('SimsService: detalle y alta con alcance', () => {
       vacio,
       vacio,
       bitacora as never,
-      tenant,
+      tenant, {} as never,
     );
     return { svc, repository };
   };

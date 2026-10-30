@@ -27,6 +27,7 @@ import {
 } from 'src/common/tenant-filter/tenant-filter.service';
 import type { Paginated } from 'src/common/ApiResponse';
 import {
+  EnumAccionHistoricoInstalacion,
   EnumTipoDispositivo,
   EnumTipoProducto,
   EstatusEnum,
@@ -1497,6 +1498,7 @@ export class ReportesService {
           'idProducto',
           'vigenteDesde',
           'idHistoricoInstalacion',
+          'estatus',
         ],
       });
       if (!instalacionRaw) {
@@ -1717,6 +1719,7 @@ export class ReportesService {
           'idProducto',
           'vigenteDesde',
           'idHistoricoInstalacion',
+          'estatus',
         ],
       });
       if (!instalacionRaw) {
@@ -2149,26 +2152,42 @@ export class ReportesService {
       vigenteDesde: Date | string | null;
       vigenteHasta: Date | string | null;
     };
-    const versiones: Version[] = [
-      {
-        idDispositivo:
-          instalacionRaw.idDispositivo != null
-            ? Number(instalacionRaw.idDispositivo)
-            : null,
-        idProducto:
-          instalacionRaw.idProducto != null
-            ? Number(instalacionRaw.idProducto)
-            : null,
-        vigenteDesde: instalacionRaw.vigenteDesde ?? null,
-        vigenteHasta: null,
-      },
-    ];
-
-    const visitados = new Set<number>();
-    let cursor: number | null =
+    // Dada de baja con el motor de activos: su último periodo está archivado
+    // (Accion "Baja", con VigenteHasta) y la fila ya no aporta un tramo abierto.
+    const eslabon =
       instalacionRaw.idHistoricoInstalacion != null
         ? Number(instalacionRaw.idHistoricoInstalacion)
         : null;
+    const bajaArchivada =
+      Number(instalacionRaw.estatus) !== EstatusEnum.ACTIVO
+        ? await this.historicoInstalacionesRepo.findOne({
+            where: { idInstalacionOriginal: Number(instalacionRaw.id), idCliente },
+            order: { id: 'DESC' },
+          })
+        : null;
+    const desdeBaja =
+      bajaArchivada?.accion === EnumAccionHistoricoInstalacion.BAJA &&
+      Number(bajaArchivada.id) > (eslabon ?? 0);
+
+    const versiones: Version[] = desdeBaja
+      ? []
+      : [
+          {
+            idDispositivo:
+              instalacionRaw.idDispositivo != null
+                ? Number(instalacionRaw.idDispositivo)
+                : null,
+            idProducto:
+              instalacionRaw.idProducto != null
+                ? Number(instalacionRaw.idProducto)
+                : null,
+            vigenteDesde: instalacionRaw.vigenteDesde ?? null,
+            vigenteHasta: null,
+          },
+        ];
+
+    const visitados = new Set<number>();
+    let cursor: number | null = desdeBaja ? Number(bajaArchivada!.id) : eslabon;
     while (cursor != null && !visitados.has(cursor)) {
       visitados.add(cursor);
       const hist = await this.historicoInstalacionesRepo.findOne({

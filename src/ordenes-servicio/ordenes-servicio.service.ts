@@ -572,6 +572,8 @@ export class OrdenesServicioService {
       .slice(0, 2000);
     const tipo = orden.tipoServicio as TipoServicio;
     const idCliente = Number(orden.idCliente);
+    // Historial de los recursos: el movimiento sale de esta orden.
+    const origen = { origen: 'orden' as const, idOrdenServicio: Number(orden.id) };
 
     if (tipo === 'instalacion') {
       // Alta autorizada sobre un vehículo con equipo de Next: primero la baja
@@ -592,6 +594,7 @@ export class OrdenesServicioService {
             user.rol,
             user.userId,
             qr,
+            origen,
           );
           idInstalacionRetirada = Number(existente.id);
         }
@@ -606,6 +609,8 @@ export class OrdenesServicioService {
         },
         user.userId,
         qr,
+        undefined,
+        origen,
       );
       const nueva = Number(alta.data!.id);
       return { idInstalacion: nueva, idInstalacionResultado: nueva, idHistoricoInstalacion: null, idInstalacionRetirada };
@@ -641,6 +646,7 @@ export class OrdenesServicioService {
         user.rol,
         user.userId,
         qr,
+        origen,
       );
       const nueva = Number(cambio.data!.id);
       const fila = await qr.manager.findOne(Instalaciones, { where: { id: nueva } });
@@ -659,6 +665,7 @@ export class OrdenesServicioService {
         user.rol,
         user.userId,
         qr,
+        origen,
       );
     }
     // revision: sin movimiento; desinstalacion conserva el mismo Id.

@@ -15,6 +15,7 @@ import { CatalogosModule } from './catalogos/catalogos.module';
 import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
+import { MotorActivosModule } from './motor-activos/motor-activos.module';
 import { OrdenesServicioModule } from './ordenes-servicio/ordenes-servicio.module';
 import { IntegracionCrmModule } from './integracion-crm/integracion-crm.module';
 import { OperadoresModule } from './operadores/operadores.module';
@@ -179,6 +180,8 @@ import * as jwt from 'jsonwebtoken';
       }),
     }),
 
+    // Primero: sus rutas `sims/:id/historial` deben ganarle a `sims/:page/:limit`.
+    MotorActivosModule,
     UsuariosModule,
 
     AuthModule,

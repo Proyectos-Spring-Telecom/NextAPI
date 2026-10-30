@@ -32,7 +32,8 @@ import {
   EnumEstatusProductoDispositivo,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
+import { MotorActivosService, registrarMovimiento, sinEstatus } from 'src/motor-activos/motor-activos.service';
+import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
@@ -74,6 +75,7 @@ export class DispositivosService {
     private readonly clientesRepo: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly motor: MotorActivosService,
   ) { }
 
   private async whereTenant(
@@ -159,8 +161,10 @@ export class DispositivosService {
         );
       }
 
-      const saved = await crearDispositivoBase(this.repository.manager, {
+      // El alta y su movimiento en el historial, juntos.
+      const saved = await this.repository.manager.transaction((manager) => crearDispositivoBase(manager, {
         idCliente,
+        idUsuario: idUser,
         idTipoDispositivo: dto.idTipoDispositivo,
         numeroSerie: dto.numeroSerie,
         imei: dto.imei ?? null,
@@ -168,7 +172,7 @@ export class DispositivosService {
         camara: dto.camara ?? 0,
         idMarca: dto.idMarca ?? null,
         idModelo: dto.idModelo ?? null,
-      });
+      }));
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',
@@ -366,8 +370,15 @@ export class DispositivosService {
     entity: Dispositivos,
     idClienteAnterior: number,
     idClienteNuevo: number,
+    idUser: number,
   ): Promise<void> {
     const id = Number(entity.id);
+    // Solo cambia de cliente un equipo del almacén (motor de activos §1).
+    if (![EstatusRecurso.INACTIVO, EstatusRecurso.DISPONIBLE].includes(Number(entity.estatus))) {
+      throw new BadRequestException(
+        'Solo se cambia de cliente un dispositivo disponible (1) o inactivo (0).',
+      );
+    }
     const qr = this.repository.manager.connection.createQueryRunner();
     await qr.connect();
     try {
@@ -412,6 +423,19 @@ export class DispositivosService {
         { idCliente: idClienteNuevo },
       );
       await qr.query('SET FOREIGN_KEY_CHECKS = 1');
+      await registrarMovimiento(
+        qr.manager,
+        {
+          tipo: 'dispositivo',
+          id,
+          accion: 'traspaso',
+          estatusAnterior: Number(entity.estatus),
+          estatusNuevo: Number(entity.estatus),
+          idClienteAnterior,
+          idClienteNuevo,
+        },
+        { idUsuario: idUser, origen: 'api' },
+      );
 
       await qr.commitTransaction();
     } catch (error) {
@@ -528,7 +552,7 @@ export class DispositivosService {
       if (dto.idModelo !== undefined) entity.idModelo = dto.idModelo;
 
       if (cambiaCliente && idClienteNuevo != null) {
-        await this.cambiarCliente(entity, idClienteAnterior, idClienteNuevo);
+        await this.cambiarCliente(entity, idClienteAnterior, idClienteNuevo, idUser);
 
         await this.bitacoraLogger.logToBitacora(
           'Dispositivos',
@@ -540,7 +564,7 @@ export class DispositivosService {
           EstatusEnumBitcora.SUCCESS,
         );
       } else {
-        await this.repository.save(entity);
+        await this.repository.save(sinEstatus(entity));
 
         await this.bitacoraLogger.logToBitacora(
           'Dispositivos',
@@ -603,14 +627,16 @@ export class DispositivosService {
         throw new NotFoundException('Dispositivo no encontrado');
       }
 
-      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
       await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
-      assertCambioEstatus(Number(entity.estatus), Number(dto.estatus), 'dispositivo');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;
-      await this.repository.update({ id }, { estatus });
-      await this.panelRepo.update({ idDispositivo: id }, { estatus });
+      await this.motor.cambiarEstatusManual('dispositivo', entity, estatus, {
+        idUsuario: idUser,
+        rol: alcance.rol,
+        motivo: dto.motivo,
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'Dispositivos',

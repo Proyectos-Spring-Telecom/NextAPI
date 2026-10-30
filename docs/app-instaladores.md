@@ -113,8 +113,8 @@ Antes de iniciar, la orden no acepta `PATCH`, archivos ni pruebas (400/409).
 | `idProducto` | Solo `instalacion`: el vehículo (del cliente). Ver §7 si ya tiene equipo |
 | `idDispositivoNuevo` | `instalacion`, `c_equipo`: equipo que entra |
 | `idSimNuevo` | `instalacion` (opcional), `c_sim`: SIM que entra |
-| `estatusSalienteAnterior` | `c_equipo`, `c_sim`: estatus del equipo/SIM que sale (0–5, p. ej. 4 = baja por mantenimiento) |
-| `estatusInstalacionBaja` | `desinstalacion`: 0 = inactiva, 5 = inservible |
+| `estatusSalienteAnterior` | `c_equipo`, `c_sim`: a dónde va el equipo/SIM que sale: **3 por revisar, 4 laboratorio o 5 inservible** (desde el 30/10/2026; 0 y 1 ya no se aceptan) |
+| `estatusInstalacionBaja` | `desinstalacion`: 0 = inactiva (el equipo y la SIM van a revisión), 5 = inservible (el equipo queda inservible; la SIM a revisión) |
 
 - Un campo que no aplica al tipo → **400** `"<campo> no aplica a una orden de tipo <tipo>"`.
 - En órdenes programadas **no** mandar respuestas de `pruebas` (400 "las valida el operador"), salvo en `desinstalacion`, donde el técnico las contesta.

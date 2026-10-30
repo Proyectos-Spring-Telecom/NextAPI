@@ -46,7 +46,7 @@ function activos(registro: { idProducto: number; idCliente: number } | null) {
     productosRepo as never,
     { createQueryRunner: () => qr } as never,
     bitacora as never,
-    tenant(),
+    tenant(), {} as never,
   );
   return { service, repository, productosRepo, manager };
 }
@@ -85,13 +85,13 @@ describe('Alcance de productos (detalle, edición y alta)', () => {
 
   it('persona ajena → 404 con el mismo mensaje que si no existiera', async () => {
     const repository = { findOne: jest.fn(async () => ({ idProducto: 7, idCliente: 20 })) };
-    const service = new PersonasService(repository as never, {} as never, {} as never, bitacora as never, tenant());
+    const service = new PersonasService(repository as never, {} as never, {} as never, bitacora as never, tenant(), {} as never);
     await expect(service.findOne(7, operador)).rejects.toThrow(new NotFoundException('Persona no encontrada'));
   });
 
   it('producto ajeno → 404 en detalle y edición', async () => {
     const repository = { findOne: jest.fn(async () => ({ id: 3, idCliente: 20 })), save: jest.fn() };
-    const service = new ProductosService(repository as never, bitacora as never, tenant());
+    const service = new ProductosService(repository as never, bitacora as never, tenant(), {} as never);
     await expect(service.findOne(3, padre)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.update(3, { nombre: 'X' }, padre, padre.userId)).rejects.toBeInstanceOf(NotFoundException);
     expect(repository.save).not.toHaveBeenCalled();
@@ -116,7 +116,7 @@ describe('Alcance de productos (detalle, edición y alta)', () => {
       bitacora as never,
       tenant(),
       webhook as never,
-      {} as never,
+      {} as never, {} as never,
     );
     await service.update(9, { placa: 'BBB' }, admin, admin.userId);
     expect(repository.findOne).toHaveBeenCalledWith({ where: { placa: 'BBB', idCliente: 11 } });

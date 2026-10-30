@@ -200,7 +200,7 @@ export class Entorno {
     // entidades: si el código espera algo que la base real no tiene, la
     // batería falla aquí y no en producción.
     this.mysql.archivo('Next', join(__dirname, 'esquema/next-produccion.sql'));
-    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql']) {
+    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
     await this.compararEsquema();
@@ -252,7 +252,7 @@ export class Entorno {
       synchronize: false,
     });
     await ds.initialize();
-    const tablas = /^(OrdenesServicio|OrdenServicio\w+|CatOrdenServicioOpciones|CatMotivosOrdenServicio)$/;
+    const tablas = /^(OrdenesServicio|OrdenServicio\w+|CatOrdenServicioOpciones|CatMotivosOrdenServicio|CatEstatusRecurso|MovimientosRecurso)$/;
     const difs: string[] = [];
     try {
       for (const meta of ds.entityMetadatas.filter((m: any) => tablas.test(m.tableName))) {

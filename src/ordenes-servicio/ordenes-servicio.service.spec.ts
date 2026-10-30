@@ -90,6 +90,8 @@ describe('OrdenesServicioService.cerrar', () => {
       expect.objectContaining({ idCliente: 1, idProducto: 5, idDispositivo: 20, idSim: 30 }),
       50,
       qr,
+      undefined,
+      expect.objectContaining({ origen: 'orden' }),
     );
     expect(updates[0]).toMatchObject({ estatus: 'cerrada', idInstalacion: 98, idInstalacionResultado: 98 });
     expect(qr.commitTransaction).toHaveBeenCalled();
@@ -104,7 +106,7 @@ describe('OrdenesServicioService.cerrar', () => {
     expect(instalaciones.update).toHaveBeenCalledWith(
       10,
       expect.objectContaining({ estatusInstalacionAnterior: 3, idDispositivo: 21, estatusDispositivoAnterior: 4 }),
-      1, 8, 50, qr,
+      1, 8, 50, qr, expect.objectContaining({ origen: 'orden' }),
     );
     expect(updates[0]).toMatchObject({ idInstalacion: 10, idInstalacionResultado: 99, idHistoricoInstalacion: 777 });
   });
@@ -112,7 +114,7 @@ describe('OrdenesServicioService.cerrar', () => {
   it('desinstalación: baja con el estatus elegido', async () => {
     const { service, qr, instalaciones } = build({ ...base, tipoServicio: 'desinstalacion', estatusInstalacionBaja: 5 });
     await service.cerrar(1, tecnico);
-    expect(instalaciones.baja).toHaveBeenCalledWith(10, expect.objectContaining({ estatusInstalacion: 5 }), 1, 8, 50, qr);
+    expect(instalaciones.baja).toHaveBeenCalledWith(10, expect.objectContaining({ estatusInstalacion: 5 }), 1, 8, 50, qr, expect.objectContaining({ origen: 'orden' }));
   });
 
   it('revisión: no toca la instalación', async () => {
@@ -155,7 +157,7 @@ describe('OrdenesServicioService.cerrar', () => {
       { equipoExistente: true },
     );
     await service.cerrar(1, tecnico);
-    expect(instalaciones.baja).toHaveBeenCalledWith(40, expect.objectContaining({ estatusInstalacion: 0 }), 1, 8, 50, qr);
+    expect(instalaciones.baja).toHaveBeenCalledWith(40, expect.objectContaining({ estatusInstalacion: 0 }), 1, 8, 50, qr, expect.objectContaining({ origen: 'orden' }));
     expect(instalaciones.baja.mock.invocationCallOrder[0]).toBeLessThan(instalaciones.create.mock.invocationCallOrder[0]);
     expect(updates[0]).toMatchObject({ estatus: 'cerrada', idInstalacionResultado: 98, idInstalacionRetirada: 40 });
   });

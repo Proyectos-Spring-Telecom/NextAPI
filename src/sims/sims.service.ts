@@ -31,7 +31,7 @@ import {
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
+import { MotorActivosService, registrarMovimiento } from 'src/motor-activos/motor-activos.service';
 import { nowMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 import { mapSimPlano, RELACIONES_SIM_LISTADO } from './map-sims.util';
 
@@ -66,6 +66,7 @@ export class SimsService {
     private readonly clientesRepo: Repository<Clientes>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly motor: MotorActivosService,
   ) { }
 
   private async validarFks(dto: {
@@ -142,7 +143,24 @@ export class SimsService {
         estatus: EnumEstatusRecurso.DISPONIBLE,
       });
 
-      const saved = await this.repository.save(entity);
+      // El alta y su movimiento en el historial, juntos.
+      const saved = await this.repository.manager.transaction(async (manager) => {
+        const sim = await manager.save(entity);
+        await registrarMovimiento(
+          manager,
+          {
+            tipo: 'sim',
+            id: Number(sim.id),
+            accion: 'alta',
+            estatusAnterior: null,
+            estatusNuevo: EnumEstatusRecurso.DISPONIBLE,
+            idClienteAnterior: null,
+            idClienteNuevo: dto.idCliente,
+          },
+          { idUsuario: idUser, origen: 'api' },
+        );
+        return sim;
+      });
       const nombreSim =
         saved.numeroTelefono ?? saved.imei ?? `SIM ${saved.id}`;
 
@@ -345,6 +363,7 @@ export class SimsService {
   private async traspasar(
     entity: Sims,
     idClienteNuevo: number,
+    idUser: number,
     valores: Pick<
       Sims,
       'imei' | 'numeroTelefono' | 'idTelefonia' | 'idPlanTelefonia' | 'notas'
@@ -377,6 +396,35 @@ export class SimsService {
       await repo.update(idAnterior, {
         notas: `${marca}${entity.notas ?? ''}`.slice(0, 500),
       });
+
+      // Historial: la SIM vieja queda inactiva en su cliente; la nueva nace en el destino.
+      const ctx = { idUsuario: idUser, origen: 'api' as const };
+      await registrarMovimiento(
+        manager,
+        {
+          tipo: 'sim',
+          id: idAnterior,
+          accion: 'traspaso',
+          estatusAnterior: Number(entity.estatus),
+          estatusNuevo: EnumEstatusRecurso.INACTIVO,
+          idClienteAnterior: Number(entity.idCliente),
+          idClienteNuevo: Number(entity.idCliente),
+        },
+        { ...ctx, motivo: `Traspasada al cliente ${idClienteNuevo} como SIM ${Number(nuevo.id)}` },
+      );
+      await registrarMovimiento(
+        manager,
+        {
+          tipo: 'sim',
+          id: Number(nuevo.id),
+          accion: 'traspaso',
+          estatusAnterior: null,
+          estatusNuevo: EnumEstatusRecurso.DISPONIBLE,
+          idClienteAnterior: Number(entity.idCliente),
+          idClienteNuevo,
+        },
+        { ...ctx, motivo: `Viene de la SIM ${idAnterior}` },
+      );
 
       return nuevo;
     });
@@ -427,6 +475,13 @@ export class SimsService {
         if (!this.tenantFilter.clienteVisibleEnScope(scope, dto.idCliente)) {
           throw new ForbiddenException('No tienes acceso a ese cliente');
         }
+        // Solo se traspasa una SIM del almacén: instalada, por revisar, en
+        // laboratorio o inservible no cambia de cliente (motor de activos §1).
+        if (![EnumEstatusRecurso.INACTIVO, EnumEstatusRecurso.DISPONIBLE].includes(Number(entity.estatus))) {
+          throw new BadRequestException(
+            'Solo se cambia de cliente una SIM disponible (1) o inactiva (0).',
+          );
+        }
       }
 
       await this.validarFks({
@@ -458,7 +513,7 @@ export class SimsService {
           await this.assertImeiDisponible(imeiFinal, id);
         }
 
-        const nuevo = await this.traspasar(entity, idClienteNuevo, {
+        const nuevo = await this.traspasar(entity, idClienteNuevo, idUser, {
           imei: imeiFinal,
           numeroTelefono:
             numeroTelefono !== undefined ? numeroTelefono : entity.numeroTelefono,
@@ -516,7 +571,26 @@ export class SimsService {
         };
       }
 
-      await this.repository.update(id, updateData);
+      if (cambiaCliente) {
+        await this.repository.manager.transaction(async (manager) => {
+          await manager.update(Sims, id, updateData);
+          await registrarMovimiento(
+            manager,
+            {
+              tipo: 'sim',
+              id,
+              accion: 'traspaso',
+              estatusAnterior: Number(entity.estatus),
+              estatusNuevo: Number(entity.estatus),
+              idClienteAnterior: Number(entity.idCliente),
+              idClienteNuevo: Number(dto.idCliente),
+            },
+            { idUsuario: idUser, origen: 'api' },
+          );
+        });
+      } else {
+        await this.repository.update(id, updateData);
+      }
 
       await this.bitacoraLogger.logToBitacora(
         'Sims',
@@ -584,13 +658,16 @@ export class SimsService {
         throw new NotFoundException('SIM no encontrado');
       }
 
-      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
       await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
-      assertCambioEstatus(Number(entity.estatus), Number(dto.estatus), 'SIM');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;
-      await this.repository.update(id, { estatus });
+      await this.motor.cambiarEstatusManual('sim', entity, estatus, {
+        idUsuario: idUser,
+        rol: alcance.rol,
+        motivo: dto.motivo,
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'Sims',

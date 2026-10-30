@@ -97,7 +97,7 @@ describe('RelojesService: alcance por cliente', () => {
       { findOne: jest.fn() } as never,
       dataSource as never,
       bitacora as never,
-      tenant,
+      tenant, {} as never,
     );
     return { svc, repository, dataSource };
   };

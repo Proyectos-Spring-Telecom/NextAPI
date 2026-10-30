@@ -19,7 +19,7 @@ import {
 } from 'src/common/ApiResponse';
 import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { EnumModulos, EnumEstatusProductoDispositivo, EstatusEnum } from 'src/common/estatus.enum';
-import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
+import { MotorActivosService, sinEstatus } from 'src/motor-activos/motor-activos.service';
 import {
   mapClienteRelacion,
   mapTipoProductoRelacion,
@@ -33,6 +33,7 @@ export class ProductosService {
     private readonly repository: Repository<Productos>,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly motor: MotorActivosService,
   ) { }
 
   private mapProducto(item: Productos) {
@@ -234,7 +235,7 @@ export class ProductosService {
       if (dto.nombre !== undefined) {
         entity.nombre = dto.nombre;
       }
-      await this.repository.save(entity);
+      await this.repository.save(sinEstatus(entity));
 
       await this.bitacoraLogger.logToBitacora(
         'Productos',
@@ -285,13 +286,16 @@ export class ProductosService {
         throw new NotFoundException('Producto no encontrado');
       }
 
-      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
       await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
-      assertCambioEstatus(Number(entity.estatus), Number(dto.estatus), 'producto');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;
-      await this.repository.update({ id }, { estatus });
+      await this.motor.cambiarEstatusManual('producto', entity, estatus, {
+        idUsuario: idUser,
+        rol: alcance.rol,
+        motivo: dto.motivo,
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'Productos',

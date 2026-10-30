@@ -40,3 +40,5 @@ Para agregar un escenario: un `describe` nuevo en `flujo-ordenes.e2e-spec.ts` us
 |-------|------------|
 | `robustez.e2e-spec.ts` | Un caso por hallazgo de la revisión (concurrencia, Next caído, lento, respuesta perdida o 401 con el proxy de fallas, repeticiones de firma, permisos); numerados como en `docs/remediacion-ordenes-servicio.md` |
 | `reglas-flujo.e2e-spec.ts` | Reglas del flujo contra MySQL real y la comparación del esquema |
+| `acceso.e2e-spec.ts` | Quién ve qué: fugas F1–F5 del diagnóstico y CRUD C1–C7 |
+| `activos.e2e-spec.ts` | Motor de activos, fase A: transiciones de estatus, historial de vida, baja archivada, reactivación, concurrencia y origen de la orden |

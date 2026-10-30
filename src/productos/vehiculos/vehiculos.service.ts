@@ -32,7 +32,7 @@ import {
   EnumTipoProducto,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
+import { MotorActivosService } from 'src/motor-activos/motor-activos.service';
 import { crearProductoBase } from '../crear-producto.util';
 import {
   nombreCliente,
@@ -104,6 +104,7 @@ export class VehiculosService {
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
     private readonly s3Service: S3Service,
+    private readonly motor: MotorActivosService,
   ) { }
 
   private async uploadFiles(
@@ -258,6 +259,7 @@ export class VehiculosService {
 
       const producto = await crearProductoBase(queryRunner.manager, {
         idCliente,
+        idUsuario: idUser,
         idTipoProducto: EnumTipoProducto.VEHICULO,
         nombre: dto.placa,
       });
@@ -760,13 +762,16 @@ LIMIT ${limit}
         throw new NotFoundException('Producto del vehículo no encontrado');
       }
 
-      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
       await this.tenantFilter.assertClienteVisible(alcance, Number(producto.idCliente), 'Recurso');
-      assertCambioEstatus(Number(producto.estatus), Number(dto.estatus), 'producto');
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;
-      await this.productosRepo.update({ id }, { estatus });
+      await this.motor.cambiarEstatusManual('producto', producto, estatus, {
+        idUsuario: idUser,
+        rol: alcance.rol,
+        motivo: dto.motivo,
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'Vehiculos',

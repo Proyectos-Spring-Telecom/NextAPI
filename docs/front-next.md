@@ -382,3 +382,35 @@ NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-mod
 - **Clientes:** crean clientes los roles 1–3 y el 6 (este solo como hijo de su árbol); `GET /clientes/list/:cliente` ajeno → 404.
 - `GET /sims/:id` ahora trae cliente, telefonía y plan, como el listado.
 
+
+## 18. Estatus de equipos, SIM y vehículos: motor de activos (30/10/2026)
+
+Desde la fase A ([motor-activos.md](motor-activos.md) §13), todo cambio de estatus pasa por un solo lugar y queda en el historial del recurso.
+
+**Catálogo:** `GET /estatus-recurso` devuelve los estatus 0–5 de dispositivo y SIM con los cambios permitidos a mano (`transicionesManuales`) y a dónde puede ir lo que sale de una instalación (`salidaDeInstalacion`). Úsenlo para armar los selectores en lugar de listar 0–5 fijo.
+
+| Id | Estatus | A mano puede pasar a |
+|---|---|---|
+| 0 | Inactivo | 1 |
+| 1 | Disponible | 0, 3 |
+| 2 | Instalado | Solo cambia con la instalación |
+| 3 | Por revisar | 1, 4, 5, 0 |
+| 4 | Laboratorio | 1, 5 |
+| 5 | Inservible | Nada. Solo SA o Dev lo corrigen, con `motivo` |
+
+- **`PATCH …/estatus/:id`** (dispositivos, trackcam, relojes, paneles, SIM): un cambio fuera de la tabla → 400, con los permitidos en el mensaje.
+  - Acepta `motivo` opcional, que queda en el historial.
+  - Productos (vehículo, persona, inmueble, activo) conservan su escala por ahora; solo se rechaza el 2.
+- **Cambio de componente** (`PATCH /instalaciones/:id`): `estatusDispositivoAnterior` y `estatusSimAnterior` solo aceptan **3, 4 o 5** (antes 0–5). Quitar 0 y 1 del selector.
+- **Baja de instalación** (`PATCH /instalaciones/estatus/:id` con 0 o 5):
+  - el equipo y la SIM ya **no regresan a disponible**: van a "por revisar" (3), o el equipo a inservible (5) si la baja es 5;
+  - el vehículo queda activo (1);
+  - el periodo queda archivado y aparece en `GET /instalaciones/historico/:id` con `accion: "Baja"`.
+- **Reactivar** (estatus 1):
+  - primero hay que pasar el equipo y la SIM de 3 a 1 (revisados); si no → 400;
+  - reactivar una instalación ya activa, o dar de baja una ya dada de baja → 400. La excepción: una baja como inactiva (0) se puede corregir a inservible (5).
+- **Cambio de cliente** de un dispositivo o una SIM (`PATCH /dispositivos/:id`, `PATCH /sims/:id` con otro `idCliente`): solo si está disponible (1) o inactivo (0); si no → 400. Queda en el historial como `traspaso`.
+- **Historial de vida:** `GET /dispositivos/:id/historial`, `/sims/:id/historial`, `/productos/:id/historial`. Solo roles 1–5 y 8 (cruza clientes).
+  - Cada fila trae `accion` (alta, instalacion, cambio, baja, reactivacion, estatus), estatus anterior y nuevo, cliente, instalación, orden, `motivo`, usuario y `origen` (api, orden, sistema).
+  - Propuesta: una pestaña "Historial" en el detalle del dispositivo y de la SIM.
+- **409**: si otro usuario o una orden movió el recurso al mismo tiempo. Mostrar "cambió mientras se procesaba; vuelva a cargar".

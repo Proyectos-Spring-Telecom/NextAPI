@@ -6,6 +6,7 @@ import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { EstatusEnum } from 'src/common/estatus.enum';
+import { registrarMovimiento } from 'src/motor-activos/motor-activos.service';
 
 const CODIGOS_TIPO_PANEL = ['PANEL', 'PANEL_ALARMA', 'PAN'];
 const CODIGOS_TIPO_TRACKCAM = ['TRACKCAM'];
@@ -121,6 +122,8 @@ export async function crearDispositivoBase(
   manager: EntityManager,
   params: {
     idCliente: number;
+    /** Quien da de alta (historial del recurso). */
+    idUsuario: number | null;
     idTipoDispositivo: number;
     numeroSerie: string;
     imei?: string | null;
@@ -165,5 +168,19 @@ export async function crearDispositivoBase(
     estatus: EstatusEnum.ACTIVO,
   });
 
-  return manager.save(dispositivo);
+  const saved = await manager.save(dispositivo);
+  await registrarMovimiento(
+    manager,
+    {
+      tipo: 'dispositivo',
+      id: Number(saved.id),
+      accion: 'alta',
+      estatusAnterior: null,
+      estatusNuevo: EstatusEnum.ACTIVO,
+      idClienteAnterior: null,
+      idClienteNuevo: params.idCliente,
+    },
+    { idUsuario: params.idUsuario, origen: 'api' },
+  );
+  return saved;
 }

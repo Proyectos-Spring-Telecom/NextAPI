@@ -3,6 +3,8 @@
  * para poder cerrarla. Docs: docs/contratos.md §14.1.
  */
 
+import { ESTATUS_SALIDA_INSTALACION } from 'src/motor-activos/estatus-recurso';
+
 export const TIPOS_SERVICIO = [
   'instalacion',
   'revision',
@@ -253,13 +255,23 @@ export function faltantesParaCerrar(
     case 'c_equipo':
       if (orden.idDispositivoNuevo == null)
         faltan.push('Falta el equipo nuevo (idDispositivoNuevo)');
-      if (orden.estatusSalienteAnterior == null)
-        faltan.push('Falta el estatus del equipo que sale (estatusSalienteAnterior)');
+      if (
+        orden.estatusSalienteAnterior == null ||
+        !ESTATUS_SALIDA_INSTALACION.includes(orden.estatusSalienteAnterior)
+      )
+        faltan.push(
+          'Falta el estatus del equipo que sale (estatusSalienteAnterior: 3 por revisar, 4 laboratorio o 5 inservible)',
+        );
       break;
     case 'c_sim':
       if (orden.idSimNuevo == null) faltan.push('Falta la SIM nueva (idSimNuevo)');
-      if (orden.estatusSalienteAnterior == null)
-        faltan.push('Falta el estatus de la SIM que sale (estatusSalienteAnterior)');
+      if (
+        orden.estatusSalienteAnterior == null ||
+        !ESTATUS_SALIDA_INSTALACION.includes(orden.estatusSalienteAnterior)
+      )
+        faltan.push(
+          'Falta el estatus de la SIM que sale (estatusSalienteAnterior: 3 por revisar, 4 laboratorio o 5 inservible)',
+        );
       break;
     case 'desinstalacion':
       if (

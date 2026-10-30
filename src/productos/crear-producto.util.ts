@@ -4,6 +4,7 @@ import { CatTipoProducto } from 'src/entities/CatTipoProducto';
 import { Clientes } from 'src/entities/Clientes';
 import { Productos } from 'src/entities/Productos';
 import { EstatusEnum } from 'src/common/estatus.enum';
+import { registrarMovimiento } from 'src/motor-activos/motor-activos.service';
 
 export async function assertClienteExiste(
   manager: EntityManager,
@@ -25,6 +26,8 @@ export async function crearProductoBase(
   manager: EntityManager,
   params: {
     idCliente: number;
+    /** Quien da de alta (historial del recurso). */
+    idUsuario: number | null;
     idTipoProducto: number;
     nombre: string | null;
   },
@@ -47,5 +50,19 @@ export async function crearProductoBase(
     estatus: EstatusEnum.ACTIVO,
   });
 
-  return manager.save(producto);
+  const saved = await manager.save(producto);
+  await registrarMovimiento(
+    manager,
+    {
+      tipo: 'producto',
+      id: Number(saved.id),
+      accion: 'alta',
+      estatusAnterior: null,
+      estatusNuevo: EstatusEnum.ACTIVO,
+      idClienteAnterior: null,
+      idClienteNuevo: params.idCliente,
+    },
+    { idUsuario: params.idUsuario, origen: 'api' },
+  );
+  return saved;
 }

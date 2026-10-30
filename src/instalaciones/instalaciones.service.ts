@@ -68,6 +68,23 @@ import {
   mapInstalacionDetallePlana,
 } from './helpers/instalaciones-detalle.helpers';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import {
+  type ContextoMovimiento,
+  MotorActivosService,
+} from 'src/motor-activos/motor-activos.service';
+import {
+  type OrigenMovimiento,
+  type TipoRecurso,
+  assertEstatusSalida,
+  EstatusRecurso,
+  estatusSalidaPorBaja,
+} from 'src/motor-activos/estatus-recurso';
+
+/** De dónde viene la operación (para el historial de los recursos). Sin él = REST. */
+export interface OrigenOperacion {
+  origen: OrigenMovimiento;
+  idOrdenServicio?: number | null;
+}
 
 @Injectable()
 export class InstalacionesService {
@@ -87,7 +104,36 @@ export class InstalacionesService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly motor: MotorActivosService,
   ) {}
+
+  private contexto(
+    idUser: number,
+    idInstalacion: number,
+    origen: OrigenOperacion | undefined,
+    motivo?: string | null,
+  ): ContextoMovimiento {
+    return {
+      idUsuario: idUser,
+      origen: origen?.origen ?? 'api',
+      idOrdenServicio: origen?.idOrdenServicio ?? null,
+      idInstalacion,
+      motivo: motivo ?? null,
+    };
+  }
+
+  /** Componentes de una versión de instalación, para moverlos con el motor. */
+  private componentes(i: {
+    idProducto: number;
+    idDispositivo: number | null;
+    idSim: number | null;
+  }): Array<{ tipo: TipoRecurso; id: number }> {
+    return [
+      { tipo: 'producto' as const, id: Number(i.idProducto) },
+      ...(i.idDispositivo != null ? [{ tipo: 'dispositivo' as const, id: Number(i.idDispositivo) }] : []),
+      ...(i.idSim != null ? [{ tipo: 'sim' as const, id: Number(i.idSim) }] : []),
+    ];
+  }
 
   /**
    * `manager`: el de la transacción del llamador, para ver lo que ya cambió en
@@ -193,56 +239,6 @@ export class InstalacionesService {
       excludeInstalacionId,
     );
     return sim;
-  }
-
-  private assertEstatusComponenteAnterior(
-    valor: number | undefined,
-    campo: string,
-  ): EnumEstatusProductoDispositivo {
-    if (
-      valor === undefined ||
-      !ESTATUS_PRODUCTO_DISPOSITIVO_PATCH.includes(
-        valor as (typeof ESTATUS_PRODUCTO_DISPOSITIVO_PATCH)[number],
-      )
-    ) {
-      throw new BadRequestException(
-        `${campo} es obligatorio (0–5) cuando ese recurso sale de la instalación`,
-      );
-    }
-    return valor as EnumEstatusProductoDispositivo;
-  }
-
-  /** Aplica el mismo estatus numérico a producto, dispositivo y SIM de la instalación. */
-  private async sincronizarEstatusComponentes(
-    manager: EntityManager,
-    instalacion: {
-      idCliente: number;
-      idProducto: number;
-      idDispositivo: number | null;
-      idSim: number | null;
-    },
-    estatus: number,
-  ): Promise<void> {
-    const idCliente = Number(instalacion.idCliente);
-    await manager.update(
-      Productos,
-      { id: Number(instalacion.idProducto), idCliente },
-      { estatus },
-    );
-    if (instalacion.idDispositivo != null) {
-      await manager.update(
-        Dispositivos,
-        { id: Number(instalacion.idDispositivo), idCliente },
-        { estatus },
-      );
-    }
-    if (instalacion.idSim != null) {
-      await manager.update(
-        Sims,
-        { id: Number(instalacion.idSim), idCliente },
-        { estatus },
-      );
-    }
   }
 
   private async validarDispositivoSinInstalacionActiva(
@@ -474,6 +470,7 @@ export class InstalacionesService {
     idUser: number,
     trx?: QueryRunner,
     alcance?: UsuarioAlcance,
+    origen?: OrigenOperacion,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
@@ -523,23 +520,13 @@ export class InstalacionesService {
         }),
       );
 
-      await qr.manager.update(
-        Productos,
-        { id: dto.idProducto, idCliente },
-        { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
-      );
-      if (idDispositivo != null) {
-        await qr.manager.update(
-          Dispositivos,
-          { id: idDispositivo, idCliente },
-          { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
-        );
-      }
-      if (idSim != null) {
-        await qr.manager.update(
-          Sims,
-          { id: idSim, idCliente },
-          { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
+      // Producto, dispositivo y SIM: disponible (1) → instalado (2), con su movimiento.
+      const ctx = this.contexto(idUser, Number(saved.id), origen, dto.comentario);
+      for (const c of this.componentes({ idProducto: dto.idProducto, idDispositivo, idSim })) {
+        await this.motor.mover(
+          qr.manager,
+          { ...c, idCliente, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
+          ctx,
         );
       }
 
@@ -937,7 +924,9 @@ export class InstalacionesService {
           ? Number(vigente.idHistoricoInstalacion)
           : null;
 
-      if (cursorId == null) {
+      // La baja archiva el periodo sin mover el eslabón de la fila (se enlaza al
+      // reactivar): si hay un archivo más nuevo de esta instalación, empieza ahí.
+      {
         const ultimoPorOriginal = await this.historicoRepo.findOne({
           where: {
             idInstalacionOriginal: id,
@@ -947,7 +936,9 @@ export class InstalacionesService {
           },
           order: { id: 'DESC' },
         });
-        cursorId = ultimoPorOriginal ? Number(ultimoPorOriginal.id) : null;
+        if (ultimoPorOriginal && Number(ultimoPorOriginal.id) > (cursorId ?? 0)) {
+          cursorId = Number(ultimoPorOriginal.id);
+        }
       }
 
       while (cursorId != null && !visitados.has(cursorId)) {
@@ -994,6 +985,7 @@ export class InstalacionesService {
     rol: number,
     idUser: number,
     trx?: QueryRunner,
+    origen?: OrigenOperacion,
   ): Promise<ApiCrudResponse> {
     // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
     const qr = trx ?? this.dataSource.createQueryRunner();
@@ -1076,14 +1068,13 @@ export class InstalacionesService {
       const cambiaDispositivo = idDispositivo !== idDispositivoAnterior;
       const cambiaSim = idSim !== idSimAnterior;
 
-      let estatusProductoSaliente: EnumEstatusProductoDispositivo | null =
-        null;
-      let estatusDispositivoSaliente: EnumEstatusProductoDispositivo | null =
-        null;
-      let estatusSimSaliente: EnumEstatusProductoDispositivo | null = null;
+      let estatusProductoSaliente: number | null = null;
+      let estatusDispositivoSaliente: number | null = null;
+      let estatusSimSaliente: number | null = null;
 
       if (cambiaProducto) {
-        estatusProductoSaliente = this.assertEstatusComponenteAnterior(
+        estatusProductoSaliente = assertEstatusSalida(
+          'producto',
           dto.estatusProductoAnterior,
           'estatusProductoAnterior',
         );
@@ -1097,7 +1088,8 @@ export class InstalacionesService {
 
       if (cambiaDispositivo) {
         if (idDispositivoAnterior != null) {
-          estatusDispositivoSaliente = this.assertEstatusComponenteAnterior(
+          estatusDispositivoSaliente = assertEstatusSalida(
+            'dispositivo',
             dto.estatusDispositivoAnterior,
             'estatusDispositivoAnterior',
           );
@@ -1118,7 +1110,8 @@ export class InstalacionesService {
 
       if (cambiaSim) {
         if (idSimAnterior != null) {
-          estatusSimSaliente = this.assertEstatusComponenteAnterior(
+          estatusSimSaliente = assertEstatusSalida(
+            'sim',
             dto.estatusSimAnterior,
             'estatusSimAnterior',
           );
@@ -1191,54 +1184,33 @@ export class InstalacionesService {
 
       await qr.manager.delete(Instalaciones, { id: actual.id, idCliente });
 
+      // El componente que sale: instalado (2) → el estatus indicado; el que entra: disponible (1) → instalado.
+      const ctx = this.contexto(idUser, Number(nueva.id), origen, dto.comentario);
+      const movimientos: Array<{ tipo: TipoRecurso; id: number; esperado: number; nuevo: number }> = [];
       if (cambiaProducto && estatusProductoSaliente != null) {
-        await qr.manager.update(
-          Productos,
-          { id: idProductoAnterior, idCliente },
-          { estatus: estatusProductoSaliente },
-        );
-        await qr.manager.update(
-          Productos,
-          { id: idProducto, idCliente },
-          { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
+        movimientos.push(
+          { tipo: 'producto', id: idProductoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusProductoSaliente },
+          { tipo: 'producto', id: idProducto, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO },
         );
       }
-
       if (cambiaDispositivo) {
-        if (
-          idDispositivoAnterior != null &&
-          estatusDispositivoSaliente != null
-        ) {
-          await qr.manager.update(
-            Dispositivos,
-            { id: idDispositivoAnterior, idCliente },
-            { estatus: estatusDispositivoSaliente },
-          );
+        if (idDispositivoAnterior != null && estatusDispositivoSaliente != null) {
+          movimientos.push({ tipo: 'dispositivo', id: idDispositivoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusDispositivoSaliente });
         }
         if (idDispositivo != null) {
-          await qr.manager.update(
-            Dispositivos,
-            { id: idDispositivo, idCliente },
-            { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
-          );
+          movimientos.push({ tipo: 'dispositivo', id: idDispositivo, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO });
         }
       }
-
       if (cambiaSim) {
         if (idSimAnterior != null && estatusSimSaliente != null) {
-          await qr.manager.update(
-            Sims,
-            { id: idSimAnterior, idCliente },
-            { estatus: estatusSimSaliente },
-          );
+          movimientos.push({ tipo: 'sim', id: idSimAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusSimSaliente });
         }
         if (idSim != null) {
-          await qr.manager.update(
-            Sims,
-            { id: idSim, idCliente },
-            { estatus: EnumEstatusProductoDispositivo.ASIGNADO },
-          );
+          movimientos.push({ tipo: 'sim', id: idSim, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO });
         }
+      }
+      for (const m of movimientos) {
+        await this.motor.mover(qr.manager, { ...m, idCliente, accion: 'cambio' }, ctx);
       }
 
       if (propia) {
@@ -1293,11 +1265,13 @@ export class InstalacionesService {
   }
 
   /**
-   * PATCH estatus (solo 0, 1, 5):
-   * - 0 / 5: EstatusInstalacion = valor, Estatus fila = 0 (SimActivo/DispositivoActivo NULL),
-   *   componentes → 1 (disponible). Sin histórico ni DELETE.
-   * - 1: exige componentes en 1; luego EstatusInstalacion=1, Estatus fila=1,
-   *   componentes → 2 (asignado).
+   * PATCH estatus (solo 0, 1, 5), por el motor de activos:
+   * - 0 / 5 (baja): archiva el periodo en HistoricoInstalaciones (Accion "Baja",
+   *   VigenteHasta = ahora) y deja la fila con Estatus = 0. Los componentes salen
+   *   según el motivo: dispositivo a por revisar (3), o inservible (5) si la baja
+   *   es 5; SIM a por revisar; producto a activo (1).
+   * - 1 (reactivar): exige componentes disponibles (1), los pasa a instalado (2)
+   *   y abre una versión nueva (VigenteDesde = ahora, eslabón a la baja).
    */
   async baja(
     id: number,
@@ -1306,6 +1280,7 @@ export class InstalacionesService {
     rol: number,
     idUser: number,
     trx?: QueryRunner,
+    origen?: OrigenOperacion,
   ): Promise<ApiCrudResponse> {
     if (
       !ESTATUS_INSTALACION_PATCH.includes(
@@ -1354,12 +1329,23 @@ export class InstalacionesService {
         idSim: actual.idSim != null ? Number(actual.idSim) : null,
       };
 
+      const activa = Number(actual.estatus) === EstatusEnum.ACTIVO;
+      const ahora = nowMexicoCityAsUtcDate();
+      const ctx = this.contexto(idUser, Number(actual.id), origen, dto.comentario);
+
       if (dto.estatusInstalacion === EnumEstatusInstalacion.ACTIVA) {
+        if (activa) {
+          throw new BadRequestException('La instalación ya está activa.');
+        }
         await this.assertComponentesDisponiblesParaActivar(
           qr.manager,
           componentes,
         );
 
+        // Versión nueva enlazada a la baja archivada. Una baja anterior al motor
+        // no tiene archivo: se conserva VigenteDesde (como antes) y el
+        // saneamiento (§9) reconstruye ese periodo.
+        const baja = await this.bajaArchivada(qr.manager, actual);
         await qr.manager.update(
           Instalaciones,
           { id: actual.id, idCliente },
@@ -1367,17 +1353,20 @@ export class InstalacionesService {
             estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
             estatus: EstatusEnum.ACTIVO,
             idUsuario: idUser,
+            ...(baja ? { vigenteDesde: ahora, idHistoricoInstalacion: Number(baja.id) } : {}),
           },
         );
-        await this.sincronizarEstatusComponentes(
-          qr.manager,
-          componentes,
-          EnumEstatusProductoDispositivo.ASIGNADO,
-        );
+        for (const c of this.componentes(componentes)) {
+          await this.motor.mover(
+            qr.manager,
+            { ...c, idCliente, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'reactivacion' },
+            ctx,
+          );
+        }
 
         if (propia) {
-        await qr.commitTransaction();
-      }
+          await qr.commitTransaction();
+        }
 
         await this.bitacoraLogger.logToBitacora(
           'Instalaciones',
@@ -1397,7 +1386,39 @@ export class InstalacionesService {
         };
       }
 
-      // 0 o 5: desactivar fila + liberar componentes a disponible
+      if (!activa) {
+        // Una baja como inactiva (0) se puede corregir a inservible (5): el
+        // equipo, si sigue por revisar, pasa a inservible.
+        if (
+          dto.estatusInstalacion === EnumEstatusInstalacion.INSERVIBLE &&
+          Number(actual.estatusInstalacion) === EnumEstatusInstalacion.INACTIVO
+        ) {
+          return await this.corregirBajaAInservible(qr, propia, actual, componentes, dto, idUser, ctx);
+        }
+        throw new BadRequestException('La instalación ya está dada de baja.');
+      }
+
+      // 0 o 5: archivar el periodo, desactivar la fila y sacar los componentes.
+      await qr.manager.save(
+        qr.manager.create(HistoricoInstalaciones, {
+          idCliente,
+          idProducto: componentes.idProducto,
+          idDispositivo: componentes.idDispositivo,
+          idSim: componentes.idSim,
+          estatusInstalacion: dto.estatusInstalacion,
+          idInstalacionOriginal: Number(actual.id),
+          vigenteDesde: actual.vigenteDesde,
+          vigenteHasta: ahora,
+          idHistoricoInstalacion:
+            actual.idHistoricoInstalacion != null
+              ? Number(actual.idHistoricoInstalacion)
+              : null,
+          idUsuario: idUser,
+          accion: EnumAccionHistoricoInstalacion.BAJA,
+          comentario: dto.comentario ?? null,
+          fhArchivado: ahora,
+        }),
+      );
       await qr.manager.update(
         Instalaciones,
         { id: actual.id, idCliente },
@@ -1407,11 +1428,19 @@ export class InstalacionesService {
           idUsuario: idUser,
         },
       );
-      await this.sincronizarEstatusComponentes(
-        qr.manager,
-        componentes,
-        EnumEstatusProductoDispositivo.ACTIVO,
-      );
+      for (const c of this.componentes(componentes)) {
+        await this.motor.mover(
+          qr.manager,
+          {
+            ...c,
+            idCliente,
+            esperado: EstatusRecurso.INSTALADO,
+            nuevo: estatusSalidaPorBaja(c.tipo, dto.estatusInstalacion),
+            accion: 'baja',
+          },
+          ctx,
+        );
+      }
       const geocercasEliminadas = await this.eliminarGeocercasDeInstalacion(
         qr.manager,
         Number(actual.id),
@@ -1469,6 +1498,84 @@ export class InstalacionesService {
         await qr.release();
       }
     }
+  }
+
+  /** Archivo de la última baja de la instalación, si es posterior a su eslabón actual. */
+  private async bajaArchivada(
+    manager: EntityManager,
+    inst: Instalaciones,
+  ): Promise<HistoricoInstalaciones | null> {
+    const ultima = await manager.findOne(HistoricoInstalaciones, {
+      where: { idInstalacionOriginal: Number(inst.id), idCliente: Number(inst.idCliente) },
+      order: { id: 'DESC' },
+    });
+    const eslabon = inst.idHistoricoInstalacion != null ? Number(inst.idHistoricoInstalacion) : 0;
+    return ultima &&
+      ultima.accion === EnumAccionHistoricoInstalacion.BAJA &&
+      Number(ultima.id) > eslabon
+      ? ultima
+      : null;
+  }
+
+  private async corregirBajaAInservible(
+    qr: QueryRunner,
+    propia: boolean,
+    actual: Instalaciones,
+    componentes: { idCliente: number; idProducto: number; idDispositivo: number | null; idSim: number | null },
+    dto: BajaInstalacionDto,
+    idUser: number,
+    ctx: ContextoMovimiento,
+  ): Promise<ApiCrudResponse> {
+    const idCliente = componentes.idCliente;
+    const id = Number(actual.id);
+    await qr.manager.update(
+      Instalaciones,
+      { id, idCliente },
+      { estatusInstalacion: EnumEstatusInstalacion.INSERVIBLE, idUsuario: idUser },
+    );
+    const baja = await this.bajaArchivada(qr.manager, actual);
+    if (baja) {
+      await qr.manager.update(
+        HistoricoInstalaciones,
+        { id: baja.id, idCliente },
+        { estatusInstalacion: EnumEstatusInstalacion.INSERVIBLE },
+      );
+    }
+    if (componentes.idDispositivo != null) {
+      const disp = await qr.manager.findOne(Dispositivos, { where: { id: componentes.idDispositivo } });
+      if (Number(disp?.estatus) === EstatusRecurso.POR_REVISAR) {
+        await this.motor.mover(
+          qr.manager,
+          {
+            tipo: 'dispositivo',
+            id: componentes.idDispositivo,
+            idCliente,
+            esperado: EstatusRecurso.POR_REVISAR,
+            nuevo: EstatusRecurso.INSERVIBLE,
+            accion: 'baja',
+          },
+          ctx,
+        );
+      }
+    }
+    if (propia) {
+      await qr.commitTransaction();
+    }
+    await this.bitacoraLogger.logToBitacora(
+      'Instalaciones',
+      `Se corrigió la baja de la instalación ID: ${id} a inservible (5)`,
+      'UPDATE',
+      { id, dto, idCliente },
+      idUser,
+      EnumModulos.INSTALACIONES,
+      EstatusEnumBitcora.SUCCESS,
+    );
+    return {
+      status: 'success',
+      message: 'La instalación se marcó como inservible correctamente.',
+      estatus: { estatus: EnumEstatusInstalacion.INSERVIBLE },
+      data: { id, nombre: `Instalación ${id}` },
+    };
   }
 
   private async assertComponentesDisponiblesParaActivar(

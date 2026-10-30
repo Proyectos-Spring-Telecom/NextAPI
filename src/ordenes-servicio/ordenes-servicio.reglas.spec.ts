@@ -81,7 +81,7 @@ describe('faltantesParaCerrar', () => {
       faltantesParaCerrar(orden({ tipoServicio: 'instalacion', idInstalacion: null, idProducto: null }), completas, archivos, catalogo),
     ).toEqual(['Falta el vehículo (idProducto)', 'Falta el equipo a instalar (idDispositivoNuevo)']);
     expect(faltantesParaCerrar(orden({ tipoServicio: 'c_sim', idSimNuevo: 3 }), completas, archivos, catalogo)).toEqual([
-      'Falta el estatus de la SIM que sale (estatusSalienteAnterior)',
+      'Falta el estatus de la SIM que sale (estatusSalienteAnterior: 3 por revisar, 4 laboratorio o 5 inservible)',
     ]);
     expect(
       faltantesParaCerrar(orden({ tipoServicio: 'desinstalacion', estatusInstalacionBaja: 3 }), completas, archivos, catalogo),

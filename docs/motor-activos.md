@@ -1,6 +1,6 @@
 # Motor de activos y visibilidad (diseño para revisión)
 
-**Estado:** propuesta del 30/10/2026; decisiones de Israel del 30/10 incorporadas (§12). Listo para implementar por fases. Parte del diagnóstico ([diagnostico-modelo.md](diagnostico-modelo.md)).
+**Estado:** diseño del 30/10/2026 con las decisiones de Israel (§12). **Fase A implementada el 30/10** (§13); siguen B–F. Parte del diagnóstico ([diagnostico-modelo.md](diagnostico-modelo.md)).
 
 ## 0. Principios (acordados)
 
@@ -69,7 +69,7 @@ Tabla nueva `MovimientosRecurso`, escrita solo por el motor, en la misma transac
 | `EstatusAnterior`, `EstatusNuevo` | |
 | `IdClienteAnterior`, `IdClienteNuevo` | |
 | `IdInstalacion`, `IdOrdenServicio` | de dónde viene el movimiento |
-| `Motivo`, `Comentario`, `IdUsuario`, `Origen` | front / app / crm / orden / sistema |
+| `Accion`, `Motivo`, `IdUsuario`, `Origen` | `Accion`: alta / instalacion / cambio / baja / reactivacion / estatus. `Motivo`: texto de quien hizo el cambio. `Origen`: api (front o App) / orden / sistema |
 
 Con esto, `HistoricoInstalaciones` y la bitácora responden "qué pasó con la instalación"; `MovimientosRecurso` responde "**dónde ha estado este equipo**". Endpoint: `GET /dispositivos/:id/historial` (y SIM, producto).
 
@@ -167,7 +167,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 
 | Fase | Contenido | Depende de |
 |---|---|---|
-| A | Catálogo de estatus, transiciones, `MovimientosRecurso`, motor sobre los endpoints existentes, baja archivada | — |
+| A ✅ | Catálogo de estatus, transiciones, `MovimientosRecurso`, motor sobre los endpoints existentes, baja archivada | — |
 | B | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
 | C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
@@ -185,3 +185,54 @@ Cada fase cierra con unitarias, la batería, una revisión independiente, la doc
 5. Inservible que transmite: **incidente**. Además, vigilancia de transmisión (§7b): relojes 24 h, demás 12 h; evaluación diaria entre 9:00 y 11:00; aviso en el portal a monitoreo. ✅
 6. Corregir la fecha de instalación: **roles 1–4**. ✅
 
+
+## 13. Fase A implementada (30/10/2026)
+
+**Base:** `deploy/sql/MotorActivosFaseA.sql` crea `CatEstatusRecurso` (mismos números que ya usa `Estatus`: no hay migración de datos) y `MovimientosRecurso` (sin llaves foráneas: es evidencia).
+
+**Código:**
+- `src/motor-activos/estatus-recurso.ts`: reglas puras (transiciones, salida de una instalación, salida por baja), con pruebas unitarias.
+- `src/motor-activos/motor-activos.service.ts`: `mover` (UPDATE condicional al estatus esperado; si otro proceso lo movió → 409; sincroniza `PanelAlarma`; escribe el movimiento en la misma transacción) y `cambiarEstatusManual`.
+- Pasan por el motor:
+  - los 10 `PATCH …/estatus/:id` de dispositivos, trackcam, relojes, paneles, SIM, productos, vehículos, personas, inmuebles y activos;
+  - instalar, cambiar componente, baja y reactivación;
+  - el cierre de órdenes de servicio, con `Origen = orden` e `IdOrdenServicio`;
+  - el alta de dispositivos, productos y SIM, que registra su primer movimiento.
+- Endpoints nuevos:
+  - `GET /estatus-recurso`: catálogo con transiciones;
+  - `GET /dispositivos|sims|productos/:id/historial`: roles 1–5 y 8.
+
+**Cambios de comportamiento:**
+- Dispositivo y SIM siguen la tabla de §1. Un cambio no permitido → 400, con los estatus permitidos en el mensaje.
+- El componente que sale en un cambio va a 3, 4 o 5; antes aceptaba de 0 a 5. Lo mismo `estatusSalienteAnterior` de las órdenes.
+- **Baja (0 o 5):**
+  - archiva el periodo en `HistoricoInstalaciones` (`Accion = Baja`, `VigenteHasta`);
+  - el dispositivo va a 3, o a 5 si la baja es 5;
+  - la SIM va a 3 y el producto a 1. Antes los tres regresaban a 1.
+- **Reactivar:**
+  - exige los componentes en 1 (revisados);
+  - pone `VigenteDesde` = ahora y enlaza el eslabón a la baja;
+  - rechaza una instalación que ya está activa o ya está dada de baja.
+  - Una baja anterior al motor no tiene archivo: al reactivarla se conserva su `VigenteDesde`, como antes. El saneamiento (§9) reconstruye ese periodo.
+- Una baja como inactiva (0) se puede corregir a inservible (5); el equipo, si sigue por revisar, pasa a 5.
+- El cambio de cliente de un dispositivo o una SIM solo procede en 0 o 1, y queda en el historial como `traspaso`.
+- Las ediciones de ficha ya no reescriben `Estatus` con el valor leído al inicio (`sinEstatus`). `PanelAlarma.Estatus` sigue en 1 mientras el panel está instalado.
+- Reportes por instalación (`resolverDispositivosEnPeriodo`): una instalación dada de baja con el motor ya no aporta un tramo abierto; empieza en su baja archivada.
+- El producto conserva su escala hasta la fase C. Ya no se le puede poner 2 al salir de un cambio.
+
+**Pendiente para el saneamiento (§9), antes o junto con el despliegue:**
+- Las instalaciones activas cuyo producto, equipo o SIM no esté en 2 (el diagnóstico encontró #1000001 y #1000002). Un cambio o baja sobre ellas responde 409, con el estatus encontrado y el esperado, hasta corregirlas.
+- Reconstruir el periodo de las bajas anteriores al motor.
+
+**Revisión independiente (30/10):** se corrigió todo lo que encontró:
+- sincronización de `PanelAlarma`;
+- reportes después de una baja;
+- reactivación de bajas anteriores al motor;
+- traspaso de SIM y cambio de cliente de dispositivo fuera del motor;
+- ediciones que podían revertir un estatus;
+- validación de `estatusSalienteAnterior` en el DTO;
+- código muerto.
+
+Queda la ruta `sims/:id/historial`, que depende de registrar `MotorActivosModule` antes que `SimsModule` porque existe `sims/:page/:limit`. Está anotado en `app.module.ts` y lo cubre la batería.
+
+**Pruebas:** `test/e2e-ordenes/activos.e2e-spec.ts` cubre el catálogo, el alta, el ciclo completo, la baja, la reactivación, el inservible, la concurrencia, el permiso del historial y el origen "orden". Usa la misma infraestructura que órdenes (`npm run test:e2e-ordenes`).

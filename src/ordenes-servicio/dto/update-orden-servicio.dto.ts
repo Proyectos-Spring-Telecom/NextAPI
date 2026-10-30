@@ -1,3 +1,4 @@
+import { ESTATUS_SALIDA_INSTALACION } from 'src/motor-activos/estatus-recurso';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
@@ -14,7 +15,6 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { ESTATUS_PRODUCTO_DISPOSITIVO_PATCH } from 'src/common/estatus.enum';
 import {
   ESTATUS_BAJA_PERMITIDOS,
   SECCIONES_RESPUESTA,
@@ -59,13 +59,15 @@ export class UpdateOrdenServicioDto {
   idSimNuevo?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Cambio de equipo/SIM: estatus que recibe el que sale (0–5, p. ej. 4 = baja por mantenimiento)',
-    enum: ESTATUS_PRODUCTO_DISPOSITIVO_PATCH,
+    description: 'Cambio de equipo/SIM: estatus que recibe el que sale: 3 por revisar, 4 laboratorio o 5 inservible (CatEstatusRecurso)',
+    enum: ESTATUS_SALIDA_INSTALACION,
     nullable: true,
   })
   @IsOptional()
   @ValidateIf((_, v) => v != null)
-  @IsIn([...ESTATUS_PRODUCTO_DISPOSITIVO_PATCH])
+  @IsIn([...ESTATUS_SALIDA_INSTALACION], {
+    message: 'estatusSalienteAnterior debe ser 3 (por revisar), 4 (laboratorio) o 5 (inservible)',
+  })
   estatusSalienteAnterior?: number | null;
 
   @ApiPropertyOptional({

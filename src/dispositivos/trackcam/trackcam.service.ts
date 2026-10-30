@@ -25,7 +25,7 @@ import {
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
+import { MotorActivosService, sinEstatus } from 'src/motor-activos/motor-activos.service';
 import {
   crearDispositivoBase,
   obtenerTipoTrackcam,
@@ -51,6 +51,7 @@ export class TrackcamService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly webhookEmitter: WebhookEmitterService,
+    private readonly motor: MotorActivosService,
   ) { }
 
   async create(
@@ -68,6 +69,7 @@ export class TrackcamService {
       const tipo = await obtenerTipoTrackcam(queryRunner.manager);
       const dispositivo = await crearDispositivoBase(queryRunner.manager, {
         idCliente,
+        idUsuario: idUser,
         idTipoDispositivo: Number(tipo.id),
         numeroSerie: dto.numeroSerie,
         imei: dto.imei ?? null,
@@ -294,7 +296,7 @@ export class TrackcamService {
         if (dto.camara !== undefined) dispositivo.camara = dto.camara;
         if (dto.idMarca !== undefined) dispositivo.idMarca = dto.idMarca;
         if (dto.idModelo !== undefined) dispositivo.idModelo = dto.idModelo;
-        await this.dispositivosRepo.save(dispositivo);
+        await this.dispositivosRepo.save(sinEstatus(dispositivo));
       }
 
       await this.bitacoraLogger.logToBitacora(
@@ -356,13 +358,16 @@ export class TrackcamService {
         throw new NotFoundException('Dispositivo del Trackcam no encontrado');
       }
 
-      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
       await this.tenantFilter.assertClienteVisible(alcance, Number(dispositivo.idCliente), 'Recurso');
-      assertCambioEstatus(Number(dispositivo.estatus), Number(dto.estatus), 'dispositivo');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;
-      await this.dispositivosRepo.update({ id }, { estatus });
+      await this.motor.cambiarEstatusManual('dispositivo', dispositivo, estatus, {
+        idUsuario: idUser,
+        rol: alcance.rol,
+        motivo: dto.motivo,
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'TrackcamConfig',
