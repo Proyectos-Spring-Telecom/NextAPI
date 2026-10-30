@@ -200,7 +200,7 @@ socket.on('disconnect', (reason) => {
 
 ---
 
-> **Guía Angular completa:** [consumo-socket-alarmas-angular.md](./consumo-socket-alarmas-angular.md) (servicio, dashboard, reconexión, checklist prod).
+> **Guía Angular completa:** `consumo-socket-alarmas-angular.md` (no está en el repositorio) (servicio, dashboard, reconexión, checklist prod).
 
 ## 7. Ejemplo — Angular (servicio)
 
@@ -286,7 +286,7 @@ Headers REST: `Authorization: Bearer <token>`.
 ## 11. Origen de los eventos en tiempo real
 
 ```text
-SpringTrackCam (gateway)
+SpringPanel (gateway AX PRO / SIA)
   → RabbitMQ (axpro.event / axpro.heartbeat)
   → NextAPI AlarmasIngestService
   → MySQL + AlarmasGateway.emit*

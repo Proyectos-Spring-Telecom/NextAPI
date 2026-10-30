@@ -24,7 +24,7 @@ Fecha de consolidación: 2026-10-03
 | ORM | TypeORM (`synchronize: false`) |
 | Auth | JWT (Passport) + refresh |
 | Tiempo real | Socket.IO (`/monitoreo`, `/alarmas`) |
-| Mensajería | RabbitMQ (AMQP, amqplib) — colas AVL (JT808 + Jimi) y AX PRO |
+| Mensajería | RabbitMQ (AMQP, amqplib) — colas AVL (JT808 + Jimi + FA100S) y AX PRO |
 | Storage | AWS S3 |
 | Correo | Nodemailer |
 | Docs API | Swagger (`/docs`) |
@@ -58,9 +58,11 @@ Fecha de consolidación: 2026-10-03
 | **springTrackCam** | Gateway JT808 (TCP cámara), captura HTTP foto/video, publica AMQP `jt808.*` |
 | **springTrackGas** | Gateway Concox VL802, publica AMQP `jimi.*` |
 | **Server_Socket** (.NET, SionDev) | Inserta la posición en SQL Server (SionDev) y después publica `jimi.position` al exchange `telemetry` (usuario AMQP `avl`) |
+| **springFA100S** | Gateway de relojes FA100S, publica AMQP `fa100s.*` |
 | **SpringPanel / SIA** | Ingest HMAC de paneles de alarma (`/alarmas/ingest`) |
 | **AX PRO** | Eventos y heartbeats de panel vía colas `telemetry.axpro.*` |
 | **ShiftControl / otros** | Suscriptores de webhooks salientes |
+| **CRM** (`crmAPI`) | Programa órdenes de servicio y lee clientes, unidades y órdenes por `/integracion/*` (HMAC `CRM_HMAC_SECRET`, solo localhost); ver [`ordenes-servicio.md`](./ordenes-servicio.md) |
 | **Frontend / BFF** | REST + sockets con JWT |
 
 ```text
@@ -99,7 +101,7 @@ Nombres configurables: `RABBITMQ_QUEUE_AVL_*`, `RABBITMQ_QUEUE_AXPRO_*`. Prefetc
 
 ### Reglas de colas
 
-- AVL: `AvlEventsConsumer` despacha por `protocol` (header o body) a `Jt808EventsConsumer` / `JimiEventsConsumer`; `kind` debe coincidir con la cola (`position` en events, `alarm` en alarms). Si no coincide → error permanente (DLQ sin reintentos).
+- AVL: `AvlEventsConsumer` despacha por `protocol` (header o body) a `Jt808EventsConsumer` / `JimiEventsConsumer` / `Fa100sEventsConsumer`; `kind` debe coincidir con la cola (`position` en events, `alarm` en alarms; FA100S también `alarm_location` en alarms). Si no coincide → error permanente (DLQ sin reintentos).
 - **Nunca** mezclar bindings `axpro.*` con las colas AVL.
 - `kind=alarm` (JT808/Jimi) → auditoría en `TelemetryIngestLog`; **no** INSERT `Posiciones` (evita GPS duplicado). Jimi: solo SOS en `jimi.alarm.*`.
 - Idempotencia global por `eventId` (SHA-256 hex 64) en `TelemetryIngestLog`.
@@ -107,16 +109,16 @@ Nombres configurables: `RABBITMQ_QUEUE_AVL_*`, `RABBITMQ_QUEUE_AXPRO_*`. Prefetc
 - MySQL no disponible (caído o reiniciando) no gasta reintentos ni manda a la DLQ: los consumidores esperan con backoff (`RABBITMQ_DB_RETRY_MAX_DELAY_MS`) y los mensajes se quedan en la cola hasta que vuelve (`db-availability.gate.ts`).
 - Concurrencia de BD limitada por `RABBITMQ_MAX_CONCURRENT_DB`.
 - Watchdog: reconexión preventiva tras `CONSUMER_WATCHDOG_MINUTES` sin mensajes; reconexión con backoff hasta `RABBITMQ_RECONNECT_MAX_DELAY`.
-- Dispositivo desconocido (IMEI / NumeroSerie no encontrado o con estatus distinto de 1/2) → warning en log y ack (no DLQ).
+- Dispositivo desconocido (IMEI / NumeroSerie no encontrado o con estatus distinto de 1/2) → upsert en `TelemetryHuerfanos` (equipos sin alta, `GET /telemetria/huerfanos`), warning solo la primera vez y ack (no DLQ). Ver [`contratos.md` §12.6](./contratos.md).
 
-### Envelope común (JT808 / Jimi)
+### Envelope común (JT808 / Jimi / FA100S)
 
 ```json
 {
   "eventId": "<sha256-hex-64>",
-  "protocol": "jt808|jimi",
+  "protocol": "jt808|jimi|fa100s",
   "kind": "position|alarm",
-  "deviceId": "<NumeroSerie o IMEI Concox>",
+  "deviceId": "<NumeroSerie o IMEI Concox / reloj>",
   "receivedAt": "2026-09-03T23:30:00.000Z",
   "payload": { }
 }
@@ -128,6 +130,7 @@ Headers AMQP esperados: `protocol`, `kind` y (opcional) `deviceId`. `message_id`
 |-----------|-------------------|
 | JT808 | `deviceId` = `NumeroSerie` |
 | Jimi | `payload.Imei \|\| deviceId` → `Dispositivos.Imei` (`resolveByImei`), estatus 1 (activo) o 2 (asignado) |
+| FA100S | `deviceId` = IMEI de 15 dígitos → `Dispositivos.Imei` (reloj dado de alta en `/dispositivos/relojes`) |
 
 ### Publicador Server_Socket (Jimi position)
 
@@ -165,7 +168,7 @@ Reglas de `/health/rabbitmq/queues`:
 - Global: `disabled` (`RABBITMQ_ENABLED=false`), `down`, `degraded`, `ok`. HTTP 200 salvo fallo de la consulta (503).
 - Aviso extra en `avl.events` si un protocolo deja de reportar (`"jimi sin mensajes desde hace N min"`), sin cambiar el `state`.
 
-Detalle de bindings y checklist: [`NEXTAPI-RABBITMQ-JT808.md`](./NEXTAPI-RABBITMQ-JT808.md), [`CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md`](./CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md), [`RABBITMQ-CONSUMER-FIX.md`](./RABBITMQ-CONSUMER-FIX.md) (algunos describen todavía las colas legacy; la fuente vigente es este documento).
+Detalle de bindings y checklist: `NEXTAPI-RABBITMQ-JT808.md` (no está en el repositorio), `CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md` (no está en el repositorio), `RABBITMQ-CONSUMER-FIX.md` (no está en el repositorio) (algunos describen todavía las colas legacy; la fuente vigente es este documento).
 
 ---
 
@@ -195,7 +198,7 @@ Trackcam: `CatTipoDispositivo` código **TRACKCAM** (id típico 5). TRACKGAS = 6
 
 ## 5. Estados, eventos y triggers (Sion)
 
-Fuente: [`Documentacion Sion.pdf`](./Documentacion%20Sion.pdf). Catálogo extendido JT808: `src/common/cat-eventos.enum.ts`.
+Fuente: `Documentacion Sion.pdf` (no está en el repositorio). Catálogo extendido JT808: `src/common/cat-eventos.enum.ts`.
 
 ### Eventos base (`IdEvento`)
 
@@ -207,7 +210,7 @@ Fuente: [`Documentacion Sion.pdf`](./Documentacion%20Sion.pdf). Catálogo extend
 | 6–7 | Speed / Move |
 | 8 | Door |
 | 9–11 | Transmisión / Camera / Distance |
-| ≥12 | ADAS / DSM / Sobrecupo (JT808) |
+| ≥12 | ADAS / DSM / Sobrecupo (JT808), relojes y extensión 32–71: ver [`catalogo-eventos.md`](./catalogo-eventos.md) |
 
 ### Estados (`Estado`)
 
@@ -252,7 +255,7 @@ Auth cliente: JWT en `auth.token` / `Authorization` / query.
 
 Se emite tras ingest GPS (`notificarImei`) o cambios de dispositivo / instalación / panel relevantes (`notificarDispositivo`, `notificarInstalacion`). La consola es aditiva: no cambia el shape ni los nombres de `conexion:lista` / `monitoreo:actualizacion`.
 
-Guías front: [`consumo-socket-monitoreo-angular.md`](./consumo-socket-monitoreo-angular.md), [`consumo-socket-posiciones-angular.md`](./consumo-socket-posiciones-angular.md).
+Guías front: `consumo-socket-monitoreo-angular.md` (no está en el repositorio), `consumo-socket-posiciones-angular.md` (no está en el repositorio).
 
 ### Namespace `/alarmas`
 
@@ -263,7 +266,7 @@ Guías front: [`consumo-socket-monitoreo-angular.md`](./consumo-socket-monitoreo
 | `panel:heartbeat` | Server → room | Heartbeat |
 | `panel:estado` | Server → room | Online/offline (`SIA_OFFLINE_THRESHOLD_MS`) |
 
-Guías: [`consumo-socket-alarmas-angular.md`](./consumo-socket-alarmas-angular.md), [`consumo-socket-alarmas-paneles.md`](./consumo-socket-alarmas-paneles.md).
+Guías: `consumo-socket-alarmas-angular.md` (no está en el repositorio), [`consumo-socket-alarmas-paneles.md`](./consumo-socket-alarmas-paneles.md).
 
 ---
 
@@ -281,9 +284,9 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 
 Cola AMQP AX PRO también alimenta el mismo dominio de paneles vía `messaging/axpro`.
 
-Guías: [`consumo-alarmas-angular-produccion.md`](./consumo-alarmas-angular-produccion.md), [`consumo-login-alarmas.md`](./consumo-login-alarmas.md).
+Guías: `consumo-alarmas-angular-produccion.md` (no está en el repositorio), `consumo-login-alarmas.md` (no está en el repositorio).
 
-**Incidentes** (`/incidentes`): expediente de atención abierto manualmente desde una `Posicion` o un `EventoAlarma` (snapshot `DatosOrigen`), con seguimientos y estatus abierto ↔ cerrado. No es detección automática de alarmas.
+**Incidentes** (`/incidentes`): expediente de atención abierto manualmente desde una `Posicion` o un `EventoAlarma` (snapshot `DatosOrigen`), con seguimientos y estatus abierto ↔ cerrado. Además, NextAPI abre incidentes **automáticos** cuando una posición entra en un estado de alerta (`src/incidentes/auto/`; reglas en [`contratos.md` §13](./contratos.md) y [`catalogo-eventos.md`](./catalogo-eventos.md)).
 
 ---
 
@@ -310,7 +313,7 @@ NextAPI **emite**; no recibe webhooks de negocio de Shift/Trackcam.
 | Eventos | `trackcam.created`, `trackcam.updated` |
 
 Alta/edición en `/dispositivos/trackcam` → emite webhook.  
-Guía receptor: [`webhook-trackcam-springtrackcam.md`](./webhook-trackcam-springtrackcam.md).
+Guía receptor: `webhook-trackcam-springtrackcam.md` (no está en el repositorio).
 
 ### ShiftControl / genéricos
 
@@ -334,19 +337,23 @@ Contrato: [`webhook-shiftcontrol.md`](./webhook-shiftcontrol.md). Código: `src/
 |--------|-----------------|
 | `auth` | Login JWT, refresh, logout, `me`, NIP de operador, login facial (BehaviorIQ), recuperación / cambio de contraseña (Next y Shift), verify |
 | `monitoreo` | Listado GPS, consola de `UltimaPosicion`, histórico, instalaciones por usuarios, socket GPS, proxy foto/video |
-| `messaging` | Consumers RabbitMQ (AVL: JT808 + Jimi; AX PRO), métricas y health por cola |
+| `messaging` | Consumers RabbitMQ (AVL: JT808 + Jimi + FA100S; AX PRO), métricas y health por cola |
 | `alarmas` | Consulta + ingest HMAC + socket paneles |
-| `incidentes` | CRUD incidentes + seguimientos (alta manual desde origen) |
-| `dispositivos` / `trackcam` / `paneles` | CRUD dispositivos y configs (Trackcam solo por su ruta propia) |
+| `incidentes` | CRUD incidentes + seguimientos (alta manual desde origen) + incidentes automáticos por alerta (`incidentes/auto`) |
+| `dispositivos` / `trackcam` / `paneles` / `relojes` | CRUD dispositivos y configs (Trackcam y relojes FA100S solo por su ruta propia) |
 | `sims` | CRUD SIM (plan, teléfono, IMEI, cliente, compañía) |
 | `instalaciones` | Alta, versionado (archiva + nueva versión), histórico, paginado por tipo de producto |
+| `ordenes-servicio` | Órdenes de servicio de los técnicos (App de instaladores, front, CRM): programar, código, autorización, pruebas, cierre con movimiento en Instalaciones, PDF ([`ordenes-servicio.md`](./ordenes-servicio.md)) |
+| `integracion-crm` | API de lectura y alta de clientes para el CRM (`/integracion/*`, HMAC) |
+| `consola` / `dashboard` | Galería de fotos, transmisiones, unidades sin transmisión; tablero de inicio |
+| `telemetria-huerfanos` | Equipos que transmiten sin alta en Next |
 | `productos` | Vehículo (incluye búsqueda por placa), activo, inmueble, persona + vista genérica de productos |
 | `clientes` | CRUD multipart con documentos opcionales y jerarquía (`spGetClientes`) |
 | `usuarios` | CRUD multipart, permisos y soluciones, asignación de instalaciones, IdFaceAuth, contraseña y NIP |
 | `operadores` | CRUD multipart (1:1 Usuario) + licencias (alta, edición, estatus) |
 | `roles` / `permisos` / `modulos` | Seguridad; `GET /permisos/permisosAgrupados` |
 | `geocercas` / `puntos-interes` / `numeros-emergencia` | Operación de monitoreo |
-| `reportes` | Paso por POI, velocidad, posiciones, última posición, distancia |
+| `reportes` | Paso por POI, velocidad, posiciones, última posición, distancia, salidas de geocerca (y recorrido), productos del cliente |
 | `catalogos` | 5 catálogos CRUD + consulta unificada |
 | `webhook-emitter` | Emisión HMAC |
 | `bitacora`, `s3`, `mail` | Soporte |
@@ -382,10 +389,13 @@ Patrón NextAPI en catálogos/productos: módulo padre + submódulos + registry 
 | `WEBHOOK_SUBSCRIBERS` | Destinos genéricos (Shift, …) |
 | `WEBHOOK_SECRET` | HMAC webhooks |
 | `GATEWAY_HMAC_SECRET`, `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` | Ingest SIA / paneles |
+| `CRM_HMAC_SECRET`, `CRM_ID_USUARIO` | Integración CRM (`/integracion/*`) |
+| `LOG_LEVEL` | Nivel de log (default `log`) |
+| `BEHAVIORIQ_*` | Login facial |
 | `AWS_*` / `UPLOAD_MAX_SIZE` | S3 |
 | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD`, `MAIL_FRONTEND_URL*` | Correo |
 
-Plantilla: `.env.example`.
+No hay plantilla en el repositorio (`.env.example` está en `.gitignore`): usar la tabla de variables de esta sección.
 
 ---
 
@@ -397,7 +407,7 @@ Plantilla: `.env.example`.
 - Campos **camelCase**; listado/socket de telemetría **plano** (sin JSON anidados de posición).
 - `Posiciones.FechaHora` en histórico: hora de pared (sin forzar UTC en query).
 - Ingest AMQP: `parseFechaHoraPared` (Date.UTC) para no sumar +6h con TZ México + `DB_TZ` UTC.
-- IMEI como **string** en API (evitar pérdida de precisión): [`front-imei-string.md`](./front-imei-string.md).
+- IMEI como **string** en API (evitar pérdida de precisión): `front-imei-string.md` (no está en el repositorio).
 - Multipart (`clientes`, `usuarios`, `operadores`, licencias): arreglos como JSON en texto; documentos como archivo o URL.
 
 ---
@@ -405,7 +415,7 @@ Plantilla: `.env.example`.
 ## 13. Distancia en histórico vs Gateway
 
 - NextAPI histórico (`GET /monitoreo/:id/historico`) y reporte `POST /reportes/distancia` suman Haversine entre **todos** los puntos consecutivos (sin filtrar saltos, drift ni coordenadas).
-- La validación de posiciones (p. ej. `maxDist = Vmax × Δt`) está documentada para el **Gateway** en [`posicion-valida-gateway.md`](./posicion-valida-gateway.md) y se implementará más adelante.
+- La validación de posiciones (p. ej. `maxDist = Vmax × Δt`) está documentada para el **Gateway** en `posicion-valida-gateway.md` (no está en el repositorio) y se implementará más adelante.
 
 ---
 
@@ -421,10 +431,12 @@ Plantilla: `.env.example`.
 | Permisos | `GET /permisos/permisosAgrupados` devuelve solo `{ UsuariosPermisos, AsignacionSoluciones }` (se quitaron `UsuarioPanelAlarma` y `UsuariosInstalaciones` de la respuesta) |
 | Dispositivos | `GET /dispositivos/:id` sin validación de mismo cliente |
 | Operadores | Licencias: `POST /operadores/:idOperador/licencias`, `PATCH /operadores/licencias/:id`, `PATCH /operadores/licencias/estatus/:id` |
+| Telemetría | Equipos sin alta (`TelemetryHuerfanos`); relojes FA100S (`fa100s.*`, `/dispositivos/relojes`, `RelojConfig`); `FuentePosicion` y `RadioM` en `Posiciones`/`UltimaPosicion` |
+| Incidentes | Incidentes automáticos por alerta, con incidente propio por evento (SOS, caída, colisión, robo…) |
+| Órdenes de servicio | Etapas 1–3, API para el CRM y remediación del 29/10/2026 ([`ordenes-servicio.md`](./ordenes-servicio.md)) |
 
 ### Deuda técnica conocida
 
-- Jest no resuelve imports absolutos `src/...` (falta `moduleNameMapper`): falla `monitoreo-historico.helpers.spec.ts`.
 - La query cruda de `permisosAgrupados` interpola `idUsuario` y fija el esquema `Next.`.
 - `UsuarioPanelAlarma` sigue registrada en `usuarios.module.ts` sin uso; la tabla no existe en la BD.
 - `kind: 'photo'` sigue en tipos/mappers JT808 aunque ya no hay cola de media.
@@ -439,8 +451,8 @@ Plantilla: `.env.example`.
 | Documento | Contenido |
 |-----------|-----------|
 | [`contratos.md`](./contratos.md) | Contratos únicos: alcance del proyecto + HTTP / Socket / AMQP / alarmas / webhooks |
-| [`posicion-valida-gateway.md`](./posicion-valida-gateway.md) | Análisis R1 para Gateway (fuera de NextAPI) |
-| [`NEXTAPI-RABBITMQ-JT808.md`](./NEXTAPI-RABBITMQ-JT808.md), [`CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md`](./CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md), [`RABBITMQ-CONSUMER-FIX.md`](./RABBITMQ-CONSUMER-FIX.md) | Detalle histórico de RabbitMQ |
+| `posicion-valida-gateway.md` (no está en el repositorio) | Análisis R1 para Gateway (fuera de NextAPI) |
+| `NEXTAPI-RABBITMQ-JT808.md` (no está en el repositorio), `CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md` (no está en el repositorio), `RABBITMQ-CONSUMER-FIX.md` (no está en el repositorio) | Detalle histórico de RabbitMQ |
 | Guías `consumo-*.md` | Consumo Angular (sockets, alarmas, geocercas, instalaciones paginado, vehículo por placa, …) |
 | Guías `webhook-*.md` | Receptores / contratos webhook |
 | [`BACKEND-CONTEXT.md`](./BACKEND-CONTEXT.md), [`README.md`](./README.md) | Contexto previo e índice |

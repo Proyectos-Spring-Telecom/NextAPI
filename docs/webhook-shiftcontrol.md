@@ -72,7 +72,7 @@ El body completo que recibe Shift incluye `signature` al final:
 | `vehiculo.created` | `POST /api/productos/vehiculos` exitoso | `idCliente` | `idProducto` |
 | `vehiculo.updated` | `PATCH /api/productos/vehiculos/:id` exitoso | `idCliente` | `idProducto` |
 | `vehiculo.deleted` | `PATCH /api/productos/vehiculos/estatus/:id` con estatus **0, 3, 4 o 5** | `idCliente` | `idProducto` |
-| `cliente.created` | `POST /api/clientes` exitoso | `id` del cliente | mismo `id` |
+| `cliente.created` | `POST /api/clientes` o `POST /api/integracion/clientes` (alta desde el CRM) exitoso | `id` del cliente | mismo `id` |
 | `cliente.updated` | `PATCH /api/clientes/:id` exitoso | `id` del cliente | mismo `id` |
 
 ### Notas de `vehiculo.deleted`

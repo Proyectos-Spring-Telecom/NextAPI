@@ -4,7 +4,7 @@ Documento de referencia sobre la arquitectura, convenciones y capacidades del ba
 
 | Campo              | Valor                                  |
 | ------------------ | -------------------------------------- |
-| Proyecto           | `nextapi` v1.0.5                       |
+| Proyecto           | `nextapi` v2.2.0                       |
 | Framework          | NestJS 11 + TypeScript                 |
 | Base de datos      | MySQL (`Next`)                         |
 | Prefijo HTTP       | `/api`                                 |
@@ -57,8 +57,12 @@ NextAPI/
 │   ├── usuarios/              # CRUD usuarios, NIP, face-auth
 │   ├── clientes/              # CRUD clientes + multipart S3
 │   ├── roles/ permisos/ modulos/
-│   ├── vehiculos/ operadores/ dispositivos/ sims/ instalaciones/
-│   ├── inmuebles/ panel-alarma/   # Módulo alarmas SpringPanel
+│   ├── productos/             # vehiculos/ activos/ inmuebles/ personas/
+│   ├── operadores/ dispositivos/ sims/ instalaciones/   # dispositivos/: trackcam/ paneles/ relojes/
+│   ├── alarmas/ incidentes/   # Paneles SIA (consulta, ingest HMAC, socket) e incidentes
+│   ├── monitoreo/ consola/ dashboard/ reportes/ geocercas/ puntos-interes/ numeros-emergencia/
+│   ├── ordenes-servicio/ integracion-crm/   # Órdenes de servicio y API para el CRM
+│   ├── messaging/ telemetria-huerfanos/ webhook-emitter/
 │   ├── catalogos/             # Catálogos CRUD + registry dinámico
 │   ├── bitacora/ s3/ mail/
 │   ├── common/                # TenantFilter, enums, validators, ApiResponse
@@ -88,7 +92,7 @@ npm run start:prod   # node dist/main
 | --------------- | ---------------------------------------------------------------------------------------------- |
 | App             | `PORT`, `TZ`, `NODE_ENV`                                                                       |
 | MySQL           | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE`                                  |
-| JWT             | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`                 |
+| JWT             | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`                                       |
 | Throttling auth | `THROTTLE_*_LIMIT`, `THROTTLE_*_TTL_MS`                                                        |
 | AWS S3          | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` |
 | SMTP            | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD`, `MAIL_FRONTEND_URL` (opcional)                      |
@@ -154,10 +158,9 @@ Guards típicos: `JwtAuthGuard` + `RolesGuard` + `@Roles(...)`.
 
 ### Refresh token
 
-- Firmado con `JWT_REFRESH_SECRET`.
-- Hash SHA-256 guardado en `Usuarios.TokenHash`.
-- Expiración en `TokenExpira`; revocación en `TokenRevocado`.
-- Al cambiar contraseña se marca `tokenRevocado = 1` (sesión invalidada).
+- Firmado con `JWT_SECRET` (claim `type: 'refresh'` y `jti`); vigencia `JWT_REFRESH_EXPIRES_IN`.
+- Una fila por sesión en `RefreshSessions` (`Jti`, hash SHA-256 en `TokenHash`, `ExpiresAt`, `RevokedAt`, `ReplacedById`); cada refresh rota el token.
+- Al cambiar contraseña se marca `Usuarios.TokenRevocado = 1` y se revocan todas las sesiones del usuario.
 
 ### Soluciones (`AsignacionSoluciones`)
 
@@ -182,9 +185,9 @@ Filtrado por **`IdRol`** del JWT:
 
 | Roles     | Comportamiento                                      |
 | --------- | --------------------------------------------------- |
-| **1, 2**  | Sin filtro de cliente (admin global)                |
-| **3, 4**  | Cliente del token + hijos (`CALL spGetClientes(?)`) |
-| **Resto** | Solo `IdCliente` del token                          |
+| **1–5, 8** | Sin filtro de cliente (visualización global)       |
+| **6**      | Cliente del token + hijos (`CALL spGetClientes(?)`) |
+| **Resto**  | Solo `IdCliente` del token                          |
 
 API del servicio:
 
@@ -192,7 +195,7 @@ API del servicio:
 - `forTypeOrmIdCliente()` — condición para `find` / `findAndCount`.
 - `getClienteHijosIds()` — IDs desde stored procedure.
 
-Módulos que lo usan: clientes, usuarios, vehículos, operadores, dispositivos, SIMs, instalaciones, bitácora, inmuebles, panel-alarma.
+Módulos que lo usan: clientes, usuarios, productos (vehículos, inmuebles…), operadores, dispositivos (incl. paneles), SIMs, instalaciones, bitácora, entre otros.
 
 ### Reglas de listado
 
@@ -217,7 +220,7 @@ Módulos que lo usan: clientes, usuarios, vehículos, operadores, dispositivos, 
 
 | Módulo        | Ruta base            |
 | ------------- | -------------------- |
-| Vehículos     | `/api/vehiculos`     |
+| Vehículos     | `/api/productos/vehiculos` (también `activos`, `inmuebles`, `personas`) |
 | Operadores    | `/api/operadores`    |
 | Dispositivos  | `/api/dispositivos`  |
 | SIMs          | `/api/sims`          |
@@ -229,16 +232,16 @@ Patrón CRUD: `POST`, `GET list`, `GET :page/:limit`, `GET :id`, `PATCH :id`, `P
 
 | Módulo       | Ruta base           | Entidad       |
 | ------------ | ------------------- | ------------- |
-| Inmuebles    | `/api/inmuebles`    | `Inmuebles`   |
-| Panel Alarma | `/api/panel-alarma` | `PanelAlarma` |
+| Inmuebles    | `/api/productos/inmuebles`  | `Inmuebles`   |
+| Panel Alarma | `/api/dispositivos/paneles` | `PanelAlarma` |
 
-Entidades relacionadas (sin CRUD expuesto aún en este repo): `EventoAlarma`, `UltimoEventoAlarma`.
+`EventoAlarma` / `UltimoEventoAlarma`: consulta en `/api/alarmas`, ingest HMAC en `POST /api/alarmas/ingest` y socket `/alarmas` (ver [`contratos.md` §13](./contratos.md)).
 
 Panel: cuenta SIA única, cifrado AES opcional, `ultimoHeartbeat` (no editable vía CRUD).
 
 ### Catálogos
 
-- Módulos individuales: `cat-marca-vehiculo`, `cat-modelo-dispositivo`, etc.
+- Módulos individuales: `cat-tipo-combustible`, `cat-telefonia`, `cat-planes-telefonia`, `cat-marcas`, `cat-modelos`.
 - Punto dinámico: **`GET /api/catalogos/:nombre`** vía `CatalogosRegistry`.
 
 ### Transversal
@@ -246,8 +249,8 @@ Panel: cuenta SIA única, cifrado AES opcional, `ultimoHeartbeat` (no editable v
 | Módulo   | Ruta            | Función                           |
 | -------- | --------------- | --------------------------------- |
 | Bitácora | `/api/bitacora` | Auditoría (`EnumModulos`)         |
-| S3       | `/api/s3`       | Upload / update / delete archivos |
-| Mail     | `/api/mail`     | Envío de correos                  |
+| S3       | `/api/s3`       | Upload / update archivos (no hay `DELETE`) |
+| Mail     | —               | Servicio de correo interno (el controller `/api/mail` no expone rutas) |
 
 ---
 
@@ -270,7 +273,7 @@ Panel: cuenta SIA única, cifrado AES opcional, `ultimoHeartbeat` (no editable v
 ### SQL y stored procedures
 
 - Queries raw donde el join/filtro es complejo.
-- **`spGetClientes`**: jerarquía recursiva de clientes (tenant roles 3–4 y endpoint jerarquía).
+- **`spGetClientes`**: jerarquía recursiva de clientes (tenant rol 6 y endpoint jerarquía).
 
 ---
 
@@ -282,7 +285,7 @@ Panel: cuenta SIA única, cifrado AES opcional, `ultimoHeartbeat` (no editable v
 | Autorización       | `RolesGuard` + `@Roles(id...)`                            |
 | Rate limiting      | Throttler global + límites por ruta en auth               |
 | Contraseñas / PIN  | bcrypt; columnas sensibles con `select: false` en entidad |
-| Refresh revocable  | Hash en BD + `tokenRevocado`                              |
+| Refresh revocable  | Hash en `RefreshSessions` + revocación por sesión          |
 | Bitácora           | Acciones CREATE/UPDATE/ERROR en operaciones críticas      |
 | Validación entrada | DTOs + ValidationPipe                                     |
 
@@ -311,7 +314,7 @@ Panel: cuenta SIA única, cifrado AES opcional, `ultimoHeartbeat` (no editable v
 | `IdRol`                                       | Rol operativo (JWT `rol`)                                |
 | `NivelAcceso`                                 | Columna en BD; **no** usada en JWT ni lógica auth actual |
 | `IdFaceAuth`                                  | Vínculo con rostro BehaviorIQ; claim JWT `face`          |
-| `TokenHash` / `TokenExpira` / `TokenRevocado` | Sesión refresh                                           |
+| `TokenHash` / `TokenExpira` / `TokenRevocado` | Sesión refresh legado; hoy las sesiones viven en `RefreshSessions` (`TokenRevocado` se sigue marcando al cambiar contraseña) |
 | `TokenHashAdmin`                              | Columna en BD; **sin uso** en código NextAPI actual      |
 
 ---
@@ -339,11 +342,11 @@ Rutas completas: `{URL_BASE}/api/...` y documentación en `{URL_BASE}/docs`.
 
 ## 15. Alcance y deuda conocida
 
-**Incluido en este repo:** IAM, clientes, flota, catálogos, auth (incl. facial), alarmas (inmuebles/panel CRUD), S3, mail, bitácora.
+**Incluido en este repo:** IAM, clientes, flota, catálogos, auth (incl. facial), alarmas (paneles CRUD, consulta e ingest SIA), monitoreo y telemetría AMQP, incidentes, órdenes de servicio, S3, mail, bitácora.
 
-**Parcial / pendiente:** CRUD de `EventoAlarma` / recepción DC-09, módulos del enum `EnumModulos` sin API (viajes, rutas, etc.).
+**Parcial / pendiente:** módulos del enum `EnumModulos` sin API (viajes, rutas, etc.).
 
-**Mejoras sugeridas:** tests automatizados, validar BehaviorIQ en schema Joi, homogeneizar `token` vs `accessToken` en respuestas de login, revisar `findOne` admin vs tenant en algunos módulos.
+**Mejoras sugeridas:** ampliar tests (hoy unitarias con Jest y la batería `npm run test:e2e-ordenes`), validar BehaviorIQ en schema Joi, homogeneizar `token` vs `accessToken` en respuestas de login, revisar `findOne` admin vs tenant en algunos módulos.
 
 ---
 
@@ -363,7 +366,7 @@ Todos los endpoints protegidos requieren `Authorization: Bearer <JWT>` salvo los
 
 ---
 
-_Última actualización: contexto del repositorio NextAPI v1.0.5._
+_Última actualización: contexto del repositorio NextAPI v1.0.5; datos de versión, rutas, JWT y tenant revisados contra v2.2.0 (30/10/2026). Para el detalle vigente ver [`contexto.md`](./contexto.md) y [`contratos.md`](./contratos.md)._
 
 CatTipoVerificaciones:
 

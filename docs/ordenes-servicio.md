@@ -4,7 +4,7 @@
 **DDL:** `deploy/sql/OrdenesServicio.sql`. **Contrato resumido:** [contratos.md §14.1](contratos.md).
 **Código:** `src/ordenes-servicio/` y `src/instalaciones/instalaciones.service.ts`.
 
-> **Etapas 2 y 3 (§12–§14) implementadas en `dev-isra` el 29/10/2026 (la 2 ya desplegada):** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`. Las §1–§11 describen la etapa 1, ya desplegada.
+> **Etapas 2 y 3 (§12–§14) implementadas en `dev-isra` el 29/10/2026 (desplegadas en springfieldDev; la remediación el 29/10/2026 23:15):** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql` (etapa 3: `OrdenesServicioEtapa3.sql`; remediación: `OrdenesServicioEtapa4.sql`). Las §1–§11 describen la etapa 1, ya desplegada.
 
 ## 1. Objetivo
 
@@ -248,7 +248,7 @@ Verificación: existen las 4 tablas y el catálogo tiene 24 filas (5/4/5/3/5/2 p
 
 ## 12. Etapa 2 — órdenes desde el CRM, código, autorización y no cumplida
 
-**Estado:** diseño revisado e **implementado** en `dev-isra` el 29/10/2026; falta desplegarlo (§12.13). Código: `src/ordenes-servicio/ordenes-flujo.service.ts` (flujo), `integracion-ordenes.controller.ts` + `crm-hmac.guard.ts` (CRM), reglas puras en `ordenes-servicio.reglas.ts`. Lo que quedó distinto del diseño original está marcado como **(implementado)**.
+**Estado:** diseño revisado e **implementado** en `dev-isra` el 29/10/2026; desplegado en springfieldDev (§12.13). Código: `src/ordenes-servicio/ordenes-flujo.service.ts` (flujo), `integracion-ordenes.controller.ts` + `crm-hmac.guard.ts` (CRM), reglas puras en `ordenes-servicio.reglas.ts`. Lo que quedó distinto del diseño original está marcado como **(implementado)**.
 
 ### 12.1 Quién hace qué
 
@@ -288,7 +288,7 @@ Sirve para asegurar que el técnico trabaja el vehículo correcto. Ocurre cuando
 
 1. El técnico elige el vehículo en la App → `POST /:id/codigo`.
 2. NextAPI genera un código de **6 dígitos**, válido **15 min** y con **5 intentos**. **(implementado)** Se guarda en claro mientras está vigente, porque el operador lo tiene que leer para dictarlo; se borra al validarlo, al agotar los intentos o al cerrar la orden, y nunca sale en las respuestas que ve el técnico.
-3. **Cualquier operador en turno** (roles 3, 4, 5) lo ve en el front, en la lista de códigos pendientes con cliente, placa, económico y técnico. Al abrirlo se registra quién lo vio (`IdUsuarioCodigo`, `FechaCodigoVisto`).
+3. **Cualquier operador en turno** (roles 1–5) lo ve en el front, en la lista de códigos pendientes con cliente, placa, económico y técnico. Al abrirlo se registra quién lo vio (`IdUsuarioCodigo`, `FechaCodigoVisto`).
 4. El operador se lo dicta al técnico, y éste lo captura → `POST /:id/codigo/validar`.
 5. Si es correcto, se guarda `FechaCodigoValidado` y la orden queda ligada a ese vehículo. Si vence o se agotan los intentos, se pide otro.
 
@@ -390,8 +390,11 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | `IdInstalacionRetirada` | BIGINT NULL | Instalación de Next dada de baja al cerrar un alta autorizada |
 | `ClaveMotivo` | VARCHAR(40) NULL | → `CatMotivosOrdenServicio` (no cumplida o cancelada) |
 | `Cobrable` | TINYINT NULL | 1/0; nace del motivo y operación lo puede ajustar |
+| `IdProductoAutorizacion` | BIGINT NULL | (remediación, `Etapa4`) Vehículo por el que se pidió la autorización de desinstalar |
+| `CodigosEmitidos` | TINYINT | (remediación) Códigos emitidos en la orden; tope 5 (`CODIGO.MAX_EMITIDOS`), se reinicia con `POST /:id/codigo/reiniciar` |
+| `NotasInternas` | TEXT NULL | (remediación) Notas de operación o del CRM; no salen en el PDF (§17) |
 
-Índices nuevos: UQ (`ReferenciaCrm`, `Unidad`), (`IdTecnico`, `Estatus`, `Cita`), `FechaActualizacion` (para la consulta de cambios). Catálogo nuevo `CatMotivosOrdenServicio` (13 motivos) y foto opcional `equipo_existente` en `CatOrdenServicioOpciones`.
+Índices nuevos: UQ (`ReferenciaCrm`, `Unidad`), (`IdTecnico`, `Estatus`, `Cita`), `FechaActualizacion` (para la consulta de cambios; la remediación lo cambia a (`FechaActualizacion`, `Id`) y agrega (`Estatus`, `CodigoExpira`) y (`Estatus`, `Autorizacion`)). Catálogo nuevo `CatMotivosOrdenServicio` (13 motivos) y foto opcional `equipo_existente` en `CatOrdenServicioOpciones`.
 
 ### 12.9 Endpoints nuevos
 
@@ -415,7 +418,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 |--------|------|-----|
 | GET | `/paginado/...?estatus=programada` | Sus órdenes programadas (ya filtra por técnico), ordenadas por cita |
 | GET | `/motivos` | Motivos para no cumplida |
-| POST | `/:id/iniciar` | `{ claveApp, tipoServicio, idInstalacion? }` → `borrador`. Sustituye a `POST /` para el técnico |
+| POST | `/:id/iniciar` | `{ claveApp, tipoServicio?, idInstalacion?, idProducto? }` → `borrador` (`idProducto` solo en un alta con el vehículo ya dado de alta). Sustituye a `POST /` para el técnico |
 | POST | `/:id/codigo` y `/:id/codigo/validar` | §12.5 |
 | POST | `/:id/autorizacion` | §12.6 |
 | POST | `/:id/no-cumplida` | `{ claveMotivo, observaciones? }` |
@@ -433,7 +436,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | POST | `/:id/autorizacion/decision` | Igual que el del CRM, desde el front |
 | POST | `/:id/cancelar`, `/:id/no-cumplida` | Con motivo (`claveMotivo`, `observaciones?`, `cobrable?`) |
 
-Filtros nuevos en `GET /paginado`: `origen`, `referenciaCrm`. Las respuestas de la orden agregan: `origen`, `referenciaCrm`, `unidad`, `unidadesTotal`, `idOrdenOrigen`, `tipoProgramado`, `idInstalacionProgramada`, `tipoDistinto`, `vehiculoDistinto`, `cita`, `citaFin`, `nombreProgramo`, `fechaInicio`, `codigoValidado`, `autorizacion`, `nombreAutorizo`, `fechaAutorizacion`, `idInstalacionRetirada`, `claveMotivo`, `cobrable`, `fechaActualizacion`.
+Filtros nuevos en `GET /paginado`: `origen`, `referenciaCrm`. Listado y detalle traen además `nombreCliente`, `placa`, `numeroEconomico` y `nombreProducto` (del producto de la orden o de la instalación real o programada; 30/10/2026). Las respuestas de la orden agregan: `origen`, `referenciaCrm`, `unidad`, `unidadesTotal`, `idOrdenOrigen`, `tipoProgramado`, `idInstalacionProgramada`, `tipoDistinto`, `vehiculoDistinto`, `cita`, `citaFin`, `nombreProgramo`, `fechaInicio`, `codigoValidado`, `autorizacion`, `nombreAutorizo`, `fechaAutorizacion`, `idInstalacionRetirada`, `claveMotivo`, `cobrable`, `fechaActualizacion`.
 
 **Transición:** `POST /` (el técnico crea el borrador él mismo) se mantiene mientras la App migra a `programada` + `iniciar`. Después queda solo para los roles 1–3.
 
@@ -477,7 +480,7 @@ Verificación: 13 filas en `CatMotivosOrdenServicio`, 25 en `CatOrdenServicioOpc
 ### 12.14 Pruebas
 
 - `ordenes-servicio.reglas.spec.ts`: código y autorización en `faltantesParaCerrar`, cambio de tipo, motivos, estado del código.
-- `ordenes-flujo.service.spec.ts`: programar N unidades e idempotencia, iniciar con corrección, código (ver, validar, agotar), autorización (rechazo → no cumplida), no cumplida y cobro, cancelar (CRM con 409, etapa 1).
+- `ordenes-flujo.service.spec.ts`: programar N unidades e idempotencia, iniciar con corrección, código (ver, validar, agotar), autorización (rechazo → no cumplida), no cumplida y cobro, cancelar (CRM con 409, etapa 1). **Ya no existe:** la remediación la reemplazó por `test/e2e-ordenes/reglas-flujo.e2e-spec.ts` (las mismas reglas contra MySQL real, §16).
 - `ordenes-servicio.service.spec.ts`: cierre de un alta autorizada (baja + alta en la misma transacción) y mantenimiento sin código.
 - `crm-hmac.guard.spec.ts`: firma de POST y GET (con y sin `/api`), timestamp vencido, secreto ausente.
 - Resultado: 28 suites y 195 pruebas pasan; `nest build` OK.
@@ -512,7 +515,7 @@ Reglas:
 
 - Compartir y enviar solo funcionan con la orden `cerrada` o `no_cumplida`; el PDF se puede ver en cualquier estado.
 - Cada vez que se comparte se genera un PDF nuevo en S3 (`ordenes-servicio/pdf/`, privado) con los datos de ese momento; los anteriores no se borran, para no romper enlaces ya enviados. El enlace dura 7 días (máximo de S3).
-- Roles: los que leen órdenes (1–5 y el técnico, solo las suyas).
+- Roles: ver el PDF, los que leen órdenes (1–5 y el técnico, solo las suyas); compartir y enviar por correo, solo el técnico de la orden y los roles 1–3 (§17).
 - Dependencia nueva: `pdfkit` (`npm install` al desplegar).
 
 ## 14. API para el CRM (`/api/integracion`)
@@ -536,7 +539,7 @@ Reglas:
 Todo con el JWT del técnico (rol 8). Detalle de cada llamada en §5 y §12–§13.
 
 1. **Agenda:** `GET /ordenes-servicio/paginado/1/50?estatus=programada` (ordenadas por cita). Mostrar cliente, tipo programado, vehículo (`idInstalacionProgramada`) y cita.
-2. **Iniciar en el lugar:** `POST /:id/iniciar { claveApp, tipoServicio?, idInstalacion? }`. El técnico confirma o corrige el tipo (solo entre mantenimientos) y el vehículo. En un alta, el vehículo se busca o crea como hoy (§2 regla 2) y se manda `idProducto` en el `PATCH`.
+2. **Iniciar en el lugar:** `POST /:id/iniciar { claveApp, tipoServicio?, idInstalacion?, idProducto? }`. El técnico confirma o corrige el tipo (solo entre mantenimientos) y el vehículo. En un alta, el vehículo se busca o crea como hoy (§2 regla 2) y se manda `idProducto` en el `PATCH`.
 3. **Mantenimientos — código:** `POST /:id/codigo`; el operador en turno lo dicta; `POST /:id/codigo/validar { codigo }`. Sin código validado no se cierra.
 4. **Alta sobre un vehículo con equipo:** foto `equipo_existente` (`POST /:id/archivos/equipo_existente`) y `POST /:id/autorizacion { observaciones }`. Esperar la decisión (`GET /:id` → `autorizacion`): `autorizada` sigue; `rechazada` deja la orden no cumplida (ya no se edita).
 5. **Checklist, fotos y firmas:** como hoy (`PATCH`, archivos). En órdenes programadas **no** se mandan respuestas de `pruebas` (400), salvo en desinstalación.

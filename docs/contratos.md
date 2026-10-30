@@ -33,11 +33,11 @@ NextAPI es el único lugar donde se crean, modifican y dan de baja (soft delete)
 | Auth | JWT Passport + refresh (SHA256 en BD) | Implementado |
 | Rate limiting | `@nestjs/throttler` global (100 req / 60 s por usuario) + límites Auth `THROTTLE_*` | Implementado |
 | Tiempo real | Socket.IO (`/monitoreo`, `/alarmas`) | Implementado |
-| Mensajería | RabbitMQ AMQP — colas AVL (JT808 + Jimi) y AX PRO | Implementado |
+| Mensajería | RabbitMQ AMQP — colas AVL (JT808 + Jimi + FA100S) y AX PRO | Implementado |
 | Observabilidad colas | `GET /health/rabbitmq` + `GET /health/rabbitmq/queues` | Implementado |
 | Storage / Mail | AWS S3 / Nodemailer | Implementado |
 | Docs API | Swagger `/docs` | Implementado |
-| Pruebas | Jest + ts-jest (unitarias de messaging y utilidades) | Implementado |
+| Pruebas | Jest + ts-jest (unitarias de messaging, utilidades y órdenes de servicio) + batería de punta a punta de órdenes (`npm run test:e2e-ordenes`) | Implementado |
 | Docker / Nginx / K8s | Infra de despliegue | Fuera de alcance API (addendum) |
 
 ---
@@ -78,10 +78,10 @@ Campos **camelCase**. Soft delete: `Estatus` 0/1; no DELETE físico en catálogo
 - Guards: `JwtAuthGuard`, `RolesGuard`, `@Roles()`
 - `ThrottlerGuard` global (`APP_GUARD`) + límites por endpoint en Auth (`THROTTLE_*`)
 - Login: fallo unificado `401` (sin enumeración de usuarios)
-- Roles de referencia: `1` SA, `2` Admin, `3` Monitorista, …, `6` Cliente, `7` Operador, `9` Usuario (ver guards vigentes)
+- Roles de referencia (`EnumRoles`): `1` SA, `2` Dev, `3` Admin, `4` Jefe de monitoreo, `5` Monitoreo, `6` Cliente, `7` Operador, `8` Técnico, `9` Usuario. `@Roles()` vacío = cualquier usuario autenticado
 - `ValidationPipe` global con `whitelist` + `forbidNonWhitelisted` (campos no declarados → 400)
 - CORS `origin: '*'`, `credentials: true`
-- Endpoints públicos (sin JWT): `POST /login` y flujos de recuperación, ingest HMAC de alarmas, `GET /health/rabbitmq`, `GET /health/rabbitmq/queues`
+- Endpoints públicos (sin JWT): `POST /login` y flujos de recuperación, ingest HMAC de alarmas, integración HMAC del CRM (`/integracion/*`, §14.1), `GET /health/rabbitmq`, `GET /health/rabbitmq/queues`
 
 ### 4.3 Soft delete y bitácora (Cat / recursos)
 
@@ -97,9 +97,9 @@ Base: `/login` (+ `/auth` para facial) · Tag Swagger Autenticación.
 
 | Endpoint | Uso / respuesta |
 |----------|-----------------|
-| `POST /login` | Body `{ userName, password }` → `{ token, refreshToken, expiresIn }` |
+| `POST /login` | Body `{ userName, password }` (query `Nombres` = solución, default `NXT`) → `{ token, refreshToken }` |
 | `POST /login/operador/accesso/nip` | `{ accessToken, refreshToken, expiresIn }` |
-| `POST /login/refresh` | Body `{ refreshToken }` → `{ token, accessToken, expiresIn }` |
+| `POST /login/refresh` | Body `{ refreshToken }` → `{ token, refreshToken }` (rota el refresh) |
 | `POST /login/logout` | JWT Bearer; revoca refresh |
 | `GET /login/me` | Perfil + permisos |
 | `PATCH /login/verify` | Verificación con código |
@@ -114,7 +114,7 @@ Recuperación: respuesta genérica; código 6 dígitos; intentos limitados.
 
 ## 6. S3
 
-Base: `/s3` · Roles `1, 2, 3`.
+Base: `/s3` · Cualquier usuario autenticado (`@Roles()` vacío).
 
 | Método | Spec |
 |--------|------|
@@ -198,8 +198,9 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Catálogos | §9 |
 | Sims | `POST /sims`, `GET /sims/list`, `GET /sims/:page/:limit`, `GET /sims/:id`, `PATCH /sims/estatus/:id`, `PATCH /sims/:id` (cambiar plan/teléfono, IMEI, cliente, compañía) |
 | Dispositivos | §14 |
-| Órdenes de servicio | `GET /ordenes-servicio/catalogo`, `GET /ordenes-servicio/paginado/:page/:limit`, `POST /ordenes-servicio`, `PATCH /ordenes-servicio/:id`, `POST /ordenes-servicio/:id/archivos/:clave`, `POST /ordenes-servicio/:id/cerrar`, `POST /ordenes-servicio/:id/cancelar`, `GET /ordenes-servicio/:id` (§14.1) |
-| Telemetría – equipos sin alta | `GET /telemetria/huerfanos/:page/:limit?protocolo=jt808\|jimi\|axpro&horas=N`, `DELETE /telemetria/huerfanos/:id` (roles 1–3; §12.6) |
+| Órdenes de servicio | `GET /ordenes-servicio/catalogo`, `GET /ordenes-servicio/paginado/:page/:limit`, `POST /ordenes-servicio`, `PATCH /ordenes-servicio/:id`, `POST /ordenes-servicio/:id/archivos/:clave`, `POST /ordenes-servicio/:id/cerrar`, `POST /ordenes-servicio/:id/cancelar`, `GET /ordenes-servicio/:id`; etapas 2–3 y remediación: `GET …/motivos`, `GET …/codigos-pendientes`, `GET …/autorizaciones-pendientes`, `GET …/pruebas-pendientes`, `POST …/programar`, `PATCH …/:id/reprogramar`, `POST …/:id/iniciar`, `POST …/:id/codigo`, `POST …/:id/codigo/ver`, `POST …/:id/codigo/validar`, `POST …/:id/codigo/reiniciar`, `POST …/:id/autorizacion`, `POST …/:id/autorizacion/decision`, `POST …/:id/pruebas/:clave/solicitar`, `POST …/:id/pruebas/:clave/validar`, `POST …/:id/no-cumplida`, `GET …/:id/pdf`, `POST …/:id/compartir`, `POST …/:id/enviar-correo` (§14.1) |
+| Integración CRM (HMAC) | `GET /integracion/clientes`, `GET …/clientes/:id`, `POST …/clientes`, `GET …/tecnicos`, `GET …/unidades`, `GET …/unidades/conteo`, `GET …/sims`, `GET …/ordenes-realizadas`; `GET /integracion/ordenes-servicio/cambios`, `GET …/por-referencia/:referencia`, `GET …/motivos`, `GET …/autorizaciones-pendientes`, `POST /integracion/ordenes-servicio`, `PATCH …/:id`, `POST …/:id/cancelar`, `POST …/:id/autorizacion/decision` ([ordenes-servicio.md §12.9 y §14](ordenes-servicio.md)) |
+| Telemetría – equipos sin alta | `GET /telemetria/huerfanos/:page/:limit?protocolo=jt808\|jimi\|axpro\|fa100s&horas=N`, `DELETE /telemetria/huerfanos/:id` (roles 1–3; §12.6) |
 | Operadores | §10.2 |
 | Productos | `GET /productos/list`, `GET /productos/paginado/:page/:limit`, `GET /productos/cliente/:idCliente`, `GET /productos/:id`, `PATCH /productos/estatus/:id`, `PATCH /productos/:id` (nombre) |
 | Vehículos | `POST /productos/vehiculos`, `GET …/list`, `GET …/placa/:placa`, `GET …/:page/:limit`, `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
@@ -207,11 +208,13 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Instalaciones | `POST /instalaciones`, `GET …/list`, `GET …/list/tipo/:idTipoProducto`, `GET …/cliente/:idCliente`, `GET …/historico/:id`, `POST …/paginado` (por tipo de producto), `GET …/:id` (detalle completo), `PATCH …/estatus/:id`, `PATCH …/:id` (archiva + nueva versión) |
 | Monitoreo | §11 |
 | Alarmas | §13 |
-| Incidentes | `POST /incidentes`, `GET …/list` (abiertos), `GET …/cliente/:idCliente`, `GET /incidentes` (paginado), `GET …/:id/seguimientos`, `POST …/:id/seguimientos`, `GET …/:id`, `PATCH …/estatus/:id` (abierto ↔ cerrado), `PATCH …/:id` |
+| Incidentes | `POST /incidentes`, `GET …/list` (abiertos), `GET …/cliente/:idCliente`, `GET /incidentes` (paginado), `PATCH …/:id/finalizar`, `GET …/:id/seguimientos`, `POST …/:id/seguimientos`, `GET …/:id`, `PATCH …/estatus/:id` (abierto ↔ cerrado), `PATCH …/:id` |
 | Geocercas | `POST /geocercas`, `GET …/list`, `GET /geocercas` (paginado), `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id`, `DELETE …/:id` (físico) |
 | Puntos de interés | `POST /puntos-interes`, `GET …/list`, `GET …/cliente/:idCliente`, `GET /puntos-interes` (paginado), `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
 | Números de emergencia | `POST /numeros-emergencia`, `GET …/list`, `GET …/cliente/:idCliente`, `GET /numeros-emergencia` (paginado), `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
-| Reportes | `POST /reportes/paso-por-poi`, `POST /reportes/velocidad`, `POST /reportes/posiciones`, `POST /reportes/ultima-posicion`, `POST /reportes/distancia` (Haversine por IMEI) |
+| Reportes | `POST /reportes/paso-por-poi`, `POST /reportes/velocidad`, `POST /reportes/posiciones`, `POST /reportes/ultima-posicion`, `POST /reportes/distancia` (Haversine por IMEI), `POST /reportes/salidas-geocerca`, `POST /reportes/salidas-geocerca-instalacion`, `POST /reportes/salidas-geocerca-instalacion/recorrido`, `POST /reportes/productos-cliente` (productos con su última ubicación) |
+| Consola | `GET /consola/galeria/filtros`, `POST /consola/galeria/resumen`, `POST /consola/galeria`, `POST /consola/galeria/imei`, `POST /consola/transmisiones` (últimas transmisiones por IMEI), `POST /consola/sin-transmision` (unidades sin transmitir en N días) |
+| Dashboard | `GET /dashboard` (inicio · centro de mando) |
 | Health | `GET /health/rabbitmq`, `GET /health/rabbitmq/queues` (§12.5) |
 
 ### 10.1 `GET /permisos/permisosAgrupados`
@@ -309,7 +312,7 @@ Proxy a springTrackCam `POST /gateway/photo/start`.
 
 **Precondiciones:** instalación activa, dispositivo TRACKCAM (código / id 5), `NumeroSerie` + `Imei` válidos. Reenvía JWT.
 
-**Body opcional:** `{ "channelId": 1 }` (`1`–`5`; si falta → canales activos del registry).
+**Body opcional:** `{ "channelId": 1 }` (`1`–`4` en el DTO de NextAPI; si falta → canales activos del registry).
 
 Gateway: `terminalId` (NumeroSerie pad 12), `imei`, `saveFlag: 0`, `channelId?`.  
 **No** INSERT local; media vía AMQP. Timeout proxy: **90 s**. Errores: 400 / 404 / 409 (cámara offline) / 504 (timeout).
@@ -318,7 +321,7 @@ Gateway: `terminalId` (NumeroSerie pad 12), `imei`, `saveFlag: 0`, `channelId?`.
 
 Proxy a `POST /gateway/video/capture`.
 
-**Body opcional:** `{ "durationSeconds": 15, "channelId": 2 }` — default duration 30 (máx. 30).
+**Body opcional:** `{ "durationSeconds": 15, "channelId": 2 }` — default duration 30 (máx. 30); `channelId` `1`–`4`.
 
 Timeout: **90 s** (1 canal) / **150 s** (multi).
 
@@ -351,7 +354,7 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 ```
 
 - Headers: `protocol` y `kind` (tienen prioridad sobre el body), `deviceId` opcional. `message_id` = `eventId`.
-- `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms); `protocol` ∉ {`jt808`, `jimi`} → DLQ.
+- `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms; FA100S además acepta `alarm_location` en alarms); `protocol` ∉ {`jt808`, `jimi`, `fa100s`} → DLQ.
 - **Jimi:** lookup `payload.Imei || deviceId` → `Dispositivos.Imei` (estatus 1 o 2). Alarm AMQP solo SOS (`jimi.alarm.*`).
 - **FA100S (relojes, springFA100S):** lookup por `Dispositivos.Imei` (`deviceId` = IMEI de 15 dígitos; dar de alta el reloj como Rastreador). `position` → `Posiciones`; sin GPS llega con la última posición válida y `positionValid=false`. `alarm` (SOS 5, caída 35, pulsera 36, ritmo 37, batería 3) → auditoría; la alarma se ve por la posición con su `IdEvento` y `Estado=2`. `alarm_location` (por `fa100s.alarm.*`) corrige `Lat/Lng` de la posición de la alarma (mismo Imei, `FechaHora` e `IdEvento`) sin crear otra ni abrir otro incidente; si la alarma no llegó a `Posiciones`, se inserta. Sin alta → `TelemetryHuerfanos` (`protocol=fa100s`). Código: `src/messaging/fa100s/`.
 - Payload Jimi position: `IdEvento` (number), `Lat`/`Lng` (number) y `FechaHora` (`YYYY-MM-DD HH:mm:ss` o `YYYY-MM-DDTHH:mm:ss`, hora de pared) obligatorios.
@@ -475,6 +478,7 @@ Los sockets no filtran equipos (salvo TrackCam, que tiene registro propio): **Ne
 |---|---|---|
 | `jt808` (TrackCam) | `NumeroSerie` | No existe en `Dispositivos` con estatus ACTIVO/ASIGNADO (`no_registrado`) o no tiene IMEI (`sin_imei`) |
 | `jimi` (TrackGas) | IMEI | Igual, buscando por `Dispositivos.Imei` |
+| `fa100s` (Reloj) | IMEI | Igual que `jimi`, buscando por `Dispositivos.Imei` |
 | `axpro` (Panel) | Cuenta SIA | No hay `PanelAlarma` activo. El evento sigue guardándose en `EventoAlarma` con `Estatus=0`; el heartbeat se descarta |
 
 - Upsert por `Protocol + DeviceId`: primera y última vez, número de mensajes, último routing key y última posición si la trae.
@@ -514,7 +518,7 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 | CRUD `/dispositivos/paneles` | Panel alarma (SIA) |
 | CRUD `/dispositivos/relojes` | Reloj FA100S: 1:1 con `RelojConfig` (§14.2). Sin webhook |
 
-IMEI en API como **string**: [`front-imei-string.md`](./front-imei-string.md).
+IMEI en API como **string**: `front-imei-string.md` (no está en el repositorio).
 
 ### 14.2 Relojes FA100S (`/dispositivos/relojes`)
 
@@ -542,7 +546,7 @@ Evidencia de cada visita del técnico, ligada a Instalaciones. DDL y catálogo i
 **Reglas de negocio**
 - **El cliente se da de alta en oficina** antes de salir a campo; la orden no crea clientes (400 si no existe o no está activo).
 - **El vehículo puede darse de alta en oficina o en campo.** La orden lo referencia por `idProducto`. En campo, la app lo busca con `GET /productos/vehiculos/placa/:placa` y, si no existe, lo crea con `POST /productos/vehiculos` (cualquier rol autenticado, incluido el técnico; rechaza placa repetida en el cliente). Ese `POST` devuelve `data.id` = `idProducto`, que se manda en el `POST`/`PATCH` de la orden. Debe estar disponible (estatus 1) para cerrar el alta.
-- **Una orden = un tipo de servicio**: `instalacion` (alta), `revision`, `c_sim`, `c_equipo`, `desinstalacion`. El tipo no cambia después de crearla.
+- **Una orden = un tipo de servicio**: `instalacion` (alta), `revision`, `c_sim`, `c_equipo`, `desinstalacion`. El tipo no cambia después de crearla (en las programadas de la etapa 2 queda fijo al iniciar: `tipoProgramado` vs `tipoServicio`).
 - **Guardado parcial**: la orden nace en `borrador`, se llena con `PATCH` y archivos, y se **cierra** al final. Folio `OS-000001` asignado por el servidor al crearla.
 - **Idempotencia**: la app genera `claveApp` (UUID) al empezar; reenviar el `POST` devuelve la misma orden.
 - **Técnico** = usuario del token (no se envía). Escriben roles 1, 2, 3 y 8; el técnico solo ve y edita sus órdenes. Leen además 4 y 5.
@@ -586,6 +590,8 @@ La orden guarda `idInstalacion` (atendida), `idInstalacionResultado` (vigente de
 
 **Etapa 3** ([§13–§14](ordenes-servicio.md)): pruebas validadas por el operador (`/:id/pruebas/:clave/solicitar`, `/:id/pruebas/:clave/validar`, `GET /pruebas-pendientes`; el paro de motor se pide así), PDF (`GET /:id/pdf`), WhatsApp (`POST /:id/compartir`) y correo (`POST /:id/enviar-correo`). API de lectura y alta de clientes para el CRM en `/integracion/*` (clientes, técnicos, unidades, SIMs, órdenes realizadas). DDL: `deploy/sql/OrdenesServicioEtapa3.sql`.
 
+**Remediación del 29/10/2026** ([ordenes-servicio.md §17](ordenes-servicio.md), [remediacion-ordenes-servicio.md](remediacion-ordenes-servicio.md)): firma del CRM v2 (`x-crm-firma: v2`, `x-crm-nonce`; HMAC de `${timestamp}.${nonce}.${MÉTODO} ${ruta}\n${cuerpo}`, cada nonce una vez en 5 min); cursor de `cambios` compuesto (`desde` + `despuesDe`) y `GET /integracion/ordenes-servicio/por-referencia/:referencia`; transiciones condicionales (409 si la orden cambió mientras tanto); autorización ligada al vehículo (`idProductoAutorizacion`); tope de 5 códigos por orden (`codigosEmitidos`) con `POST /:id/codigo/reiniciar` (roles 1–3); `notasInternas` fuera del PDF; cancelar una ya cancelada responde 200 con `data.claveMotivo`. DDL: `deploy/sql/OrdenesServicioEtapa4.sql`.
+
 ---
 
 ## 15. Webhooks salientes
@@ -599,7 +605,7 @@ NextAPI **emite**; no recibe webhooks de negocio de Shift/Trackcam.
 
 Firma HMAC-SHA256 sobre objeto sin `signature` (orden: `event` → `timestamp` → `tenantId` → `entityId` → `data`). Fallo de entrega **no** revierte el CRUD local.
 
-Guías: [`webhook-trackcam-springtrackcam.md`](./webhook-trackcam-springtrackcam.md), [`webhook-shiftcontrol.md`](./webhook-shiftcontrol.md).
+Guías: `webhook-trackcam-springtrackcam.md` (no está en el repositorio), [`webhook-shiftcontrol.md`](./webhook-shiftcontrol.md).
 
 ---
 
@@ -619,8 +625,11 @@ Validadas con Joi en `app.module.ts`.
 | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD` | Sí | Nodemailer |
 | `MAIL_FRONTEND_URL`, `MAIL_FRONTEND_URL_NEXT` | No | Base enlaces front |
 | `GATEWAY_HMAC_SECRET` | Sí (mín. 16) | Ingest paneles |
-| `CRM_HMAC_SECRET` | No (mín. 16 para activar) | Integración CRM → órdenes de servicio (`/integracion/*`); vacío = 503 |
-| `CRM_ID_USUARIO` | No | Usuario de Next con el que el CRM queda en la bitácora |
+| `CRM_HMAC_SECRET` | No (mín. 16 para activar) | Integración CRM (`/integracion/*`, firma v2 con nonce); vacío o menor de 16 = 503 |
+| `CRM_ID_USUARIO` | No | Usuario de Next con el que el CRM queda en la bitácora; obligatorio para `POST /integracion/clientes` (sin él, 503) |
+| `DB_TZ` | No | Zona horaria de la conexión MySQL (TypeORM) |
+| `BEHAVIORIQ_BASE_URL`, `BEHAVIORIQ_USER_NAME`, `BEHAVIORIQ_PASSWORD`, `BEHAVIORIQ_LOGIN_TIMEOUT_MS`, `BEHAVIORIQ_VALIDATE_TIMEOUT_MS` | No (para el login facial) | BehaviorIQ |
+| `THROTTLE_VALIDATE_FACE_LIMIT` / `THROTTLE_VALIDATE_FACE_TTL_MS` | No | Rate limit de `POST /auth/validateFace` |
 | `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` | No (— / 600000) | Ingest paneles / offline |
 | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`, `TRACKCAM_WEBHOOK_URL`, `TRACKCAM_GATEWAY_URL` | No | Webhooks / proxy |
 | `RABBITMQ_ENABLED` | No (false) | Activa consumers |
@@ -635,7 +644,7 @@ Validadas con Joi en `app.module.ts`.
 | `QUEUE_IDLE_WARN_SECONDS` | No (900) | Idle y ventana de fallos/DLQ en `/health/rabbitmq/queues` |
 | `DEVICE_LOOKUP_CACHE_TTL_SEC` | No (600) | Cache de lookup de dispositivos |
 
-Plantilla: `.env.example`.
+No hay plantilla en el repositorio (`.env.example` está en `.gitignore`): usar la tabla de variables de esta sección.
 
 ---
 
@@ -645,8 +654,9 @@ Plantilla: `.env.example`.
 |---------|------|
 | Esquema | `Next` (MySQL 8) |
 | Core | Clientes, Usuarios (refresh), Roles, Modulos, Permisos, UsuariosPermisos, AsignacionSoluciones, UsuariosInstalaciones, CodigoAutenticacion, Bitacora |
-| Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion, Fotos, Videos |
-| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, CatOrdenServicioOpciones, CatMotivosOrdenServicio (`deploy/sql/OrdenesServicio.sql` + `OrdenesServicioEtapa2.sql`, §14.1) |
+| Flota / GPS | Dispositivos, Sims, Instalaciones, HistoricoInstalaciones, Posiciones, UltimaPosicion (con `FuentePosicion`/`RadioM`, `deploy/sql/PosicionesFuente.sql`), Fotos, Videos |
+| Órdenes de servicio | OrdenesServicio, OrdenServicioRespuestas, OrdenServicioArchivos, OrdenServicioPruebas, CatOrdenServicioOpciones, CatMotivosOrdenServicio (`deploy/sql/OrdenesServicio.sql` + `OrdenesServicioEtapa2.sql` + `Etapa3` + `Etapa4`, §14.1) |
+| Dispositivos 1:1 | TrackcamConfig, RelojConfig (`deploy/sql/Relojes.sql`) |
 | Operadores | Operadores, licencias |
 | Alarmas | EventoAlarma, UltimoEventoAlarma, PanelAlarma, GatewayIngestLog |
 | Ingest | TelemetryIngestLog, TelemetryHuerfanos (equipos sin alta, `deploy/sql/TelemetryHuerfanos.sql`) |
@@ -689,7 +699,7 @@ Plantilla: `.env.example`.
 - Generar “último estado” por prioridad Sion Tabla 3 en consulta
 - Duplicar persistencia foto/video en el proxy HTTP
 - Histórico GPS para inmuebles/paneles
-- Regla R1 `maxDist = Vmax×Δt` en reportes NextAPI (documentada para Gateway: [`posicion-valida-gateway.md`](./posicion-valida-gateway.md); histórico suma todos los tramos por ahora)
+- Regla R1 `maxDist = Vmax×Δt` en reportes NextAPI (documentada para Gateway: `posicion-valida-gateway.md` (no está en el repositorio); histórico suma todos los tramos por ahora)
 - Borrado de colas legacy en el broker (tarea de infraestructura)
 - Frontend Angular; ShiftControl / App Operador; Server_Socket; facturación; UX; pen-test (salvo addendum)
 
@@ -700,10 +710,10 @@ Plantilla: `.env.example`.
 | Documento | Contenido |
 |-----------|-----------|
 | [`contexto.md`](./contexto.md) | Visión, colas, sockets, alarmas, webhooks, cambios recientes y deuda técnica |
-| [`posicion-valida-gateway.md`](./posicion-valida-gateway.md) | Análisis R1 para Gateway |
+| `posicion-valida-gateway.md` (no está en el repositorio) | Análisis R1 para Gateway |
 | Guías `consumo-*.md` | Consumo Angular |
 | Guías `webhook-*.md` | Receptores / contratos webhook |
-| [`NEXTAPI-RABBITMQ-JT808.md`](./NEXTAPI-RABBITMQ-JT808.md), [`CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md`](./CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md), [`RABBITMQ-CONSUMER-FIX.md`](./RABBITMQ-CONSUMER-FIX.md) | Detalle histórico de RabbitMQ (la fuente vigente de colas es §12) |
+| `NEXTAPI-RABBITMQ-JT808.md` (no está en el repositorio), `CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md` (no está en el repositorio), `RABBITMQ-CONSUMER-FIX.md` (no está en el repositorio) | Detalle histórico de RabbitMQ (la fuente vigente de colas es §12) |
 
 ---
 
@@ -712,5 +722,7 @@ Plantilla: `.env.example`.
 Este documento constituye el acuerdo técnico de contratos para NextAPI. Cambios de alcance o especificaciones requieren addendum por escrito aceptado por las partes.
 
 ---
+
+*v3.2 (2026-10-30) — órdenes de servicio etapas 2–3 y remediación (integración CRM con firma v2), relojes FA100S (`RelojConfig`, `FuentePosicion`/`RadioM`), finalizar incidentes, equipos sin alta; guías [front-next.md](./front-next.md) y [app-instaladores.md](./app-instaladores.md).*
 
 *v3.1 (2026-10-03) — colas AVL y retiro de legacy, health por cola, Server_Socket, consola en tiempo real, clientes con documentos opcionales, usuarios multipart, operadores con licencias, permisos agrupados, dispositivos sin validación de cliente en `GET /:id`, inventario completo de endpoints y variables. v3.0 — unificación de `contratos.md` (operativo) + `CONTRATO-PROYECTO-NEXTAPI.md` (alcance).*

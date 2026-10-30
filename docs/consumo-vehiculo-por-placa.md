@@ -25,7 +25,7 @@ Content-Type: application/json
 }
 ```
 
-Del JSON de respuesta tomar el **access token** (campo según contrato de login del front; normalmente `accessToken` o análogo dentro de `data`).
+Del JSON de respuesta (`{ token, refreshToken }`, sin wrapper `data`) tomar el **access token** del campo `token`.
 
 Usar en las siguientes llamadas:
 
@@ -144,7 +144,7 @@ const { data } = await res.json();
 ```text
 Consume NextAPI productivo:
 Base: https://springtelecom.mx/nextAPI
-1) POST /api/login con userName y password → obtener accessToken JWT.
+1) POST /api/login con userName y password → obtener el JWT del campo `token` de la respuesta.
 2) GET /api/productos/vehiculos/placa/{placa} con header Authorization: Bearer {accessToken}.
 3) Encode la placa en la URL. Esperar { data: { id, placa, numeroEconomico, anio, color, fotoFrente, km, capacidadLitros, estatus, fechaCreacion, idCliente, nombreCompleto, modeloId, modeloNombre, marcaId, marcaNombre, combustibleId, combustibleNombre } }.
 4) Manejar 401/400/404 como texto plano. No asumir tipoVehiculoId.

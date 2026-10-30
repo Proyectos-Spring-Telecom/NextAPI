@@ -96,7 +96,7 @@ Revisión independiente de la segunda ronda. Pruebas: bloque "Tercera revisión"
 | R3.6 | CRM | El barrido repetía el mismo aviso en cada corrida | No se repite el último aviso igual de la misma orden (unitaria) | ✅ |
 | R3.7 | CRM | `028` no llevaba a la forma actual una `OperacionesNext` creada por su versión anterior | El procedimiento agrega `ProximoIntento`, amplía `Estatus` y ajusta índices (probado: versión anterior + nueva dos veces) | ✅ |
 
-DDL: `deploy/sql/OrdenesServicioEtapa4.sql` (Next, agrega `NotasInternas`) y `crmAPI/sql/028_remediacion_next.sql` (reescrito: idempotente, `ProximoIntento`, estatus `en_curso`/`reemplazada`). Ninguno se había aplicado en producción.
+DDL: `deploy/sql/OrdenesServicioEtapa4.sql` (Next, agrega `NotasInternas`) y `crmAPI/sql/028_remediacion_next.sql` (reescrito: idempotente, `ProximoIntento`, estatus `en_curso`/`reemplazada`). Aplicados en producción el 29/10/2026 junto con el despliegue de NextAPI `b9aae64` y crmAPI `bb32ff0` (23:15).
 
 ## Fase 4 — Práctica permanente
 
