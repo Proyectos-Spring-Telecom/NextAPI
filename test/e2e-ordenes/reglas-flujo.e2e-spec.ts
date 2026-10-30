@@ -128,6 +128,19 @@ describe('No cumplida y cancelar', () => {
   });
 });
 
+describe('Lo que muestran la App y el front', () => {
+  it('agenda y detalle traen el nombre del cliente y, ya con vehículo, su placa y económico', async () => {
+    const o = await iniciada();
+    const veh = ok(await a.app('POST', '/productos/vehiculos', { idCliente: c.idClienteNext, placa: 'CTX0001', numeroEconomico: 'ECO-7' }), 'vehículo');
+    ok(await a.app('PATCH', `/ordenes-servicio/${o.id}`, { idProducto: Number(veh.data.id) }), 'vehículo en la orden');
+    const det = ok(await a.app('GET', `/ordenes-servicio/${o.id}`), 'detalle').data[0];
+    expect(det).toMatchObject({ placa: 'CTX0001', numeroEconomico: 'ECO-7' });
+    expect(det.nombreCliente).toEqual(expect.any(String));
+    const agenda = ok(await a.app('GET', '/ordenes-servicio/paginado/1/50?estatus=borrador'), 'en curso').data as any[];
+    expect(agenda.find((x) => x.id === o.id)).toMatchObject({ placa: 'CTX0001', nombreCliente: det.nombreCliente });
+  });
+});
+
 describe('Esquema', () => {
   it('las tablas de órdenes de servicio de producción + los SQL de despliegue coinciden con las entidades', () => {
     expect(e.diferenciasEsquema).toEqual([]);

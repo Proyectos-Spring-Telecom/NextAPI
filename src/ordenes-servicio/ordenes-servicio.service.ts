@@ -346,10 +346,12 @@ export class OrdenesServicioService {
             catalogo,
           )
         : [];
+    const [contexto] = await this.contexto([orden]);
     return {
       data: [
         {
           ...mapOrden(orden),
+          ...contexto,
           respuestas: respuestas.map((r) => ({
             seccion: r.seccion,
             clave: r.clave,
@@ -400,10 +402,79 @@ export class OrdenesServicioService {
       .skip(skip)
       .take(take)
       .getManyAndCount();
+    const contextos = await this.contexto(rows);
     return {
-      data: rows.map((o) => mapOrden(o)),
+      data: rows.map((o, i) => ({ ...mapOrden(o), ...contextos[i] })),
       paginated: { total, page: Math.max(page, 1), limit: take },
     };
+  }
+
+  /**
+   * Lo que la App y el front muestran de cada orden sin otra llamada: nombre del
+   * cliente y el vehículo (placa y económico) o, si no es vehículo, el nombre del
+   * producto. El producto es el de la orden o, si aún no se captura, el de la
+   * instalación (real o programada). En lote: 3–4 consultas por página.
+   */
+  private async contexto(ordenes: OrdenesServicio[]) {
+    const vacio = { nombreCliente: null, placa: null, numeroEconomico: null, nombreProducto: null };
+    if (!ordenes.length) return [];
+    const idsInstalacion = [
+      ...new Set(
+        ordenes
+          .filter((o) => o.idProducto == null)
+          .map((o) => Number(o.idInstalacion ?? o.idInstalacionProgramada))
+          .filter((x) => x > 0),
+      ),
+    ];
+    const productoDeInstalacion = new Map<number, number>();
+    if (idsInstalacion.length) {
+      const vivas: { id: string; idProducto: string }[] = await this.dataSource.query(
+        'SELECT Id AS id, IdProducto AS idProducto FROM Instalaciones WHERE Id IN (?)',
+        [idsInstalacion],
+      );
+      for (const f of vivas) productoDeInstalacion.set(Number(f.id), Number(f.idProducto));
+      const faltan = idsInstalacion.filter((x) => !productoDeInstalacion.has(x));
+      if (faltan.length) {
+        // Instalación ya archivada por un cambio posterior: su versión en el histórico.
+        const archivadas: { id: string; idProducto: string }[] = await this.dataSource.query(
+          'SELECT IdInstalacionOriginal AS id, IdProducto AS idProducto FROM HistoricoInstalaciones WHERE IdInstalacionOriginal IN (?) ORDER BY Id',
+          [faltan],
+        );
+        for (const f of archivadas) productoDeInstalacion.set(Number(f.id), Number(f.idProducto));
+      }
+    }
+    const productoDe = (o: OrdenesServicio) =>
+      o.idProducto != null ? Number(o.idProducto) : (productoDeInstalacion.get(Number(o.idInstalacion ?? o.idInstalacionProgramada)) ?? null);
+    const idsProducto = [...new Set(ordenes.map(productoDe).filter((x): x is number => x != null))];
+    const idsCliente = [...new Set(ordenes.map((o) => Number(o.idCliente)))];
+    const [clientes, productos]: [
+      { id: string; nombre: string | null }[],
+      { id: string; nombre: string | null; placa: string | null; economico: string | null }[],
+    ] = await Promise.all([
+      this.dataSource.query(
+        "SELECT Id AS id, NULLIF(TRIM(CONCAT_WS(' ', Nombre, ApellidoPaterno, ApellidoMaterno)), '') AS nombre FROM Clientes WHERE Id IN (?)",
+        [idsCliente],
+      ),
+      idsProducto.length
+        ? this.dataSource.query(
+            `SELECT p.Id AS id, p.Nombre AS nombre, v.Placa AS placa, v.NumeroEconomico AS economico
+               FROM Productos p LEFT JOIN Vehiculos v ON v.IdProducto = p.Id WHERE p.Id IN (?)`,
+            [idsProducto],
+          )
+        : Promise.resolve([]),
+    ]);
+    const cliente = new Map(clientes.map((c) => [Number(c.id), c.nombre]));
+    const producto = new Map(productos.map((p) => [Number(p.id), p]));
+    return ordenes.map((o) => {
+      const p = producto.get(productoDe(o) ?? -1);
+      return {
+        ...vacio,
+        nombreCliente: cliente.get(Number(o.idCliente)) ?? null,
+        placa: p?.placa ?? null,
+        numeroEconomico: p?.economico ?? null,
+        nombreProducto: p?.nombre ?? null,
+      };
+    });
   }
 
   /**
