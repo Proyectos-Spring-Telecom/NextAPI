@@ -36,6 +36,26 @@ export class MailService {
 
 
 
+  /** Correo genérico con adjuntos (p. ej. el PDF de una orden de servicio). */
+  async enviar(opts: {
+    para: string[];
+    asunto: string;
+    html: string;
+    adjuntos?: Array<{ filename: string; content: Buffer; contentType: string }>;
+  }): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: `"Spring Telecom" <${this.mailUser}>`,
+        to: opts.para.join(', '),
+        subject: opts.asunto,
+        html: opts.html,
+        attachments: opts.adjuntos,
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(`No se pudo enviar el correo: ${(error as Error)?.message}`);
+    }
+  }
+
   async sendConfirmationEmail(
     to: string,
     name: string,

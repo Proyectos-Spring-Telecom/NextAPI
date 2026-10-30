@@ -13,6 +13,9 @@ import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { ApiCrudResponse, EstatusEnumBitcora } from 'src/common/ApiResponse';
 import { EnumModulos, EnumRoles, EstatusEnum } from 'src/common/estatus.enum';
 import { CatMotivosOrdenServicio } from 'src/entities/CatMotivosOrdenServicio';
+import { CatOrdenServicioOpciones } from 'src/entities/CatOrdenServicioOpciones';
+import { OrdenServicioPruebas } from 'src/entities/OrdenServicioPruebas';
+import { OrdenServicioRespuestas } from 'src/entities/OrdenServicioRespuestas';
 import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { OrdenesServicio } from 'src/entities/OrdenesServicio';
@@ -33,7 +36,9 @@ import {
   ProgramarOrdenDto,
   ReprogramarOrdenDto,
   SolicitarAutorizacionDto,
+  SolicitarPruebaDto,
   ValidarCodigoDto,
+  ValidarPruebaDto,
 } from './dto/flujo-orden-servicio.dto';
 import { mapOrden } from './ordenes-servicio.map';
 import {
@@ -42,6 +47,7 @@ import {
   ActorMotivo,
   CODIGO,
   ESTATUS_ORDEN,
+  ESTATUS_PRUEBA,
   MOTIVO_SIN_AUTORIZACION,
   ORIGEN_ORDEN,
   cambioDeTipoPermitido,
@@ -96,6 +102,12 @@ export class OrdenesFlujoService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly config: ConfigService,
+    @InjectRepository(OrdenServicioPruebas)
+    private readonly pruebasRepo: Repository<OrdenServicioPruebas>,
+    @InjectRepository(OrdenServicioRespuestas)
+    private readonly respuestasRepo: Repository<OrdenServicioRespuestas>,
+    @InjectRepository(CatOrdenServicioOpciones)
+    private readonly catalogoRepo: Repository<CatOrdenServicioOpciones>,
   ) {}
 
   // ---------------------------------------------------------------- catálogo
@@ -458,6 +470,99 @@ export class OrdenesFlujoService {
     await this.ordenesRepo.update({ id: orden.id }, cambios);
     await this.bitacora(`Desinstalación ${decision} en ${this.folio(orden)}`, 'UPDATE', { id, dto }, actor);
     return this.ok(orden, dto.autorizada ? 'Desinstalación autorizada' : 'Desinstalación rechazada: la orden quedó no cumplida');
+  }
+
+  // ---------------------------------------------------------------- pruebas
+
+  /**
+   * El técnico pide al operador verificar una prueba (transmisión, pánico) o
+   * hacer el paro de motor. Volver a pedirla la reabre (p. ej. tras fallar).
+   */
+  async solicitarPrueba(id: number, clave: string, dto: SolicitarPruebaDto, user: UsuarioToken): Promise<ApiCrudResponse> {
+    const orden = await this.ordenDelTecnico(id, user);
+    this.exigirEstatus(orden, [ESTATUS_ORDEN.BORRADOR], 'pedir pruebas de');
+    await this.validarClavePrueba(clave);
+    const ahora = nowMexicoCityAsUtcDate();
+    await this.pruebasRepo.save(
+      this.pruebasRepo.create({
+        idOrdenServicio: Number(orden.id),
+        clave,
+        estatus: ESTATUS_PRUEBA.SOLICITADA,
+        fechaSolicitud: ahora,
+        idUsuarioSolicito: user.userId,
+        notaTecnico: dto.observaciones?.trim() || null,
+        fechaValidacion: null,
+        idUsuarioValido: null,
+        nombreValido: null,
+        notaOperador: null,
+      }),
+    );
+    await this.bitacora(`Prueba ${clave} pedida al operador en ${this.folio(orden)}`, 'UPDATE', { id, clave }, { tipo: 'usuario', user });
+    return this.ok(orden, clave === 'paro_motor' ? 'Paro de motor pedido al operador' : 'Prueba pedida al operador');
+  }
+
+  /** Pruebas que esperan al operador en turno, la más antigua primero. */
+  async pruebasPendientes() {
+    const pruebas = await this.pruebasRepo.find({
+      where: { estatus: ESTATUS_PRUEBA.SOLICITADA },
+      order: { fechaSolicitud: 'ASC' },
+    });
+    if (!pruebas.length) return { data: [] };
+    const ordenes = await this.ordenesRepo.find({
+      where: { id: In([...new Set(pruebas.map((p) => Number(p.idOrdenServicio)))]), estatus: ESTATUS_ORDEN.BORRADOR },
+    });
+    const contexto = await this.conContexto(ordenes);
+    const nombres = await this.catalogoRepo.find({ where: { seccion: 'pruebas' } });
+    return {
+      data: pruebas
+        .map((p) => {
+          const orden = contexto.find((c) => c.id === Number(p.idOrdenServicio));
+          if (!orden) return null;
+          return {
+            ...orden,
+            prueba: p.clave,
+            nombrePrueba: nombres.find((n) => n.clave === p.clave)?.nombre ?? p.clave,
+            fechaSolicitud: p.fechaSolicitud,
+            notaTecnico: p.notaTecnico,
+          };
+        })
+        .filter(Boolean),
+    };
+  }
+
+  /** El operador deja el resultado; también queda como respuesta de la sección pruebas. */
+  async validarPrueba(id: number, clave: string, dto: ValidarPruebaDto, user: UsuarioToken): Promise<ApiCrudResponse> {
+    const orden = await this.ordenExistente(id);
+    this.exigirEstatus(orden, [ESTATUS_ORDEN.BORRADOR], 'validar pruebas de');
+    const prueba = await this.pruebasRepo.findOne({ where: { idOrdenServicio: Number(orden.id), clave } });
+    if (!prueba) throw new BadRequestException(`El técnico no ha pedido la prueba ${clave}`);
+    const quien = await this.quien({ tipo: 'usuario', user });
+    const estatus = dto.correcta ? ESTATUS_PRUEBA.CORRECTA : ESTATUS_PRUEBA.FALLIDA;
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        OrdenServicioPruebas,
+        { idOrdenServicio: Number(orden.id), clave },
+        {
+          estatus,
+          fechaValidacion: nowMexicoCityAsUtcDate(),
+          idUsuarioValido: user.userId,
+          nombreValido: quien.nombre,
+          notaOperador: dto.observaciones?.trim() || null,
+        },
+      );
+      await manager.upsert(
+        OrdenServicioRespuestas,
+        [{ idOrdenServicio: Number(orden.id), seccion: 'pruebas', clave, valor: dto.correcta ? 1 : 0 }],
+        ['idOrdenServicio', 'seccion', 'clave'],
+      );
+    });
+    await this.bitacora(`Prueba ${clave} ${estatus} en ${this.folio(orden)}`, 'UPDATE', { id, clave, dto }, { tipo: 'usuario', user });
+    return this.ok(orden, `Prueba ${estatus}`);
+  }
+
+  private async validarClavePrueba(clave: string): Promise<void> {
+    const opcion = await this.catalogoRepo.findOne({ where: { seccion: 'pruebas', clave, estatus: EstatusEnum.ACTIVO } });
+    if (!opcion) throw new BadRequestException(`La prueba ${clave} no existe en el catálogo`);
   }
 
   // ------------------------------------------------------ no cumplida / cancelar

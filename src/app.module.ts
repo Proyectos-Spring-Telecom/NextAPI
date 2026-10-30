@@ -16,6 +16,7 @@ import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { OrdenesServicioModule } from './ordenes-servicio/ordenes-servicio.module';
+import { IntegracionCrmModule } from './integracion-crm/integracion-crm.module';
 import { OperadoresModule } from './operadores/operadores.module';
 import { ProductosModule } from './productos/productos.module';
 import { AlarmasModule } from './alarmas/alarmas.module';
@@ -206,6 +207,7 @@ import * as jwt from 'jsonwebtoken';
 
     InstalacionesModule,
     OrdenesServicioModule,
+    IntegracionCrmModule,
 
     OperadoresModule,
 

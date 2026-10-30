@@ -4,7 +4,7 @@
 **DDL:** `deploy/sql/OrdenesServicio.sql`. **Contrato resumido:** [contratos.md §14.1](contratos.md).
 **Código:** `src/ordenes-servicio/` y `src/instalaciones/instalaciones.service.ts`.
 
-> **Etapa 2 (§12) implementada en `dev-isra` el 29/10/2026, pendiente de desplegar:** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`. Las §1–§11 describen la etapa 1, ya desplegada.
+> **Etapas 2 y 3 (§12–§14) implementadas en `dev-isra` el 29/10/2026 (la 2 ya desplegada):** órdenes que nacen en el CRM, código de verificación en mantenimientos, autorización de desinstalación y estado `no_cumplida`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`. Las §1–§11 describen la etapa 1, ya desplegada.
 
 ## 1. Objetivo
 
@@ -479,3 +479,52 @@ Verificación: 13 filas en `CatMotivosOrdenServicio`, 25 en `CatOrdenServicioOpc
 - `ordenes-servicio.service.spec.ts`: cierre de un alta autorizada (baja + alta en la misma transacción) y mantenimiento sin código.
 - `crm-hmac.guard.spec.ts`: firma de POST y GET (con y sin `/api`), timestamp vencido, secreto ausente.
 - Resultado: 28 suites y 195 pruebas pasan; `nest build` OK.
+
+---
+
+## 13. Etapa 3 — pruebas con el operador, paro de motor y PDF
+
+**Estado:** implementado en `dev-isra` el 29/10/2026. DDL: `deploy/sql/OrdenesServicioEtapa3.sql` (tabla `OrdenServicioPruebas`, columnas `RutaPdf` y `FechaPdf`). Código: `ordenes-flujo.service.ts` (pruebas) y `ordenes-servicio-pdf.service.ts`.
+
+### 13.1 Pruebas validadas por el operador
+
+Las pruebas (transmisión, botón de pánico, paro de motor) se coordinan entre el técnico y el operador. En las **órdenes programadas** (con `origen`) el resultado lo pone el operador, no el técnico:
+
+1. El técnico pide la prueba: `POST /ordenes-servicio/:id/pruebas/:clave/solicitar { observaciones? }`. Para el paro de motor (`clave = paro_motor`) esto es la **solicitud del paro**: el operador lo ejecuta con su herramienta de siempre (Next todavía no manda comandos al equipo) y confirma el resultado.
+2. El operador en turno (roles 1–5) ve `GET /ordenes-servicio/pruebas-pendientes` (cliente, placa, técnico, prueba, nota del técnico) y responde `POST /ordenes-servicio/:id/pruebas/:clave/validar { correcta, observaciones? }`.
+3. El resultado queda en `OrdenServicioPruebas` (quién, cuándo, notas) y como respuesta de la sección `pruebas`. Volver a pedirla la reabre.
+
+Reglas:
+- En una orden programada el `PATCH` rechaza respuestas de la sección `pruebas` (400). Excepción: `desinstalacion`, donde ya no hay equipo que probar y el técnico las contesta.
+- No se cierra con pruebas pedidas sin validar (`faltantesParaCerrar`: "Pruebas pendientes de validar por el operador").
+- Las órdenes de la etapa 1 (sin origen) siguen como antes: el técnico marca las pruebas.
+- `GET /:id` agrega `pruebas: [{ clave, estatus, fechaSolicitud, notaTecnico, fechaValidacion, nombreValido, notaOperador }]`.
+
+### 13.2 PDF de la orden, correo y WhatsApp
+
+| Método | Ruta | Uso |
+|--------|------|-----|
+| GET | `/ordenes-servicio/:id/pdf` | El PDF (inline): servicio, cliente, vehículo, equipo y SIM, checklist, pruebas con quién las validó, autorización, motivo, observaciones y firmas |
+| POST | `/ordenes-servicio/:id/compartir` | `{ telefono? }` → `{ url, vigenciaHoras: 168, whatsapp }`. `whatsapp` es un enlace `wa.me` con el texto y el enlace del PDF; con `telefono` abre ese chat |
+| POST | `/ordenes-servicio/:id/enviar-correo` | `{ correos: [..] }` (1–5) → correo con el PDF adjunto, desde la cuenta SMTP de NextAPI |
+
+- Compartir y enviar solo funcionan con la orden `cerrada` o `no_cumplida`; el PDF se puede ver en cualquier estado.
+- Cada vez que se comparte se genera un PDF nuevo en S3 (`ordenes-servicio/pdf/`, privado) con los datos de ese momento; los anteriores no se borran, para no romper enlaces ya enviados. El enlace dura 7 días (máximo de S3).
+- Roles: los que leen órdenes (1–5 y el técnico, solo las suyas).
+- Dependencia nueva: `pdfkit` (`npm install` al desplegar).
+
+## 14. API para el CRM (`/api/integracion`)
+
+**Estado:** implementado el 29/10/2026. Con esto el CRM deja de leer la base de Next. Misma firma HMAC que §12.9; solo por localhost.
+
+| Método | Ruta | Devuelve |
+|--------|------|----------|
+| GET | `/integracion/clientes` | Clientes activos (sin la cuenta raíz) con `unidades` activas |
+| GET | `/integracion/clientes/:id` | Datos de alta (nombre, RFC, contacto, dirección) |
+| POST | `/integracion/clientes` | **Alta del cliente formalizado.** Mismo cuerpo que `POST /clientes` en JSON, con al menos un contacto de emergencia. RFC repetido → 409 con `idCliente` (para ligarlo). Requiere `CRM_ID_USUARIO` (usuario de Next que queda como autor; sin él, 503) |
+| GET | `/integracion/tecnicos` | Usuarios activos rol 8 |
+| GET | `/integracion/unidades?clientes=1,2` | Unidades activas (instalación, placa, económico, IMEI, serie, tipo, fecha) |
+| GET | `/integracion/unidades/conteo` | Unidades activas por cliente |
+| GET | `/integracion/sims` | SIMs con su instalación vigente (`iccid` = `Sims.IMEI`) |
+| GET | `/integracion/ordenes-realizadas?tecnicos=&clientes=&desde=&tipo=&pagables=1` | Órdenes cerradas (y con `pagables=1`, las no cumplidas cobrables) con técnico, cliente, `estatus`, `motivo`, `referenciaCrm` |
+| GET | `/integracion/ordenes-servicio/autorizaciones-pendientes` | Para decidir desde el CRM (§12.6) |

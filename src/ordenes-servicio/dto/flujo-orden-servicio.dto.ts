@@ -1,7 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
+  IsEmail,
   IsIn,
   IsInt,
   IsISO8601,
@@ -224,4 +228,40 @@ export class CambiosOrdenesDto {
   @Min(1)
   @Max(500)
   limite?: number;
+}
+
+export class SolicitarPruebaDto {
+  @ApiPropertyOptional({ description: 'Lo que el operador debe ver (p. ej. "presioné el pánico 10:42")' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observaciones?: string;
+}
+
+export class ValidarPruebaDto {
+  @ApiProperty({ description: 'true = el operador la vio correcta (llegó la transmisión, la alerta, se detuvo el motor)' })
+  @IsBoolean()
+  correcta: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observaciones?: string;
+}
+
+export class CompartirOrdenDto {
+  @ApiPropertyOptional({ description: 'Teléfono para abrir el chat de WhatsApp directo (10 dígitos o con lada de país)', example: '527771234567' })
+  @IsOptional()
+  @Matches(/^\+?\d{10,15}$/, { message: 'Teléfono de 10 a 15 dígitos' })
+  telefono?: string;
+}
+
+export class EnviarCorreoOrdenDto {
+  @ApiProperty({ type: [String], example: ['cliente@empresa.com'] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5)
+  @IsEmail({}, { each: true })
+  correos: string[];
 }

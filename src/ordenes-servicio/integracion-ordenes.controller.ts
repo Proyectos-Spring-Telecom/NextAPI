@@ -43,6 +43,12 @@ export class IntegracionOrdenesController {
     return this.flujo.motivos();
   }
 
+  @Get('autorizaciones-pendientes')
+  @ApiOperation({ summary: 'Altas que esperan autorización para desinstalar el equipo existente (para decidir desde el CRM)' })
+  autorizacionesPendientes() {
+    return this.flujo.autorizacionesPendientes();
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Programar orden(es)',

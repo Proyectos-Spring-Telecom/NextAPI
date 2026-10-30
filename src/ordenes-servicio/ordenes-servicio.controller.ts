@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -22,6 +23,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import * as multer from 'multer';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { ApiCrudResponse } from 'src/common/ApiResponse';
@@ -31,14 +33,19 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
 import {
   CancelarOrdenDto,
+  CompartirOrdenDto,
   DecisionAutorizacionDto,
+  EnviarCorreoOrdenDto,
   IniciarOrdenDto,
   MotivoOrdenDto,
   ProgramarOrdenDto,
   ReprogramarOrdenDto,
   SolicitarAutorizacionDto,
+  SolicitarPruebaDto,
   ValidarCodigoDto,
+  ValidarPruebaDto,
 } from './dto/flujo-orden-servicio.dto';
+import { OrdenesServicioPdfService } from './ordenes-servicio-pdf.service';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
 import { OrdenesServicioService } from './ordenes-servicio.service';
@@ -58,6 +65,7 @@ export class OrdenesServicioController {
   constructor(
     private readonly service: OrdenesServicioService,
     private readonly flujo: OrdenesFlujoService,
+    private readonly pdfService: OrdenesServicioPdfService,
   ) {}
 
   @Get('catalogo')
@@ -96,6 +104,16 @@ export class OrdenesServicioController {
   @ApiOperation({ summary: 'Altas que esperan autorización para desinstalar el equipo existente' })
   autorizacionesPendientes() {
     return this.flujo.autorizacionesPendientes();
+  }
+
+  @Get('pruebas-pendientes')
+  @Roles(...ROLES_CODIGO)
+  @ApiOperation({
+    summary: 'Pruebas que esperan al operador',
+    description: 'Transmisión, pánico y paro de motor pedidos por el técnico, con cliente, placa y técnico. El operador las verifica con POST /:id/pruebas/:clave/validar.',
+  })
+  pruebasPendientes() {
+    return this.flujo.pruebasPendientes();
   }
 
   @Post('programar')
@@ -304,6 +322,70 @@ export class OrdenesServicioController {
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.flujo.decidirAutorizacion(id, dto, { tipo: 'usuario', user: req.user });
+  }
+
+  @Post(':id/pruebas/:clave/solicitar')
+  @Roles(...ESCRIBEN)
+  @ApiOperation({
+    summary: 'Pedir al operador una prueba (o el paro de motor)',
+    description:
+      '`clave` de la sección `pruebas` del catálogo: `transmision`, `boton_panico`, `paro_motor`. En las órdenes programadas el resultado lo pone el operador; volver a pedirla la reabre.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'clave', example: 'paro_motor' })
+  solicitarPrueba(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('clave') clave: string,
+    @Body() dto: SolicitarPruebaDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.solicitarPrueba(id, clave, dto ?? {}, req.user);
+  }
+
+  @Post(':id/pruebas/:clave/validar')
+  @Roles(...ROLES_CODIGO)
+  @ApiOperation({
+    summary: 'El operador valida una prueba',
+    description: 'Queda quién y cuándo, y el resultado se guarda como respuesta de la sección pruebas.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'clave', example: 'transmision' })
+  validarPrueba(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('clave') clave: string,
+    @Body() dto: ValidarPruebaDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.flujo.validarPrueba(id, clave, dto, req.user);
+  }
+
+  @Get(':id/pdf')
+  @Roles(...LEEN)
+  @ApiOperation({ summary: 'PDF de la orden', description: 'Datos, checklist, pruebas con quién las validó, observaciones y firmas.' })
+  @ApiParam({ name: 'id' })
+  async pdf(@Param('id', ParseIntPipe) id: number, @Request() req, @Res() res: Response) {
+    const { nombre, buffer } = await this.pdfService.pdf(id, req.user);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${nombre}"` });
+    res.send(buffer);
+  }
+
+  @Post(':id/compartir')
+  @Roles(...LEEN)
+  @ApiOperation({
+    summary: 'Enlace del PDF para WhatsApp',
+    description: 'Solo cerrada o no cumplida. Devuelve `url` (7 días) y `whatsapp` (wa.me con el texto; con `telefono` abre ese chat).',
+  })
+  @ApiParam({ name: 'id' })
+  compartir(@Param('id', ParseIntPipe) id: number, @Body() dto: CompartirOrdenDto, @Request() req) {
+    return this.pdfService.compartir(id, dto?.telefono, req.user);
+  }
+
+  @Post(':id/enviar-correo')
+  @Roles(...LEEN)
+  @ApiOperation({ summary: 'Enviar el PDF por correo (hasta 5 destinatarios)', description: 'Solo cerrada o no cumplida.' })
+  @ApiParam({ name: 'id' })
+  enviarCorreo(@Param('id', ParseIntPipe) id: number, @Body() dto: EnviarCorreoOrdenDto, @Request() req) {
+    return this.pdfService.enviarCorreo(id, dto.correos, req.user);
   }
 
   @Post(':id/no-cumplida')

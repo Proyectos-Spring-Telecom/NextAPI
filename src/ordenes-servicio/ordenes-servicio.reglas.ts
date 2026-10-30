@@ -51,6 +51,22 @@ export type ActorMotivo = (typeof ACTOR_MOTIVO)[keyof typeof ACTOR_MOTIVO];
 /** Motivo con el que se cierra sola una orden cuya desinstalación se rechazó. */
 export const MOTIVO_SIN_AUTORIZACION = 'sin_autorizacion_desinstalacion';
 
+/** Pruebas coordinadas con el operador (§13): el técnico pide, el operador verifica. */
+export const ESTATUS_PRUEBA = {
+  SOLICITADA: 'solicitada',
+  CORRECTA: 'correcta',
+  FALLIDA: 'fallida',
+} as const;
+
+/**
+ * En las órdenes programadas el resultado de las pruebas lo pone el operador
+ * (POST /:id/pruebas/:clave/validar), no el técnico. En una desinstalación ya no
+ * hay equipo que probar: el técnico las contesta.
+ */
+export function pruebasLasValidaElOperador(o: { origen?: string | null; tipoServicio: string }): boolean {
+  return !!o.origen && o.tipoServicio !== 'desinstalacion';
+}
+
 /** Código de verificación de mantenimientos (§12.5). */
 export const CODIGO = { DIGITOS: 6, VIGENCIA_MIN: 15, INTENTOS: 5 } as const;
 
@@ -77,6 +93,8 @@ export interface OrdenParaCierre {
   origen?: string | null;
   codigoValidado?: boolean;
   autorizacion?: string | null;
+  /** Etapa 3: pruebas pedidas al operador que aún no verifica. */
+  pruebasSinValidar?: string[];
 }
 
 export function esTipoServicio(value: unknown): value is TipoServicio {
@@ -225,6 +243,9 @@ export function faltantesParaCerrar(
   // mientras la app migra a programada + iniciar.
   if (orden.origen && esMantenimiento(tipo) && !orden.codigoValidado) {
     faltan.push('Falta validar el código de verificación con el operador');
+  }
+  if (orden.pruebasSinValidar?.length) {
+    faltan.push(`Pruebas pendientes de validar por el operador: ${orden.pruebasSinValidar.join(', ')}`);
   }
   if (orden.autorizacion === AUTORIZACION.PENDIENTE) {
     faltan.push('La desinstalación del equipo existente está pendiente de autorización');

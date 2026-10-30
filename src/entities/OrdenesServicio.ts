@@ -191,4 +191,11 @@ export class OrdenesServicio {
 
   @Column('tinyint', { name: 'Cobrable', nullable: true })
   cobrable: number | null;
+
+  /** PDF de la orden en S3 privado (etapa 3). */
+  @Column('varchar', { name: 'RutaPdf', length: 500, nullable: true })
+  rutaPdf: string | null;
+
+  @Column('datetime', { name: 'FechaPdf', nullable: true })
+  fechaPdf: Date | null;
 }

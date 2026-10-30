@@ -4,6 +4,7 @@ import {
   faltantesParaCerrar,
   folioDe,
   motivoPermitido,
+  pruebasLasValidaElOperador,
   OrdenParaCierre,
 } from './ordenes-servicio.reglas';
 
@@ -140,5 +141,18 @@ describe('etapa 2: reglas puras', () => {
     expect(estadoCodigo({ ...vigente, codigoExpira: new Date('2026-10-30T09:59:00Z') }, ahora)).toBe('vencido');
     expect(estadoCodigo({ ...vigente, codigoIntentos: 5 }, ahora)).toBe('agotado');
     expect(estadoCodigo({ codigo: null, codigoExpira: null, codigoIntentos: 0 }, ahora)).toBe('sin_codigo');
+  });
+});
+
+describe('etapa 3: pruebas validadas por el operador', () => {
+  it('una prueba pedida y no validada impide cerrar', () => {
+    const f = faltantesParaCerrar(orden({ pruebasSinValidar: ['paro_motor'] }), completas, archivos, catalogo);
+    expect(f).toEqual(['Pruebas pendientes de validar por el operador: paro_motor']);
+  });
+
+  it('en programadas las pruebas las pone el operador, salvo en desinstalación', () => {
+    expect(pruebasLasValidaElOperador({ origen: 'crm', tipoServicio: 'revision' })).toBe(true);
+    expect(pruebasLasValidaElOperador({ origen: 'crm', tipoServicio: 'desinstalacion' })).toBe(false);
+    expect(pruebasLasValidaElOperador({ origen: null, tipoServicio: 'revision' })).toBe(false);
   });
 });

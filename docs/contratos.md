@@ -584,6 +584,8 @@ La orden guarda `idInstalacion` (atendida), `idInstalacionResultado` (vigente de
 
 **Etapa 2** ([ordenes-servicio.md §12](ordenes-servicio.md)): la orden nace `programada` (CRM por `POST /integracion/ordenes-servicio` con firma HMAC `CRM_HMAC_SECRET`, u operación por `POST /ordenes-servicio/programar`); el técnico la inicia (`POST /:id/iniciar`) y confirma o corrige tipo y vehículo. Mantenimientos con código de verificación (`/:id/codigo`, `/:id/codigo/ver`, `/:id/codigo/validar`; pendientes en `GET /codigos-pendientes`). Alta sobre un vehículo con equipo: `/:id/autorizacion` y `/:id/autorizacion/decision`. Estados `programada → borrador → cerrada | no_cumplida | cancelada`, con motivos de `CatMotivosOrdenServicio` (`GET /motivos`) y `cobrable`. El CRM lee los cambios con `GET /integracion/ordenes-servicio/cambios?desde=`. DDL: `deploy/sql/OrdenesServicioEtapa2.sql`.
 
+**Etapa 3** ([§13–§14](ordenes-servicio.md)): pruebas validadas por el operador (`/:id/pruebas/:clave/solicitar`, `/:id/pruebas/:clave/validar`, `GET /pruebas-pendientes`; el paro de motor se pide así), PDF (`GET /:id/pdf`), WhatsApp (`POST /:id/compartir`) y correo (`POST /:id/enviar-correo`). API de lectura y alta de clientes para el CRM en `/integracion/*` (clientes, técnicos, unidades, SIMs, órdenes realizadas). DDL: `deploy/sql/OrdenesServicioEtapa3.sql`.
+
 ---
 
 ## 15. Webhooks salientes

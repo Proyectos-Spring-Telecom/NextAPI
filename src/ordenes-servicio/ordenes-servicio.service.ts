@@ -22,6 +22,7 @@ import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { OrdenesServicio } from 'src/entities/OrdenesServicio';
 import { OrdenServicioArchivos } from 'src/entities/OrdenServicioArchivos';
+import { OrdenServicioPruebas } from 'src/entities/OrdenServicioPruebas';
 import { OrdenServicioRespuestas } from 'src/entities/OrdenServicioRespuestas';
 import { Productos } from 'src/entities/Productos';
 import { Usuarios } from 'src/entities/Usuarios';
@@ -39,11 +40,13 @@ import { mapOrden } from './ordenes-servicio.map';
 import {
   AUTORIZACION,
   ESTATUS_ORDEN,
+  ESTATUS_PRUEBA,
   SECCIONES_ARCHIVO,
   SECCIONES_RESPUESTA,
   TipoServicio,
   faltantesParaCerrar,
   folioDe,
+  pruebasLasValidaElOperador,
   requiereInstalacionExistente,
 } from './ordenes-servicio.reglas';
 
@@ -226,6 +229,11 @@ export class OrdenesServicioService {
     if (dto.lng !== undefined) cambios.lng = dto.lng;
     if (dto.observaciones !== undefined) cambios.observaciones = dto.observaciones;
 
+    if (dto.respuestas?.some((r) => r.seccion === 'pruebas') && pruebasLasValidaElOperador(orden)) {
+      throw new BadRequestException(
+        'En una orden programada las pruebas las valida el operador: use POST /:id/pruebas/:clave/solicitar',
+      );
+    }
     if (dto.respuestas?.length) {
       const claves = await this.clavesPorSeccion(SECCIONES_RESPUESTA);
       const invalidas = dto.respuestas.filter((r) => !claves.get(r.seccion)?.has(r.clave));
@@ -314,10 +322,11 @@ export class OrdenesServicioService {
     if (!orden || !this.puedeVer(orden, user)) {
       throw new NotFoundException('Orden de servicio no encontrada');
     }
-    const [respuestas, archivos, catalogo] = await Promise.all([
+    const [respuestas, archivos, catalogo, pruebas] = await Promise.all([
       this.respuestasRepo.find({ where: { idOrdenServicio: Number(orden.id) } }),
       this.archivosRepo.find({ where: { idOrdenServicio: Number(orden.id) } }),
       this.catalogoRepo.find({ where: { estatus: EstatusEnum.ACTIVO } }),
+      this.dataSource.getRepository(OrdenServicioPruebas).find({ where: { idOrdenServicio: Number(orden.id) } }),
     ]);
     const archivosConUrl = await Promise.all(
       archivos.map(async (a) => ({
@@ -328,7 +337,7 @@ export class OrdenesServicioService {
     );
     const faltantes =
       orden.estatus === ESTATUS_ORDEN.BORRADOR
-        ? faltantesParaCerrar(this.paraCierre(orden), respuestas, archivos, catalogo)
+        ? faltantesParaCerrar(this.paraCierre(orden, pruebas), respuestas, archivos, catalogo)
         : [];
     return {
       data: [
@@ -340,6 +349,15 @@ export class OrdenesServicioService {
             valor: Number(r.valor) === 1,
           })),
           archivos: archivosConUrl,
+          pruebas: pruebas.map((p) => ({
+            clave: p.clave,
+            estatus: p.estatus,
+            fechaSolicitud: p.fechaSolicitud,
+            notaTecnico: p.notaTecnico,
+            fechaValidacion: p.fechaValidacion,
+            nombreValido: p.nombreValido,
+            notaOperador: p.notaOperador,
+          })),
           faltantesParaCerrar: faltantes,
         },
       ],
@@ -405,12 +423,13 @@ export class OrdenesServicioService {
         throw new BadRequestException(`La orden está ${orden.estatus}; no se puede cerrar`);
       }
 
-      const [respuestas, archivos, catalogo] = await Promise.all([
+      const [respuestas, archivos, catalogo, pruebas] = await Promise.all([
         qr.manager.find(OrdenServicioRespuestas, { where: { idOrdenServicio: Number(orden.id) } }),
         qr.manager.find(OrdenServicioArchivos, { where: { idOrdenServicio: Number(orden.id) } }),
         qr.manager.find(CatOrdenServicioOpciones, { where: { estatus: EstatusEnum.ACTIVO } }),
+        qr.manager.find(OrdenServicioPruebas, { where: { idOrdenServicio: Number(orden.id) } }),
       ]);
-      const faltantes = faltantesParaCerrar(this.paraCierre(orden), respuestas, archivos, catalogo);
+      const faltantes = faltantesParaCerrar(this.paraCierre(orden, pruebas), respuestas, archivos, catalogo);
       if (faltantes.length) {
         throw new BadRequestException({ message: 'La orden está incompleta', faltantes });
       }
@@ -642,7 +661,7 @@ export class OrdenesServicioService {
     return mapa;
   }
 
-  private paraCierre(o: OrdenesServicio) {
+  private paraCierre(o: OrdenesServicio, pruebas: Array<{ clave: string; estatus: string }> = []) {
     const n = (v: number | null) => (v == null ? null : Number(v));
     return {
       tipoServicio: o.tipoServicio,
@@ -657,6 +676,7 @@ export class OrdenesServicioService {
       origen: o.origen,
       codigoValidado: o.fechaCodigoValidado != null,
       autorizacion: o.autorizacion,
+      pruebasSinValidar: pruebas.filter((p) => p.estatus === ESTATUS_PRUEBA.SOLICITADA).map((p) => p.clave),
     };
   }
 

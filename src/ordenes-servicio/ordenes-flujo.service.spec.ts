@@ -48,19 +48,36 @@ function build(ordenes: Fila[] = []) {
   const productos = fakeRepo([{ id: 5, idCliente: 1 }]);
   const usuarios = fakeRepo([{ id: 50, idRol: 8, estatus: 1, nombre: 'Téc' }, { id: 2, idRol: 3, estatus: 1, nombre: 'Admin' }]);
   const vehiculos = fakeRepo([{ id: 1, idProducto: 5, placa: 'ABC123', numeroEconomico: 'E1' }]);
+  const pruebasRepo = fakeRepo([]);
+  const respuestas: Array<Record<string, unknown>> = [];
+  const catalogoRepo = fakeRepo([
+    { id: 1, seccion: 'pruebas', clave: 'transmision', nombre: 'Transmisión correcta', estatus: 1 },
+    { id: 2, seccion: 'pruebas', clave: 'paro_motor', nombre: 'Paro de motor', estatus: 1 },
+  ]);
+  // pruebasRepo.save hace upsert por (orden, clave), como la PK compuesta.
+  pruebasRepo.save.mockImplementation(async (d: Record<string, unknown>) => {
+    const previa = pruebasRepo.filas.find((f) => f.idOrdenServicio === d.idOrdenServicio && f.clave === d.clave);
+    if (previa) return Object.assign(previa, d);
+    const fila = { ...d, id: pruebasRepo.filas.length + 1 } as Fila;
+    pruebasRepo.filas.push(fila);
+    return fila;
+  });
+  const repoDe = (e: { name: string }) => (e.name === 'OrdenServicioPruebas' ? pruebasRepo : ordenesRepo);
   const ds = { transaction: async (cb: (m: unknown) => Promise<void>) => cb({
     findOne: (_e: unknown, o: { where: Record<string, unknown> }) => ordenesRepo.findOne(o),
     create: (_e: unknown, d: Record<string, unknown>) => d,
     save: (d: Record<string, unknown>) => ordenesRepo.save(d),
-    update: (_e: unknown, w: Record<string, unknown>, c: Record<string, unknown>) => ordenesRepo.update(w, c),
+    update: (e: { name: string }, w: Record<string, unknown>, c: Record<string, unknown>) => repoDe(e).update(w, c),
+    upsert: async (_e: unknown, filas: Array<Record<string, unknown>>) => { respuestas.push(...filas); },
   }) };
   const bitacora = { logToBitacora: jest.fn() };
   const config = { get: () => undefined };
   const service = new OrdenesFlujoService(
     ordenesRepo as never, motivosRepo as never, clientes as never, instalaciones as never, productos as never,
     usuarios as never, vehiculos as never, ds as never, bitacora as never, config as never,
+    pruebasRepo as never, {} as never, catalogoRepo as never,
   );
-  return { service, ordenes: ordenesRepo.filas };
+  return { service, ordenes: ordenesRepo.filas, pruebas: pruebasRepo.filas, respuestas };
 }
 
 const programadaCrm = (extra: Record<string, unknown> = {}): Fila => ({
@@ -222,4 +239,25 @@ describe('OrdenesFlujoService', () => {
       await expect(service.reprogramar(1, { cita: '2026-10-31T10:00:00-06:00' }, crm)).rejects.toThrow('no encontrada');
     });
   });
+
+  describe('pruebas con el operador', () => {
+    it('el técnico pide el paro de motor, el operador lo valida y queda como respuesta', async () => {
+      const { service, pruebas, respuestas } = build([programadaCrm({ estatus: 'borrador' })]);
+      const r = await service.solicitarPrueba(1, 'paro_motor', { observaciones: 'Listo para paro' }, tecnico);
+      expect(r.message).toBe('Paro de motor pedido al operador');
+      expect(pruebas[0]).toMatchObject({ clave: 'paro_motor', estatus: 'solicitada', idUsuarioSolicito: 50 });
+      const pendientes = await service.pruebasPendientes();
+      expect(pendientes.data[0]).toMatchObject({ prueba: 'paro_motor', nombrePrueba: 'Paro de motor', placa: 'ABC123' });
+      await service.validarPrueba(1, 'paro_motor', { correcta: true }, { userId: 15, idCliente: 1, rol: 5 });
+      expect(pruebas[0]).toMatchObject({ estatus: 'correcta', idUsuarioValido: 15 });
+      expect(respuestas).toEqual([{ idOrdenServicio: 1, seccion: 'pruebas', clave: 'paro_motor', valor: 1 }]);
+    });
+
+    it('no valida una prueba que no se pidió ni una clave fuera del catálogo', async () => {
+      const { service } = build([programadaCrm({ estatus: 'borrador' })]);
+      await expect(service.validarPrueba(1, 'transmision', { correcta: true }, admin)).rejects.toThrow('no ha pedido');
+      await expect(service.solicitarPrueba(1, 'volar', {}, tecnico)).rejects.toThrow('no existe en el catálogo');
+    });
+  });
 });
+
