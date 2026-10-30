@@ -8,7 +8,9 @@ import {
   Query,
   Request,
   ParseIntPipe,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,8 +20,14 @@ import {
   ApiQuery,
   ApiResponse,
   ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { InmueblesService } from './inmuebles.service';
+import {
+  personasFotoInterceptor,
+  StripEmptyPersonaFotoInterceptor,
+} from '../personas/personas-upload.interceptor';
+import type { ProductoFotoUploadFiles } from '../personas/personas-upload.interceptor';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
@@ -41,6 +49,8 @@ export class InmueblesController {
   constructor(private readonly inmueblesService: InmueblesService) {}
 
   @Post()
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({
     summary: 'Crear inmueble',
     description:
@@ -52,9 +62,10 @@ export class InmueblesController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateInmueblesDto,
+    @UploadedFiles() files: ProductoFotoUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.inmueblesService.create(dto, req.user.userId);
+    return this.inmueblesService.create(dto, req.user.userId, files ?? {});
   }
 
   @Get('list')
@@ -144,6 +155,8 @@ export class InmueblesController {
   }
 
   @Patch(':id')
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: 'Actualizar inmueble' })
   @ApiParam({ name: 'id', description: 'ID del inmueble' })
   @ApiResponse({ status: 200, description: 'Inmueble actualizado' })
@@ -152,10 +165,11 @@ export class InmueblesController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateInmueblesDto,
+    @UploadedFiles() files: ProductoFotoUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.inmueblesService.update(id, dto, idCliente, idUser);
+    return this.inmueblesService.update(id, dto, idCliente, idUser, files ?? {}, Number(req.user.rol));
   }
 }

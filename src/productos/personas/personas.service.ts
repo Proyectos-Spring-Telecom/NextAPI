@@ -11,6 +11,8 @@ import { Personas } from 'src/entities/Personas';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
+import { S3Service } from 'src/s3/s3.service';
+import { PERSONAS_S3_FOLDER, PersonasUploadFiles } from './personas-upload.interceptor';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import {
@@ -42,6 +44,7 @@ export class PersonasService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly s3Service: S3Service,
   ) { }
 
   private nombreDisplay(entity: Personas): string {
@@ -57,6 +60,7 @@ export class PersonasService {
       id: Number(item.idProducto),
       nombrePersona: item.nombre,
       telefonoPersona: item.telefono,
+      fotoPersona: item.foto ?? null,
       nombreProducto: producto?.nombre ?? item.nombre,
       estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
@@ -73,8 +77,14 @@ export class PersonasService {
   async create(
     dto: CreatePersonasDto,
     idUser: number,
+    files: PersonasUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
+    // Igual que Vehículos: el archivo se sube a S3 antes de guardar (carpeta propia `personas`).
+    const archivo = files.foto?.[0];
+    const foto = archivo
+      ? (await this.s3Service.uploadFile(archivo, PERSONAS_S3_FOLDER, idUser, EnumModulos.PERSONAS)).url
+      : null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -90,6 +100,7 @@ export class PersonasService {
         idCliente,
         nombre: dto.nombre,
         telefono: dto.telefono ?? null,
+        foto,
       });
       const saved = await queryRunner.manager.save(entity);
       await queryRunner.commitTransaction();
@@ -232,19 +243,42 @@ export class PersonasService {
   async update(
     id: number,
     dto: UpdatePersonasDto,
-    idCliente: number,
+    idClienteToken: number,
     idUser: number,
+    rol?: number,
+    files: PersonasUploadFiles = {},
   ): Promise<ApiCrudResponse> {
+    let idCliente = idClienteToken;
     try {
-      const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
-      });
+      // La persona puede ser de otro cliente dentro del alcance del rol (no solo el del token).
+      const entity = await this.repository.findOne({ where: { idProducto: id } });
       if (!entity) {
         throw new NotFoundException('Persona no encontrada');
       }
+      if (rol != null) {
+        const scope = await this.tenantFilter.idsClientePermitidos(rol, idClienteToken);
+        if (!this.tenantFilter.clienteVisibleEnScope(scope, Number(entity.idCliente))) {
+          throw new NotFoundException('Persona no encontrada');
+        }
+      } else if (Number(entity.idCliente) !== Number(idClienteToken)) {
+        throw new NotFoundException('Persona no encontrada');
+      }
+      idCliente = Number(entity.idCliente);
 
       if (dto.nombre !== undefined) entity.nombre = dto.nombre;
       if (dto.telefono !== undefined) entity.telefono = dto.telefono;
+      const archivo = files.foto?.[0];
+      if (archivo) {
+        // Reemplaza la foto anterior en S3 (misma lógica que Vehículos).
+        const { url } = await this.s3Service.updateFile(
+          entity.foto,
+          archivo,
+          PERSONAS_S3_FOLDER,
+          idUser,
+          EnumModulos.PERSONAS,
+        );
+        entity.foto = url;
+      }
       await this.repository.save(entity);
 
       if (dto.nombre !== undefined) {

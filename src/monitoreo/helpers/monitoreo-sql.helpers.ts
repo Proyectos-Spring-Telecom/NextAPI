@@ -97,6 +97,7 @@ export function applyMonitoreoListSelect(
 
     'a.descripcion AS descripcionActivo',
     'per.nombre AS nombrePersona',
+    'per.foto AS fotoPersona',
     'inm.inmueble AS inmueble',
     'inm.lat AS latInmueble',
     'inm.lng AS lngInmueble',

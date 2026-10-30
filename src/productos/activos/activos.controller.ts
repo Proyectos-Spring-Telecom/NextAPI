@@ -8,11 +8,14 @@ import {
   Post,
   Query,
   Request,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -24,6 +27,11 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { ActivosService } from './activos.service';
+import {
+  personasFotoInterceptor,
+  StripEmptyPersonaFotoInterceptor,
+} from '../personas/personas-upload.interceptor';
+import type { ProductoFotoUploadFiles } from '../personas/personas-upload.interceptor';
 import { CreateActivosDto } from './dto/create-activos.dto';
 import { UpdateActivosDto } from './dto/update-activos.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
@@ -41,6 +49,8 @@ export class ActivosController {
   constructor(private readonly activosService: ActivosService) {}
 
   @Post()
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({
     summary: 'Crear activo',
     description:
@@ -52,9 +62,10 @@ export class ActivosController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateActivosDto,
+    @UploadedFiles() files: ProductoFotoUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.activosService.create(dto, req.user.userId);
+    return this.activosService.create(dto, req.user.userId, files ?? {});
   }
 
   @Get('list')
@@ -136,6 +147,8 @@ export class ActivosController {
   }
 
   @Patch(':id')
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: 'Actualizar activo' })
   @ApiParam({ name: 'id', description: 'ID del producto / activo' })
   @ApiResponse({ status: 200, description: 'Activo actualizado' })
@@ -144,6 +157,7 @@ export class ActivosController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateActivosDto,
+    @UploadedFiles() files: ProductoFotoUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.activosService.update(
@@ -151,6 +165,8 @@ export class ActivosController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      files ?? {},
+      Number(req.user.rol),
     );
   }
 }

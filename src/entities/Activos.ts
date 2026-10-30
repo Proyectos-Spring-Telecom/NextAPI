@@ -25,6 +25,10 @@ export class Activos {
   @Column('varchar', { name: 'Descripcion', length: 500, nullable: true })
   descripcion: string | null;
 
+  /** URL pública de la foto (S3, carpeta `activos`). */
+  @Column('varchar', { name: 'Foto', length: 500, nullable: true })
+  foto: string | null;
+
   @OneToOne(() => Productos, {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',

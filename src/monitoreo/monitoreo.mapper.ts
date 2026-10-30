@@ -89,6 +89,8 @@ export function mapTelemetriaUltimaPosicion(
 
 type MonitoreoBase = {
   idInstalacion: number;
+  /** Geocercas activas asignadas a la instalación ("A, B"); null si no tiene. */
+  geocercas: string | null;
   idCliente: number;
   idTipoProducto: number;
   /** CatTipoDispositivo (plano; TRACKGAS=6, TRACKCAM=5, …). */
@@ -131,6 +133,7 @@ export type MonitoreoActivoItem = MonitoreoDispositivoItem & {
 
 export type MonitoreoPersonaItem = MonitoreoDispositivoItem & {
   persona: string | null;
+  fotoPersona: string | null;
 };
 
 export type MonitoreoUltimoEventoAlarma = NonNullable<
@@ -162,6 +165,7 @@ export type MonitoreoPosicionItem =
 function mapBase(row: Record<string, unknown>): MonitoreoBase {
   return {
     idInstalacion: Number(row.idInstalacion),
+    geocercas: str(row.geocercas),
     idCliente: Number(row.idCliente),
     idTipoProducto: Number(row.idTipoProducto),
     idTipoDispositivo: num(row.idTipoDispositivo),
@@ -213,6 +217,8 @@ function mapMonitoreoPersona(row: Record<string, unknown>): MonitoreoPersonaItem
     modelo: str(row.modeloDispositivo),
     marca: str(row.marcaDispositivo),
     persona: str(row.nombrePersona),
+    /** Foto de la persona (S3, carpeta `personas`); null si no tiene. */
+    fotoPersona: str(row.fotoPersona),
     ...mapTelemetriaUltimaPosicion(row),
   };
 }

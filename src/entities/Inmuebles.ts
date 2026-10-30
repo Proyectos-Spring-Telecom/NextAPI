@@ -52,6 +52,10 @@ export class Inmuebles {
   @Column('double', { name: 'Lng', nullable: true })
   lng: number | null;
 
+  /** URL pública de la foto (S3, carpeta `inmuebles`). */
+  @Column('varchar', { name: 'Foto', length: 500, nullable: true })
+  foto: string | null;
+
   @OneToOne(() => Productos, {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',
