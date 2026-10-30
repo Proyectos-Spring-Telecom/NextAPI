@@ -110,21 +110,23 @@ Hoy la ingesta solo acepta equipos en estatus 1 o 2; los demás van a `Telemetry
 
 Así se cumple "nuestra responsabilidad es que el equipo transmita mientras no haya vandalismo": no se pierde ninguna transmisión y operación ve lo que no cuadra. Lo que se guarde sin instalación no lo ve ningún cliente (no cae en ningún tramo).
 
-## 7b. Vigilancia de transmisión (requisito del 30/10)
+## 7b. Vigilancia de transmisión (requisito y definición del 30/10)
 
-Todo equipo **instalado** debe transmitir. Si deja de hacerlo, hay que avisar al cliente **antes de las 24 h**, para confirmar si es una falla o si el vehículo entró a taller.
+Todo equipo **instalado** debe transmitir. Si deja de hacerlo, **monitoreo se entera en el portal** y revisa con el cliente si es una falla, si el vehículo entró a taller, o si es algo imputable a un proveedor (telefonía, plataforma).
 
-| Tiempo sin transmitir | Acción |
+| Regla | Valor |
 |---|---|
-| Umbral de aviso (propuesta: 6 h; configurable por tipo de equipo, p. ej. menor para AVL que para relojes) | Aviso al cliente (notificación y correo) y aparece en "sin transmisión" para monitoreo |
-| 24 h | Incidente para operación, con el antecedente del aviso |
-| El cliente responde "entró a taller" | Se registra como pausa de vigilancia con fecha de regreso; no se repiten avisos |
-| Vuelve a transmitir | Se cierra el aviso; el incidente queda para que operación lo finalice |
+| Umbral sin transmitir | **Relojes: 24 h. Todos los demás equipos (GPS/AVL, TrackCam, paneles…): 12 h.** Configurable por tipo de equipo |
+| Cuándo se evalúa | **Una vez al día, en horario diurno: entre las 9:00 y las 11:00** (hora de Ciudad de México). Corre a las 9:00 y, si el servidor no pudo, reintenta hasta las 11:00; fuera de esa ventana no se generan avisos |
+| A quién | **Portal, a los operadores de monitoreo** (roles 4–5; administración también lo ve). No se notifica directo al cliente |
+| Qué se genera | Un aviso por instalación en la bandeja "Sin transmisión", con última posición, horas sin transmitir, cliente, vehículo, equipo, SIM y compañía telefónica (para detectar fallas de un proveedor que afecten a varios equipos a la vez) |
+| Atención | El operador registra el resultado: falla del equipo, taller (con fecha de regreso: se pausa la vigilancia de esa instalación), proveedor (telefonía/plataforma), cliente avisado, otro. Si vuelve a transmitir, el aviso se cierra solo |
+| Agrupación por proveedor | Si en la misma evaluación varios equipos de la misma compañía telefónica dejan de transmitir, la bandeja los agrupa y lo marca como posible falla del proveedor |
 
-- La fuente es `UltimaPosicion.FHRegistro` por equipo instalado. Ya existe la consulta de sin transmisión en consola; se vuelve una tarea programada en NextAPI cada 15 min.
+- La fuente es `UltimaPosicion.FHRegistro` por equipo instalado. Ya existe la consulta de sin transmisión en consola; se reutiliza como tarea programada en NextAPI.
 - La regla aplica por instalación. Un vehículo con GPS y TrackCam se vigila por cada equipo.
-- Equipos dados de alta pero que nunca han transmitido (hoy 238 de 407): se marcan como "sin primera transmisión" y no generan avisos al cliente hasta revisarlos. Operación decide si son instalaciones legadas que aún reportan a otro sistema.
-- Las notificaciones al cliente usan el motor de notificaciones existente. No se toca el legado del CRM.
+- **Equipos que nunca han transmitido** (hoy 238 de 407): van a una lista aparte "sin primera transmisión" y no generan avisos diarios hasta que operación los revise. Pueden ser instalaciones legadas que aún reportan a otro sistema.
+- Un equipo **inservible que transmite** abre incidente (§7); eso es aparte de esta vigilancia.
 
 ## 8. Comandos de Next a los equipos (cola)
 
@@ -180,7 +182,6 @@ Cada fase cierra con unitarias, la batería, una revisión independiente, la doc
 2. Asignación de usuarios 7/9: **por instalación** (como hoy). ✅
 3. Geocercas por vehículo: ✅
 4. GPS + TrackCam: recorrido por defecto el del GPS. ✅
-5. Inservible que transmite: **incidente**. Además, vigilancia de transmisión con aviso al cliente antes de 24 h (§7b). ✅
+5. Inservible que transmite: **incidente**. Además, vigilancia de transmisión (§7b): relojes 24 h, demás 12 h; evaluación diaria entre 9:00 y 11:00; aviso en el portal a monitoreo. ✅
 6. Corregir la fecha de instalación: **roles 1–4**. ✅
 
-Pendiente de definir con Israel: el umbral exacto de aviso por tipo de equipo (§7b) y el canal de notificación al cliente.
