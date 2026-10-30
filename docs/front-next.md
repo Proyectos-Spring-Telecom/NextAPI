@@ -371,8 +371,9 @@ NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-mod
 - **Cliente padre (`idPadre`)**: solo los roles 1–3 lo cambian (403 a los demás) y no puede crear un ciclo. Si el formulario manda el mismo `idPadre` que ya tiene, no pasa nada.
 - **Estatus "asignado" (2)** de dispositivo, SIM o producto ya no se pone a mano (400): lo pone la instalación. Quitar el 2 del selector de estatus.
 - **Usuarios** (30/10):
-  - solo los roles 1, 2, 3 y 6 crean o editan a otros usuarios, cambian su estatus o les asignan instalaciones; los demás reciben 403: ocultar esas acciones;
-  - nadie asigna un rol más alto que el suyo; el rol 6 solo crea usuarios 9 dentro de su árbol;
+  - administran usuarios (crear, editar a otros, estatus, asignar instalaciones) los roles 1, 2, 3, **4 (solo monitoristas 5 y operadores 7)** y 6 (solo usuarios 9 de su árbol); los demás reciben 403: ocultar esas acciones;
+  - nadie asigna un rol más alto que el suyo;
+  - **el jefe de monitoreo y el cliente solo pueden otorgar los permisos y soluciones que ellos mismos tienen** (403 si no): en el formulario, mostrar solo esos;
   - al editarse a sí mismo, nadie cambia su rol, cliente, permisos ni estatus.
 - **Inventario** (vehículos, activos, personas, inmuebles, dispositivos, TrackCam, relojes, paneles, SIM):
   - el detalle o la edición de algo ajeno → 404;

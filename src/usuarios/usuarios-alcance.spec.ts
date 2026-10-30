@@ -3,16 +3,17 @@ import {
   assertEdicionPropia,
   assertJerarquiaUsuarioDestino,
   assertPuedeAdministrarUsuarios,
+  assertSubconjunto,
   difiereConjunto,
   resolveIdRolAsignable,
 } from './usuarios-alcance';
 
 describe('usuarios-alcance (C1, escalada de rol)', () => {
   describe('assertPuedeAdministrarUsuarios', () => {
-    it.each([1, 2, 3, 6])('rol %i administra usuarios', (rol) => {
+    it.each([1, 2, 3, 4, 6])('rol %i administra usuarios', (rol) => {
       expect(() => assertPuedeAdministrarUsuarios(rol)).not.toThrow();
     });
-    it.each([4, 5, 7, 8, 9])('rol %i recibe 403', (rol) => {
+    it.each([5, 7, 8, 9])('rol %i recibe 403', (rol) => {
       expect(() => assertPuedeAdministrarUsuarios(rol)).toThrow(ForbiddenException);
     });
   });
@@ -89,3 +90,22 @@ describe('usuarios-alcance (C1, escalada de rol)', () => {
     expect(difiereConjunto([], [])).toBe(false);
   });
 });
+
+describe('decisiones del 30/10/2026', () => {
+  it('el jefe de monitoreo (4) administra y da de alta solo monitoristas (5) y operadores (7)', () => {
+    expect(resolveIdRolAsignable(4, 7, true)).toBe(7);
+    expect(resolveIdRolAsignable(4, 5, true)).toBe(5);
+    expect(() => resolveIdRolAsignable(4, 6, true)).toThrow(ForbiddenException);
+    expect(() => resolveIdRolAsignable(4, 3, true)).toThrow(ForbiddenException);
+    expect(() => assertJerarquiaUsuarioDestino(4, 7)).not.toThrow();
+    expect(() => assertJerarquiaUsuarioDestino(4, 9)).toThrow(ForbiddenException);
+    expect(() => assertPuedeAdministrarUsuarios(4)).not.toThrow();
+    expect(() => assertPuedeAdministrarUsuarios(5)).toThrow(ForbiddenException);
+  });
+
+  it('solo se otorgan permisos que quien administra tiene', () => {
+    expect(() => assertSubconjunto([1, 2], [1, 2, 3], 'permisos')).not.toThrow();
+    expect(() => assertSubconjunto([1, 9], [1, 2, 3], 'permisos')).toThrow('no tienes: 9');
+  });
+});
+

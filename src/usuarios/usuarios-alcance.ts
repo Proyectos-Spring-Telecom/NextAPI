@@ -6,13 +6,27 @@ import { EnumRoles } from 'src/common/estatus.enum';
  * Funciones puras: el alcance por cliente lo resuelve `TenantFilterService`.
  */
 
-/** Roles que crean usuarios, editan a otros y cambian su estatus: SA, Dev, Admin y Cliente. */
+/**
+ * Roles que crean usuarios, editan a otros, cambian su estatus y les asignan
+ * instalaciones: SA, Dev, Admin, Jefe de monitoreo (solo a sus operadores) y
+ * Cliente (solo usuarios de su árbol).
+ */
 export const ROLES_ADMIN_USUARIOS: readonly number[] = [
   EnumRoles.SA,
   EnumRoles.DEV,
   EnumRoles.ADMIN,
+  EnumRoles.JEFE_MONITOREO,
   EnumRoles.CLIENTE,
 ];
+
+/** El jefe de monitoreo administra a los monitoristas (5) y operadores (7) (decisión del 30/10/2026). */
+const ROLES_DEL_JEFE_MONITOREO: readonly number[] = [EnumRoles.MONITOREO, EnumRoles.OPERADOR];
+
+/**
+ * Roles que solo pueden dar permisos y soluciones que ellos mismos tienen
+ * (decisión del 30/10/2026: el cliente no reparte más de lo que tiene).
+ */
+export const ROLES_PERMISOS_ACOTADOS: readonly number[] = [EnumRoles.JEFE_MONITOREO, EnumRoles.CLIENTE];
 
 /** Roles que pueden cambiar sus propios permisos y soluciones al editarse a sí mismos. */
 const ROLES_PERMISOS_PROPIOS: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
@@ -29,6 +43,9 @@ export function assertPuedeAdministrarUsuarios(rolActor: number): void {
  * quien lo administra. El SA (1) administra a todos.
  */
 export function assertJerarquiaUsuarioDestino(rolActor: number, rolDestino: number): void {
+  if (Number(rolActor) === EnumRoles.JEFE_MONITOREO && !ROLES_DEL_JEFE_MONITOREO.includes(Number(rolDestino))) {
+    throw new ForbiddenException('El jefe de monitoreo solo administra monitoristas y operadores');
+  }
   if (Number(rolDestino) < Number(rolActor)) {
     throw new ForbiddenException('No puedes administrar un usuario con un rol de mayor jerarquía que el tuyo');
   }
@@ -56,6 +73,9 @@ export function resolveIdRolAsignable(
   const idRol = Number(idRolBody);
   if (!Number.isInteger(idRol) || idRol < 1) {
     throw new BadRequestException('idRol inválido.');
+  }
+  if (actor === EnumRoles.JEFE_MONITOREO && !ROLES_DEL_JEFE_MONITOREO.includes(idRol)) {
+    throw new ForbiddenException('El jefe de monitoreo solo da de alta monitoristas (5) y operadores (7)');
   }
   if (idRol < actor) {
     throw new ForbiddenException('No puedes asignar un rol de mayor jerarquía que el tuyo');
@@ -98,3 +118,13 @@ export function difiereConjunto(recibidos: number[], actuales: number[]): boolea
   for (const id of a) if (!b.has(id)) return true;
   return false;
 }
+
+/** 403 si se intenta dar un permiso o solución que quien administra no tiene. */
+export function assertSubconjunto(recibidos: number[], propios: number[], que: 'permisos' | 'soluciones'): void {
+  const tengo = new Set(propios.map(Number));
+  const ajenos = [...new Set(recibidos.map(Number))].filter((id) => !tengo.has(id));
+  if (ajenos.length) {
+    throw new ForbiddenException(`Solo puedes otorgar ${que} que tú tienes (no tienes: ${ajenos.join(', ')})`);
+  }
+}
+

@@ -47,6 +47,8 @@ import {
   assertEdicionPropia,
   assertJerarquiaUsuarioDestino,
   assertPuedeAdministrarUsuarios,
+  assertSubconjunto,
+  ROLES_PERMISOS_ACOTADOS,
   difiereConjunto,
   resolveIdRolAsignable,
 } from './usuarios-alcance';
@@ -753,6 +755,7 @@ ORDER BY u.Id DESC`,
 
       const permisosIdsUnicos = [...new Set(permisosIds ?? [])];
       const solucionesIdsUnicos = [...new Set(solucionesIds ?? [])];
+      await this.assertPermisosAcotados(actor, permisosIdsUnicos, solucionesIdsUnicos, permisosRepo, asignacionSolucionesRepo);
 
       const urlFromBody = (v: string | null | undefined) =>
         v && String(v).trim() ? String(v).trim() : null;
@@ -1120,6 +1123,23 @@ ORDER BY u.Id DESC`,
   // ========================================
   // 🔹 IDS ACTIVOS DE UNA RELACIÓN (permisos / soluciones del usuario)
   // ========================================
+  /** Jefe de monitoreo y cliente solo otorgan permisos y soluciones que ellos tienen. */
+  private async assertPermisosAcotados(
+    actor: UsuarioAlcance,
+    permisosIds: number[],
+    solucionesIds: number[],
+    permisosRepo: Repository<UsuariosPermisos>,
+    solucionesRepo: Repository<AsignacionSoluciones>,
+  ): Promise<void> {
+    if (!ROLES_PERMISOS_ACOTADOS.includes(Number(actor.rol))) return;
+    if (permisosIds.length) {
+      assertSubconjunto(permisosIds, await this.idsRelacionActivos(permisosRepo, Number(actor.userId), 'idPermiso'), 'permisos');
+    }
+    if (solucionesIds.length) {
+      assertSubconjunto(solucionesIds, await this.idsRelacionActivos(solucionesRepo, Number(actor.userId), 'idSolucion'), 'soluciones');
+    }
+  }
+
   private async idsRelacionActivos(
     repo: Repository<UsuariosPermisos> | Repository<AsignacionSoluciones>,
     idUsuario: number,
@@ -1246,6 +1266,13 @@ ORDER BY u.Id DESC`,
         await this.tenantFilter.assertClienteVisible(actor, Number(usuario.idCliente), 'Usuario');
         assertJerarquiaUsuarioDestino(actor.rol, Number(usuario.idRol));
         idRolResolved = resolveIdRolAsignable(actor.rol, idRolBody, false);
+        await this.assertPermisosAcotados(
+          actor,
+          Array.isArray(permisosIds) ? permisosIds : [],
+          Array.isArray(solucionesIds) ? solucionesIds : [],
+          permisosRepo,
+          asignacionSolucionesRepo,
+        );
         if (updateUsuarioDto.idCliente) {
           await this.tenantFilter.assertClienteDestino(actor, Number(updateUsuarioDto.idCliente));
           try {

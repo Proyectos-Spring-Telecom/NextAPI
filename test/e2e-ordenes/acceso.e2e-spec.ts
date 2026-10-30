@@ -155,6 +155,12 @@ describe('C1 usuarios: sin escalada de rol', () => {
     expect(Number(e.consulta('Next', "SELECT COUNT(*) FROM Usuarios WHERE UserName LIKE 'nuevo%' AND IdRol < 3")[0][0])).toBe(0);
   });
 
+  it('el jefe de monitoreo (4) da de alta operadores (7), pero no administradores', async () => {
+    const jefe = e.tokenNext(NEXT.JEFE);
+    ok(await alta(jefe, 7, A.idClienteNext), 'jefe crea operador');
+    expect((await alta(jefe, 3, A.idClienteNext)).status).toBe(403);
+  });
+
   it('el cliente (6) solo crea usuarios 9 dentro de su árbol', async () => {
     expect((await alta(tok.u6a, 9, B.idClienteNext)).status).toBe(403);
     const r = ok(await alta(tok.u6a, 1, A1.idClienteNext), 'alta por rol 6');
