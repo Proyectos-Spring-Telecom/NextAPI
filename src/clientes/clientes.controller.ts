@@ -48,7 +48,7 @@ export class ClientesController {
   // ==================== POST ====================
 
   @Post()
-  @Roles() // Solo SuperAdministrador puede crear clientes
+  @Roles(1, 2, 3, 6) // SA, Dev y Admin con cualquier padre; Cliente (6) solo dentro de su árbol
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     clientesFileFieldsInterceptor(),
@@ -58,7 +58,9 @@ export class ClientesController {
     summary: 'Crear un nuevo cliente',
     description:
       'Crea un cliente con `multipart/form-data`. Acta, comprobante y constancia son opcionales (URL o PDF). ' +
-      'Es **obligatorio** `numerosEmergencia` (JSON string, mínimo 1 contacto). Logotipo opcional.',
+      'Es **obligatorio** `numerosEmergencia` (JSON string, mínimo 1 contacto). Logotipo opcional. ' +
+      'Solo roles **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**. Roles 1–3: `idPadre` opcional (por defecto 1). ' +
+      'Rol 6: el cliente se crea como hijo de un cliente de su árbol (`idPadre` opcional, por defecto su propio cliente); fuera de su árbol → 403.',
   })
   @ApiBody(clientesCreateMultipartApiBody)
   @ApiResponse({
@@ -69,7 +71,7 @@ export class ClientesController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   @ApiResponse({
     status: 403,
-    description: 'Acceso denegado - Solo SuperAdministrador puede crear clientes',
+    description: 'Rol sin permiso para crear clientes o `idPadre` fuera del alcance de quien crea',
   })
   async createCliente(
     @Body() createClienteDto: CreateClienteDto,
@@ -90,6 +92,7 @@ export class ClientesController {
       files?.comprobanteDomicilio?.[0],
       files?.constanciaSituacionFiscal?.[0],
       files?.logotipo?.[0],
+      req.user,
     );
   }
 
@@ -157,7 +160,8 @@ export class ClientesController {
   @Get('list/:cliente')
   @ApiOperation({
     summary: 'Obtener lista de clientes por ID de cliente',
-    description: 'Obtiene todos los clientes filtrados por un ID de cliente específico',
+    description:
+      'Obtiene el cliente indicado y sus hijos (spGetClientes). El cliente debe estar en el alcance del usuario (rol 6: su árbol; roles 7 y 9: su cliente); si no, 404.',
   })
   @ApiParam({
     name: 'cliente',
@@ -170,14 +174,13 @@ export class ClientesController {
     description: 'Lista de clientes obtenida exitosamente',
   })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  @ApiResponse({ status: 404, description: 'Cliente no encontrado' })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado o fuera de tu alcance' })
   async getAllListClientesId(
     @Param('cliente', ParseIntPipe) idCliente: number,
     @Request() req,
   ): Promise<ApiResponseCommon> {
     const idUser = req.user.userId;
-    const rol = req.user.rol;
-    return this.clientesService.getAllListClientesId(+idUser, +idCliente, +rol);
+    return this.clientesService.getAllListClientesId(+idUser, +idCliente, req.user);
   }
 
   @Get(':page/:limit')

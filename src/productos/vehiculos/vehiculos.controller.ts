@@ -63,17 +63,18 @@ export class VehiculosController {
     summary: 'Crear vehículo',
     description:
       'Crea el producto (tipo VEHICULO) y el detalle de vehículo en una transacción. ' +
-      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
+      'Requiere `idCliente` en el body, que debe estar en el alcance de quien crea (403 si no). El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Vehículo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateVehiculosDto,
     @UploadedFiles() files: VehiculosUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.vehiculosService.create(dto, req.user.userId, files);
+    return this.vehiculosService.create(dto, req.user.userId, req.user, files);
   }
 
   @Get('list')
@@ -136,7 +137,7 @@ export class VehiculosController {
     status: 400,
     description: 'Placa vacía o más de un vehículo con esa placa en el ámbito del rol',
   })
-  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOneByPlaca(@Param('placa') placa: string, @Request() req) {
     const idCliente = req.user.idCliente;
@@ -177,18 +178,17 @@ export class VehiculosController {
   @ApiOperation({ summary: 'Obtener vehículo por ID' })
   @ApiParam({ name: 'id', description: 'ID del vehículo' })
   @ApiResponse({ status: 200, description: 'Vehículo encontrado' })
-  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    const idCliente = req.user.idCliente;
-    return this.vehiculosService.findOne(id, idCliente);
+    return this.vehiculosService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del producto por ID; debe ser de un cliente del alcance del usuario (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -199,7 +199,7 @@ export class VehiculosController {
     status: 400,
     description: 'estatus inválido o producto asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -222,10 +222,15 @@ export class VehiculosController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiBody(vehiculosUpdateMultipartApiBody)
-  @ApiOperation({ summary: 'Actualizar vehículo' })
+  @ApiOperation({
+    summary: 'Actualizar vehículo',
+    description:
+      'El vehículo debe ser de un cliente del alcance del usuario (incluye clientes hijos para rol 6 y todos para administración). ' +
+      'La placa es única dentro del cliente del vehículo.',
+  })
   @ApiParam({ name: 'id', description: 'ID del vehículo' })
   @ApiResponse({ status: 200, description: 'Vehículo actualizado' })
-  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -233,8 +238,7 @@ export class VehiculosController {
     @UploadedFiles() files: VehiculosUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.vehiculosService.update(id, dto, idCliente, idUser, files);
+    return this.vehiculosService.update(id, dto, req.user, idUser, files);
   }
 }

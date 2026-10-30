@@ -74,12 +74,15 @@ export class ActivosService {
   async create(
     dto: CreateActivosDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // Solo se da de alta en un cliente del alcance de quien crea (403 si no).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const producto = await crearProductoBase(queryRunner.manager, {
         idCliente,
         idTipoProducto: EnumTipoProducto.ACTIVO,
@@ -214,7 +217,7 @@ export class ActivosService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id },
@@ -223,6 +226,8 @@ export class ActivosService {
       if (!entity) {
         throw new NotFoundException('Activo no encontrado');
       }
+      // Fuera del alcance del usuario → 404 (no se revela que existe).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Activo');
       return { data: this.mapActivo(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -233,16 +238,20 @@ export class ActivosService {
   async update(
     id: number,
     dto: UpdateActivosDto,
-    idCliente: number,
+    alcance: UsuarioAlcance,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = alcance.idCliente;
     try {
+      // Se busca por id (no por el cliente del token) y se valida el alcance sobre
+      // el cliente del registro: administración y padres editan lo de sus hijos.
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Activo no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Activo');
 
       if (dto.nombre !== undefined) entity.nombre = dto.nombre;
       if (dto.descripcion !== undefined) entity.descripcion = dto.descripcion;
@@ -250,7 +259,7 @@ export class ActivosService {
 
       if (dto.nombre !== undefined) {
         await this.productosRepo.update(
-          { id, idCliente },
+          { id, idCliente: entity.idCliente },
           { nombre: dto.nombre },
         );
       }

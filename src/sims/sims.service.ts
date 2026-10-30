@@ -120,8 +120,11 @@ export class SimsService {
   async create(
     dto: CreateSimsDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
+      // El cliente destino debe estar en el alcance de quien crea (403).
+      await this.tenantFilter.assertClienteDestino(alcance, dto.idCliente);
       await this.validarFks({
         idCliente: dto.idCliente,
         idTelefonia: dto.idTelefonia,
@@ -277,17 +280,22 @@ export class SimsService {
     }
   }
 
-  async findOne(id: number, idCliente: number): Promise<{ data: Sims }> {
+  async findOne(
+    id: number,
+    alcance: UsuarioAlcance,
+  ): Promise<{ data: ReturnType<typeof mapSimPlano> }> {
     try {
+      // Mismas relaciones y mapeo que el paginado: cliente, telefonía y plan en campos planos.
       const entity = await this.repository.findOne({
         where: { id },
+        relations: [...RELACIONES_SIM_LISTADO],
       });
       if (!entity) {
         throw new NotFoundException('SIM no encontrado');
       }
-      return {
-        data: { ...entity, id: Number(entity.id) },
-      };
+      // Fuera del alcance del usuario responde igual que si no existiera (404).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'SIM');
+      return { data: mapSimPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

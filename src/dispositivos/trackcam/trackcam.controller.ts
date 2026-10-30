@@ -50,12 +50,13 @@ export class TrackcamController {
   })
   @ApiResponse({ status: 201, description: 'Trackcam creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o falta tipo TRACKCAM en catálogo' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateTrackcamDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.trackcamService.create(dto, req.user.userId);
+    return this.trackcamService.create(dto, req.user.userId, req.user);
   }
 
   @Get('list')
@@ -100,17 +101,17 @@ export class TrackcamController {
   @ApiOperation({ summary: 'Obtener Trackcam por ID de dispositivo' })
   @ApiParam({ name: 'id', description: 'ID del dispositivo / Trackcam' })
   @ApiResponse({ status: 200, description: 'Trackcam encontrado' })
-  @ApiResponse({ status: 404, description: 'Trackcam no encontrado' })
+  @ApiResponse({ status: 404, description: 'Trackcam no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.trackcamService.findOne(id, req.user.idCliente);
+    return this.trackcamService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del dispositivo por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }`. ' +
+      'Establece el estatus del dispositivo por ID; el registro debe estar en el alcance del rol (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }`. ' +
       '`TrackcamConfig` no tiene estatus propio. ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -121,7 +122,7 @@ export class TrackcamController {
     status: 400,
     description: 'estatus inválido o dispositivo asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Trackcam no encontrado' })
+  @ApiResponse({ status: 404, description: 'Trackcam no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -141,7 +142,7 @@ export class TrackcamController {
   @ApiOperation({ summary: 'Actualizar Trackcam y su configuración' })
   @ApiParam({ name: 'id', description: 'ID del dispositivo / Trackcam' })
   @ApiResponse({ status: 200, description: 'Trackcam actualizado' })
-  @ApiResponse({ status: 404, description: 'Trackcam no encontrado' })
+  @ApiResponse({ status: 404, description: 'Trackcam no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -153,6 +154,7 @@ export class TrackcamController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 }

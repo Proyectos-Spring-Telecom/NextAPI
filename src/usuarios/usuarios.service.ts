@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, ObjectLiteral, Repository } from 'typeorm';
 import { Usuarios } from 'src/entities/Usuarios';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -31,7 +31,7 @@ import { AsignarUsuarioInstalacionesDto } from './dto/asignar-usuario-instalacio
 import { MailService } from 'src/mail/mail.service';
 import { JwtService } from '@nestjs/jwt';
 import { EnumModulos, EstatusEnum, esRolAccesoGlobal, EnumRoles, idsRolesVisiblesEnListado } from 'src/common/estatus.enum';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { S3Service } from 'src/s3/s3.service';
 import { AuthService } from 'src/auth/auth.service';
 import { Instalaciones } from 'src/entities/Instalaciones';
@@ -43,6 +43,13 @@ import {
   mapInstalacionPaginadaPlana,
 } from 'src/instalaciones/helpers/instalaciones-paginado.helpers';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import {
+  assertEdicionPropia,
+  assertJerarquiaUsuarioDestino,
+  assertPuedeAdministrarUsuarios,
+  difiereConjunto,
+  resolveIdRolAsignable,
+} from './usuarios-alcance';
 
 /** Roles que pueden ver las soluciones asignadas de los usuarios en listados. */
 const ROLES_VEN_SOLUCIONES_USUARIO: readonly number[] = [
@@ -577,10 +584,9 @@ ORDER BY u.Id DESC`,
   // ========================================
   async asignarInstalacionesUsuario(
     dto: AsignarUsuarioInstalacionesDto,
-    idClienteToken: number,
-    rol: number,
-    idActor: number,
+    actor: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
+    const idActor = Number(actor.userId);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -591,7 +597,9 @@ ORDER BY u.Id DESC`,
     const instalacionesRepo = queryRunner.manager.getRepository(Instalaciones);
 
     try {
-      await this.getUsuarioByID(dto.idUsuario, idClienteToken, rol);
+      // Asignar instalaciones es administrar al usuario: mismas reglas que editarlo.
+      assertPuedeAdministrarUsuarios(actor.rol);
+      await this.getUsuarioByID(dto.idUsuario, actor.idCliente, actor.rol);
 
       const usuario = await usuarioRepo.findOne({
         where: { id: dto.idUsuario },
@@ -600,6 +608,10 @@ ORDER BY u.Id DESC`,
         throw new NotFoundException(
           `No se encontró un usuario con ID: ${dto.idUsuario}.`,
         );
+      }
+      await this.tenantFilter.assertClienteVisible(actor, Number(usuario.idCliente), 'Usuario');
+      if (Number(usuario.id) !== Number(actor.userId)) {
+        assertJerarquiaUsuarioDestino(actor.rol, Number(usuario.idRol));
       }
 
       const instalacionesIdsUnicos = [
@@ -697,10 +709,10 @@ ORDER BY u.Id DESC`,
   // ========================================
   async createUsuario(
     createUsuarioDto: CreateUsuarioDto,
-    idUser: string,
+    actor: UsuarioAlcance,
     fileFotoPerfil?: Express.Multer.File,
-    creatorRol?: number,
   ): Promise<ApiCrudResponse> {
+    const idUser = String(actor.userId);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -711,6 +723,11 @@ ORDER BY u.Id DESC`,
       queryRunner.manager.getRepository(AsignacionSoluciones);
 
     try {
+      // Solo 1, 2, 3 y 6 crean usuarios, y en un cliente de su alcance (6: su árbol).
+      assertPuedeAdministrarUsuarios(actor.rol);
+      await this.tenantFilter.assertClienteDestino(actor, createUsuarioDto.idCliente);
+      const idRol = resolveIdRolAsignable(actor.rol, createUsuarioDto.idRol, true) as number;
+
       const existUsuario = await usuarioRepo.findOne({
         where: { userName: createUsuarioDto.userName },
       });
@@ -729,12 +746,11 @@ ORDER BY u.Id DESC`,
       const {
         permisosIds,
         solucionesIds = [],
-        idRol: idRolBody,
+        idRol: _idRolBody,
         fotoPerfil: dtoFotoPerfil,
         ...usuarioData
       } = createUsuarioDto;
 
-      const idRol = this.resolveIdRolOnCreate(idRolBody, creatorRol);
       const permisosIdsUnicos = [...new Set(permisosIds ?? [])];
       const solucionesIdsUnicos = [...new Set(solucionesIds ?? [])];
 
@@ -852,38 +868,6 @@ ORDER BY u.Id DESC`,
     }
   }
 
-  private resolveIdRolOnCreate(
-    idRolBody: number | undefined,
-    creatorRol?: number,
-  ): number {
-    if (
-      creatorRol === EnumRoles.CLIENTE ||
-      creatorRol === EnumRoles.USUARIO
-    ) {
-      return EnumRoles.USUARIO;
-    }
-    if (idRolBody == null || !Number.isFinite(Number(idRolBody))) {
-      throw new BadRequestException('idRol es obligatorio.');
-    }
-    return Number(idRolBody);
-  }
-
-  private resolveIdRolOnUpdate(
-    idRolBody: number | undefined,
-    creatorRol?: number,
-  ): number | undefined {
-    if (idRolBody === undefined) {
-      return undefined;
-    }
-    if (
-      creatorRol === EnumRoles.CLIENTE ||
-      creatorRol === EnumRoles.USUARIO
-    ) {
-      return EnumRoles.USUARIO;
-    }
-    return Number(idRolBody);
-  }
-
   // ========================================
   // 🔹 ACTUALIZAR MI CONTRASEÑA (usuario autenticado por token)
   // ========================================
@@ -970,6 +954,7 @@ ORDER BY u.Id DESC`,
     targetUserId: number,
     actorUserId: number,
     dto: ResetUsuarioContrasenaDto,
+    actorRol?: number,
   ): Promise<string> {
     try {
       const usuario = await this.usuarioRepository
@@ -980,6 +965,11 @@ ORDER BY u.Id DESC`,
 
       if (!usuario) {
         throw new BadRequestException('Usuario no encontrado');
+      }
+
+      // Cambiar la contraseña de otro no puede servir para tomar una cuenta de mayor jerarquía.
+      if (actorRol != null && Number(targetUserId) !== Number(actorUserId)) {
+        assertJerarquiaUsuarioDestino(actorRol, Number(usuario.idRol));
       }
 
       if (dto.passwordNueva !== dto.passwordConfirmacion) {
@@ -1128,6 +1118,20 @@ ORDER BY u.Id DESC`,
   }
 
   // ========================================
+  // 🔹 IDS ACTIVOS DE UNA RELACIÓN (permisos / soluciones del usuario)
+  // ========================================
+  private async idsRelacionActivos(
+    repo: Repository<UsuariosPermisos> | Repository<AsignacionSoluciones>,
+    idUsuario: number,
+    columna: 'idPermiso' | 'idSolucion',
+  ): Promise<number[]> {
+    const filas = await (repo as unknown as Repository<ObjectLiteral>).find({
+      where: { idUsuario, estatus: 1 },
+    });
+    return filas.map((f) => Number(f[columna]));
+  }
+
+  // ========================================
   // 🔹 SINCRONIZAR RELACIONES POR ESTATUS
   // ========================================
   private async sincronizarRelacionesEstatus(
@@ -1190,10 +1194,10 @@ ORDER BY u.Id DESC`,
   async updateUsuario(
     id: number,
     updateUsuarioDto: UpdateUsuarioDto,
-    idUser: string,
+    actor: UsuarioAlcance,
     fileFotoPerfil?: Express.Multer.File,
-    creatorRol?: number,
   ): Promise<ApiCrudResponse> {
+    const idUser = String(actor.userId);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -1209,14 +1213,6 @@ ORDER BY u.Id DESC`,
         throw new NotFoundException(`No se encontró un usuario con ID: ${id}.`);
       }
 
-      if (updateUsuarioDto.idCliente) {
-        try {
-          await this.clientesService.getOneCliente(Number(updateUsuarioDto.idCliente));
-        } catch {
-          throw new BadRequestException('No se encontró el cliente especificado.');
-        }
-      }
-
       const {
         permisosIds,
         solucionesIds,
@@ -1225,7 +1221,40 @@ ORDER BY u.Id DESC`,
         ...restUpdate
       } = updateUsuarioDto;
 
-      const idRolResolved = this.resolveIdRolOnUpdate(idRolBody, creatorRol);
+      let idRolResolved: number | undefined;
+      if (Number(id) === Number(actor.userId)) {
+        // Editarse a sí mismo: cualquier rol, sin cambiar rol, cliente, permisos ni soluciones.
+        const cambiaPermisosOSoluciones =
+          (Array.isArray(permisosIds) &&
+            difiereConjunto(permisosIds, await this.idsRelacionActivos(permisosRepo, id, 'idPermiso'))) ||
+          (Array.isArray(solucionesIds) &&
+            difiereConjunto(solucionesIds, await this.idsRelacionActivos(asignacionSolucionesRepo, id, 'idSolucion')));
+        assertEdicionPropia({
+          rolActor: actor.rol,
+          idRolActual: Number(usuario.idRol),
+          idClienteActual: Number(usuario.idCliente),
+          idRolBody,
+          idClienteBody: updateUsuarioDto.idCliente,
+          cambiaPermisosOSoluciones,
+        });
+        idRolResolved = undefined;
+        delete restUpdate.idCliente;
+      } else {
+        // Editar a otro: 1, 2, 3 y 6; el usuario debe estar en su alcance (404) y no
+        // tener un rol de mayor jerarquía (403); el cliente nuevo, en su alcance (403).
+        assertPuedeAdministrarUsuarios(actor.rol);
+        await this.tenantFilter.assertClienteVisible(actor, Number(usuario.idCliente), 'Usuario');
+        assertJerarquiaUsuarioDestino(actor.rol, Number(usuario.idRol));
+        idRolResolved = resolveIdRolAsignable(actor.rol, idRolBody, false);
+        if (updateUsuarioDto.idCliente) {
+          await this.tenantFilter.assertClienteDestino(actor, Number(updateUsuarioDto.idCliente));
+          try {
+            await this.clientesService.getOneCliente(Number(updateUsuarioDto.idCliente));
+          } catch {
+            throw new BadRequestException('No se encontró el cliente especificado.');
+          }
+        }
+      }
 
       const usuarioData: Record<string, unknown> = {
         ...restUpdate,
@@ -1342,14 +1371,21 @@ ORDER BY u.Id DESC`,
   // ========================================
   // 🔹 ACTUALIZAR ESTATUS DEL USUARIO
   // ========================================
-  async updateUsuarioEstatus(id: number, idUser: number): Promise<ApiCrudResponse> {
+  async updateUsuarioEstatus(id: number, actor: UsuarioAlcance): Promise<ApiCrudResponse> {
+    const idUser = Number(actor.userId);
     try {
+      assertPuedeAdministrarUsuarios(actor.rol);
+      if (Number(id) === idUser) {
+        throw new ForbiddenException('No puedes cambiar tu propio estatus');
+      }
       const usuario = await this.usuarioRepository.findOne({
         where: { id: id },
       });
       if (!usuario) {
         throw new NotFoundException(`No se encontró un usuario con ID: ${id}.`);
       }
+      await this.tenantFilter.assertClienteVisible(actor, Number(usuario.idCliente), 'Usuario');
+      assertJerarquiaUsuarioDestino(actor.rol, Number(usuario.idRol));
       const estatusAnterior = Number(usuario.estatus) === 1 ? 1 : 0;
       const estatus = estatusAnterior === 1 ? 0 : 1;
 

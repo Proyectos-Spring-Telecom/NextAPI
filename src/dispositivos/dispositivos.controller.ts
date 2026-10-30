@@ -53,11 +53,12 @@ export class DispositivosController {
   @ApiResponse({ status: 201, description: 'Dispositivo creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   async create(
     @Body() dto: CreateDispositivosDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.dispositivosService.create(dto, req.user.userId);
+    return this.dispositivosService.create(dto, req.user.userId, req.user);
   }
 
   @Get('list')
@@ -141,7 +142,7 @@ export class DispositivosController {
   })
   @ApiParam({ name: 'idCliente', description: 'ID del cliente' })
   @ApiResponse({ status: 200, description: 'Lista obtenida correctamente' })
-  @ApiResponse({ status: 403, description: 'Cliente fuera de alcance' })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findByIdCliente(
     @Param('idCliente', ParseIntPipe) idCliente: number,
@@ -151,17 +152,18 @@ export class DispositivosController {
       idCliente,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      req.user,
     );
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener dispositivo por ID',
-    description: 'Busca por ID sin validar el `idCliente` del token.',
+    description: 'Busca por ID; el dispositivo debe estar en el alcance del rol (404 si no).',
   })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })
   @ApiResponse({ status: 200, description: 'Dispositivo encontrado' })
-  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.dispositivosService.findOne(id, req.user);
@@ -171,7 +173,7 @@ export class DispositivosController {
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del dispositivo por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del dispositivo por ID; el dispositivo debe estar en el alcance del rol (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -182,7 +184,7 @@ export class DispositivosController {
     status: 400,
     description: 'estatus inválido o dispositivo asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,

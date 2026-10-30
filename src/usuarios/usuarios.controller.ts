@@ -23,6 +23,7 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service';
+import { UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { CreateUsuarioResponseDto } from './dto/create-usuario-response.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -65,7 +66,10 @@ export class UsuariosController {
       'Registra un nuevo usuario con `multipart/form-data` y asigna **UsuariosPermisos** desde `permisosIds` (obligatorio, puede ser `[]`).',
       'Opcionalmente asigna **AsignacionSoluciones** desde `solucionesIds` (omitir = sin relaciones).',
       '',
-      'Si quien crea tiene rol **Cliente (6)** o **Usuario (9)**, el nuevo usuario recibe rol **Usuario (9)** automáticamente (`idRol` del body se ignora).',
+      'Solo crean usuarios los roles **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**; el resto recibe 403.',
+      'SA asigna cualquier rol; Dev y Admin solo un rol igual o menor en jerarquía (número >= al suyo: 2 → 2..9, 3 → 3..9).',
+      'Si quien crea es **Cliente (6)**, el nuevo usuario recibe rol **Usuario (9)** automáticamente (`idRol` del body se ignora).',
+      '`idCliente` debe estar en el alcance de quien crea (Cliente 6: su cliente o uno de sus hijos); si no, 403.',
       '',
       'Los arreglos se envían como JSON en texto (`"[1,2,3]"`). `fotoPerfil` opcional: URL en texto o archivo PNG/JPEG.',
     ].join('\n'),
@@ -91,7 +95,8 @@ export class UsuariosController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Acceso denegado — solo SuperAdministrador (rol 1) puede crear usuarios',
+    description:
+      'Rol sin permiso para administrar usuarios, `idRol` de mayor jerarquía que el de quien crea, o `idCliente` fuera de su alcance',
   })
   @ApiResponse({
     status: 500,
@@ -103,13 +108,10 @@ export class UsuariosController {
     files: { fotoPerfil?: Express.Multer.File[] },
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    const creatorRol = Number(req.user.rol);
     return await this.usuariosService.createUsuario(
       createUsuarioDto,
-      idUser,
+      this.actor(req),
       files?.fotoPerfil?.[0],
-      creatorRol,
     );
   }
 
@@ -123,7 +125,7 @@ export class UsuariosController {
       'Enviar `[]` desactiva todas las asignaciones.',
       '',
       'Validaciones: cada instalación debe existir, tener `estatus = 1` y pertenecer al mismo `idCliente` del usuario destino.',
-      'Quien asigna debe tener acceso al usuario según tenant (cualquier rol autenticado con visibilidad).',
+      'Quien asigna debe ser **SA (1)**, **Dev (2)**, **Admin (3)** o **Cliente (6)**, ver al usuario según su alcance de clientes y no asignar a un usuario de rol de mayor jerarquía.',
     ].join('\n'),
   })
   @ApiBody({ type: AsignarUsuarioInstalacionesDto })
@@ -141,6 +143,10 @@ export class UsuariosController {
     description: 'Usuario no encontrado o sin acceso',
   })
   @ApiResponse({
+    status: 403,
+    description: 'Rol sin permiso para administrar usuarios o usuario destino de mayor jerarquía',
+  })
+  @ApiResponse({
     status: 401,
     description: 'No autorizado',
   })
@@ -150,9 +156,7 @@ export class UsuariosController {
   ): Promise<ApiCrudResponse> {
     return await this.usuariosService.asignarInstalacionesUsuario(
       dto,
-      +req.user.idCliente,
-      +req.user.rol,
-      +req.user.userId,
+      this.actor(req),
     );
   }
 
@@ -373,8 +377,11 @@ export class UsuariosController {
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus del usuario',
-    description:
+    description: [
       'Alterna el estatus: si está activo (1) pasa a inactivo (0) y viceversa. No requiere body.',
+      'Solo **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**; el usuario debe estar en el alcance de clientes de quien cambia (si no, 404)',
+      'y no tener un rol de mayor jerarquía (403). Nadie cambia su propio estatus (403).',
+    ].join(' '),
   })
   @ApiParam({
     name: 'id',
@@ -388,7 +395,12 @@ export class UsuariosController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Usuario no encontrado',
+    description: 'Usuario no encontrado o fuera de tu alcance',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Rol sin permiso para administrar usuarios, usuario de mayor jerarquía o cambio del propio estatus',
   })
   @ApiResponse({
     status: 401,
@@ -398,8 +410,7 @@ export class UsuariosController {
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    return await this.usuariosService.updateUsuarioEstatus(id, idUser);
+    return await this.usuariosService.updateUsuarioEstatus(id, this.actor(req));
   }
 
   @Patch('actualizar/contrasena')
@@ -437,7 +448,7 @@ export class UsuariosController {
   @ApiOperation({
     summary: 'Cambiar contraseña (sin contraseña actual)',
     description:
-      'Actualiza la contraseña del usuario autenticado (ID desde token) o, si el rol es SA, Admin o Jefe de Monitoreo, del usuario indicado en idUsuario.',
+      'Actualiza la contraseña del usuario autenticado (ID desde token) o, si el rol es SA, Admin o Jefe de Monitoreo, del usuario indicado en idUsuario (no de uno con rol de mayor jerarquía: 403).',
   })
   @ApiBody({ type: ResetUsuarioContrasenaDto })
   @ApiResponse({
@@ -448,6 +459,10 @@ export class UsuariosController {
     status: 400,
     description:
       'Contraseña inválida, idUsuario faltante (SA, Admin, Jefe de Monitoreo) o igual a la anterior',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El usuario indicado tiene un rol de mayor jerarquía que quien cambia la contraseña',
   })
   @ApiResponse({
     status: 401,
@@ -467,6 +482,7 @@ export class UsuariosController {
       targetUserId,
       idActor,
       dto,
+      rol,
     );
   }
 
@@ -513,7 +529,10 @@ export class UsuariosController {
     description: [
       'Actualiza con `multipart/form-data`. No modifica contraseña (use PATCH /usuarios/actualizar/contrasena).',
       'Solo sincroniza **UsuariosPermisos** vía `permisosIds` y **AsignacionSoluciones** vía `solucionesIds` (omitir = no cambiar; `[]` = desactivar todos).',
-      'Si quien actualiza tiene rol **Cliente (6)** o **Usuario (9)** y envía `idRol`, se fuerza **Usuario (9)**.',
+      'Editar a **otro** usuario: solo **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)** (si no, 403); el usuario debe estar en su alcance de clientes (si no, 404)',
+      'y no tener un rol de mayor jerarquía (403). `idRol`: SA cualquiera; Dev y Admin solo número >= al suyo (403); si quien actualiza es **Cliente (6)** y envía `idRol`, se fuerza **Usuario (9)**.',
+      'Un `idCliente` nuevo debe estar en el alcance de quien edita (403).',
+      'Editarse a **sí mismo**: cualquier rol, pero sin cambiar `idRol` ni `idCliente` (403); permisos y soluciones propios solo los cambian SA, Dev y Admin (403).',
       'Adjuntar `fotoPerfil` reemplaza la imagen en S3.',
     ].join(' '),
   })
@@ -534,7 +553,12 @@ export class UsuariosController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Usuario no encontrado',
+    description: 'Usuario no encontrado o fuera de tu alcance',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Rol sin permiso para administrar usuarios, usuario o rol de mayor jerarquía, cliente fuera de alcance, o cambio del propio rol/cliente/permisos',
   })
   @ApiResponse({
     status: 401,
@@ -547,15 +571,21 @@ export class UsuariosController {
     files: { fotoPerfil?: Express.Multer.File[] },
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idUser = req.user.userId;
-    const creatorRol = Number(req.user.rol);
     return await this.usuariosService.updateUsuario(
       id,
       updateUsuarioDto,
-      idUser,
+      this.actor(req),
       files?.fotoPerfil?.[0],
-      creatorRol,
     );
+  }
+
+  /** Usuario del token con lo que necesita el alcance. */
+  private actor(req: { user: { userId: number; idCliente: number; rol: number } }): UsuarioAlcance {
+    return {
+      userId: Number(req.user.userId),
+      idCliente: Number(req.user.idCliente),
+      rol: Number(req.user.rol),
+    };
   }
 
 }

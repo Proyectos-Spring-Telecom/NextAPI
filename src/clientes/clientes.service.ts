@@ -18,11 +18,14 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { EnumModulos, EstatusEnum, esRolAccesoGlobal } from 'src/common/estatus.enum';
+import { EnumModulos, EnumRoles, EstatusEnum, esRolAccesoGlobal } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
 import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
+
+/** Roles que dan de alta clientes bajo cualquier padre (SA, Dev, Admin). El rol 6, solo en su árbol. */
+const ROLES_ALTA_CLIENTE_GLOBAL: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
 
 @Injectable()
 export class ClientesService {
@@ -100,8 +103,13 @@ export class ClientesService {
     fileComprobante?: Express.Multer.File,
     fileConstanciaSituacionFiscal?: Express.Multer.File,
     fileLogotipo?: Express.Multer.File,
+    alcance?: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
+      // Desde el API (con `alcance`): el padre debe estar en el alcance de quien crea.
+      // Sin `alcance` (integración CRM, servidor a servidor) se conserva el padre 1 por defecto.
+      const idPadre = await this.resolverIdPadreAlta(createClienteDto.idPadre, alcance);
+
       //Buscamos al cliente y verificamos
       const clienteCreate = await this.clienteRepository.findOne({
         where: {
@@ -173,8 +181,6 @@ export class ClientesService {
         );
         logotipo = url;
       }
-
-      const idPadre = restDto.idPadre == null ? 1 : restDto.idPadre;
 
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
@@ -420,8 +426,10 @@ ORDER BY c.Id ASC
   async getAllListClientesId(
     idUser: number,
     cliente: number,
-    rol: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiResponseCommon> {
+    // Solo la jerarquía de un cliente del alcance del usuario (404, no se revela que existe).
+    await this.tenantFilter.assertClienteVisible(alcance, cliente, 'Cliente');
     try {
       const ids = await this.tenantFilter.getClienteHijosIds(cliente);
       if (ids.length === 0) {
@@ -461,6 +469,32 @@ ORDER BY Id ASC
         message: 'Ocurrió un error al obtener listado de los clientes.',
       });
     }
+  }
+
+  // ========================================
+  // 🔹 PADRE DEL CLIENTE NUEVO
+  // ========================================
+  /**
+   * - Roles 1–3: cualquier padre de su alcance (por defecto 1).
+   * - Rol 6: solo bajo un cliente de su árbol (por defecto el suyo).
+   * - Otros roles: 403.
+   */
+  private async resolverIdPadreAlta(
+    idPadreBody: number | null | undefined,
+    alcance?: UsuarioAlcance,
+  ): Promise<number> {
+    if (!alcance) return idPadreBody == null ? 1 : Number(idPadreBody);
+    const rol = Number(alcance.rol);
+    let idPadre: number;
+    if (ROLES_ALTA_CLIENTE_GLOBAL.includes(rol)) {
+      idPadre = idPadreBody == null ? 1 : Number(idPadreBody);
+    } else if (rol === EnumRoles.CLIENTE) {
+      idPadre = idPadreBody == null ? Number(alcance.idCliente) : Number(idPadreBody);
+    } else {
+      throw new ForbiddenException('No tienes permiso para crear clientes');
+    }
+    await this.tenantFilter.assertClienteDestino(alcance, idPadre);
+    return idPadre;
   }
 
   // ========================================

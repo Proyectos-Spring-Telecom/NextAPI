@@ -137,17 +137,17 @@ export class ProductosController {
   })
   @ApiParam({ name: 'id', description: 'ID del producto' })
   @ApiResponse({ status: 200, description: 'Producto encontrado' })
-  @ApiResponse({ status: 404, description: 'Producto no encontrado' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.productosService.findOne(id, req.user.idCliente);
+    return this.productosService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto por ID (sin validar `idCliente` del token). ' +
+      'Establece el estatus del producto por ID; debe ser de un cliente del alcance del usuario (404 si no). ' +
       'Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
@@ -159,7 +159,7 @@ export class ProductosController {
     status: 400,
     description: 'estatus inválido o producto asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Producto no encontrado' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -176,10 +176,14 @@ export class ProductosController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar nombre del producto' })
+  @ApiOperation({
+    summary: 'Actualizar nombre del producto',
+    description:
+      'El producto debe ser de un cliente del alcance del usuario (incluye clientes hijos para rol 6 y todos para administración).',
+  })
   @ApiParam({ name: 'id', description: 'ID del producto' })
   @ApiResponse({ status: 200, description: 'Producto actualizado' })
-  @ApiResponse({ status: 404, description: 'Producto no encontrado' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -189,7 +193,7 @@ export class ProductosController {
     return this.productosService.update(
       id,
       dto,
-      req.user.idCliente,
+      req.user,
       req.user.userId,
     );
   }

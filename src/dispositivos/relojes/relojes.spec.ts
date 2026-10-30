@@ -1,9 +1,12 @@
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { RelojConfig } from 'src/entities/RelojConfig';
 import { mapRelojPlano, pickRelojConfig } from '../map-relaciones.util';
 import { CreateRelojDto } from './dto/create-reloj.dto';
 import { UpdateRelojDto } from './dto/update-reloj.dto';
+import { RelojesService } from './relojes.service';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 const valido = {
   idCliente: 1,
@@ -73,5 +76,68 @@ describe('Relojes', () => {
       llamadaPorCaida: 0,
       sensibilidadCaida: 5,
     });
+  });
+});
+
+describe('RelojesService: alcance por cliente', () => {
+  // Rol 6 del cliente 10 ve 10 y su hijo 11; el reloj del cliente 99 es ajeno.
+  const clienteRepo = { query: jest.fn().mockResolvedValue([[{ Id: 10 }, { Id: 11 }]]) };
+  const tenant = new TenantFilterService(clienteRepo as never);
+  const padre = { userId: 1, idCliente: 10, rol: 6 };
+  const bitacora = { logToBitacora: jest.fn() };
+
+  const servicio = (reloj: Partial<RelojConfig> | null) => {
+    const repository = {
+      findOne: jest.fn().mockResolvedValue(reloj),
+      save: jest.fn(async (e: unknown) => e),
+    };
+    const dataSource = { createQueryRunner: jest.fn() };
+    const svc = new RelojesService(
+      repository as never,
+      { findOne: jest.fn() } as never,
+      dataSource as never,
+      bitacora as never,
+      tenant,
+    );
+    return { svc, repository, dataSource };
+  };
+
+  it('detalle de un cliente hijo: lo ve; de un cliente ajeno: 404', async () => {
+    const { svc } = servicio({ idDispositivo: 5, idCliente: 11 });
+    await expect(svc.findOne(5, padre)).resolves.toMatchObject({ data: { id: 5 } });
+    const ajeno = servicio({ idDispositivo: 6, idCliente: 99 });
+    await expect(ajeno.svc.findOne(6, padre)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('editar busca por id (no por el cliente del token) y valida el cliente del reloj', async () => {
+    const { svc, repository } = servicio({ idDispositivo: 5, idCliente: 11 });
+    await expect(svc.update(5, { intervaloGpsSegundos: 600 }, 10, 1, padre)).resolves.toMatchObject({
+      status: 'success',
+    });
+    expect(repository.findOne).toHaveBeenCalledWith({ where: { idDispositivo: 5 } });
+
+    const ajeno = servicio({ idDispositivo: 6, idCliente: 99 });
+    await expect(ajeno.svc.update(6, { intervaloGpsSegundos: 600 }, 10, 1, padre)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(ajeno.repository.save).not.toHaveBeenCalled();
+  });
+
+  it('alta en un cliente fuera del alcance: 403 sin escribir', async () => {
+    const qr = {
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      rollbackTransaction: jest.fn(),
+      release: jest.fn(),
+      isTransactionActive: true,
+      manager: { save: jest.fn(), create: jest.fn(), findOne: jest.fn() },
+    };
+    const { svc, dataSource } = servicio(null);
+    dataSource.createQueryRunner.mockReturnValue(qr);
+    await expect(svc.create({ ...valido, idCliente: 99 } as CreateRelojDto, 1, padre)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(qr.manager.save).not.toHaveBeenCalled();
+    expect(qr.rollbackTransaction).toHaveBeenCalled();
   });
 });

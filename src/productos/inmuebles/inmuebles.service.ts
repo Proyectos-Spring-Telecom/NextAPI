@@ -78,12 +78,15 @@ export class InmueblesService {
   async create(
     dto: CreateInmueblesDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // Solo se da de alta en un cliente del alcance de quien crea (403 si no).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const producto = await crearProductoBase(queryRunner.manager, {
         idCliente,
         idTipoProducto: EnumTipoProducto.INMUEBLE,
@@ -226,7 +229,7 @@ export class InmueblesService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id },
@@ -235,6 +238,8 @@ export class InmueblesService {
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
       }
+      // Fuera del alcance del usuario → 404 (no se revela que existe).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Inmueble');
       return {
         data: this.mapInmueble(entity),
       };
@@ -250,16 +255,20 @@ export class InmueblesService {
   async update(
     id: number,
     dto: UpdateInmueblesDto,
-    idCliente: number,
+    alcance: UsuarioAlcance,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = alcance.idCliente;
     try {
+      // Se busca por id (no por el cliente del token) y se valida el alcance sobre
+      // el cliente del registro: administración y padres editan lo de sus hijos.
       const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
+        where: { idProducto: id },
       });
       if (!entity) {
         throw new NotFoundException('Inmueble no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Inmueble');
 
       const updateData: Partial<Inmuebles> = {};
       if (dto.inmueble !== undefined) updateData.inmueble = dto.inmueble;
@@ -279,7 +288,7 @@ export class InmueblesService {
 
       if (dto.inmueble !== undefined) {
         await this.productosRepo.update(
-          { id, idCliente },
+          { id, idCliente: entity.idCliente },
           { nombre: dto.inmueble },
         );
       }

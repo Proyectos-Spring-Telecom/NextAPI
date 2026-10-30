@@ -232,6 +232,7 @@ export class VehiculosService {
   async create(
     dto: CreateVehiculosDto,
     idUser: number,
+    alcance: UsuarioAlcance,
     files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
@@ -239,6 +240,8 @@ export class VehiculosService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // Solo se da de alta en un cliente del alcance de quien crea (403 si no).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const existePlaca = await this.repository.findOne({
         where: { placa: dto.placa, idCliente },
       });
@@ -417,7 +420,7 @@ export class VehiculosService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id },
@@ -426,6 +429,8 @@ export class VehiculosService {
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
+      // Fuera del alcance del usuario → 404 (no se revela que existe).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Vehículo');
       return {
         data: this.mapVehiculoConRelaciones(entity),
       };
@@ -603,10 +608,11 @@ LIMIT ${limit}
   async update(
     id: number,
     dto: UpdateVehiculosDto,
-    idCliente: number,
+    alcance: UsuarioAlcance,
     idUser: number,
     files: VehiculosUploadFiles = {},
   ): Promise<ApiCrudResponse> {
+    const idCliente = alcance.idCliente;
     try {
       const entity = await this.repository.findOne({
         where: { idProducto: id },
@@ -614,10 +620,16 @@ LIMIT ${limit}
       if (!entity) {
         throw new NotFoundException('Vehículo no encontrado');
       }
+      // El vehículo debe ser de un cliente del alcance del usuario (404 si no);
+      // administración y padres editan los de sus clientes hijos.
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Vehículo');
+      const idClienteVehiculo = Number(entity.idCliente);
 
+      // La placa es única por cliente: se valida contra el cliente del vehículo,
+      // no contra el del token.
       if (dto.placa && dto.placa !== entity.placa) {
         const existePlaca = await this.repository.findOne({
-          where: { placa: dto.placa, idCliente },
+          where: { placa: dto.placa, idCliente: idClienteVehiculo },
         });
         if (existePlaca) {
           throw new BadRequestException('La placa ya existe para este cliente');
@@ -663,7 +675,7 @@ LIMIT ${limit}
 
       if (dto.placa !== undefined) {
         await this.productosRepo.update(
-          { id, idCliente },
+          { id, idCliente: idClienteVehiculo },
           { nombre: dto.placa },
         );
       }
@@ -685,7 +697,7 @@ LIMIT ${limit}
 
       this.webhookEmitter.emit(
         WebhookEvent.VEHICULO_UPDATED,
-        idCliente,
+        idClienteVehiculo,
         id,
         this.buildVehiculoWebhookData({
           placa: updated?.placa ?? entity.placa,

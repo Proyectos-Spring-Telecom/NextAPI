@@ -48,11 +48,12 @@ export class InstalacionesController {
   @ApiResponse({ status: 201, description: 'Instalación creada correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   async create(
     @Body() dto: CreateInstalacionesDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.instalacionesService.create(dto, req.user.userId);
+    return this.instalacionesService.create(dto, req.user.userId, undefined, req.user);
   }
 
   @Get('list')

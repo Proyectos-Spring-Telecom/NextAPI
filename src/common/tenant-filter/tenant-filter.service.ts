@@ -327,4 +327,16 @@ export class TenantFilterService {
       throw new ForbiddenException('El padre no puede ser un cliente que depende de este (ciclo)');
     }
   }
+
+  /**
+   * Alta o cambio que deja un registro en `idCliente`: debe estar en el alcance
+   * de quien escribe (403 si no; el cliente destino no es secreto, viene en el body).
+   */
+  async assertClienteDestino(user: UsuarioAlcance, idCliente: number | null | undefined): Promise<void> {
+    if (idCliente == null) throw new ForbiddenException('Indica el cliente');
+    const scope = await this.idsClientePermitidos(user.rol, user.idCliente);
+    if (!this.clienteVisibleEnScope(scope, idCliente)) {
+      throw new ForbiddenException('El cliente está fuera de tu alcance');
+    }
+  }
 }

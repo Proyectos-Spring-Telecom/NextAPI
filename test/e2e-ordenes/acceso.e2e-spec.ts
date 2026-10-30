@@ -135,6 +135,67 @@ describe('F5 reportes: el rol 7/9 solo ve sus unidades asignadas', () => {
   });
 });
 
+describe('C1 usuarios: sin escalada de rol', () => {
+  let n = 0;
+  const alta = (token: string, idRol: number, idCliente: number) =>
+    como(token, 'POST', '/usuarios', {
+      userName: `nuevo${++n}@e2e.local`,
+      passwordHash: 'Clave.123',
+      nombre: 'Nuevo',
+      apellidoPaterno: 'Usuario',
+      idRol,
+      idCliente,
+      permisosIds: [],
+    });
+
+  it('un operador (7) o monitoreo (5) no crea usuarios; nadie crea un rol más alto que el suyo', async () => {
+    expect((await alta(tok.u7a, 1, A.idClienteNext)).status).toBe(403);
+    expect((await alta(a.tokenMonitoreo, 1, A.idClienteNext)).status).toBe(403);
+    expect((await alta(a.tokenOperacion, 1, A.idClienteNext)).status).toBe(403); // admin (3) no crea SA
+    expect(Number(e.consulta('Next', "SELECT COUNT(*) FROM Usuarios WHERE UserName LIKE 'nuevo%' AND IdRol < 3")[0][0])).toBe(0);
+  });
+
+  it('el cliente (6) solo crea usuarios 9 dentro de su árbol', async () => {
+    expect((await alta(tok.u6a, 9, B.idClienteNext)).status).toBe(403);
+    const r = ok(await alta(tok.u6a, 1, A1.idClienteNext), 'alta por rol 6');
+    const id = Number(r.data?.id ?? r.id);
+    expect(Number(e.consulta('Next', `SELECT IdRol FROM Usuarios WHERE Id = ${id}`)[0][0])).toBe(9);
+  });
+
+  it('nadie se sube el rol a sí mismo ni edita usuarios fuera de su alcance', async () => {
+    expect((await como(tok.u7a, 'PATCH', `/usuarios/${U7A.id}`, { idRol: 1 })).status).toBe(403);
+    expect(Number(e.consulta('Next', `SELECT IdRol FROM Usuarios WHERE Id = ${U7A.id}`)[0][0])).toBe(7);
+    expect([403, 404]).toContain((await como(tok.u6a, 'PATCH', `/usuarios/${U9B.id}`, { nombre: 'Otro' })).status);
+  });
+});
+
+describe('C2–C5 inventario: alcance en detalle, edición y alta', () => {
+  let vehA1: number;
+  beforeAll(async () => {
+    vehA1 = Number(ok(await a.operacion('POST', '/productos/vehiculos', { idCliente: A1.idClienteNext, placa: 'ACCH001' }), 'vehículo de A1').data.id);
+  });
+
+  it('detalle de vehículo, reloj y SIM ajenos → 404', async () => {
+    expect((await como(tok.u9b, 'GET', `/productos/vehiculos/${vehA1}`)).status).toBe(404);
+    expect((await como(tok.u9b, 'GET', `/sims/${A.inventario[3].idSim}`)).status).toBe(404);
+  });
+
+  it('nadie edita un vehículo ajeno; el cliente padre sí edita el de su hijo', async () => {
+    expect((await como(tok.u9b, 'PATCH', `/productos/vehiculos/${vehA1}`, { numeroEconomico: 'X' })).status).toBe(404);
+    ok(await como(tok.u6a, 'PATCH', `/productos/vehiculos/${vehA1}`, { numeroEconomico: 'ECO-H1' }), 'rol 6 edita a su hijo');
+    ok(await a.operacion('PATCH', `/productos/vehiculos/${vehA1}`, { color: 'Rojo' }), 'administración edita');
+  });
+
+  it('no se da de alta inventario en un cliente fuera del alcance (403)', async () => {
+    expect((await como(tok.u9b, 'POST', '/productos/vehiculos', { idCliente: A.idClienteNext, placa: 'ACCX999' })).status).toBe(403);
+    expect((await como(tok.u6a, 'POST', '/productos/vehiculos', { idCliente: B.idClienteNext, placa: 'ACCX998' })).status).toBe(403);
+  });
+
+  it('la jerarquía de un cliente ajeno no se lista', async () => {
+    expect((await como(tok.u9b, 'GET', `/clientes/list/${A.idClienteNext}`)).status).toBe(404);
+  });
+});
+
 describe('Sin cambios para quien sí debe ver', () => {
   it('administración y monitoreo siguen viendo todo', async () => {
     expect((await historico(a.tokenOperacion, instB)).status).toBe(200);

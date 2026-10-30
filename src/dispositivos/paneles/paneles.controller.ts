@@ -50,12 +50,13 @@ export class PanelesController {
   })
   @ApiResponse({ status: 201, description: 'Panel creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreatePanelAlarmaDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.panelesService.create(dto, req.user.userId);
+    return this.panelesService.create(dto, req.user.userId, req.user);
   }
 
   @Get('list')
@@ -100,17 +101,17 @@ export class PanelesController {
   @ApiOperation({ summary: 'Obtener panel por ID de dispositivo' })
   @ApiParam({ name: 'id', description: 'ID del dispositivo / panel' })
   @ApiResponse({ status: 200, description: 'Panel encontrado' })
-  @ApiResponse({ status: 404, description: 'Panel no encontrado' })
+  @ApiResponse({ status: 404, description: 'Panel no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.panelesService.findOne(id, req.user.idCliente);
+    return this.panelesService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del dispositivo y del panel por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del dispositivo y del panel por ID; el registro debe estar en el alcance del rol (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -121,7 +122,7 @@ export class PanelesController {
     status: 400,
     description: 'estatus inválido o dispositivo asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Panel no encontrado' })
+  @ApiResponse({ status: 404, description: 'Panel no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -141,7 +142,7 @@ export class PanelesController {
   @ApiOperation({ summary: 'Actualizar panel de alarma' })
   @ApiParam({ name: 'id', description: 'ID del dispositivo / panel' })
   @ApiResponse({ status: 200, description: 'Panel actualizado' })
-  @ApiResponse({ status: 404, description: 'Panel no encontrado' })
+  @ApiResponse({ status: 404, description: 'Panel no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -153,6 +154,7 @@ export class PanelesController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 }

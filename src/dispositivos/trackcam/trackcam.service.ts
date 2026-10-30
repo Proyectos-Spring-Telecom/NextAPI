@@ -56,12 +56,15 @@ export class TrackcamService {
   async create(
     dto: CreateTrackcamDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // El cliente destino debe estar en el alcance de quien crea (403).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const tipo = await obtenerTipoTrackcam(queryRunner.manager);
       const dispositivo = await crearDispositivoBase(queryRunner.manager, {
         idCliente,
@@ -204,7 +207,7 @@ export class TrackcamService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
@@ -213,6 +216,8 @@ export class TrackcamService {
       if (!entity) {
         throw new NotFoundException('Trackcam no encontrado');
       }
+      // Fuera del alcance del usuario responde igual que si no existiera (404).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Trackcam');
       return { data: mapTrackcamPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -225,14 +230,19 @@ export class TrackcamService {
     dto: UpdateTrackcamDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
+      // Se busca por id (no por el cliente del token) y se valida el cliente del
+      // registro: administración y clientes padre editan lo de sus clientes hijos.
       const entity = await this.repository.findOne({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
       });
       if (!entity) {
         throw new NotFoundException('Trackcam no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Trackcam');
+      const idClienteRecurso = Number(entity.idCliente);
 
       Object.assign(entity, pickTrackcamConfig(dto));
       await this.repository.save(entity);
@@ -247,7 +257,7 @@ export class TrackcamService {
 
       if (hayCamposDispositivo) {
         const dispositivo = await this.dispositivosRepo.findOne({
-          where: { id, idCliente },
+          where: { id, idCliente: idClienteRecurso },
         });
         if (!dispositivo) {
           throw new NotFoundException('Dispositivo del Trackcam no encontrado');
@@ -291,15 +301,16 @@ export class TrackcamService {
         'TrackcamConfig',
         `Se actualizó el Trackcam ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, dto, idCliente, idClienteRecurso },
         idUser,
         EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,
       );
 
+      // El webhook va con el cliente del registro (el gateway lo busca por él).
       await this.emitTrackcamWebhook(
         WebhookEvent.TRACKCAM_UPDATED,
-        idCliente,
+        idClienteRecurso,
         id,
       );
 

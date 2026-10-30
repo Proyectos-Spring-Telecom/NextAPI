@@ -45,16 +45,17 @@ export class InmueblesController {
     summary: 'Crear inmueble',
     description:
       'Crea el producto (tipo INMUEBLE) y el detalle de inmueble en una transacción. ' +
-      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
+      'Requiere `idCliente` en el body, que debe estar en el alcance de quien crea (403 si no). El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Inmueble creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreateInmueblesDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.inmueblesService.create(dto, req.user.userId);
+    return this.inmueblesService.create(dto, req.user.userId, req.user);
   }
 
   @Get('list')
@@ -103,21 +104,20 @@ export class InmueblesController {
   @ApiOperation({ summary: 'Obtener inmueble por ID' })
   @ApiParam({ name: 'id', description: 'ID del inmueble' })
   @ApiResponse({ status: 200, description: 'Inmueble encontrado' })
-  @ApiResponse({ status: 404, description: 'Inmueble no encontrado' })
+  @ApiResponse({ status: 404, description: 'Inmueble no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
   ) {
-    const idCliente = req.user.idCliente;
-    return this.inmueblesService.findOne(id, idCliente);
+    return this.inmueblesService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del producto por ID; debe ser de un cliente del alcance del usuario (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -128,7 +128,7 @@ export class InmueblesController {
     status: 400,
     description: 'estatus inválido o producto asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Inmueble no encontrado' })
+  @ApiResponse({ status: 404, description: 'Inmueble no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -145,18 +145,21 @@ export class InmueblesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar inmueble' })
+  @ApiOperation({
+    summary: 'Actualizar inmueble',
+    description:
+      'El inmueble debe ser de un cliente del alcance del usuario (incluye clientes hijos para rol 6 y todos para administración).',
+  })
   @ApiParam({ name: 'id', description: 'ID del inmueble' })
   @ApiResponse({ status: 200, description: 'Inmueble actualizado' })
-  @ApiResponse({ status: 404, description: 'Inmueble no encontrado' })
+  @ApiResponse({ status: 404, description: 'Inmueble no encontrado o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateInmueblesDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    const idCliente = req.user.idCliente;
     const idUser = req.user.userId;
-    return this.inmueblesService.update(id, dto, idCliente, idUser);
+    return this.inmueblesService.update(id, dto, req.user, idUser);
   }
 }

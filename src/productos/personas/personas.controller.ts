@@ -45,16 +45,17 @@ export class PersonasController {
     summary: 'Crear persona',
     description:
       'Crea el producto (tipo PERSONA) y el detalle de persona en una transacción. ' +
-      'Requiere `idCliente` en el body. El estatus inicia en ACTIVO.',
+      'Requiere `idCliente` en el body, que debe estar en el alcance de quien crea (403 si no). El estatus inicia en ACTIVO.',
   })
   @ApiResponse({ status: 201, description: 'Persona creada correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 403, description: 'El cliente está fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreatePersonasDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.personasService.create(dto, req.user.userId);
+    return this.personasService.create(dto, req.user.userId, req.user);
   }
 
   @Get('list')
@@ -99,17 +100,17 @@ export class PersonasController {
   @ApiOperation({ summary: 'Obtener persona por ID de producto' })
   @ApiParam({ name: 'id', description: 'ID del producto / persona' })
   @ApiResponse({ status: 200, description: 'Persona encontrada' })
-  @ApiResponse({ status: 404, description: 'Persona no encontrada' })
+  @ApiResponse({ status: 404, description: 'Persona no encontrada o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.personasService.findOne(id, req.user.idCliente);
+    return this.personasService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del producto por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del producto por ID; debe ser de un cliente del alcance del usuario (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=baja_remplazo, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -120,7 +121,7 @@ export class PersonasController {
     status: 400,
     description: 'estatus inválido o producto asignado a una instalación',
   })
-  @ApiResponse({ status: 404, description: 'Persona no encontrada' })
+  @ApiResponse({ status: 404, description: 'Persona no encontrada o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,
@@ -137,10 +138,14 @@ export class PersonasController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar persona' })
+  @ApiOperation({
+    summary: 'Actualizar persona',
+    description:
+      'La persona debe ser de un cliente del alcance del usuario (incluye clientes hijos para rol 6 y todos para administración).',
+  })
   @ApiParam({ name: 'id', description: 'ID del producto / persona' })
   @ApiResponse({ status: 200, description: 'Persona actualizada' })
-  @ApiResponse({ status: 404, description: 'Persona no encontrada' })
+  @ApiResponse({ status: 404, description: 'Persona no encontrada o fuera de tu alcance' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -150,7 +155,7 @@ export class PersonasController {
     return this.personasService.update(
       id,
       dto,
-      req.user.idCliente,
+      req.user,
       req.user.userId,
     );
   }

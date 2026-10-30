@@ -92,7 +92,8 @@ export class SimsController {
       '- Opcionales: `imei`, `numeroTelefono`, `notas`.\n' +
       '- `estatus` se asigna automáticamente como `EnumEstatusRecurso.DISPONIBLE`.\n' +
       '- `IMEI` es único (`UQ_Sims_IMEI`).\n' +
-      '- Valida que existan `idCliente`, `idTelefonia` e `idPlanTelefonia`.',
+      '- Valida que existan `idCliente`, `idTelefonia` e `idPlanTelefonia`.\n' +
+      '- `idCliente` debe estar en el alcance del token (403 si no).',
   })
   @ApiBody({
     type: CreateSimsDto,
@@ -119,12 +120,13 @@ export class SimsController {
   })
   @ApiConflictResponse({ description: 'El IMEI ya está registrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  @ApiForbiddenResponse({ description: 'El cliente está fuera de tu alcance' })
   async create(
     @Body() dto: CreateSimsDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return this.simsService.create(dto, idUser);
+    return this.simsService.create(dto, idUser, req.user);
   }
 
   @Get('list')
@@ -221,21 +223,20 @@ export class SimsController {
       example: { data: SIM_ITEM_EXAMPLE },
     },
   })
-  @ApiNotFoundResponse({ description: 'SIM no encontrado' })
+  @ApiNotFoundResponse({ description: 'SIM no encontrado o fuera de tu alcance' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async findOne(
     @Param('id', ParseIntPipe) id: number,
     @Request() req,
   ) {
-    const idCliente = req.user.idCliente;
-    return this.simsService.findOne(id, idCliente);
+    return this.simsService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
   @ApiOperation({
     summary: 'Cambiar estatus',
     description:
-      'Establece el estatus del SIM por ID (sin validar `idCliente` del token). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
+      'Establece el estatus del SIM por ID; el SIM debe estar en el alcance del rol (404 si no). Body: `{ "estatus": 0|1|2|3|4|5 }` ' +
       '(0=inactivo, 1=activo/disponible, 2=asignado, 3=revision, 4=baja_mantenimiento, 5=inservible). ' +
       'Si el estatus actual es 2 (asignado a una instalación), la operación se rechaza.',
   })
@@ -255,7 +256,7 @@ export class SimsController {
   @ApiBadRequestResponse({
     description: 'estatus inválido o SIM asignado a una instalación',
   })
-  @ApiNotFoundResponse({ description: 'SIM no encontrado' })
+  @ApiNotFoundResponse({ description: 'SIM no encontrado o fuera de tu alcance' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async updateEstatus(
     @Param('id', ParseIntPipe) id: number,

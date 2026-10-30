@@ -120,9 +120,12 @@ export class DispositivosService {
   async create(
     dto: CreateDispositivosDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     try {
+      // El cliente destino debe estar en el alcance de quien crea (403).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const tipoPanel = await obtenerTipoPanelAlarma(
         this.repository.manager,
       ).catch(() => null);
@@ -232,8 +235,11 @@ export class DispositivosService {
     idCliente: number,
     idClienteToken: number,
     rol: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiResponseCommon> {
     try {
+      // Cliente fuera del alcance: 404, no se revela que existe.
+      await this.tenantFilter.assertClienteVisible(alcance, idCliente, 'Cliente');
       const { sinAcceso, where } = await this.whereTenant(
         rol,
         idClienteToken,

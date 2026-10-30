@@ -35,7 +35,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import {
   EnumAccionHistoricoInstalacion,
   EnumEstatusInstalacion,
@@ -473,6 +473,7 @@ export class InstalacionesService {
     dto: CreateInstalacionesDto,
     idUser: number,
     trx?: QueryRunner,
+    alcance?: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     // trx: transacción del llamador (p. ej. cierre de orden de servicio); sin ella, propia.
@@ -483,6 +484,11 @@ export class InstalacionesService {
       await qr.startTransaction();
     }
     try {
+      // Alta desde REST: el cliente destino debe estar en el alcance de quien crea (403).
+      // Sin alcance = llamada interna (cierre de orden de servicio, que ya validó la orden).
+      if (alcance) {
+        await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+      }
       await this.validarProductoDisponibleParaAsignar(
         dto.idProducto,
         idCliente,

@@ -196,7 +196,7 @@ export class ProductosService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { id },
@@ -205,6 +205,8 @@ export class ProductosService {
       if (!entity) {
         throw new NotFoundException('Producto no encontrado');
       }
+      // Fuera del alcance del usuario → 404 (no se revela que existe).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Producto');
       return { data: this.mapProducto(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -215,16 +217,20 @@ export class ProductosService {
   async update(
     id: number,
     dto: UpdateProductosDto,
-    idCliente: number,
+    alcance: UsuarioAlcance,
     idUser: number,
   ): Promise<ApiCrudResponse> {
+    const idCliente = alcance.idCliente;
     try {
+      // Se busca por id (no por el cliente del token) y se valida el alcance sobre
+      // el cliente del producto: administración y padres editan lo de sus hijos.
       const entity = await this.repository.findOne({
-        where: { id, idCliente },
+        where: { id },
       });
       if (!entity) {
         throw new NotFoundException('Producto no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Producto');
       if (dto.nombre !== undefined) {
         entity.nombre = dto.nombre;
       }

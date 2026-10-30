@@ -52,12 +52,15 @@ export class RelojesService {
   async create(
     dto: CreateRelojDto,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // El cliente destino debe estar en el alcance de quien crea (403).
+      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const tipo = await obtenerTipoReloj(queryRunner.manager);
       const dispositivo = await crearDispositivoBase(queryRunner.manager, {
         idCliente,
@@ -195,7 +198,7 @@ export class RelojesService {
     }
   }
 
-  async findOne(id: number, idCliente: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
@@ -204,6 +207,8 @@ export class RelojesService {
       if (!entity) {
         throw new NotFoundException('Reloj no encontrado');
       }
+      // Fuera del alcance del usuario responde igual que si no existiera (404).
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Reloj');
       return { data: mapRelojPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -216,14 +221,19 @@ export class RelojesService {
     dto: UpdateRelojDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
+      // Se busca por id (no por el cliente del token) y se valida el cliente del
+      // registro: administración y clientes padre editan lo de sus clientes hijos.
       const entity = await this.repository.findOne({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
       });
       if (!entity) {
         throw new NotFoundException('Reloj no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Reloj');
+      const idClienteRecurso = Number(entity.idCliente);
 
       Object.assign(entity, pickRelojConfig(dto));
       await this.repository.save(entity);
@@ -237,7 +247,7 @@ export class RelojesService {
 
       if (hayCamposDispositivo) {
         const dispositivo = await this.dispositivosRepo.findOne({
-          where: { id, idCliente },
+          where: { id, idCliente: idClienteRecurso },
         });
         if (!dispositivo) {
           throw new NotFoundException('Dispositivo del reloj no encontrado');
@@ -280,7 +290,7 @@ export class RelojesService {
         'RelojConfig',
         `Se actualizó el reloj ID: ${id}`,
         'UPDATE',
-        { id, dto, idCliente },
+        { id, dto, idCliente, idClienteRecurso },
         idUser,
         EnumModulos.DISPOSITIVOS,
         EstatusEnumBitcora.SUCCESS,

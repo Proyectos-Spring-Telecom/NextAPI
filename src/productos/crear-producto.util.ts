@@ -17,6 +17,10 @@ export async function assertClienteExiste(
   }
 }
 
+/**
+ * Crea el registro base en `Productos`. Solo valida que el cliente exista: el
+ * alcance (`assertClienteDestino`) lo valida antes cada servicio de alta.
+ */
 export async function crearProductoBase(
   manager: EntityManager,
   params: {

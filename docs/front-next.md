@@ -370,4 +370,14 @@ NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-mod
 - **Roles 7 y 9** (operador, usuario) ven en reportes, incidentes, alarmas y el histórico **solo las unidades que tienen asignadas**, igual que en monitoreo y consola. Un reporte sin unidades asignadas sale vacío.
 - **Cliente padre (`idPadre`)**: solo los roles 1–3 lo cambian (403 a los demás) y no puede crear un ciclo. Si el formulario manda el mismo `idPadre` que ya tiene, no pasa nada.
 - **Estatus "asignado" (2)** de dispositivo, SIM o producto ya no se pone a mano (400): lo pone la instalación. Quitar el 2 del selector de estatus.
+- **Usuarios** (30/10):
+  - solo los roles 1, 2, 3 y 6 crean o editan a otros usuarios, cambian su estatus o les asignan instalaciones; los demás reciben 403: ocultar esas acciones;
+  - nadie asigna un rol más alto que el suyo; el rol 6 solo crea usuarios 9 dentro de su árbol;
+  - al editarse a sí mismo, nadie cambia su rol, cliente, permisos ni estatus.
+- **Inventario** (vehículos, activos, personas, inmuebles, dispositivos, TrackCam, relojes, paneles, SIM):
+  - el detalle o la edición de algo ajeno → 404;
+  - el alta en un cliente fuera del alcance → 403;
+  - **administración y el rol 6 ya pueden editar lo de sus clientes hijos** (antes recibían 404).
+- **Clientes:** crean clientes los roles 1–3 y el 6 (este solo como hijo de su árbol); `GET /clientes/list/:cliente` ajeno → 404.
+- `GET /sims/:id` ahora trae cliente, telefonía y plan, como el listado.
 
