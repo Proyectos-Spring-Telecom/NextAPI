@@ -1,6 +1,6 @@
 # Motor de activos y visibilidad (diseño para revisión)
 
-**Estado:** propuesta del 30/10/2026, para revisar con Israel **antes** de implementar. Parte del diagnóstico ([diagnostico-modelo.md](diagnostico-modelo.md)).
+**Estado:** propuesta del 30/10/2026; decisiones de Israel del 30/10 incorporadas (§12). Listo para implementar por fases. Parte del diagnóstico ([diagnostico-modelo.md](diagnostico-modelo.md)).
 
 ## 0. Principios (acordados)
 
@@ -54,9 +54,9 @@ Hoy dispositivos, SIM y productos usan la escala de `CatEstatusInstalacion` (que
 
 - **Varias instalaciones activas por vehículo, una por clase de equipo.** Clase = AVL (GPS de vehículo y TrackGas), TRACKCAM, PANEL, RELOJ… (de `CatTipoDispositivo`). En la base: columna generada `ProductoActivoClase` + UNIQUE, igual que ya existe `DispositivoActivo` / `SimActivo`.
 - **Toda vigencia que termina se archiva**, también la baja (hoy la baja solo pone `Estatus = 0` y se pierde el periodo). Reactivar = abrir una versión nueva.
-- **Fecha real de instalación:** `VigenteDesde` corregible por roles 1–3 con motivo, solo hacia atrás y sin traslaparse con otra instalación del mismo equipo. Sirve para las **74 instalaciones migradas** cuyo equipo ya transmitía antes del alta en Next (fuente: fecha real del CRM o primera posición del equipo).
+- **Fecha real de instalación:** `VigenteDesde` corregible por roles 1–4 con motivo, solo hacia atrás y sin traslaparse con otra instalación del mismo equipo. Sirve para las **74 instalaciones migradas** cuyo equipo ya transmitía antes del alta en Next (fuente: fecha real del CRM o primera posición del equipo).
 - **Geocercas:** hoy un cambio de componente las borra. Propuesta: que cuelguen del **vehículo** (`IdProducto`) y no de la versión de instalación; un cambio de equipo ya no las pierde.
-- **Asignación de usuarios (7/9):** hoy `UsuariosInstalaciones` se migra en cada cambio de versión. Propuesta: asignar por **vehículo** (`IdProducto`); el usuario ve todas las instalaciones (GPS y TrackCam) de los vehículos asignados.
+- **Asignación de usuarios (7/9): se mantiene por instalación** (decisión del 30/10). El motor migra `UsuariosInstalaciones` en cada cambio de versión, en la misma transacción, como hoy. Un usuario asignado a la instalación de GPS no ve la de TrackCam del mismo vehículo si no se le asigna.
 
 ## 4. Historial de vida del activo
 
@@ -105,10 +105,26 @@ Hoy la ingesta solo acepta equipos en estatus 1 o 2; los demás van a `Telemetry
 | 2 INSTALADO | Normal |
 | 1 DISPONIBLE | Se guarda (evidencia) y aparece en "equipos sin instalación" (roles 1–3): o se instaló sin dar de alta, o hay que revisarlo |
 | 3 / 4 / 0 | Se guarda y se marca en "equipos sin instalación" con su estatus |
-| 5 INSERVIBLE | Se guarda y **alerta** a operación: un equipo dado de baja que transmite es posible robo o vandalismo |
+| 5 INSERVIBLE | Se guarda y **abre un incidente** (posible robo o vandalismo; decisión del 30/10) |
 | No registrado | Igual que hoy (huérfanos) |
 
 Así se cumple "nuestra responsabilidad es que el equipo transmita mientras no haya vandalismo": no se pierde ninguna transmisión y operación ve lo que no cuadra. Lo que se guarde sin instalación no lo ve ningún cliente (no cae en ningún tramo).
+
+## 7b. Vigilancia de transmisión (requisito del 30/10)
+
+Todo equipo **instalado** debe transmitir. Si deja de hacerlo, hay que avisar al cliente **antes de las 24 h**, para confirmar si es una falla o si el vehículo entró a taller.
+
+| Tiempo sin transmitir | Acción |
+|---|---|
+| Umbral de aviso (propuesta: 6 h; configurable por tipo de equipo, p. ej. menor para AVL que para relojes) | Aviso al cliente (notificación y correo) y aparece en "sin transmisión" para monitoreo |
+| 24 h | Incidente para operación, con el antecedente del aviso |
+| El cliente responde "entró a taller" | Se registra como pausa de vigilancia con fecha de regreso; no se repiten avisos |
+| Vuelve a transmitir | Se cierra el aviso; el incidente queda para que operación lo finalice |
+
+- La fuente es `UltimaPosicion.FHRegistro` por equipo instalado. Ya existe la consulta de sin transmisión en consola; se vuelve una tarea programada en NextAPI cada 15 min.
+- La regla aplica por instalación. Un vehículo con GPS y TrackCam se vigila por cada equipo.
+- Equipos dados de alta pero que nunca han transmitido (hoy 238 de 407): se marcan como "sin primera transmisión" y no generan avisos al cliente hasta revisarlos. Operación decide si son instalaciones legadas que aún reportan a otro sistema.
+- Las notificaciones al cliente usan el motor de notificaciones existente. No se toca el legado del CRM.
 
 ## 8. Comandos de Next a los equipos (cola)
 
@@ -153,16 +169,18 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 | B | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
 | C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
-| E | Ingesta por estatus y panel de equipos sin instalación | A |
+| E | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
 | F | Canal de comandos y números de emergencia del reloj | kit de sockets |
 
 Cada fase cierra con unitarias, la batería, una revisión independiente, la documentación al día (incluidas `front-next.md` y `app-instaladores.md`) y comandos de despliegue.
 
-## 12. Decisiones que necesito
+## 12. Decisiones (30/10/2026)
 
-1. **Estatus del recurso (§1):** ¿de acuerdo con reinterpretar el 3 como "por revisar" (unifica con la SIM) y el 0 como "inactivo administrativo"?
-2. **Asignación de usuarios 7/9 por vehículo** en lugar de por instalación (§3): ¿de acuerdo?
-3. **Geocercas por vehículo** (§3): ¿de acuerdo con que un cambio de equipo ya no las borre?
-4. **GPS + TrackCam (§6):** ¿el recorrido por defecto es el del GPS?
-5. **Inservible que transmite (§7):** ¿alerta a operación como incidente o solo como aviso en el panel?
-6. **Corregir la fecha de instalación** (§3): ¿roles 1–3, o también el 4?
+1. Estatus del recurso: **3 = por revisar, 0 = inactivo administrativo**. ✅
+2. Asignación de usuarios 7/9: **por instalación** (como hoy). ✅
+3. Geocercas por vehículo: ✅
+4. GPS + TrackCam: recorrido por defecto el del GPS. ✅
+5. Inservible que transmite: **incidente**. Además, vigilancia de transmisión con aviso al cliente antes de 24 h (§7b). ✅
+6. Corregir la fecha de instalación: **roles 1–4**. ✅
+
+Pendiente de definir con Israel: el umbral exacto de aviso por tipo de equipo (§7b) y el canal de notificación al cliente.
