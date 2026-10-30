@@ -52,7 +52,9 @@ export class MailService {
         attachments: opts.adjuntos,
       });
     } catch (error) {
-      throw new InternalServerErrorException(`No se pudo enviar el correo: ${(error as Error)?.message}`);
+      // El detalle del SMTP queda en el log, no en la respuesta.
+      console.error(`Correo no enviado (${opts.asunto}): ${(error as Error)?.message}`);
+      throw new InternalServerErrorException('No se pudo enviar el correo; intenta más tarde');
     }
   }
 

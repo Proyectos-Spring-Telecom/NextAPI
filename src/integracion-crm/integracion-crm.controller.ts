@@ -15,7 +15,8 @@ const ids = (v?: string) =>
  */
 @ApiTags('Integración CRM')
 @ApiHeader({ name: 'x-crm-timestamp', description: 'Milisegundos desde epoch' })
-@ApiHeader({ name: 'x-crm-signature', description: 'HMAC-SHA256 hex de `${timestamp}.${cuerpo}` (GET: `${METODO} ${ruta}`)' })
+@ApiHeader({ name: 'x-crm-firma', description: 'v2' })
+@ApiHeader({ name: 'x-crm-signature', description: 'HMAC-SHA256 hex de `${timestamp}.${MÉTODO} ${ruta}\n${cuerpo}` (ruta con /api y query)' })
 @SkipThrottle()
 @UseGuards(CrmHmacGuard)
 @Controller('integracion')

@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from 'child_process';
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { createServer as crearServidorHttp, request as peticionHttp, Server } from 'http';
 import { createServer } from 'net';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -75,6 +76,43 @@ async function puertoLibre(): Promise<number> {
   });
 }
 
+/**
+ * Proxy entre crmAPI y NextAPI para simular fallas de red: `normal` reenvía,
+ * `caido` responde 503 sin tocar Next (como si Next no respondiera).
+ */
+export class ProxyFallas {
+  modo: 'normal' | 'caido' = 'normal';
+  peticiones = 0;
+  private servidor: Server | null = null;
+  puerto = 0;
+
+  async iniciar(destino: () => number): Promise<void> {
+    this.puerto = await puertoLibre();
+    this.servidor = crearServidorHttp((req, res) => {
+      this.peticiones++;
+      if (this.modo === 'caido') {
+        res.writeHead(503, { 'content-type': 'text/plain' }).end('Next no disponible (simulado)');
+        req.resume();
+        return;
+      }
+      const fwd = peticionHttp(
+        { host: '127.0.0.1', port: destino(), path: req.url, method: req.method, headers: req.headers },
+        (r) => {
+          res.writeHead(r.statusCode ?? 502, r.headers);
+          r.pipe(res);
+        },
+      );
+      fwd.on('error', () => res.writeHead(502).end());
+      req.pipe(fwd);
+    });
+    await new Promise<void>((ok) => this.servidor!.listen(this.puerto, '127.0.0.1', ok));
+  }
+
+  async detener(): Promise<void> {
+    await new Promise<void>((ok) => (this.servidor ? this.servidor.close(() => ok()) : ok()));
+  }
+}
+
 export interface Respuesta<T = any> {
   status: number;
   body: T;
@@ -84,6 +122,9 @@ export class Entorno {
   readonly mysql = new MysqlDesechable();
   readonly s3 = new S3Falso();
   readonly correo = new CorreoFalso();
+  /** El CRM habla con Next a través de este proxy (para simular caídas). */
+  readonly proxy = new ProxyFallas();
+  private puertoNext = 0;
   nextUrl = '';
   crmUrl = '';
   private next: INestApplication | null = null;
@@ -99,6 +140,7 @@ export class Entorno {
     this.mysql.sql(null, 'CREATE DATABASE Next CHARACTER SET utf8mb4; CREATE DATABASE CRM CHARACTER SET utf8mb4;');
     this.mysql.carpeta('CRM', join(CRM_DIR, 'sql'));
     await this.iniciarNext();
+    await this.proxy.iniciar(() => this.puertoNext);
     await this.iniciarCrm();
   }
 
@@ -111,7 +153,7 @@ export class Entorno {
       DB_USER: 'root',
       DB_PASSWORD: '',
       DB_DATABASE: 'Next',
-      DB_TZ: '+00:00',
+      DB_TZ: '-00:00',
       JWT_SECRET: SECRETO_NEXT_JWT,
       JWT_EXPIRES_IN: '1h',
       JWT_REFRESH_EXPIRES_IN: '1d',
@@ -153,7 +195,7 @@ export class Entorno {
     });
     await ds.initialize();
     await ds.destroy();
-    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql']) {
+    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
     this.sembrarNext();
@@ -179,6 +221,7 @@ export class Entorno {
       this.next.useGlobalFilters(new HttpStringResponseFilter());
       this.next.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
       await this.next.listen(puerto, '127.0.0.1');
+      this.puertoNext = puerto;
     } finally {
       process.chdir(cwd);
     }
@@ -305,7 +348,7 @@ export class Entorno {
       INTEGRACION_HMAC_SECRET: 'e2e-integracion-contact-0123456789abcdef',
       CONTACT_API_URL: 'http://127.0.0.1:9',
       SEGUNDO_FACTOR_CLAVE: Buffer.alloc(32, 7).toString('base64'),
-      NEXT_API_URL: this.nextUrl,
+      NEXT_API_URL: `http://127.0.0.1:${this.proxy.puerto}/api`,
       NEXT_API_HMAC_SECRET: SECRETO_HMAC,
       NEXT_DB_USER: '',
       NEXT_DB_PASSWORD: '',
@@ -361,16 +404,26 @@ export class Entorno {
     return { status: r.status, body };
   }
 
-  /** Llamada a /integracion de NextAPI firmada como el CRM. */
-  async integracion<T = any>(metodo: string, ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
-    const texto = cuerpo === undefined ? '' : JSON.stringify(cuerpo);
+  /**
+   * Headers firmados como el CRM (firma v2: método, ruta y cuerpo). `version: 1`
+   * reproduce la firma anterior (solo cuerpo), para probar que ya no se acepta.
+   */
+  firmar(metodo: string, ruta: string, texto: string, version: 1 | 2 = 2): Record<string, string> {
     const ts = String(Date.now());
-    const firma = createHmac('sha256', SECRETO_HMAC).update(`${ts}.${texto || `${metodo} ${ruta}`}`).digest('hex');
-    const r = await fetch(this.nextUrl + ruta, {
-      method: metodo,
-      headers: { 'x-crm-timestamp': ts, 'x-crm-signature': firma, ...(texto ? { 'content-type': 'application/json' } : {}) },
-      body: texto || undefined,
-    });
+    const nonce = randomUUID();
+    const base = version === 2 ? `${ts}.${nonce}.${metodo} ${ruta}\n${texto}` : `${ts}.${texto || `${metodo} ${ruta}`}`;
+    return {
+      'x-crm-timestamp': ts,
+      ...(version === 2 ? { 'x-crm-nonce': nonce } : {}),
+      'x-crm-signature': createHmac('sha256', SECRETO_HMAC).update(base).digest('hex'),
+      ...(version === 2 ? { 'x-crm-firma': 'v2' } : {}),
+      ...(texto ? { 'content-type': 'application/json' } : {}),
+    };
+  }
+
+  /** Envía a NextAPI una petición con headers ya firmados (p. ej. para repetirla). */
+  async enviarFirmado<T = any>(metodo: string, ruta: string, texto: string, headers: Record<string, string>): Promise<Respuesta<T>> {
+    const r = await fetch(this.nextUrl + ruta, { method: metodo, headers, body: texto || undefined });
     const t = await r.text();
     let body: any = t;
     try {
@@ -379,6 +432,12 @@ export class Entorno {
       // texto
     }
     return { status: r.status, body };
+  }
+
+  /** Llamada a /integracion de NextAPI firmada como el CRM. */
+  async integracion<T = any>(metodo: string, ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
+    const texto = cuerpo === undefined ? '' : JSON.stringify(cuerpo);
+    return this.enviarFirmado<T>(metodo, ruta, texto, this.firmar(metodo, `/api${ruta}`, texto));
   }
 
   logCrm(): string {
@@ -390,6 +449,7 @@ export class Entorno {
       this.crm.kill('SIGTERM');
       await new Promise((r) => setTimeout(r, 500));
     }
+    await this.proxy.detener();
     await this.next?.close();
     await this.mysql.detener();
     rmSync(this.sinEnv, { recursive: true, force: true });

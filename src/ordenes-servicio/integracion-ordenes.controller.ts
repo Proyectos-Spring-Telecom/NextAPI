@@ -19,7 +19,8 @@ import { OrdenesFlujoService } from './ordenes-flujo.service';
  */
 @ApiTags('Integración CRM · Órdenes de servicio')
 @ApiHeader({ name: 'x-crm-timestamp', description: 'Milisegundos desde epoch' })
-@ApiHeader({ name: 'x-crm-signature', description: 'HMAC-SHA256 hex de `${timestamp}.${cuerpo}` (GET: `${METODO} ${ruta}`)' })
+@ApiHeader({ name: 'x-crm-firma', description: 'v2' })
+@ApiHeader({ name: 'x-crm-signature', description: 'HMAC-SHA256 hex de `${timestamp}.${MÉTODO} ${ruta}\n${cuerpo}` (ruta con /api y query)' })
 @SkipThrottle()
 @UseGuards(CrmHmacGuard)
 @Controller('integracion/ordenes-servicio')
@@ -30,11 +31,17 @@ export class IntegracionOrdenesController {
   @ApiOperation({
     summary: 'Órdenes creadas o modificadas desde una fecha',
     description:
-      'De cualquier origen (CRM o Next), ordenadas por `fechaActualizacion`. Pasar el `hasta` de la respuesta como `desde` de la siguiente; ' +
-      'puede repetir la última orden (desde es inclusivo): deduplicar por `id`. `hayMas` = pedir otra página.',
+      'De cualquier origen (CRM o Next), ordenadas por (`fechaActualizacion`, `id`). Pasar `hasta` y `despuesDe` de la respuesta ' +
+      'como `desde` y `despuesDe` de la siguiente. `hayMas` = pedir otra página.',
   })
   cambios(@Query() dto: CambiosOrdenesDto) {
     return this.flujo.cambios(dto);
+  }
+
+  @Get('por-referencia/:referencia')
+  @ApiOperation({ summary: 'Estado actual de las órdenes de una referencia del CRM y sus tandas (OI-12, OI-12-2…)' })
+  porReferencia(@Param('referencia') referencia: string) {
+    return this.flujo.porReferencia(referencia);
   }
 
   @Get('motivos')

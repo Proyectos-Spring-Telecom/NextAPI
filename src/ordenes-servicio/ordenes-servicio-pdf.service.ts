@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import PDFDocument from 'pdfkit';
 import { In, Repository } from 'typeorm';
-import { EnumModulos, EnumRoles } from 'src/common/estatus.enum';
+import { EnumModulos } from 'src/common/estatus.enum';
 import { CatMotivosOrdenServicio } from 'src/entities/CatMotivosOrdenServicio';
 import { CatOrdenServicioOpciones } from 'src/entities/CatOrdenServicioOpciones';
 import { Clientes } from 'src/entities/Clientes';
@@ -18,6 +18,7 @@ import { Vehiculos } from 'src/entities/Vehiculos';
 import { MailService } from 'src/mail/mail.service';
 import { S3Service } from 'src/s3/s3.service';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import { nombreCompleto, puedeCompartir, puedeVer } from './ordenes-servicio.acceso';
 import { ESTATUS_ORDEN, SECCIONES_RESPUESTA, folioDe } from './ordenes-servicio.reglas';
 import type { UsuarioToken } from './ordenes-servicio.service';
 
@@ -38,8 +39,14 @@ const NOMBRE_SECCION: Record<string, string> = {
 const ESTATUS_COMPARTIBLES: string[] = [ESTATUS_ORDEN.CERRADA, ESTATUS_ORDEN.NO_CUMPLIDA];
 /** Vigencia del enlace del PDF para WhatsApp (máximo de S3 con firma v4). */
 const VIGENCIA_ENLACE_S = 7 * 24 * 3600;
-const ROLES_ADMIN = new Set<number>([EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN]);
-const ROLES_LEEN_TODO = new Set<number>([...ROLES_ADMIN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO]);
+/** Notas que el sistema agrega a las observaciones y no son para el cliente. */
+const NOTA_INTERNA = /^Autorización (autorizada|rechazada)/;
+
+/** wa.me exige la lada del país: un número de 10 dígitos es de México (52). */
+export function telefonoWhatsapp(telefono?: string): string {
+  const digitos = (telefono ?? '').replace(/\D/g, '');
+  return digitos.length === 10 ? `52${digitos}` : digitos;
+}
 
 /** Fecha guardada como hora de México en UTC → `DD/MM/AAAA HH:mm`. */
 function fecha(d: Date | string | null | undefined): string {
@@ -82,13 +89,13 @@ export class OrdenesServicioPdfService {
 
   /** Sube (o reutiliza) el PDF y devuelve un enlace de 7 días y el de WhatsApp. */
   async compartir(id: number, telefono: string | undefined, user: UsuarioToken) {
-    const orden = await this.ordenVisible(id, user);
+    const orden = await this.ordenCompartible(id, user);
     this.exigirTerminada(orden);
     const ruta = await this.rutaVigente(orden, user);
     const key = new URL(ruta).pathname.replace(/^\//, '');
     const url = await this.s3Service.getPresignedUrl(key, VIGENCIA_ENLACE_S);
     const texto = `Orden de servicio ${this.folio(orden)} (${NOMBRE_TIPO[orden.tipoServicio] ?? orden.tipoServicio}): ${url}`;
-    const destino = telefono ? telefono.replace(/\D/g, '') : '';
+    const destino = telefonoWhatsapp(telefono);
     return {
       data: [
         {
@@ -103,7 +110,7 @@ export class OrdenesServicioPdfService {
   }
 
   async enviarCorreo(id: number, correos: string[], user: UsuarioToken) {
-    const orden = await this.ordenVisible(id, user);
+    const orden = await this.ordenCompartible(id, user);
     this.exigirTerminada(orden);
     const buffer = await this.generar(orden);
     const folio = this.folio(orden);
@@ -136,7 +143,11 @@ export class OrdenesServicioPdfService {
       user.userId,
       EnumModulos.INSTALACIONES,
     );
-    await this.ordenesRepo.update({ id: orden.id }, { rutaPdf: url, fechaPdf: nowMexicoCityAsUtcDate() });
+    // No "cambia" la orden para el CRM: FechaActualizacion se asigna a sí misma.
+    await this.ordenesRepo.update(
+      { id: orden.id },
+      { rutaPdf: url, fechaPdf: nowMexicoCityAsUtcDate(), fechaActualizacion: () => 'FechaActualizacion' },
+    );
     return url;
   }
 
@@ -148,8 +159,17 @@ export class OrdenesServicioPdfService {
 
   private async ordenVisible(id: number, user: UsuarioToken): Promise<OrdenesServicio> {
     const orden = await this.ordenesRepo.findOne({ where: { id } });
-    if (!orden || (!ROLES_LEEN_TODO.has(Number(user.rol)) && Number(orden.idTecnico) !== Number(user.userId))) {
+    if (!orden || !puedeVer(orden, user)) {
       throw new NotFoundException('Orden de servicio no encontrada');
+    }
+    return orden;
+  }
+
+  /** Mandarla al cliente: el técnico que la hizo o administración (monitoreo solo la ve). */
+  private async ordenCompartible(id: number, user: UsuarioToken): Promise<OrdenesServicio> {
+    const orden = await this.ordenVisible(id, user);
+    if (!puedeCompartir(orden, user)) {
+      throw new ForbiddenException('Solo el técnico de la orden o administración la envían al cliente');
     }
     return orden;
   }
@@ -176,8 +196,7 @@ export class OrdenesServicioPdfService {
       idSim ? this.simsRepo.findOne({ where: { id: idSim } }) : null,
       orden.claveMotivo ? this.motivosRepo.findOne({ where: { clave: orden.claveMotivo } }) : null,
     ]);
-    const nombre = (x?: { nombre?: string | null; apellidoPaterno?: string | null; apellidoMaterno?: string | null } | null) =>
-      x ? [x.nombre, x.apellidoPaterno, x.apellidoMaterno].filter(Boolean).join(' ') : '—';
+    const nombre = (x?: Parameters<typeof nombreCompleto>[0]) => nombreCompleto(x) ?? '—';
     const persona = (idU: number | null) => nombre(personas.find((u) => Number(u.id) === Number(idU)));
     const firmas = await Promise.all(
       archivos
@@ -221,8 +240,8 @@ export class OrdenesServicioPdfService {
     fila('Número de serie (VIN)', vehiculo?.numeroSerie);
     fila('Equipo (IMEI / serie)', dispositivo ? `${dispositivo.imei ?? '—'} / ${dispositivo.numeroSerie}` : '—');
     fila('SIM (ICCID / teléfono)', sim ? `${sim.imei ?? '—'} / ${sim.numeroTelefono ?? '—'}` : '—');
-    if (orden.autorizacion) {
-      fila('Desinstalación de equipo existente', `${orden.autorizacion} por ${orden.nombreAutorizo ?? '—'} (${fecha(orden.fechaAutorizacion)})`);
+    if (orden.autorizacion === 'autorizada') {
+      fila('Equipo existente', `retirado con autorización del ${fecha(orden.fechaAutorizacion)}`);
     }
 
     for (const seccion of SECCIONES_RESPUESTA) {
@@ -241,11 +260,14 @@ export class OrdenesServicioPdfService {
     if (orden.claveMotivo) {
       titulo('No cumplida / cancelada');
       fila('Motivo', motivo?.nombre ?? orden.claveMotivo);
-      fila('Cobrable', orden.cobrable == null ? '—' : Number(orden.cobrable) === 1 ? 'Sí' : 'No');
     }
-    if (orden.observaciones) {
+    const observaciones = (orden.observaciones ?? '')
+      .split('\n')
+      .filter((l) => l.trim() && !NOTA_INTERNA.test(l))
+      .join('\n');
+    if (observaciones) {
       titulo('Observaciones');
-      doc.text(orden.observaciones);
+      doc.text(observaciones);
     }
 
     const fotos = archivos.filter((a) => !a.clave.startsWith('firma_'));

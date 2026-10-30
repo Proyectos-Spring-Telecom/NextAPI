@@ -344,6 +344,7 @@ describe('3. Instalación sobre un vehículo que ya trae equipo: rechazo y luego
     ok(await a.crm('PATCH', `/instalaciones/${s.idOrden}`, { cita: enDias(6), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio de Transportes Uno', motivo: 'Cliente aceptó el costo' }), 'reagendar');
     s.os2 = (await a.agendaApp()).find((o) => o.referenciaCrm === `OI-${s.idOrden}-2`).id;
     ok(await a.app('POST', `/ordenes-servicio/${s.os2}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+    ok(await a.app('PATCH', `/ordenes-servicio/${s.os2}`, { idProducto: s.producto }), 'vehículo');
     ok(await a.app('POST', `/ordenes-servicio/${s.os2}/autorizacion`, { observaciones: 'Mismo equipo de otra marca' }), 'autorización');
 
     const vence = enDias(15).slice(0, 10);
@@ -407,7 +408,7 @@ describe('4. Cancelaciones: antes y después de que el técnico empiece', () => 
     ok(await a.app('POST', `/ordenes-servicio/${os.id}/iniciar`, { claveApp: a.nuevaClave() }, a.tokenTecnico2), 'iniciar');
     ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'El cliente desistió' }), 'cancelar');
     const bit = e.consulta('CRM', `SELECT Descripcion FROM Bitacora WHERE Accion = 'INSTALACION_NEXT_ERROR' ORDER BY Id DESC LIMIT 1`)[0]?.[0] ?? '';
-    expect(bit).toContain(`${os.folio} ya la(s) inició el técnico`);
+    expect(bit).toContain(`${os.folio} ya la inició el técnico`);
     expect(ok(await a.operacion('GET', `/ordenes-servicio/${os.id}`), 'detalle').data[0].estatus).toBe('borrador');
     n.paso('CRM', 'Cancela una orden que el técnico ya inició', `La del CRM se cancela; en Next ${os.folio} sigue en curso y queda anotado en la bitácora para operación`);
 

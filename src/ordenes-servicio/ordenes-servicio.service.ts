@@ -36,6 +36,7 @@ import {
 import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
+import { ROLES_MONITOREO, esMonitoreo, puedeEditar, puedeVer } from './ordenes-servicio.acceso';
 import { mapOrden } from './ordenes-servicio.map';
 import {
   AUTORIZACION,
@@ -55,14 +56,6 @@ export interface UsuarioToken {
   idCliente: number;
   rol: number;
 }
-
-/** Ven y editan cualquier orden; el técnico solo las suyas. */
-const ROLES_ADMIN_ORDENES = new Set<number>([
-  EnumRoles.SA,
-  EnumRoles.DEV,
-  EnumRoles.ADMIN,
-]);
-const ROLES_MONITORISTA = [EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO];
 
 /** Campos de guardado parcial que solo aplican a ciertos tipos. */
 const CAMPOS_POR_TIPO: Record<string, readonly TipoServicio[]> = {
@@ -119,7 +112,7 @@ export class OrdenesServicioService {
     }
     const monitoristas = await this.usuariosRepo.find({
       select: ['id', 'nombre', 'apellidoPaterno', 'apellidoMaterno'],
-      where: { idRol: In(ROLES_MONITORISTA), estatus: EstatusEnum.ACTIVO },
+      where: { idRol: In([...ROLES_MONITOREO]), estatus: EstatusEnum.ACTIVO },
       order: { nombre: 'ASC' },
     });
     return {
@@ -211,6 +204,15 @@ export class OrdenesServicioService {
 
     const cambios: Partial<OrdenesServicio> = {};
     if (dto.idProducto !== undefined) {
+      // La autorización de desinstalar es por un vehículo: no se cambia por otro.
+      if (
+        (orden.autorizacion === AUTORIZACION.PENDIENTE || orden.autorizacion === AUTORIZACION.AUTORIZADA) &&
+        Number(dto.idProducto) !== Number(orden.idProductoAutorizacion)
+      ) {
+        throw new BadRequestException(
+          'La autorización de desinstalar es para otro vehículo: no se puede cambiar el vehículo de esta orden',
+        );
+      }
       if (dto.idProducto != null) await this.validarProducto(dto.idProducto, Number(orden.idCliente));
       cambios.idProducto = dto.idProducto;
     }
@@ -319,7 +321,7 @@ export class OrdenesServicioService {
 
   async findOne(id: number, user: UsuarioToken) {
     const orden = await this.ordenesRepo.findOne({ where: { id } });
-    if (!orden || !this.puedeVer(orden, user)) {
+    if (!orden || !puedeVer(orden, user)) {
       throw new NotFoundException('Orden de servicio no encontrada');
     }
     const [respuestas, archivos, catalogo, pruebas] = await Promise.all([
@@ -337,7 +339,12 @@ export class OrdenesServicioService {
     );
     const faltantes =
       orden.estatus === ESTATUS_ORDEN.BORRADOR
-        ? faltantesParaCerrar(this.paraCierre(orden, pruebas), respuestas, archivos, catalogo)
+        ? faltantesParaCerrar(
+            this.paraCierre(orden, pruebas, await this.vehiculoConEquipo(orden)),
+            respuestas,
+            archivos,
+            catalogo,
+          )
         : [];
     return {
       data: [
@@ -411,7 +418,7 @@ export class OrdenesServicioService {
         where: { id },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!orden || !this.puedeEditar(orden, user)) {
+      if (!orden || !puedeEditar(orden, user)) {
         throw new NotFoundException('Orden de servicio no encontrada');
       }
       const folio = orden.folio ?? folioDe(Number(orden.id));
@@ -429,7 +436,12 @@ export class OrdenesServicioService {
         qr.manager.find(CatOrdenServicioOpciones, { where: { estatus: EstatusEnum.ACTIVO } }),
         qr.manager.find(OrdenServicioPruebas, { where: { idOrdenServicio: Number(orden.id) } }),
       ]);
-      const faltantes = faltantesParaCerrar(this.paraCierre(orden, pruebas), respuestas, archivos, catalogo);
+      const faltantes = faltantesParaCerrar(
+        this.paraCierre(orden, pruebas, await this.vehiculoConEquipo(orden, qr.manager)),
+        respuestas,
+        archivos,
+        catalogo,
+      );
       if (faltantes.length) {
         throw new BadRequestException({ message: 'La orden está incompleta', faltantes });
       }
@@ -493,8 +505,11 @@ export class OrdenesServicioService {
       // de la instalación existente, en la misma transacción (§12.6).
       let idInstalacionRetirada: number | null = null;
       if (orden.autorizacion === AUTORIZACION.AUTORIZADA) {
+        if (Number(orden.idProducto) !== Number(orden.idProductoAutorizacion)) {
+          throw new BadRequestException('La desinstalación se autorizó para otro vehículo');
+        }
         const existente = await qr.manager.findOne(Instalaciones, {
-          where: { idProducto: Number(orden.idProducto), estatus: EstatusEnum.ACTIVO },
+          where: { idProducto: Number(orden.idProductoAutorizacion), estatus: EstatusEnum.ACTIVO },
         });
         if (existente) {
           await this.instalacionesService.baja(
@@ -579,7 +594,7 @@ export class OrdenesServicioService {
 
   private async ordenEditable(id: number, user: UsuarioToken): Promise<OrdenesServicio> {
     const orden = await this.ordenesRepo.findOne({ where: { id } });
-    if (!orden || !this.puedeEditar(orden, user)) {
+    if (!orden || !puedeEditar(orden, user)) {
       throw new NotFoundException('Orden de servicio no encontrada');
     }
     if (orden.estatus !== ESTATUS_ORDEN.BORRADOR) {
@@ -588,20 +603,13 @@ export class OrdenesServicioService {
     return orden;
   }
 
+  /** Técnico (ni administración ni monitoreo): solo ve sus órdenes en el listado. */
   private esTecnico(user: UsuarioToken): boolean {
-    return !ROLES_ADMIN_ORDENES.has(Number(user.rol)) && !ROLES_MONITORISTA.includes(Number(user.rol));
-  }
-
-  private puedeEditar(orden: OrdenesServicio, user: UsuarioToken): boolean {
-    return ROLES_ADMIN_ORDENES.has(Number(user.rol)) || Number(orden.idTecnico) === Number(user.userId);
-  }
-
-  private puedeVer(orden: OrdenesServicio, user: UsuarioToken): boolean {
-    return !this.esTecnico(user) || Number(orden.idTecnico) === Number(user.userId);
+    return !puedeEditar({ idTecnico: -1 }, user) && !esMonitoreo(user);
   }
 
   private respuestaExistente(orden: OrdenesServicio, user: UsuarioToken): ApiCrudResponse {
-    if (!this.puedeEditar(orden, user)) {
+    if (!puedeEditar(orden, user)) {
       throw new ConflictException('La claveApp ya pertenece a otra orden');
     }
     return {
@@ -642,7 +650,7 @@ export class OrdenesServicioService {
 
   private async validarMonitorista(idUsuario: number): Promise<void> {
     const u = await this.usuariosRepo.findOne({
-      where: { id: idUsuario, idRol: In(ROLES_MONITORISTA), estatus: EstatusEnum.ACTIVO },
+      where: { id: idUsuario, idRol: In([...ROLES_MONITOREO]), estatus: EstatusEnum.ACTIVO },
     });
     if (!u) {
       throw new BadRequestException('El monitorista no existe, no está activo o no tiene rol de monitoreo (4/5)');
@@ -661,7 +669,16 @@ export class OrdenesServicioService {
     return mapa;
   }
 
-  private paraCierre(o: OrdenesServicio, pruebas: Array<{ clave: string; estatus: string }> = []) {
+  /** Alta: ¿el vehículo elegido ya tiene una instalación vigente? (pide autorización para quitarla). */
+  private async vehiculoConEquipo(o: OrdenesServicio, manager = this.instalacionesRepo.manager): Promise<boolean> {
+    if (o.tipoServicio !== 'instalacion' || o.idProducto == null) return false;
+    const inst = await manager.findOne(Instalaciones, {
+      where: { idProducto: Number(o.idProducto), estatus: EstatusEnum.ACTIVO },
+    });
+    return !!inst;
+  }
+
+  private paraCierre(o: OrdenesServicio, pruebas: Array<{ clave: string; estatus: string }> = [], vehiculoConEquipo = false) {
     const n = (v: number | null) => (v == null ? null : Number(v));
     return {
       tipoServicio: o.tipoServicio,
@@ -677,6 +694,7 @@ export class OrdenesServicioService {
       codigoValidado: o.fechaCodigoValidado != null,
       autorizacion: o.autorizacion,
       pruebasSinValidar: pruebas.filter((p) => p.estatus === ESTATUS_PRUEBA.SOLICITADA).map((p) => p.clave),
+      vehiculoConEquipo,
     };
   }
 
@@ -690,20 +708,25 @@ export class OrdenesServicioService {
     }
   }
 
+  /** Bitácora después de confirmar: un fallo se anota en el log y no tumba la respuesta. */
   private async bitacora(
     mensaje: string,
     accion: string,
     datos: Record<string, unknown>,
     user: UsuarioToken,
   ): Promise<void> {
-    await this.bitacoraLogger.logToBitacora(
-      'OrdenesServicio',
-      mensaje,
-      accion,
-      datos,
-      user.userId,
-      EnumModulos.INSTALACIONES,
-      EstatusEnumBitcora.SUCCESS,
-    );
+    try {
+      await this.bitacoraLogger.logToBitacora(
+        'OrdenesServicio',
+        mensaje.slice(0, 250),
+        accion,
+        datos,
+        user.userId,
+        EnumModulos.INSTALACIONES,
+        EstatusEnumBitcora.SUCCESS,
+      );
+    } catch (e) {
+      this.logger.error(`Bitácora no registrada (${mensaje.slice(0, 80)}): ${(e as Error).message}`);
+    }
   }
 }

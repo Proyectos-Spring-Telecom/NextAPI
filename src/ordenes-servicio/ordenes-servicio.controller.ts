@@ -27,7 +27,6 @@ import type { Response } from 'express';
 import * as multer from 'multer';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { ApiCrudResponse } from 'src/common/ApiResponse';
-import { EnumRoles } from 'src/common/estatus.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
@@ -49,12 +48,14 @@ import { OrdenesServicioPdfService } from './ordenes-servicio-pdf.service';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
 import { OrdenesServicioService } from './ordenes-servicio.service';
-import { OrdenesFlujoService, ROLES_AUTORIZAN, ROLES_CODIGO } from './ordenes-flujo.service';
+import { OrdenesFlujoService } from './ordenes-flujo.service';
+import { ROLES_ADMIN, ROLES_AUTORIZAN, ROLES_ESCRIBEN, ROLES_LEEN, ROLES_TURNO } from './ordenes-servicio.acceso';
 
-const ESCRIBEN = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.TECNICO];
-const LEEN = [...ESCRIBEN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO];
-/** Programan, reprograman y cancelan desde el front: administración. */
-const OPERACION = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
+// Roles y pertenencia: ordenes-servicio.acceso.ts (un solo lugar).
+const ESCRIBEN = [...ROLES_ESCRIBEN];
+const LEEN = [...ROLES_LEEN];
+const OPERACION = [...ROLES_ADMIN];
+const ROLES_CODIGO = [...ROLES_TURNO];
 const uploadMax = Number(process.env.UPLOAD_MAX_SIZE) || 10 * 1024 * 1024;
 
 @ApiTags('Órdenes de servicio')
@@ -370,7 +371,7 @@ export class OrdenesServicioController {
   }
 
   @Post(':id/compartir')
-  @Roles(...LEEN)
+  @Roles(...ESCRIBEN)
   @ApiOperation({
     summary: 'Enlace del PDF para WhatsApp',
     description: 'Solo cerrada o no cumplida. Devuelve `url` (7 días) y `whatsapp` (wa.me con el texto; con `telefono` abre ese chat).',
@@ -381,7 +382,7 @@ export class OrdenesServicioController {
   }
 
   @Post(':id/enviar-correo')
-  @Roles(...LEEN)
+  @Roles(...ESCRIBEN)
   @ApiOperation({ summary: 'Enviar el PDF por correo (hasta 5 destinatarios)', description: 'Solo cerrada o no cumplida.' })
   @ApiParam({ name: 'id' })
   enviarCorreo(@Param('id', ParseIntPipe) id: number, @Body() dto: EnviarCorreoOrdenDto, @Request() req) {

@@ -151,7 +151,7 @@ describe('OrdenesServicioService.cerrar', () => {
 
   it('alta autorizada sobre un vehículo con equipo: baja de la existente y alta en la misma transacción', async () => {
     const { service, qr, instalaciones, updates } = build(
-      { ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', origen: 'crm' },
+      { ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', idProductoAutorizacion: 5, origen: 'crm' },
       { equipoExistente: true },
     );
     await service.cerrar(1, tecnico);
@@ -162,7 +162,7 @@ describe('OrdenesServicioService.cerrar', () => {
 
   it('alta autorizada con equipo de terceros (no registrado en Next): solo el alta', async () => {
     const { service, instalaciones, updates } = build({
-      ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', origen: 'crm',
+      ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', idProductoAutorizacion: 5, origen: 'crm',
     });
     await service.cerrar(1, tecnico);
     expect(instalaciones.baja).not.toHaveBeenCalled();

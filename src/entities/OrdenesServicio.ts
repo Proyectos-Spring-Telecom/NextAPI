@@ -16,7 +16,9 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 @Index('IX_OrdenesServicio_Tecnico_Estatus', ['idTecnico', 'estatus'])
 @Index('UQ_OrdenesServicio_ReferenciaCrm_Unidad', ['referenciaCrm', 'unidad'], { unique: true })
 @Index('IX_OrdenesServicio_Tecnico_Estatus_Cita', ['idTecnico', 'estatus', 'cita'])
-@Index('IX_OrdenesServicio_FechaActualizacion', ['fechaActualizacion'])
+@Index('IX_OrdenesServicio_FechaActualizacion', ['fechaActualizacion', 'id'])
+@Index('IX_OrdenesServicio_Estatus_CodigoExpira', ['estatus', 'codigoExpira'])
+@Index('IX_OrdenesServicio_Estatus_Autorizacion', ['estatus', 'autorizacion'])
 @Entity('OrdenesServicio')
 export class OrdenesServicio {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -152,6 +154,10 @@ export class OrdenesServicio {
   @Column('tinyint', { name: 'CodigoIntentos', default: () => "'0'" })
   codigoIntentos: number;
 
+  /** Códigos emitidos para esta orden (tope CODIGO.MAX_EMITIDOS). */
+  @Column('tinyint', { name: 'CodigosEmitidos', default: () => "'0'" })
+  codigosEmitidos: number;
+
   @Column('bigint', { name: 'IdUsuarioCodigo', nullable: true })
   idUsuarioCodigo: number | null;
 
@@ -164,6 +170,10 @@ export class OrdenesServicio {
   /** `pendiente` | `autorizada` | `rechazada`; NULL = no se pidió. */
   @Column('varchar', { name: 'Autorizacion', length: 10, nullable: true })
   autorizacion: string | null;
+
+  /** Vehículo por el que se pidió la autorización: solo ese se da de baja al cerrar. */
+  @Column('bigint', { name: 'IdProductoAutorizacion', nullable: true })
+  idProductoAutorizacion: number | null;
 
   @Column('datetime', { name: 'FechaSolicitudAutorizacion', nullable: true })
   fechaSolicitudAutorizacion: Date | null;

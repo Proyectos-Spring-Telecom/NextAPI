@@ -176,6 +176,11 @@ export class CancelarOrdenDto {
   @MaxLength(2000)
   observaciones?: string;
 
+  @ApiPropertyOptional({ description: 'Solo operación o CRM: cambia el valor por defecto del motivo' })
+  @IsOptional()
+  @IsBoolean()
+  cobrable?: boolean;
+
   @ApiPropertyOptional({ description: 'Usuario del CRM (solo integración)' })
   @IsOptional()
   @IsString()
@@ -220,6 +225,13 @@ export class CambiosOrdenesDto {
   @IsOptional()
   @IsISO8601()
   desde?: string;
+
+  @ApiPropertyOptional({ description: 'Id de la última orden recibida con ese mismo `desde` (el `despuesDe` de la respuesta anterior)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  despuesDe?: number;
 
   @ApiPropertyOptional({ default: 200, maximum: 500 })
   @IsOptional()

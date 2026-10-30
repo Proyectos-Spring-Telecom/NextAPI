@@ -395,7 +395,7 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 
 ### 12.9 Endpoints nuevos
 
-**Para el CRM** (`/api/integracion/ordenes-servicio`; solo desde la red interna). **Firma (implementado):** el mismo esquema que el CRM ya usa con springContactAPI. Headers `x-crm-timestamp` (ms) y `x-crm-signature` = HMAC-SHA256 hex de `${timestamp}.${cuerpo}` con `CRM_HMAC_SECRET`; en un GET (sin cuerpo) se firma `${METODO} ${ruta}` (`GET /integracion/ordenes-servicio/cambios?desde=…`, con o sin `/api`). Tolerancia de 5 min. Sin `CRM_HMAC_SECRET` responde 503.
+**Para el CRM** (`/api/integracion/ordenes-servicio`; solo desde la red interna). **Firma v2 (desde la remediación del 29/10/2026):** headers `x-crm-firma: v2`, `x-crm-timestamp` (ms), `x-crm-nonce` (UUID por petición) y `x-crm-signature` = HMAC-SHA256 hex de `${timestamp}.${nonce}.${MÉTODO} ${ruta}\n${cuerpo}` con `CRM_HMAC_SECRET`, donde la ruta es la que recibe NextAPI (con `/api` y la query). Cubre método, ruta y cuerpo; cada nonce se acepta una sola vez en la ventana de 5 min. La firma v1 (solo cuerpo) ya no se acepta. Sin `CRM_HMAC_SECRET` responde 503.
 
 | Método | Ruta | Uso |
 |--------|------|-----|
@@ -403,7 +403,8 @@ Una orden `no_cumplida` o `cancelada` reprogramable se reprograma con **una orde
 | PATCH | `/:id` | Reprogramar cita o técnico; solo en `programada` (si no, 409 con el estado) |
 | POST | `/:id/cancelar` | `{ claveMotivo, observaciones? }`; solo en `programada` |
 | POST | `/:id/autorizacion/decision` | `{ autorizada: bool, observaciones? }` |
-| GET | `/cambios?desde=<fecha>&limite=200` | Órdenes creadas o modificadas desde esa fecha (inclusive), de cualquier origen, con estado, tipo programado y real, motivo, cobrable, técnico, `idInstalacionResultado` y fechas. Devuelve `hasta` (pasarlo como `desde` la siguiente vez; deduplicar por `id`) y `hayMas`. Reemplaza la lectura directa de la base y la liga por aproximación |
+| GET | `/cambios?desde=<fecha>&despuesDe=<id>&limite=200` | Órdenes creadas o modificadas, ordenadas por (`fechaActualizacion`, `id`), de cualquier origen. Cursor compuesto: pasar `hasta` y `despuesDe` de la respuesta anterior; nunca se atasca aunque muchas órdenes compartan el segundo. El CRM relee con 2 min de traslape (lo confirmado tarde) y procesa de forma idempotente. `hayMas` = pedir otra página |
+| GET | `/por-referencia/:referencia` | Estado actual de las órdenes de una referencia y sus tandas (`OI-12`, `OI-12-2`…); el CRM lo consulta antes de reagendar |
 | GET | `/motivos` | El catálogo de motivos |
 
 `usuario` (opcional en todas las escrituras) es el nombre del usuario del CRM, para el registro. Con `CRM_ID_USUARIO` (Id de un usuario de Next) las acciones del CRM también quedan en la bitácora.
@@ -552,3 +553,19 @@ Mientras la App migra, `POST /` (crear la orden en campo) sigue funcionando con 
 Correcciones que encontró la batería (29/10/2026):
 - **Errores con datos además del mensaje** (`HttpStringResponseFilter`): antes se perdían; ahora van como JSON `{ message, ...datos }`. La App recibe `faltantes` al intentar cerrar una orden incompleta (§5.6) y el CRM el `idCliente` del 409 de `/integracion/clientes`. Los demás errores siguen siendo texto.
 - **Alta autorizada sobre un vehículo con equipo** (§12.6): `InstalacionesService.create` validaba el producto fuera de la transacción del cierre y no veía que la baja de la instalación anterior ya lo había liberado; ahora valida con el `manager` de la transacción.
+
+
+## 17. Remediación del 29/10/2026
+
+Ver [remediacion-ordenes-servicio.md](remediacion-ordenes-servicio.md): bugs, seguridad y deuda que encontró la revisión independiente, con la prueba de punta a punta que demuestra cada corrección. Cambios de contrato:
+- Firma v2 con nonce (§12.9).
+- Cursor de `cambios` compuesto (§12.9) y `por-referencia`.
+- Transiciones condicionales: una petición que llega cuando la orden ya cambió recibe **409** ("cambió mientras tanto").
+- La autorización de desinstalar queda ligada al vehículo (`idProductoAutorizacion`): hay que indicar el vehículo antes de pedirla, no se puede cambiar después, y solo se da de baja ese.
+- El código de verificación lo pide y valida **solo el técnico asignado**; tope de 5 códigos por orden; los intentos se descuentan de forma atómica.
+- Un alta sobre un vehículo con equipo de Next no cierra sin autorización (faltante explícito).
+- El paro de motor solo se exige si el vehículo tiene inmovilizador.
+- Compartir y enviar el PDF: técnico de la orden y administración (monitoreo solo lo ve). El PDF al cliente no lleva "cobrable" ni notas internas. WhatsApp con 10 dígitos lleva la lada 52.
+- Pruebas pedidas se anulan si la orden se cierra sin hacer el trabajo; el operador solo valida pruebas pedidas.
+- Compartir y ver el código no "cambian" la orden para el CRM.
+- DDL: `deploy/sql/OrdenesServicioEtapa4.sql`.

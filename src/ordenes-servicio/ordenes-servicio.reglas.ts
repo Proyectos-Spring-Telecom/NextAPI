@@ -56,7 +56,20 @@ export const ESTATUS_PRUEBA = {
   SOLICITADA: 'solicitada',
   CORRECTA: 'correcta',
   FALLIDA: 'fallida',
+  /** La orden se cerró sin hacer el trabajo antes de que el operador la viera. */
+  ANULADA: 'anulada',
 } as const;
+
+/**
+ * Órdenes de la etapa 1: la app las crea sola con POST / (sin origen). Mientras
+ * la app migra a programada + iniciar no exigen código ni que el operador ponga
+ * las pruebas, y el técnico las cancela sin motivo. Retirar cuando la app
+ * publique la versión con órdenes programadas y ya no queden borradores sin
+ * origen (docs/remediacion-ordenes-servicio.md 3.5).
+ */
+export function esEtapa1(o: { origen?: string | null }): boolean {
+  return !o.origen;
+}
 
 /**
  * En las órdenes programadas el resultado de las pruebas lo pone el operador
@@ -64,11 +77,31 @@ export const ESTATUS_PRUEBA = {
  * hay equipo que probar: el técnico las contesta.
  */
 export function pruebasLasValidaElOperador(o: { origen?: string | null; tipoServicio: string }): boolean {
-  return !!o.origen && o.tipoServicio !== 'desinstalacion';
+  return !esEtapa1(o) && o.tipoServicio !== 'desinstalacion';
+}
+
+/**
+ * Pruebas que debe tener la orden: todas las del catálogo, salvo el paro de
+ * motor cuando el vehículo no tiene inmovilizador (respuesta "no" en
+ * vehiculo_cuenta_con.inmovilizador).
+ */
+export function pruebaRequerida(
+  clave: string,
+  respuestas: Array<{ seccion: string; clave: string; valor: number }>,
+): boolean {
+  if (clave !== 'paro_motor') return true;
+  const inm = respuestas.find((r) => r.seccion === 'vehiculo_cuenta_con' && r.clave === 'inmovilizador');
+  return !inm || Number(inm.valor) === 1;
 }
 
 /** Código de verificación de mantenimientos (§12.5). */
-export const CODIGO = { DIGITOS: 6, VIGENCIA_MIN: 15, INTENTOS: 5 } as const;
+export const CODIGO = {
+  DIGITOS: 6,
+  VIGENCIA_MIN: 15,
+  INTENTOS: 5,
+  /** Códigos por orden: evita reiniciar los intentos pidiendo otro sin fin. */
+  MAX_EMITIDOS: 5,
+} as const;
 
 /** Desinstalación: la instalación queda inactiva (0) o inservible (5). */
 export const ESTATUS_BAJA_PERMITIDOS = [0, 5] as const;
@@ -95,6 +128,8 @@ export interface OrdenParaCierre {
   autorizacion?: string | null;
   /** Etapa 3: pruebas pedidas al operador que aún no verifica. */
   pruebasSinValidar?: string[];
+  /** Alta: el vehículo elegido ya tiene una instalación vigente en Next. */
+  vehiculoConEquipo?: boolean;
 }
 
 export function esTipoServicio(value: unknown): value is TipoServicio {
@@ -173,6 +208,7 @@ export function faltantesParaCerrar(
   for (const seccion of SECCIONES_RESPUESTA) {
     const sinRespuesta = catalogo
       .filter((o) => o.seccion === seccion)
+      .filter((o) => seccion !== 'pruebas' || pruebaRequerida(o.clave, respuestas))
       .filter((o) => !respondidas.has(`${seccion}:${o.clave}`))
       .map((o) => o.clave);
     if (sinRespuesta.length) {
@@ -241,7 +277,7 @@ export function faltantesParaCerrar(
   }
   // Las órdenes que la app crea sola (sin origen, etapa 1) no piden código
   // mientras la app migra a programada + iniciar.
-  if (orden.origen && esMantenimiento(tipo) && !orden.codigoValidado) {
+  if (!esEtapa1(orden) && esMantenimiento(tipo) && !orden.codigoValidado) {
     faltan.push('Falta validar el código de verificación con el operador');
   }
   if (orden.pruebasSinValidar?.length) {
@@ -249,6 +285,8 @@ export function faltantesParaCerrar(
   }
   if (orden.autorizacion === AUTORIZACION.PENDIENTE) {
     faltan.push('La desinstalación del equipo existente está pendiente de autorización');
+  } else if (tipo === 'instalacion' && orden.vehiculoConEquipo && orden.autorizacion !== AUTORIZACION.AUTORIZADA) {
+    faltan.push('El vehículo ya tiene un equipo instalado: pide autorización para desinstalarlo');
   }
   return faltan;
 }

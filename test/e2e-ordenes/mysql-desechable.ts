@@ -32,7 +32,8 @@ export class MysqlDesechable {
         `--log-error=${join(this.dir, 'error.log')}`,
         '--mysqlx=OFF',
         "--sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
-        '--default-time-zone=+00:00',
+        // Igual que producción: MySQL en la hora del servidor (Etc/GMT+6) y NextAPI con DB_TZ=-00:00.
+        '--default-time-zone=-06:00',
       ],
       { stdio: 'ignore' },
     );

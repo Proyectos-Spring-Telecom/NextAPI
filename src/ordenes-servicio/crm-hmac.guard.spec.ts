@@ -1,38 +1,47 @@
 import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { CrmHmacGuard } from './crm-hmac.guard';
 
 const SECRETO = 'secreto-de-prueba-crm-1234';
-const firmar = (ts: string, cuerpo: string) => createHmac('sha256', SECRETO).update(`${ts}.${cuerpo}`).digest('hex');
+const firmar = (ts: string, nonce: string, metodo: string, ruta: string, cuerpo: string) =>
+  createHmac('sha256', SECRETO).update(`${ts}.${nonce}.${metodo} ${ruta}\n${cuerpo}`).digest('hex');
 
 function contexto(req: Record<string, unknown>) {
   return { switchToHttp: () => ({ getRequest: () => req }) } as never;
 }
 const guard = (secret = SECRETO) => new CrmHmacGuard({ get: () => secret } as never);
+const peticion = (metodo: string, ruta: string, cuerpo: string, firmaRuta = ruta, ts = String(Date.now()), nonce = randomUUID()) => ({
+  method: metodo,
+  originalUrl: ruta,
+  rawBody: cuerpo ? Buffer.from(cuerpo) : undefined,
+  headers: { 'x-crm-firma': 'v2', 'x-crm-timestamp': ts, 'x-crm-nonce': nonce, 'x-crm-signature': firmar(ts, nonce, metodo, firmaRuta, cuerpo) },
+});
 
-describe('CrmHmacGuard', () => {
-  it('acepta un POST firmado sobre el cuerpo', () => {
+describe('CrmHmacGuard (firma v2)', () => {
+  it('acepta POST y GET firmados con método, ruta y cuerpo', () => {
+    expect(guard().canActivate(contexto(peticion('POST', '/api/integracion/ordenes-servicio', '{"a":1}')))).toBe(true);
+    expect(guard().canActivate(contexto(peticion('GET', '/api/integracion/ordenes-servicio/cambios?limite=5', '')))).toBe(true);
+  });
+
+  it('una firma de una orden no sirve para otra', () => {
+    const req = peticion('POST', '/api/integracion/ordenes-servicio/2/cancelar', '{}', '/api/integracion/ordenes-servicio/1/cancelar');
+    expect(() => guard().canActivate(contexto(req))).toThrow(UnauthorizedException);
+  });
+
+  it('una firma no se acepta dos veces; dos peticiones iguales con nonces distintos sí', () => {
     const ts = String(Date.now());
-    const cuerpo = '{"tipo":"instalacion"}';
-    const req = { method: 'POST', originalUrl: '/api/integracion/ordenes-servicio', rawBody: Buffer.from(cuerpo),
-      headers: { 'x-crm-timestamp': ts, 'x-crm-signature': firmar(ts, cuerpo) } };
+    const req = peticion('POST', '/api/integracion/ordenes-servicio/9/cancelar', '{"x":2}', undefined, ts);
     expect(guard().canActivate(contexto(req))).toBe(true);
+    expect(() => guard().canActivate(contexto(req))).toThrow('ya usada');
+    const otra = peticion('POST', '/api/integracion/ordenes-servicio/9/cancelar', '{"x":2}', undefined, ts);
+    expect(guard().canActivate(contexto(otra))).toBe(true);
   });
 
-  it('acepta un GET firmado con o sin el prefijo /api, como lo hace el CRM', () => {
-    const ts = String(Date.now());
-    const url = '/api/integracion/ordenes-servicio/cambios?desde=2026-10-30T00:00:00Z';
-    for (const ruta of [url, url.replace('/api', '')]) {
-      const req = { method: 'GET', originalUrl: url, headers: { 'x-crm-timestamp': ts, 'x-crm-signature': firmar(ts, `GET ${ruta}`) } };
-      expect(guard().canActivate(contexto(req))).toBe(true);
-    }
-  });
-
-  it('rechaza firma alterada, timestamp viejo o secreto sin configurar', () => {
-    const viejo = String(Date.now() - 10 * 60_000);
-    const cuerpo = '{}';
-    const mala = { method: 'POST', originalUrl: '/x', rawBody: Buffer.from(cuerpo), headers: { 'x-crm-timestamp': viejo, 'x-crm-signature': firmar(viejo, cuerpo) } };
-    expect(() => guard().canActivate(contexto(mala))).toThrow(UnauthorizedException);
-    expect(() => guard('').canActivate(contexto(mala))).toThrow(ServiceUnavailableException);
+  it('rechaza la firma v1, el timestamp vencido y el secreto sin configurar', () => {
+    const v1 = { ...peticion('POST', '/x', '{}'), headers: { 'x-crm-timestamp': String(Date.now()), 'x-crm-signature': 'aa' } };
+    expect(() => guard().canActivate(contexto(v1))).toThrow('versión 2');
+    const vieja = peticion('POST', '/x', '{}', '/x', String(Date.now() - 10 * 60_000));
+    expect(() => guard().canActivate(contexto(vieja))).toThrow(UnauthorizedException);
+    expect(() => guard('').canActivate(contexto(vieja))).toThrow(ServiceUnavailableException);
   });
 });

@@ -56,8 +56,14 @@ export class Actores {
     return this.e.llamar<T>(this.e.crmUrl, metodo, ruta, this.tokenCrm, cuerpo);
   }
 
-  /** Orden del CRM tal como la ve la pantalla de Instalaciones (sincroniza con Next). */
+  /** Espera la sincronización del CRM con Next (la lista la hace en segundo plano). */
+  async sincronizarCrm() {
+    return ok(await this.crm('POST', '/instalaciones/sincronizar'), 'sincronizar CRM');
+  }
+
+  /** Orden del CRM tal como la ve la pantalla de Instalaciones, después de sincronizar con Next. */
   async ordenCrm(id: number, estatus?: string) {
+    await this.sincronizarCrm();
     const lista = ok(await this.crm('GET', `/instalaciones${estatus ? `?estatus=${estatus}` : ''}`), 'listar instalaciones');
     const todas = [
       ...(lista.ordenes ?? []),
