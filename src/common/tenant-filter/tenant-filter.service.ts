@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Clientes } from 'src/entities/Clientes';
@@ -14,6 +14,19 @@ const ROLES_SIN_FILTRO = new Set([1, 2, 3, 4, 5, 8]);
  * 6
  */
 const ROLES_CLIENTE_HIJOS = new Set([6]);
+
+/**
+ * Roles que, además de su cliente, solo ven las instalaciones asignadas en
+ * `UsuariosInstalaciones` (operador 7 y usuario 9).
+ */
+const ROLES_POR_ASIGNACION = new Set([7, 9]);
+
+/** Lo que el alcance necesita del usuario del token. */
+export interface UsuarioAlcance {
+  userId: number;
+  idCliente: number;
+  rol: number;
+}
 
 /** Resultado del fragmento SQL de tenant. */
 export interface TenantFragment {
@@ -233,5 +246,85 @@ export class TenantFilterService {
     }
 
     return { sinAcceso: false, idCliente };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Asserts de alcance por recurso (un solo lugar para "¿este usuario puede ver X?")
+  // ---------------------------------------------------------------------------
+
+  /** Rol que solo ve las instalaciones que tiene asignadas. */
+  esPorAsignacion(rol: number): boolean {
+    return ROLES_POR_ASIGNACION.has(Number(rol));
+  }
+
+  /**
+   * El cliente está en el alcance del usuario; si no, 404 (no se revela que existe).
+   */
+  async assertClienteVisible(user: UsuarioAlcance, idCliente: number | null | undefined, que = 'Recurso'): Promise<void> {
+    const scope = await this.idsClientePermitidos(user.rol, user.idCliente);
+    if (!this.clienteVisibleEnScope(scope, idCliente)) {
+      throw new NotFoundException(`${que} no encontrado`);
+    }
+  }
+
+  /**
+   * La instalación (vigente) existe y el usuario la puede ver: por cliente según
+   * el rol y, para 7/9, además asignada a él. Devuelve sus datos básicos.
+   */
+  async assertInstalacionVisible(
+    user: UsuarioAlcance,
+    idInstalacion: number,
+  ): Promise<{ id: number; idCliente: number; idProducto: number; idDispositivo: number | null }> {
+    const [fila]: { id: string; idCliente: string; idProducto: string; idDispositivo: string | null }[] =
+      await this.clienteRepository.query(
+        'SELECT Id AS id, IdCliente AS idCliente, IdProducto AS idProducto, IdDispositivo AS idDispositivo FROM Instalaciones WHERE Id = ?',
+        [idInstalacion],
+      );
+    if (!fila) throw new NotFoundException('Instalación no encontrada');
+    await this.assertClienteVisible(user, Number(fila.idCliente), 'Instalación');
+    if (this.esPorAsignacion(user.rol)) {
+      const asignada = await this.clienteRepository.query(
+        'SELECT 1 FROM UsuariosInstalaciones WHERE IdUsuario = ? AND IdInstalacion = ? AND Estatus = 1 LIMIT 1',
+        [user.userId, idInstalacion],
+      );
+      if (!asignada.length) throw new NotFoundException('Instalación no encontrada');
+    }
+    return {
+      id: Number(fila.id),
+      idCliente: Number(fila.idCliente),
+      idProducto: Number(fila.idProducto),
+      idDispositivo: fila.idDispositivo == null ? null : Number(fila.idDispositivo),
+    };
+  }
+
+  /**
+   * Instalaciones a las que se limita un rol 7/9 (`'all'` para los demás, que se
+   * filtran por cliente). Para listados y reportes.
+   */
+  async idsInstalacionAsignadas(user: UsuarioAlcance): Promise<'all' | number[]> {
+    if (!this.esPorAsignacion(user.rol)) return 'all';
+    const filas: { id: string }[] = await this.clienteRepository.query(
+      'SELECT IdInstalacion AS id FROM UsuariosInstalaciones WHERE IdUsuario = ? AND Estatus = 1',
+      [user.userId],
+    );
+    return filas.map((f) => Number(f.id));
+  }
+
+  /**
+   * Cambiar el cliente padre: solo roles 1–3, el padre nuevo debe estar en su
+   * alcance y no puede ser el mismo cliente ni uno de sus descendientes (ciclo).
+   */
+  async assertPadreValido(user: UsuarioAlcance, idCliente: number, idPadre: number | null): Promise<void> {
+    if (![1, 2, 3].includes(Number(user.rol))) {
+      throw new ForbiddenException('Solo administración puede cambiar el cliente padre');
+    }
+    if (idPadre == null) return;
+    if (Number(idPadre) === Number(idCliente)) {
+      throw new ForbiddenException('Un cliente no puede ser su propio padre');
+    }
+    const descendientes = await this.getClienteHijosIds(idCliente);
+    if (descendientes.includes(Number(idPadre))) {
+      throw new ForbiddenException('El padre no puede ser un cliente que depende de este (ciclo)');
+    }
   }
 }

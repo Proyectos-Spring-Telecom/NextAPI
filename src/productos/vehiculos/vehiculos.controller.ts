@@ -211,6 +211,7 @@ export class VehiculosController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

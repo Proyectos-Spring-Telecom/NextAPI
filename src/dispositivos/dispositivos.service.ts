@@ -25,14 +25,14 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { imeiToString } from 'src/common/imei.util';
 import {
   EnumModulos,
   EnumEstatusProductoDispositivo,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
+import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
@@ -306,7 +306,7 @@ export class DispositivosService {
     }
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, alcance: UsuarioAlcance) {
     try {
       const entity = await this.repository.findOne({
         where: { id },
@@ -315,6 +315,7 @@ export class DispositivosService {
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
       }
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Dispositivo');
       return { data: mapDispositivoPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -586,6 +587,7 @@ export class DispositivosService {
     dto: UpdateDispositivoEstatusDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
@@ -595,7 +597,9 @@ export class DispositivosService {
         throw new NotFoundException('Dispositivo no encontrado');
       }
 
-      assertEstatusNoAsignado(Number(entity.estatus), 'dispositivo');
+      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
+      assertCambioEstatus(Number(entity.estatus), Number(dto.estatus), 'dispositivo');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

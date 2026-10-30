@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, FindOptionsWhere, Repository, SelectQueryBuilder } from 'typeorm';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import {
   EnumRoles,
   EnumTipoDispositivo,
@@ -301,8 +301,10 @@ export class MonitoreoService {
   async capturarFoto(
     idInstalacion: number,
     accessToken: string,
-    channelId?: number,
+    channelId: number | undefined,
+    alcance: UsuarioAlcance,
   ): Promise<TrackcamGatewayPhotoResponse> {
+    await this.tenantFilter.assertInstalacionVisible(alcance, idInstalacion);
     const device = await this.resolveTrackcamDevice(idInstalacion);
     return this.trackcamGateway.startPhoto({
       accessToken,
@@ -319,8 +321,10 @@ export class MonitoreoService {
   async capturarVideo(
     idInstalacion: number,
     accessToken: string,
-    opts?: { durationSeconds?: number; channelId?: number },
+    opts: { durationSeconds?: number; channelId?: number } | undefined,
+    alcance: UsuarioAlcance,
   ): Promise<TrackcamGatewayVideoResponse> {
+    await this.tenantFilter.assertInstalacionVisible(alcance, idInstalacion);
     const device = await this.resolveTrackcamDevice(idInstalacion);
     return this.trackcamGateway.captureVideo({
       accessToken,
@@ -559,7 +563,12 @@ export class MonitoreoService {
     idInstalacion: number,
     fechaInicioRaw: string,
     fechaFinalRaw: string,
+    alcance: UsuarioAlcance,
   ): Promise<HistoricoMonitoreoResponse> {
+    // Solo instalaciones del alcance del usuario (cliente según rol; 7/9 las asignadas).
+    // El recorte por vigencia de la instalación va con el motor de activos
+    // (docs/diagnostico-modelo.md §2: hay instalaciones migradas con VigenteDesde posterior).
+    await this.tenantFilter.assertInstalacionVisible(alcance, idInstalacion);
     try {
       let fechaInicio: string;
       let fechaFinal: string;

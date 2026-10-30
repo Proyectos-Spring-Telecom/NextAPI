@@ -77,6 +77,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -121,6 +122,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -165,6 +167,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -210,6 +213,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -356,6 +360,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -519,6 +524,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -692,6 +698,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -851,6 +858,7 @@ export class ReportesController {
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 }

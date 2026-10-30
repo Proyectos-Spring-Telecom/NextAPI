@@ -11,6 +11,10 @@ import { Server, Socket } from 'socket.io';
 import { In, Repository } from 'typeorm';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import {
+  idsPanelesAsignados,
+  panelVisiblePorAsignacion,
+} from './alarmas-alcance.util';
 
 @WebSocketGateway({
   namespace: '/alarmas',
@@ -38,7 +42,19 @@ export class AlarmasGateway
         Number(payload.rol),
         Number(payload.idCliente),
       );
-      const ids = await this.idsPanelesVisibles(scope);
+      // Roles 7/9: solo los paneles de sus instalaciones asignadas.
+      const asignados = await idsPanelesAsignados(
+        this.tenantFilter,
+        (sql, params) => this.panelRepo.query(sql, params),
+        {
+          userId: Number(payload.id),
+          idCliente: Number(payload.idCliente),
+          rol: Number(payload.rol),
+        },
+      );
+      const ids = (await this.idsPanelesVisibles(scope)).filter((id) =>
+        panelVisiblePorAsignacion(asignados, id),
+      );
       for (const id of ids) {
         await client.join(`panel:${id}`);
       }

@@ -71,6 +71,8 @@ Hay dos definiciones de "global" en el código: `ROLES_ACCESO_GLOBAL = [1, 2]` y
 | F4 | Alta | `GET /dispositivos/:id` y los 12 `PATCH …/estatus/:id` (dispositivos, trackcam, relojes, paneles, SIM, productos y subtipos) | Lectura y escritura entre clientes, sin restricción de rol. El PATCH permite poner 2 (asignado) a mano |
 | F5 | Alta | Reportes (paso por POI, velocidad, posiciones, última posición, distancia, salidas de geocerca), incidentes y alarmas | Validan el cliente pero **ignoran `UsuariosInstalaciones`**: un rol 7/9 ve todas las unidades de su cliente. Los reportes además filtran sin vigencia |
 
+**Estado (30/10/2026):** F1–F5 corregidas en alcance (cliente según el rol; 7/9 solo lo asignado; fuera de alcance → 404). El cliente padre solo lo cambian los roles 1–3 y sin ciclos. "Asignado" (2) ya no se pone a mano. Prueba: `test/e2e-ordenes/acceso.e2e-spec.ts`. **Pendiente:** recortar el histórico y los reportes por vigencia, que va con el motor (§2).
+
 **Bien filtrado:** `/monitoreo/list`, `/consola` (galería, transmisiones, sin transmisión; con recorte por vigencia), socket de monitoreo, dashboard y geocercas.
 
 ## 5. Ciclo de vida de los activos (como está)
@@ -97,7 +99,7 @@ Hay dos definiciones de "global" en el código: `ROLES_ACCESO_GLOBAL = [1, 2]` y
 
 ## 7. Siguiente paso
 
-1. **Cerrar ya las fugas F1–F5 en alcance:** cliente, rol y unidades asignadas, con pruebas de punta a punta. El recorte por vigencia va en el motor (punto 3), por lo de §2.
+1. ✅ **Fugas F1–F5 cerradas en alcance** (cliente, rol y unidades asignadas), con pruebas de punta a punta. El recorte por vigencia va en el motor (punto 3), por lo de §2.
 2. **Corregir los datos inconsistentes de §2** con un script revisado.
 3. **Diseño del motor de activos y visibilidad**, para revisarlo antes de implementar:
    - catálogo de estatus de recursos y transiciones;

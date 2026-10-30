@@ -22,7 +22,7 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 import { S3Service } from 'src/s3/s3.service';
@@ -32,7 +32,7 @@ import {
   EnumTipoProducto,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
+import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
 import { crearProductoBase } from '../crear-producto.util';
 import {
   nombreCliente,
@@ -732,6 +732,7 @@ LIMIT ${limit}
     dto: UpdateProductoEstatusDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
@@ -747,7 +748,9 @@ LIMIT ${limit}
         throw new NotFoundException('Producto del vehículo no encontrado');
       }
 
-      assertEstatusNoAsignado(Number(producto.estatus), 'producto');
+      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      await this.tenantFilter.assertClienteVisible(alcance, Number(producto.idCliente), 'Recurso');
+      assertCambioEstatus(Number(producto.estatus), Number(dto.estatus), 'producto');
 
       const estatusAnterior = Number(producto.estatus);
       const estatus = dto.estatus;

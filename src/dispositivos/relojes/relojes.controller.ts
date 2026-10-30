@@ -133,6 +133,7 @@ export class RelojesController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

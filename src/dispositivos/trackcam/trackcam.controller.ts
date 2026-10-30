@@ -133,6 +133,7 @@ export class TrackcamController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

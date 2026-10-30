@@ -21,7 +21,10 @@ import { Inmuebles } from 'src/entities/Inmuebles';
 import { CatMarcas } from 'src/entities/CatMarcas';
 import { CatModelos } from 'src/entities/CatModelos';
 import { CatTipoCombustible } from 'src/entities/CatTipoCombustible';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import {
+  TenantFilterService,
+  UsuarioAlcance,
+} from 'src/common/tenant-filter/tenant-filter.service';
 import type { Paginated } from 'src/common/ApiResponse';
 import {
   EnumTipoDispositivo,
@@ -38,6 +41,7 @@ import { UltimaPosicionDto } from './dto/ultima-posicion.dto';
 import { DistanciaDto } from './dto/distancia.dto';
 import { ReporteSalidasGeocercaDto } from './dto/salidas-geocerca.dto';
 import { ReporteSalidasGeocercaInstalacionDto } from './dto/salidas-geocerca-instalacion.dto';
+import { limitarIdsInstalacionPorAsignacion } from './helpers/alcance-instalaciones.helpers';
 import { Geocercas } from 'src/entities/Geocercas';
 import { Clientes } from 'src/entities/Clientes';
 import { nombreCliente as nombreClienteRelacion } from 'src/productos/map-relaciones.util';
@@ -657,6 +661,7 @@ export class ReportesService {
     dto: PasoPorPoiDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: PasoPorPoiResult }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -687,10 +692,13 @@ export class ReportesService {
 
       const pois = await this.cargarPuntosDelCliente(idCliente, idsPoi);
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+        ),
       );
 
       const candidatos =
@@ -765,6 +773,7 @@ export class ReportesService {
     dto: VelocidadDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: VelocidadResult }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -791,11 +800,14 @@ export class ReportesService {
         throw new BadRequestException('velocidad debe ser un número >= 0');
       }
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
-        true,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+          true,
+        ),
       );
 
       const candidatos =
@@ -843,6 +855,7 @@ export class ReportesService {
     dto: ReportePosicionesDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: ReportePosicionesResult }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -864,10 +877,13 @@ export class ReportesService {
         );
       }
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+        ),
       );
 
       const candidatos =
@@ -912,6 +928,7 @@ export class ReportesService {
     dto: UltimaPosicionDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: UltimaPosicionResult }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -933,10 +950,13 @@ export class ReportesService {
         );
       }
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+        ),
       );
 
       const candidatos =
@@ -986,6 +1006,7 @@ export class ReportesService {
     dto: DistanciaDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: DistanciaResult; paginated?: Paginated }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -1014,10 +1035,13 @@ export class ReportesService {
         );
       }
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+        ),
       );
 
       const candidatos =
@@ -1250,6 +1274,7 @@ export class ReportesService {
     dto: ReporteSalidasGeocercaDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: SalidasGeocercaResult; paginated?: Paginated }> {
     try {
       const idCliente = Number(dto.idCliente);
@@ -1288,10 +1313,13 @@ export class ReportesService {
         this.normalizeIds(dto.idsGeocerca),
       );
 
-      const idsFiltro = await this.resolverIdsInstalacionPorFiltro(
-        idCliente,
-        dto.filtro,
-        dto.valores,
+      const idsFiltro = await this.limitarPorAsignacion(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        await this.resolverIdsInstalacionPorFiltro(
+          idCliente,
+          dto.filtro,
+          dto.valores,
+        ),
       );
 
       const candidatos =
@@ -1439,6 +1467,7 @@ export class ReportesService {
     dto: ReporteSalidasGeocercaInstalacionDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: SalidasGeocercaInstalacionResult }> {
     try {
       const idInstalacion = Number(dto.idInstalacion);
@@ -1475,6 +1504,11 @@ export class ReportesService {
       }
       const idCliente = Number(instalacionRaw.idCliente);
       await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      // Roles 7/9 (F5): además del cliente, la instalación debe estar asignada.
+      await this.assertInstalacionAsignada(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        idInstalacion,
+      );
 
       const cliente = await this.clientesRepo.findOne({
         where: { id: idCliente },
@@ -1624,6 +1658,7 @@ export class ReportesService {
     dto: RecorridoSalidaGeocercaDto,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: RecorridoSalidaGeocercaResult }> {
     try {
       const idInstalacion = Number(dto.idInstalacion);
@@ -1689,6 +1724,11 @@ export class ReportesService {
       }
       const idCliente = Number(instalacionRaw.idCliente);
       await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      // Roles 7/9 (F5): además del cliente, la instalación debe estar asignada.
+      await this.assertInstalacionAsignada(
+        { userId: idUsuario, idCliente: idClienteToken, rol },
+        idInstalacion,
+      );
 
       const cliente = await this.clientesRepo.findOne({
         where: { id: idCliente },
@@ -2578,6 +2618,31 @@ export class ReportesService {
         'No puedes generar reportes para ese cliente',
       );
     }
+  }
+
+  /**
+   * Roles 7/9 (F5): limita el filtro de instalaciones a las asignadas al
+   * usuario en `UsuariosInstalaciones` (ver `limitarIdsInstalacionPorAsignacion`).
+   * Demás roles: sin cambio (ya filtrados por cliente).
+   */
+  private async limitarPorAsignacion(
+    user: UsuarioAlcance,
+    idsFiltro: number[] | null,
+  ): Promise<number[] | null> {
+    const asignadas = await this.tenantFilter.idsInstalacionAsignadas(user);
+    return limitarIdsInstalacionPorAsignacion(asignadas, idsFiltro);
+  }
+
+  /**
+   * Roles 7/9 (F5): una instalación pedida por id que no tiene asignada → 404
+   * (no se revela que existe). Demás roles: no-op (ya validado por cliente).
+   */
+  private async assertInstalacionAsignada(
+    user: UsuarioAlcance,
+    idInstalacion: number,
+  ): Promise<void> {
+    if (!this.tenantFilter.esPorAsignacion(user.rol)) return;
+    await this.tenantFilter.assertInstalacionVisible(user, idInstalacion);
   }
 
   private normalizeIds(ids?: number[]): number[] | null {

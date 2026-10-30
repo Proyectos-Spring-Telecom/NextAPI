@@ -25,13 +25,13 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import {
   EnumEstatusRecurso,
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
+import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
 import { nowMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 import { mapSimPlano, RELACIONES_SIM_LISTADO } from './map-sims.util';
 
@@ -566,6 +566,7 @@ export class SimsService {
     dto: UpdateSimEstatusDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
@@ -575,7 +576,9 @@ export class SimsService {
         throw new NotFoundException('SIM no encontrado');
       }
 
-      assertEstatusNoAsignado(Number(entity.estatus), 'SIM');
+      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
+      assertCambioEstatus(Number(entity.estatus), Number(dto.estatus), 'SIM');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

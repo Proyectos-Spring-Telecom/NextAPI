@@ -267,6 +267,7 @@ export class SimsController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

@@ -164,6 +164,7 @@ export class MonitoreoController {
       idInstalacion,
       extractBearerToken(req.headers?.authorization),
       body?.channelId,
+      req.user,
     );
   }
 
@@ -196,6 +197,7 @@ export class MonitoreoController {
         durationSeconds: body?.durationSeconds,
         channelId: body?.channelId,
       },
+      req.user,
     );
   }
 
@@ -205,7 +207,7 @@ export class MonitoreoController {
     description: [
       'Resuelve el IMEI del dispositivo de la instalación y consulta `Posiciones` entre `fechaInicio` y `fechaFinal` (inclusive).',
       'Las fechas del query se interpretan como **hora de pared** (`YYYY-MM-DD HH:mm:ss`), alineadas a `Posiciones.FechaHora` (sin conversión UTC).',
-      'No aplica filtro por cliente del token; solo requiere JWT válido.',
+      'Solo instalaciones del alcance del usuario: cliente según el rol (1–5 y 8 todas, 6 su árbol) y, para 7/9, las asignadas en `UsuariosInstalaciones`; fuera de alcance → 404.',
       '**No aplica** a instalaciones de tipo inmueble / panel (3).',
       '',
       '**Respuesta:** `{ totalDistancia, posiciones: [...] }` (sin wrapper `data`).',
@@ -241,11 +243,13 @@ export class MonitoreoController {
   async findHistorico(
     @Param('idInstalacion', ParseIntPipe) idInstalacion: number,
     @Query() query: FilterHistoricoMonitoreoDto,
+    @Request() req,
   ) {
     return this.monitoreoService.reporteHistorico(
       idInstalacion,
       query.fechaInicio,
       query.fechaFinal,
+      req.user,
     );
   }
 }

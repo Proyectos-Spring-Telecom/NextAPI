@@ -131,6 +131,7 @@ export class IncidentesController {
     return this.service.findAllList(
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
       this.parseOptionalInt(idCliente),
       this.parseOptionalInt(tipoOrigen),
     );
@@ -164,6 +165,7 @@ export class IncidentesController {
       idCliente,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
       this.parseOptionalInt(tipoOrigen),
     );
   }
@@ -208,6 +210,7 @@ export class IncidentesController {
     return this.service.findAll(
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
       pageNum,
       limitNum,
       this.parseOptionalInt(tipoOrigen),
@@ -262,6 +265,7 @@ export class IncidentesController {
       id,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 
@@ -319,6 +323,7 @@ export class IncidentesController {
       id,
       Number(req.user.idCliente),
       Number(req.user.rol),
+      Number(req.user.userId),
     );
   }
 

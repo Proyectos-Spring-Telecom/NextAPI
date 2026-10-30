@@ -20,7 +20,7 @@ import {
 } from 'src/common/ApiResponse';
 import { EnumModulos, EstatusEnum, esRolAccesoGlobal } from 'src/common/estatus.enum';
 import { S3Service } from 'src/s3/s3.service';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
@@ -466,7 +466,9 @@ ORDER BY Id ASC
   // ========================================
   // 🔹 OBTENER UN CLIENTE
   // ========================================
-  async getOneCliente(id: number) {
+  async getOneCliente(id: number, alcance?: UsuarioAlcance) {
+    // Desde el API, solo clientes del alcance del usuario (404, no se revela que existe).
+    if (alcance) await this.tenantFilter.assertClienteVisible(alcance, id, 'Cliente');
     try {
       const cliente = await this.clienteRepository.findOne({
         where: { id: id },
@@ -491,12 +493,22 @@ ORDER BY Id ASC
   async updateCliente(
     id: number,
     idUser: number,
+    alcance: UsuarioAlcance,
     updateClienteDto: UpdateClienteDto,
     fileActa?: Express.Multer.File,
     fileComprobante?: Express.Multer.File,
     fileConstanciaSituacionFiscal?: Express.Multer.File,
     fileLogotipo?: Express.Multer.File,
   ): Promise<ApiCrudResponse> {
+    // Solo clientes del alcance; el cliente padre solo lo cambia administración, sin ciclos.
+    await this.tenantFilter.assertClienteVisible(alcance, id, 'Cliente');
+    if (updateClienteDto.idPadre !== undefined) {
+      const actual = await this.clienteRepository.findOne({ select: { id: true, idPadre: true }, where: { id } });
+      const nuevo = updateClienteDto.idPadre == null ? null : Number(updateClienteDto.idPadre);
+      if (actual && (actual.idPadre == null ? null : Number(actual.idPadre)) !== nuevo) {
+        await this.tenantFilter.assertPadreValido(alcance, id, nuevo);
+      }
+    }
     try {
       //Buscamos al cliente y verificamos
       const Cliente = await this.clienteRepository.findOne({
@@ -630,7 +642,8 @@ ORDER BY Id ASC
   // ========================================
   // 🔹 ACTUALIZAR ESTATUS DEL CLIENTE
   // ========================================
-  async updateClienteStatus(id: number, idUser: number): Promise<ApiCrudResponse> {
+  async updateClienteStatus(id: number, idUser: number, alcance: UsuarioAlcance): Promise<ApiCrudResponse> {
+    await this.tenantFilter.assertClienteVisible(alcance, id, 'Cliente');
     try {
       const clienteEntidad = await this.clienteRepository.findOne({
         where: { id: id },

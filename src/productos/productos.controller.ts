@@ -171,6 +171,7 @@ export class ProductosController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

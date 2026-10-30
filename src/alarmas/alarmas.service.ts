@@ -12,6 +12,11 @@ import {
 } from 'src/common/tenant-filter/tenant-filter.service';
 import { FilterEventosDto } from './dto/filter-eventos.dto';
 import {
+  fragmentoPanelesAsignados,
+  idsPanelesAsignados,
+  panelVisiblePorAsignacion,
+} from './alarmas-alcance.util';
+import {
   calcularOnline,
   mapEventoItem,
   mapInmuebleCompleto,
@@ -70,6 +75,7 @@ export class AlarmasService {
   async findPaneles(
     rol: number,
     idClienteToken: number,
+    idUsuario: number,
     queryIdCliente?: number,
   ) {
     const { sql, params } = await this.filtroTenant(
@@ -77,6 +83,7 @@ export class AlarmasService {
       idClienteToken,
       queryIdCliente,
       'p',
+      idUsuario,
     );
     const rows = await this.dataSource.query(
       `${SQL_PANELES_BASE} ${sql} ORDER BY p.Nombre ASC`,
@@ -90,6 +97,7 @@ export class AlarmasService {
     id: number,
     rol: number,
     idClienteToken: number,
+    idUsuario: number,
   ) {
     const rows = await this.dataSource.query(
       `${SQL_PANELES_BASE} AND p.IdDispositivo = ? LIMIT 1`,
@@ -106,12 +114,18 @@ export class AlarmasService {
     if (!this.tenantFilter.clienteVisibleEnScope(scope, num(row.IdCliente))) {
       throw new ForbiddenException('No tiene acceso a este panel');
     }
+    // Roles 7/9: panel de una instalación no asignada → 404.
+    const paneles = await this.panelesAsignados(rol, idClienteToken, idUsuario);
+    if (!panelVisiblePorAsignacion(paneles, num(row.IdDispositivo))) {
+      throw new NotFoundException('Panel no encontrado');
+    }
     return this.mapPanelCompleto(row, this.thresholdMs());
   }
 
   async findUltimosEventos(
     rol: number,
     idClienteToken: number,
+    idUsuario: number,
     queryIdCliente?: number,
   ) {
     const { sql, params } = await this.filtroTenant(
@@ -119,6 +133,7 @@ export class AlarmasService {
       idClienteToken,
       queryIdCliente,
       'p',
+      idUsuario,
     );
     const paneles = await this.dataSource.query(
       `${SQL_PANELES_BASE} ${sql} ORDER BY p.Nombre ASC`,
@@ -175,6 +190,7 @@ export class AlarmasService {
   async findEventos(
     rol: number,
     idClienteToken: number,
+    idUsuario: number,
     query: FilterEventosDto,
   ): Promise<ApiResponseCommon> {
     const page = query.page ?? 1;
@@ -184,6 +200,8 @@ export class AlarmasService {
       idClienteToken,
       query.idCliente,
       'e',
+      idUsuario,
+      'e.IdPanel',
     );
 
     const extra: string[] = [];
@@ -231,7 +249,12 @@ export class AlarmasService {
     };
   }
 
-  async findEventoById(id: number, rol: number, idClienteToken: number) {
+  async findEventoById(
+    id: number,
+    rol: number,
+    idClienteToken: number,
+    idUsuario: number,
+  ) {
     const rows = await this.dataSource.query(
       `${SQL_EVENTO_JOINS} AND e.Id = ? LIMIT 1`,
       [id],
@@ -247,15 +270,26 @@ export class AlarmasService {
     if (!this.tenantFilter.clienteVisibleEnScope(scope, num(row.IdCliente))) {
       throw new ForbiddenException('No tiene acceso a este evento');
     }
+    // Roles 7/9: evento de un panel no asignado → 404.
+    const paneles = await this.panelesAsignados(rol, idClienteToken, idUsuario);
+    if (!panelVisiblePorAsignacion(paneles, num(row.IdPanel))) {
+      throw new NotFoundException('Evento no encontrado');
+    }
     return mapEventoItem(row);
   }
 
+  /**
+   * Filtro de cliente según el rol y, para roles 7/9, además solo los paneles
+   * de sus instalaciones asignadas (`columnaPanel`).
+   */
   private async filtroTenant(
     rol: number,
     idClienteToken: number,
     queryIdCliente: number | undefined,
     alias: string,
-  ) {
+    idUsuario: number,
+    columnaPanel = `${alias}.IdDispositivo`,
+  ): Promise<{ sql: string; params: unknown[] }> {
     const scope = await this.tenantFilter.idsClientePermitidos(
       rol,
       idClienteToken,
@@ -268,7 +302,27 @@ export class AlarmasService {
     if (isTenantForbidden(filtro)) {
       throw new ForbiddenException('No tiene acceso al cliente solicitado');
     }
-    return filtro;
+    const asignacion = fragmentoPanelesAsignados(
+      await this.panelesAsignados(rol, idClienteToken, idUsuario),
+      columnaPanel,
+    );
+    return {
+      sql: `${filtro.sql}${asignacion.sql}`,
+      params: [...filtro.params, ...asignacion.params],
+    };
+  }
+
+  /** Paneles de las instalaciones asignadas (roles 7/9); `'all'` para los demás. */
+  private panelesAsignados(
+    rol: number,
+    idClienteToken: number,
+    idUsuario: number,
+  ): Promise<'all' | number[]> {
+    return idsPanelesAsignados(
+      this.tenantFilter,
+      (sql, params) => this.dataSource.query(sql, params),
+      { userId: Number(idUsuario), idCliente: Number(idClienteToken), rol: Number(rol) },
+    );
   }
 
   private thresholdMs(): number {

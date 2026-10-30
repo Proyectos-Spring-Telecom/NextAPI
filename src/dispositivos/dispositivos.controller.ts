@@ -163,8 +163,8 @@ export class DispositivosController {
   @ApiResponse({ status: 200, description: 'Dispositivo encontrado' })
   @ApiResponse({ status: 404, description: 'Dispositivo no encontrado' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.dispositivosService.findOne(id);
+  async findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.dispositivosService.findOne(id, req.user);
   }
 
   @Patch('estatus/:id')
@@ -194,6 +194,7 @@ export class DispositivosController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

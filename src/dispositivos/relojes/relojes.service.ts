@@ -18,14 +18,14 @@ import {
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
-import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
+import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { imeiToString } from 'src/common/imei.util';
 import {
   EnumEstatusProductoDispositivo,
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { assertEstatusNoAsignado } from 'src/common/assert-estatus-no-asignado.util';
+import { assertCambioEstatus } from 'src/common/assert-estatus-no-asignado.util';
 import {
   crearDispositivoBase,
   obtenerTipoReloj,
@@ -313,6 +313,7 @@ export class RelojesService {
     dto: UpdateDispositivoEstatusDto,
     idCliente: number,
     idUser: number,
+    alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
       const entity = await this.repository.findOne({
@@ -328,7 +329,9 @@ export class RelojesService {
         throw new NotFoundException('Dispositivo del reloj no encontrado');
       }
 
-      assertEstatusNoAsignado(Number(dispositivo.estatus), 'dispositivo');
+      // Solo recursos del alcance del usuario (404 si no); a mano no se pone "asignado".
+      await this.tenantFilter.assertClienteVisible(alcance, Number(dispositivo.idCliente), 'Recurso');
+      assertCambioEstatus(Number(dispositivo.estatus), Number(dto.estatus), 'dispositivo');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;

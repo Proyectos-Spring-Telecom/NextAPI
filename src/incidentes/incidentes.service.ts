@@ -39,6 +39,11 @@ import {
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { CreateSeguimientoIncidenteDto } from './dto/create-seguimiento-incidente.dto';
 import { FinalizarIncidenteDto } from './dto/finalizar-incidente.dto';
+import {
+  AlcanceAsignacionIncidentes,
+  origenVisiblePorAsignacion,
+  whereIncidentesAsignados,
+} from './incidentes-alcance.util';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import {
   snapshotEventoAlarma,
@@ -53,6 +58,11 @@ import {
   RELACIONES_INCIDENTE_LISTA,
   UnidadIncidente,
 } from './map-incidentes.util';
+
+/** `where` de incidentes: una condición o ramas OR (alcance por asignación). */
+type WhereIncidentes =
+  | FindOptionsWhere<Incidentes>
+  | FindOptionsWhere<Incidentes>[];
 
 /** Medios de los seguimientos que guarda el reporte final. */
 export const MEDIO_SEGUIMIENTO_RESULTADO = 'Resultado final';
@@ -190,10 +200,75 @@ export class IncidentesService {
     }
   }
 
+  /**
+   * Roles 7/9 (F5): equipos de sus instalaciones asignadas (vigentes) en
+   * `UsuariosInstalaciones`. `null` = el rol no se limita por asignación
+   * (solo por cliente). Ver supuestos en `incidentes-alcance.util.ts`.
+   */
+  private async alcanceAsignacion(
+    idUsuario: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<AlcanceAsignacionIncidentes | null> {
+    const asignadas = await this.tenantFilter.idsInstalacionAsignadas({
+      userId: idUsuario,
+      idCliente: idClienteToken,
+      rol,
+    });
+    if (asignadas === 'all') return null;
+    if (!asignadas.length) return { imeis: [], idsDispositivo: [] };
+
+    const rows = await this.instalacionesRepo
+      .createQueryBuilder('i')
+      .innerJoin(
+        Dispositivos,
+        'd',
+        'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+      )
+      .select('d.id', 'idDispositivo')
+      .addSelect('CAST(d.imei AS CHAR)', 'imei')
+      .where('i.id IN (:...ids)', { ids: asignadas })
+      .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+      .getRawMany<{ idDispositivo: unknown; imei: unknown }>();
+
+    const imeis = new Set<string>();
+    const idsDispositivo = new Set<number>();
+    for (const row of rows) {
+      const imei = imeiToString(row.imei);
+      if (imei) imeis.add(imei);
+      const idDispositivo = Number(row.idDispositivo);
+      if (Number.isFinite(idDispositivo) && idDispositivo > 0) {
+        idsDispositivo.add(idDispositivo);
+      }
+    }
+    return { imeis: [...imeis], idsDispositivo: [...idsDispositivo] };
+  }
+
+  /**
+   * Limita un `where` a los incidentes de las unidades asignadas (roles 7/9).
+   * Demás roles: sin cambio. `null` = no ve ningún incidente.
+   */
+  private async aplicarAsignacion(
+    where: FindOptionsWhere<Incidentes>,
+    idUsuario: number,
+    idClienteToken: number,
+    rol: number,
+  ): Promise<WhereIncidentes | null> {
+    const alcance = await this.alcanceAsignacion(
+      idUsuario,
+      idClienteToken,
+      rol,
+    );
+    if (!alcance) return where;
+    const ramas = whereIncidentesAsignados(where, alcance);
+    return ramas.length ? ramas : null;
+  }
+
   private async findVisibleOrFail(
     id: number,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
     detalle = false,
   ): Promise<Incidentes> {
     const tenant = await this.tenantFilter.forTypeOrmIdCliente(
@@ -204,10 +279,21 @@ export class IncidentesService {
       throw new NotFoundException('Incidente no encontrado');
     }
 
-    const where: FindOptionsWhere<Incidentes> = {
-      id,
-      ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
-    };
+    // Roles 7/9: un incidente de una unidad no asignada → 404.
+    const where = await this.aplicarAsignacion(
+      {
+        id,
+        ...(tenant.idCliente !== undefined
+          ? { idCliente: tenant.idCliente }
+          : {}),
+      },
+      idUsuario,
+      idClienteToken,
+      rol,
+    );
+    if (!where) {
+      throw new NotFoundException('Incidente no encontrado');
+    }
 
     const entity = await this.repository.findOne({
       where,
@@ -348,11 +434,12 @@ export class IncidentesService {
   private async whereListado(
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
     idClienteFiltro?: number,
     tipoOrigen?: number,
     soloAbiertos = false,
     estatus?: number,
-  ): Promise<FindOptionsWhere<Incidentes> | null> {
+  ): Promise<WhereIncidentes | null> {
     const tenant = await this.tenantFilter.forTypeOrmIdCliente(
       rol,
       idClienteToken,
@@ -374,11 +461,16 @@ export class IncidentesService {
     }
 
     const estatusWhere = soloAbiertos ? EstatusIncidente.ABIERTO : estatus;
-    return {
-      ...(estatusWhere != null ? { estatus: estatusWhere } : {}),
-      ...(tipoOrigen != null ? { tipoOrigen } : {}),
-      ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
-    };
+    return this.aplicarAsignacion(
+      {
+        ...(estatusWhere != null ? { estatus: estatusWhere } : {}),
+        ...(tipoOrigen != null ? { tipoOrigen } : {}),
+        ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
+      },
+      idUsuario,
+      idClienteToken,
+      rol,
+    );
   }
 
   async create(
@@ -394,6 +486,18 @@ export class IncidentesService {
         idClienteToken,
         rol,
       );
+      // Roles 7/9: solo sobre unidades asignadas.
+      const alcance = await this.alcanceAsignacion(idUser, idClienteToken, rol);
+      if (
+        alcance &&
+        !origenVisiblePorAsignacion(
+          origen.tipoOrigen,
+          origen.datosOrigen,
+          alcance,
+        )
+      ) {
+        throw new ForbiddenException('Unidad fuera de alcance');
+      }
 
       const entity = this.repository.create({
         idCliente: origen.idCliente,
@@ -445,6 +549,7 @@ export class IncidentesService {
   async findAllList(
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
     idClienteFiltro?: number,
     tipoOrigen?: number,
   ): Promise<ApiResponseCommon> {
@@ -452,6 +557,7 @@ export class IncidentesService {
       const where = await this.whereListado(
         idClienteToken,
         rol,
+        idUsuario,
         idClienteFiltro,
         tipoOrigen,
         true,
@@ -477,18 +583,29 @@ export class IncidentesService {
     idCliente: number,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
     tipoOrigen?: number,
   ): Promise<ApiResponseCommon> {
     try {
       await this.assertClienteExiste(idCliente);
       await this.assertClienteEnAlcance(idCliente, idClienteToken, rol);
 
-      const data = await this.repository.find({
-        where: {
+      const where = await this.aplicarAsignacion(
+        {
           idCliente,
           estatus: EstatusIncidente.ABIERTO,
           ...(tipoOrigen != null ? { tipoOrigen } : {}),
         },
+        idUsuario,
+        idClienteToken,
+        rol,
+      );
+      if (!where) {
+        return { data: [] };
+      }
+
+      const data = await this.repository.find({
+        where,
         relations: [...RELACIONES_INCIDENTE_LISTA],
         order: { fechaInicio: 'DESC', id: 'DESC' },
       });
@@ -503,6 +620,7 @@ export class IncidentesService {
   async findAll(
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
     page: number,
     limit: number,
     tipoOrigen?: number,
@@ -513,6 +631,7 @@ export class IncidentesService {
       const where = await this.whereListado(
         idClienteToken,
         rol,
+        idUsuario,
         idClienteFiltro,
         tipoOrigen,
         false,
@@ -552,8 +671,15 @@ export class IncidentesService {
     id: number,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<{ data: ReturnType<typeof mapIncidentePlano> }> {
-    const entity = await this.findVisibleOrFail(id, idClienteToken, rol, true);
+    const entity = await this.findVisibleOrFail(
+      id,
+      idClienteToken,
+      rol,
+      idUsuario,
+      true,
+    );
     const [data] = await this.mapConUnidad([entity], true);
     return { data };
   }
@@ -571,7 +697,12 @@ export class IncidentesService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
+      const entity = await this.findVisibleOrFail(
+        id,
+        idClienteToken,
+        rol,
+        idUser,
+      );
       if (Number(entity.estatus) !== EstatusIncidente.ABIERTO) {
         throw new BadRequestException('El reporte ya fue finalizado');
       }
@@ -660,7 +791,12 @@ export class IncidentesService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
+      const entity = await this.findVisibleOrFail(
+        id,
+        idClienteToken,
+        rol,
+        idUser,
+      );
       if (dto.descripcion !== undefined) {
         entity.descripcion = dto.descripcion?.trim() || null;
       }
@@ -704,7 +840,12 @@ export class IncidentesService {
     idUser: number,
   ): Promise<ApiCrudResponse> {
     try {
-      const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
+      const entity = await this.findVisibleOrFail(
+        id,
+        idClienteToken,
+        rol,
+        idUser,
+      );
       const estatusAnterior =
         Number(entity.estatus) === EstatusIncidente.ABIERTO
           ? EstatusIncidente.ABIERTO
@@ -766,6 +907,7 @@ export class IncidentesService {
         idIncidente,
         idClienteToken,
         rol,
+        idUser,
       );
       if (Number(incidente.estatus) !== EstatusIncidente.ABIERTO) {
         throw new BadRequestException(
@@ -820,8 +962,14 @@ export class IncidentesService {
     idIncidente: number,
     idClienteToken: number,
     rol: number,
+    idUsuario: number,
   ): Promise<ApiResponseCommon> {
-    await this.findVisibleOrFail(idIncidente, idClienteToken, rol);
+    await this.findVisibleOrFail(
+      idIncidente,
+      idClienteToken,
+      rol,
+      idUsuario,
+    );
     const data = await this.seguimientoRepo.find({
       where: { idIncidente },
       relations: ['idUsuario2'],

@@ -29,6 +29,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 13 | Catálogo de eventos (1–71): nombres corregidos y cómo tratar cada uno | **Alta** | No: cambia el texto de `nombreEvento` |
 | 14 | Finalizar incidentes ("Finalizar reporte") | **Alta**: sin esto las alertas repetidas solo se agregan como seguimiento | Sí: un incidente nunca se cierra |
 | 15 | Relojes: ubicación aproximada (sin GPS) | **Alta** | No |
+| 17 | Alcance: 404 fuera de alcance, roles 7/9 solo lo asignado, `idPadre` solo administración, sin estatus 2 a mano | **Alta** | Sí: pantallas que esperaban ver de más |
 | 16 | Órdenes de servicio etapa 2: códigos por dictar, autorizaciones, programar, motivos; etiqueta ICCID y Reasignar; remediación (409, notas internas, reiniciar códigos, permisos de compartir) | **Alta**: sin la pantalla de códigos no se cierran los mantenimientos programados | No: las órdenes de la app actual siguen igual |
 
 ---
@@ -360,4 +361,13 @@ Implementado en NextAPI `dev-isra` (commits `2e21da1` y `d8471f1`). Contrato com
 - **Autorización de desinstalar** ligada al vehículo: el técnico indica el vehículo antes de pedirla y ya no se puede cambiar. Mostrar el vehículo de la autorización en la pantalla de autorizaciones.
 - **Pruebas**: el paro de motor solo se pide si el vehículo tiene inmovilizador. Estatus nuevo de prueba `anulada` (la orden se cerró sin hacer el trabajo): mostrarla en gris. Solo se validan pruebas `solicitada`.
 - **Cancelar** una orden ya cancelada responde 200 con `data.claveMotivo` (el motivo con el que quedó).
+
+## 17. Alcance: quién ve qué (30/10/2026)
+
+NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-modelo.md](diagnostico-modelo.md) §4). Lo que cambia para el front:
+
+- **Fuera de alcance → 404**: histórico de posiciones, foto y video a demanda, detalle de cliente y de dispositivo, cambios de estatus de recursos, reportes, incidentes y alarmas. El front debe tratarlo como "no existe", no como un error de servidor.
+- **Roles 7 y 9** (operador, usuario) ven en reportes, incidentes, alarmas y el histórico **solo las unidades que tienen asignadas**, igual que en monitoreo y consola. Un reporte sin unidades asignadas sale vacío.
+- **Cliente padre (`idPadre`)**: solo los roles 1–3 lo cambian (403 a los demás) y no puede crear un ciclo. Si el formulario manda el mismo `idPadre` que ya tiene, no pasa nada.
+- **Estatus "asignado" (2)** de dispositivo, SIM o producto ya no se pone a mano (400): lo pone la instalación. Quitar el 2 del selector de estatus.
 

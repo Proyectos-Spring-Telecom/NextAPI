@@ -132,6 +132,7 @@ export class ActivosController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

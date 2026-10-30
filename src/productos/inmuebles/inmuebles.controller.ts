@@ -140,6 +140,7 @@ export class InmueblesController {
       dto,
       req.user.idCliente,
       req.user.userId,
+      req.user,
     );
   }
 

@@ -43,6 +43,7 @@ export class AlarmasController {
     return this.alarmasService.findPaneles(
       req.user.rol,
       req.user.idCliente,
+      req.user.userId,
       query.idCliente,
     );
   }
@@ -64,6 +65,7 @@ export class AlarmasController {
       id,
       req.user.rol,
       req.user.idCliente,
+      req.user.userId,
     );
   }
 
@@ -82,6 +84,7 @@ export class AlarmasController {
     return this.alarmasService.findUltimosEventos(
       req.user.rol,
       req.user.idCliente,
+      req.user.userId,
       query.idCliente,
     );
   }
@@ -98,6 +101,7 @@ export class AlarmasController {
     return this.alarmasService.findEventos(
       req.user.rol,
       req.user.idCliente,
+      req.user.userId,
       query,
     );
   }
@@ -119,6 +123,7 @@ export class AlarmasController {
       id,
       req.user.rol,
       req.user.idCliente,
+      req.user.userId,
     );
   }
 }

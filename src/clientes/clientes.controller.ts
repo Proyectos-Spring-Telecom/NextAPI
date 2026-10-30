@@ -232,7 +232,7 @@ export class ClientesController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   @ApiResponse({ status: 404, description: 'Cliente no encontrado' })
   async getOneCliente(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.clientesService.getOneCliente(id);
+    return this.clientesService.getOneCliente(id, req.user);
   }
 
   // ==================== PATCH ====================
@@ -261,7 +261,7 @@ export class ClientesController {
     @Request() req,
   ): Promise<ApiCrudResponse> {
     const idUser = req.user.userId;
-    return this.clientesService.updateClienteStatus(id, idUser);
+    return this.clientesService.updateClienteStatus(id, idUser, req.user);
   }
 
   @Patch(':id')
@@ -305,6 +305,7 @@ export class ClientesController {
     return await this.clientesService.updateCliente(
       id,
       idUser,
+      req.user,
       updateClienteDto,
       files?.actaConstitutiva?.[0],
       files?.comprobanteDomicilio?.[0],

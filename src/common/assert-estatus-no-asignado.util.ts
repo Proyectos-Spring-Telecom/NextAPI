@@ -14,3 +14,20 @@ export function assertEstatusNoAsignado(
     );
   }
 }
+
+/**
+ * Cambio de estatus a mano de un componente: no si está asignado (2) y tampoco
+ * a 2, que solo lo pone una instalación (si no, queda "asignado" sin instalación).
+ */
+export function assertCambioEstatus(
+  estatusActual: number,
+  estatusNuevo: number,
+  nombreComponente: 'producto' | 'dispositivo' | 'SIM',
+): void {
+  assertEstatusNoAsignado(estatusActual, nombreComponente);
+  if (Number(estatusNuevo) === EnumEstatusProductoDispositivo.ASIGNADO) {
+    throw new BadRequestException(
+      `El estatus "asignado" del ${nombreComponente} solo lo pone una instalación.`,
+    );
+  }
+}
