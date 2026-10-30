@@ -10,6 +10,11 @@ import { DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Activos } from 'src/entities/Activos';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
+import { S3Service } from 'src/s3/s3.service';
+import {
+  ACTIVOS_S3_FOLDER,
+  ProductoFotoUploadFiles,
+} from '../personas/personas-upload.interceptor';
 import { CreateActivosDto } from './dto/create-activos.dto';
 import { UpdateActivosDto } from './dto/update-activos.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
@@ -42,6 +47,7 @@ export class ActivosService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly s3Service: S3Service,
   ) { }
 
   private nombreDisplay(entity: Activos): string {
@@ -61,6 +67,7 @@ export class ActivosService {
       nombreProducto: producto?.nombre ?? item.nombre,
       estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
+      foto: item.foto ?? null,
       nombreCliente: nombreCliente(cliente),
       idTipoProducto:
         tipoProducto?.id != null ? Number(tipoProducto.id) : null,
@@ -74,8 +81,14 @@ export class ActivosService {
   async create(
     dto: CreateActivosDto,
     idUser: number,
+    files: ProductoFotoUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
+    // Igual que Personas: la foto se sube a S3 antes de guardar (carpeta propia).
+    const archivo = files.foto?.[0];
+    const foto = archivo
+      ? (await this.s3Service.uploadFile(archivo, ACTIVOS_S3_FOLDER, idUser, EnumModulos.ACTIVOS)).url
+      : null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -91,6 +104,7 @@ export class ActivosService {
         idCliente,
         nombre: dto.nombre,
         descripcion: dto.descripcion ?? null,
+        foto,
       });
       const saved = await queryRunner.manager.save(entity);
       await queryRunner.commitTransaction();
@@ -233,19 +247,42 @@ export class ActivosService {
   async update(
     id: number,
     dto: UpdateActivosDto,
-    idCliente: number,
+    idClienteToken: number,
     idUser: number,
+    files: ProductoFotoUploadFiles = {},
+    rol?: number,
   ): Promise<ApiCrudResponse> {
+    let idCliente = idClienteToken;
     try {
-      const entity = await this.repository.findOne({
-        where: { idProducto: id, idCliente },
-      });
+      // Puede ser de otro cliente dentro del alcance del rol (no solo el del token), igual que Personas.
+      const entity = await this.repository.findOne({ where: { idProducto: id } });
       if (!entity) {
         throw new NotFoundException('Activo no encontrado');
       }
+      if (rol != null) {
+        const scope = await this.tenantFilter.idsClientePermitidos(rol, idClienteToken);
+        if (!this.tenantFilter.clienteVisibleEnScope(scope, Number(entity.idCliente))) {
+          throw new NotFoundException('Activo no encontrado');
+        }
+      } else if (Number(entity.idCliente) !== Number(idClienteToken)) {
+        throw new NotFoundException('Activo no encontrado');
+      }
+      idCliente = Number(entity.idCliente);
 
       if (dto.nombre !== undefined) entity.nombre = dto.nombre;
       if (dto.descripcion !== undefined) entity.descripcion = dto.descripcion;
+      const archivo = files.foto?.[0];
+      if (archivo) {
+        // Reemplaza la foto anterior en S3.
+        const { url } = await this.s3Service.updateFile(
+          entity.foto,
+          archivo,
+          ACTIVOS_S3_FOLDER,
+          idUser,
+          EnumModulos.ACTIVOS,
+        );
+        entity.foto = url;
+      }
       await this.repository.save(entity);
 
       if (dto.nombre !== undefined) {

@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { transformOptionalNumber } from 'src/common/transforms/form-data.transforms';
 import {
   IsInt,
   IsNotEmpty,
@@ -12,6 +14,7 @@ export class CreateActivosDto {
     description: 'ID del cliente/tenant propietario. Obligatorio.',
     example: 11,
   })
+  @Transform(transformOptionalNumber)
   @IsInt()
   @IsNotEmpty()
   idCliente!: number;

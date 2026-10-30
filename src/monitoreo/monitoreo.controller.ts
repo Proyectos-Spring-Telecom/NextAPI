@@ -51,6 +51,8 @@ export class MonitoreoController {
       '**GPS (vehículo 1, activo 2, persona 4):** un solo objeto plano = contexto del producto +',
       'campos de `UltimaPosicion` (null si no hay fila). Sin JSON anidados.',
       'Vehículo (1) además: `colorVehiculo`, `numeroSerieVehiculo` (planos).',
+      'Persona (4) además: `persona` (nombre) y `fotoPersona` (URL S3, carpeta `personas`; null si no tiene).',
+      'Todos: `geocercas` = nombres de las geocercas activas asignadas a la instalación (null si no tiene).',
       '',
       '**Inmueble / panel (3):** no usa UltimaPosicion ni rutas de foto/video.',
       'Campos: cliente, imei, inmueble, economico, numeroSerie, estatus, modelo, marca,',
