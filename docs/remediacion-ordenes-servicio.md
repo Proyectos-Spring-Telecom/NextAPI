@@ -6,7 +6,7 @@ Ruta para quitar los bugs, vicios y deuda técnica que encontró la revisión in
 
 Estado: ⬜ pendiente · 🟨 en curso · ✅ hecho (con la prueba que lo demuestra).
 
-**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026 (tras la segunda revisión): 57/57 sobre el esquema real de producción, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
+**Pruebas que lo demuestran:** `test/e2e-ordenes/robustez.e2e-spec.ts` (un caso por hallazgo, numerado como en esta tabla), `reglas-flujo.e2e-spec.ts` (reglas del flujo contra MySQL real; reemplazan a las unitarias con repositorio simulado) y `flujo-ordenes.e2e-spec.ts` (los cuatro escenarios de negocio). Corrida del 29/10/2026 (tras la tercera revisión): 61/61 sobre el esquema real de producción, con la zona horaria de producción (MySQL `-06:00`, NextAPI `DB_TZ=-00:00`).
 
 **Otros hallazgos de la propia batería:** bitácora demasiado larga al programar muchas unidades (500 después de guardar) → resumen y la bitácora ya no tumba una operación confirmada; dos peticiones idénticas del CRM en el mismo milisegundo → nonce por petición.
 
@@ -81,6 +81,20 @@ Una segunda revisión independiente, sobre las correcciones anteriores, encontr�
 | R2.12 | CRM | Orden de bloqueo distinto entre cobrar y cancelar (deadlock) | Ambos bloquean primero la orden (`FOR UPDATE`) | ✅ |
 | R2.13 | CRM | Un registro malo de Next tumbaba toda la sincronización; sobreprecios "con el corte" que fallaban no se reintentaban | Revisión por orden con aviso y se sigue; el barrido reintenta los diferidos sin avisar otra vez; el último error queda en `SincronizacionNext` | ✅ |
 | R2.14 | Next | `os_cambiar_indice` no era idempotente con columnas distintas; las órdenes de la etapa 1 pedían "vehículo con equipo" | Compara columnas y cambia en un solo `ALTER`; el faltante no aplica a la etapa 1 | ✅ |
+
+## Tercera revisión (29/10/2026)
+
+Revisión independiente de la segunda ronda. Pruebas: bloque "Tercera revisión" (`[R3.n]`) y unitarias del CRM.
+
+| # | Dónde | Hallazgo | Remedio | Estado |
+|---|-------|----------|---------|--------|
+| R3.1 | CRM | Una cancelación en espera de reintento salía después de un reagendado y lo deshacía | La última operación gana: toda operación nueva reemplaza lo pendiente de esa orden de Next, sea del tipo que sea | ✅ |
+| R3.2 | CRM | Una operación abandonada a la mitad (proceso caído) se reenviaba después de una más nueva | No sale una operación mientras haya una anterior de la misma orden en curso; al recuperar una abandonada, si ya hay una más nueva queda `reemplazada` | ✅ |
+| R3.3 | CRM | Cancelar la orden cancelaba el sobreprecio de unidades cerradas en Next aún sin sincronizar, o en curso (desinstalación quizá hecha), sin aviso; un sobreprecio «con el corte» de una unidad hecha en una orden cancelada nunca se cobraba | Se refresca de Next antes de cancelar; solo se cancela lo que Next confirma que no se hizo (programada, cancelada, no cumplida). El barrido cobra lo cerrado y cancela lo que Next termine sin hacer; «mandar a cobranza» en una orden cancelada solo toma unidades cerradas | ✅ |
+| R3.4 | Next/CRM | Cancelar una orden ya cancelada por operación dejaba en el CRM el motivo del CRM | Next devuelve `data.claveMotivo`; el CRM guarda ese | ✅ |
+| R3.5 | CRM | Editar la orden (cita, lugar…) podía reabrir una ya instalada o cancelada mientras tanto | Condicional a que siga abierta; 409 (unitaria) | ✅ |
+| R3.6 | CRM | El barrido repetía el mismo aviso en cada corrida | No se repite el último aviso igual de la misma orden (unitaria) | ✅ |
+| R3.7 | CRM | `028` no llevaba a la forma actual una `OperacionesNext` creada por su versión anterior | El procedimiento agrega `ProximoIntento`, amplía `Estatus` y ajusta índices (probado: versión anterior + nueva dos veces) | ✅ |
 
 DDL: `deploy/sql/OrdenesServicioEtapa4.sql` (Next, agrega `NotasInternas`) y `crmAPI/sql/028_remediacion_next.sql` (reescrito: idempotente, `ProximoIntento`, estatus `en_curso`/`reemplazada`). Ninguno se había aplicado en producción.
 

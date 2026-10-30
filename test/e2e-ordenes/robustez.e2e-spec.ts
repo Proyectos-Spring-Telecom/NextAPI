@@ -160,7 +160,7 @@ describe('Integridad', () => {
     expect(new Date(det.cita).getUTCHours()).toBe(16);
   });
 
-  it('[1.7][1.8] autorizar "con el corte" en un alta funciona; dos autorizaciones = dos cargos; cancelar los cancela', async () => {
+  it('[1.7][1.8] autorizar "con el corte" en un alta funciona; dos autorizaciones = dos cargos; se cancelan cuando Next confirma que no se hicieron', async () => {
     const v1 = await vehiculoConEquipo();
     const v2 = await vehiculoConEquipo();
     const o = await orden(2);
@@ -176,8 +176,13 @@ describe('Integridad', () => {
     expect(sobre.map((f) => [Number(f[0]), f[1]])).toEqual([[300, 'FECHA'], [500, 'CORTE']]);
     expect(sobre[0][2]).not.toBe('NULL');
     ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Desistió' }), 'cancelar');
-    const cargos = e.consulta('CRM', `SELECT Estatus FROM Cargos WHERE IdOrdenInstalacion = ${o.idOrden}`);
-    expect(cargos.every((f) => f[0] === 'CANCELADO')).toBe(true);
+    // Las dos siguen en curso en Next (pudieron desinstalar ya): el cargo espera a que Next las resuelva.
+    const cargos = () => e.consulta('CRM', `SELECT Estatus FROM Cargos WHERE IdOrdenInstalacion = ${o.idOrden}`).map((f) => f[0]);
+    expect(cargos()).toEqual(['PENDIENTE']);
+    for (const id of [x, y]) ok(await a.operacion('POST', `/ordenes-servicio/${id}/cancelar`, { claveMotivo: 'cancelada_por_cliente' }), 'cancelar en Next');
+    await a.sincronizarCrm();
+    expect(cargos()).toEqual(['CANCELADO']);
+    expect(e.consulta('CRM', `SELECT Estatus FROM SobreprecioAutorizaciones WHERE IdOrden = ${o.idOrden}`).map((f) => f[0])).toEqual(['CANCELADO', 'CANCELADO']);
   });
 
   it('[1.10] reagendar justo después de una no cumplida no se revierte', async () => {
@@ -381,7 +386,7 @@ describe('Segunda revisión (outbox, sincronización, cobros)', () => {
     expect(ops.map((f) => [Number(f[0]), f[1]])).toEqual([[y, 'hecha']]);
     const avisos = e.consulta('CRM', `SELECT Descripcion FROM Bitacora WHERE Accion = 'INSTALACION_NEXT_ERROR' AND Entidad = 'OrdenesInstalacion' AND IdEntidad = ${o.idOrden}`);
     expect(avisos.length).toBe(1);
-    expect(avisos[0][0]).toContain('ya la(s) inició el técnico');
+    expect(avisos[0][0]).toContain('ya la inició el técnico');
     expect(ok(await a.operacion('GET', `/ordenes-servicio/${x}`), 'detalle').data[0].estatus).toBe('borrador');
   });
 
@@ -398,3 +403,71 @@ describe('Segunda revisión (outbox, sincronización, cobros)', () => {
     expect(Number(e.consulta('CRM', `SELECT Monto FROM SobreprecioAutorizaciones WHERE IdOrdenServicioNext = ${id}`)[0][0])).toBe(300);
   });
 });
+
+describe('Tercera revisión (orden del outbox, sobreprecios de órdenes canceladas)', () => {
+  const op = (idOrden: number, idNext: number, tipo: string, payload: object, extra: string) =>
+    e.mysql.sql('CRM', `INSERT INTO OperacionesNext (IdOrden, IdOrdenServicioNext, Tipo, Payload, Intentos, Estatus, ProximoIntento, FechaActualizacion)
+      VALUES (${idOrden}, ${idNext}, '${tipo}', '${JSON.stringify(payload)}', 1, ${extra})`);
+
+  it('[R3.1] una cancelación vieja en espera no deshace un reagendado posterior', async () => {
+    const o = await orden();
+    const id = o.os[0].id;
+    op(o.idOrden, id, 'cancelar', { claveMotivo: 'otro', observaciones: 'Cancelada en el CRM' }, `'pendiente', NOW() + INTERVAL 1 HOUR, NOW()`);
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(8, 16), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'R' }), 'reagendar');
+    e.mysql.sql('CRM', `UPDATE OperacionesNext SET ProximoIntento = NOW() WHERE IdOrdenServicioNext = ${id} AND Estatus = 'pendiente'`);
+    await a.sincronizarCrm();
+    const det = ok(await a.operacion('GET', `/ordenes-servicio/${id}`), 'detalle').data[0];
+    expect(det.estatus).toBe('programada');
+    expect(new Date(det.cita).getUTCHours()).toBe(16);
+  });
+
+  it('[R3.2] una operación abandonada a la mitad no pisa a la que llegó después', async () => {
+    const o = await orden();
+    const id = o.os[0].id;
+    op(o.idOrden, id, 'reprogramar', { cita: enDias(9, 8), idTecnico: NEXT.TECNICO.id }, `'en_curso', NULL, NOW() - INTERVAL 10 MINUTE`);
+    ok(await a.crm('PATCH', `/instalaciones/${o.idOrden}`, { cita: enDias(9, 16), idTecnicoNext: NEXT.TECNICO.id, lugar: 'Patio', forzar: true, motivo: 'R' }), 'reagendar');
+    await a.sincronizarCrm();
+    const det = ok(await a.operacion('GET', `/ordenes-servicio/${id}`), 'detalle').data[0];
+    expect(new Date(det.cita).getUTCHours()).toBe(16);
+  });
+
+  it('[R3.3] cancelar la orden no cancela el sobreprecio de una unidad cerrada (aún sin sincronizar) ni de una en curso; se cobra lo hecho', async () => {
+    const v1 = await vehiculoConEquipo();
+    const v2 = await vehiculoConEquipo();
+    const o = await orden(3);
+    const [x, y] = o.os.sort((p: any, q: any) => p.unidad - q.unidad).map((z: any) => z.id);
+    for (const [u, v] of [[x, v1], [y, v2]]) {
+      ok(await a.app('POST', `/ordenes-servicio/${u}/iniciar`, { claveApp: a.nuevaClave() }), 'iniciar');
+      ok(await a.app('PATCH', `/ordenes-servicio/${u}`, { idProducto: v }), 'vehículo');
+      ok(await a.app('POST', `/ordenes-servicio/${u}/autorizacion`, {}), 'autorización');
+      ok(await a.crm('POST', `/instalaciones/autorizaciones/${u}`, { autorizada: true, sobreprecio: 500, cobro: 'CORTE' }), 'autorizar');
+    }
+    const eq = nuevoEquipo();
+    await a.checklist(x, { idDispositivoNuevo: eq.idDispositivo, idSimNuevo: eq.idSim });
+    for (const p of ['transmision', 'boton_panico', 'paro_motor']) ok(await a.app('POST', `/ordenes-servicio/${x}/pruebas/${p}/solicitar`), p);
+    await a.validarPruebas(x);
+    ok(await a.app('POST', `/ordenes-servicio/${x}/cerrar`), 'cerrar');
+    // Sin sincronizar: el CRM todavía no sabe que x se cerró.
+    ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Ya no quiere las demás' }), 'cancelar');
+    const estatus = (u: number) => e.consulta('CRM', `SELECT Estatus FROM SobreprecioAutorizaciones WHERE IdOrdenServicioNext = ${u}`)[0][0];
+    expect(estatus(x)).not.toBe('CANCELADO');
+    expect(estatus(y)).toBe('POR_COBRAR');
+    await a.sincronizarCrm();
+    // x se hizo: su sobreprecio "con el corte" se cobra aunque la orden esté cancelada.
+    expect(estatus(x)).toBe('EN_COBRANZA');
+    // y: operación la cancela en Next sin hacerla → su sobreprecio se cancela.
+    ok(await a.operacion('POST', `/ordenes-servicio/${y}/cancelar`, { claveMotivo: 'cancelada_por_cliente' }), 'cancelar y');
+    await a.sincronizarCrm();
+    expect(estatus(y)).toBe('CANCELADO');
+  });
+
+  it('[R3.4] si operación ya canceló en Next, el CRM guarda el motivo de Next, no el suyo', async () => {
+    const o = await orden();
+    const id = o.os[0].id;
+    ok(await a.operacion('POST', `/ordenes-servicio/${id}/cancelar`, { claveMotivo: 'cancelada_por_cliente' }), 'cancelar en Next');
+    ok(await a.crm('POST', `/instalaciones/${o.idOrden}/cancelar`, { motivo: 'Desistió' }), 'cancelar en CRM');
+    const motivo = e.consulta('CRM', `SELECT ClaveMotivo FROM OrdenesInstalacionNext WHERE IdOrdenServicioNext = ${id}`)[0][0];
+    expect(motivo).toBe('cancelada_por_cliente');
+  });
+});
+

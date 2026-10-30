@@ -737,10 +737,15 @@ export class OrdenesFlujoService {
    * operación (el CRM recibe 409). Las órdenes de la etapa 1 (sin origen) el
    * técnico las sigue cancelando sin motivo.
    */
-  async cancelar(id: number, dto: CancelarOrdenDto, actor: Actor): Promise<ApiCrudResponse> {
+  async cancelar(id: number, dto: CancelarOrdenDto, actor: Actor): Promise<ApiCrudResponse & { data: { claveMotivo: string | null } }> {
     const orden = actor.tipo === 'crm' ? await this.ordenDelActor(id, actor) : await this.ordenEditable(id, actor.user);
-    // Idempotente: el CRM reintenta si se perdió la respuesta.
-    if (orden.estatus === ESTATUS_ORDEN.CANCELADA) return this.ok(orden, 'La orden ya estaba cancelada');
+    // Idempotente: el CRM reintenta si se perdió la respuesta. Devuelve el motivo
+    // con el que quedó (pudo cancelarla operación con otro).
+    const respuesta = (message: string, claveMotivo: string | null) => {
+      const r = this.ok(orden, message);
+      return { ...r, data: { ...r.data!, claveMotivo } };
+    };
+    if (orden.estatus === ESTATUS_ORDEN.CANCELADA) return respuesta('La orden ya estaba cancelada', orden.claveMotivo ?? null);
     const operacion = actor.tipo === 'usuario' && esAdmin(actor.user);
     const etapa1 = esEtapa1(orden) && orden.estatus === ESTATUS_ORDEN.BORRADOR;
 
@@ -784,7 +789,7 @@ export class OrdenesFlujoService {
       await this.anularPruebas(Number(orden.id), m);
     });
     await this.bitacora(`Se canceló la orden ${this.folio(orden)}${dto.claveMotivo ? `: ${dto.claveMotivo}` : ''}`, 'UPDATE', { id, dto }, actor);
-    return this.ok(orden, 'Orden de servicio cancelada');
+    return respuesta('Orden de servicio cancelada', dto.claveMotivo ?? null);
   }
 
   // ------------------------------------------------------------------ CRM
