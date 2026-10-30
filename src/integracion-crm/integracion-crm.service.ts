@@ -81,7 +81,11 @@ export class IntegracionCrmService {
     ).then((filas: Array<Record<string, unknown>>) => filas.map((f) => ({ ...f, id: Number(f.id) })));
   }
 
-  /** Unidades activas de los clientes indicados. */
+  /**
+   * Unidades activas de los clientes indicados. `ordenFolio`: la orden de
+   * servicio (alta o cambio de equipo) que dejó la instalación vigente; con ella,
+   * `instalada` es la fecha real y el CRM no la corrige a mano.
+   */
   unidades(idsCliente: number[]) {
     if (!idsCliente.length) return Promise.resolve([]);
     return this.dataSource.query(
@@ -89,7 +93,11 @@ export class IntegracionCrmService {
               p.Nombre AS producto, tp.Nombre AS tipoProducto,
               v.Placa AS placa, v.NumeroEconomico AS economico,
               CAST(d.Imei AS CHAR) AS imei, d.NumeroSerie AS serie, td.Nombre AS dispositivo,
-              DATE_FORMAT(i.VigenteDesde, '%Y-%m-%d') AS instalada
+              DATE_FORMAT(i.VigenteDesde, '%Y-%m-%d') AS instalada,
+              (SELECT o.Folio FROM OrdenesServicio o
+                WHERE o.IdInstalacionResultado = i.Id AND o.Estatus = 'cerrada'
+                  AND o.TipoServicio IN ('instalacion', 'c_equipo')
+                ORDER BY o.FechaCierre DESC LIMIT 1) AS ordenFolio
          FROM Instalaciones i
          LEFT JOIN Productos p ON p.Id = i.IdProducto
          LEFT JOIN CatTipoProducto tp ON tp.Id = p.IdTipoProducto

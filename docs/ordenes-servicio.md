@@ -523,7 +523,7 @@ Reglas:
 | GET | `/integracion/clientes/:id` | Datos de alta (nombre, RFC, contacto, dirección) |
 | POST | `/integracion/clientes` | **Alta del cliente formalizado.** Mismo cuerpo que `POST /clientes` en JSON, con al menos un contacto de emergencia. RFC repetido → 409 con `idCliente` (para ligarlo). Requiere `CRM_ID_USUARIO` (usuario de Next que queda como autor; sin él, 503) |
 | GET | `/integracion/tecnicos` | Usuarios activos rol 8 |
-| GET | `/integracion/unidades?clientes=1,2` | Unidades activas (instalación, placa, económico, IMEI, serie, tipo, fecha) |
+| GET | `/integracion/unidades?clientes=1,2` | Unidades activas (instalación, placa, económico, IMEI, serie, tipo, fecha). `ordenFolio`: la orden (alta o cambio de equipo) que dejó vigente la instalación; con ella la fecha es la real y el CRM no la corrige a mano |
 | GET | `/integracion/unidades/conteo` | Unidades activas por cliente |
 | GET | `/integracion/sims` | SIMs con su instalación vigente (`iccid` = `Sims.IMEI`) |
 | GET | `/integracion/ordenes-realizadas?tecnicos=&clientes=&desde=&tipo=&pagables=1` | Órdenes cerradas (y con `pagables=1`, las no cumplidas cobrables) con técnico, cliente, `estatus`, `motivo`, `referenciaCrm` |
