@@ -46,7 +46,12 @@ export class Narrador {
         '',
       ]),
     ].join('\n');
-    const ruta = join(dir, `${nombre.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`);
+    const slug = nombre
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-');
+    const ruta = join(dir, `${slug}.md`);
     writeFileSync(ruta, md);
     return ruta;
   }
