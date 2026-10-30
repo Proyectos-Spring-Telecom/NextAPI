@@ -1,0 +1,22 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": "../..",
+  "roots": [
+    "<rootDir>/test/e2e-ordenes"
+  ],
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/src/$1",
+    "^uuid$": "<rootDir>/test/e2e-ordenes/uuid-cjs.ts"
+  },
+  "testRegex": "test/e2e-ordenes/.*\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "testEnvironment": "node",
+  "testTimeout": 120000,
+  "maxWorkers": 1
+}

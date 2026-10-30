@@ -82,3 +82,6 @@ nextAPI.zip
 *.img
 *.vhdx
 
+
+# Reportes de la batería de punta a punta (se generan en cada corrida)
+test/e2e-ordenes/reportes/

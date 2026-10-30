@@ -89,11 +89,17 @@ export class InstalacionesService {
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
+  /**
+   * `manager`: el de la transacción del llamador, para ver lo que ya cambió en
+   * ella (p. ej. el cierre de un alta autorizada da de baja la instalación
+   * anterior y libera el producto antes del alta).
+   */
   private async validarProducto(
     idProducto: number,
     idCliente: number,
+    manager?: EntityManager,
   ): Promise<Productos> {
-    const producto = await this.productosRepo.findOne({
+    const producto = await (manager ?? this.productosRepo.manager).findOne(Productos, {
       where: { id: idProducto, idCliente },
     });
     if (!producto) {
@@ -107,8 +113,9 @@ export class InstalacionesService {
   private async validarProductoDisponibleParaAsignar(
     idProducto: number,
     idCliente: number,
+    manager?: EntityManager,
   ): Promise<Productos> {
-    const producto = await this.validarProducto(idProducto, idCliente);
+    const producto = await this.validarProducto(idProducto, idCliente, manager);
     if (Number(producto.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
       throw new BadRequestException(
         'El producto debe estar en estatus activo (disponible)',
@@ -479,6 +486,7 @@ export class InstalacionesService {
       await this.validarProductoDisponibleParaAsignar(
         dto.idProducto,
         idCliente,
+        qr.manager,
       );
       if (dto.idDispositivo != null) {
         await this.validarDispositivoDisponibleParaAsignar(

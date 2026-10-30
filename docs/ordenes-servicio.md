@@ -544,3 +544,11 @@ Todo con el JWT del técnico (rol 8). Detalle de cada llamada en §5 y §12–§
 9. **Compartir:** `POST /:id/compartir { telefono? }` → abrir `whatsapp`; o `POST /:id/enviar-correo { correos }`. `GET /:id/pdf` para verlo.
 
 Mientras la App migra, `POST /` (crear la orden en campo) sigue funcionando con las reglas de la etapa 1.
+
+## 16. Batería de punta a punta
+
+`npm run test:e2e-ordenes` (detalle en `test/e2e-ordenes/README.md`). Levanta MySQL desechable con las bases `Next` y `CRM`, arranca NextAPI y crmAPI reales sin `.env` (secretos de prueba, RabbitMQ apagado, S3 y correo simulados) y recorre cuatro escenarios con los actores reales (CRM, App del técnico, monitoreo, operación): instalación de varias unidades con no cumplida y reagendado hasta el pago al técnico; mantenimiento corregido en campo con código; vehículo con equipo existente (rechazo y autorización con sobreprecio a cobranza); cancelaciones. Deja un reporte narrado por corrida en `test/e2e-ordenes/reportes/`, para explicar el modelo a los usuarios.
+
+Correcciones que encontró la batería (29/10/2026):
+- **Errores con datos además del mensaje** (`HttpStringResponseFilter`): antes se perdían; ahora van como JSON `{ message, ...datos }`. La App recibe `faltantes` al intentar cerrar una orden incompleta (§5.6) y el CRM el `idCliente` del 409 de `/integracion/clientes`. Los demás errores siguen siendo texto.
+- **Alta autorizada sobre un vehículo con equipo** (§12.6): `InstalacionesService.create` validaba el producto fuera de la transacción del cierre y no veía que la baja de la instalación anterior ya lo había liberado; ahora valida con el `manager` de la transacción.
