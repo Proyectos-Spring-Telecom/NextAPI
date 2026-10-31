@@ -1,4 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  transformOptionalNumber,
+  transformOptionalString,
+} from 'src/common/transforms/form-data.transforms';
 import {
   IsInt,
   IsNotEmpty,
@@ -12,6 +17,7 @@ export class CreatePersonasDto {
     description: 'ID del cliente/tenant propietario. Obligatorio.',
     example: 11,
   })
+  @Transform(transformOptionalNumber)
   @IsInt()
   @IsNotEmpty()
   idCliente!: number;
@@ -21,6 +27,7 @@ export class CreatePersonasDto {
     example: 'Juan Pérez',
     maxLength: 250,
   })
+  @Transform(transformOptionalString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(250)
@@ -32,6 +39,7 @@ export class CreatePersonasDto {
     maxLength: 20,
   })
   @IsOptional()
+  @Transform(transformOptionalString)
   @IsString()
   @MaxLength(20)
   telefono?: string;

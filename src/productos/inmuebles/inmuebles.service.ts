@@ -10,6 +10,11 @@ import { DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { Inmuebles } from 'src/entities/Inmuebles';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
+import { S3Service } from 'src/s3/s3.service';
+import {
+  INMUEBLES_S3_FOLDER,
+  ProductoFotoUploadFiles,
+} from '../personas/personas-upload.interceptor';
 import { CreateInmueblesDto } from './dto/create-inmuebles.dto';
 import { UpdateInmueblesDto } from './dto/update-inmuebles.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
@@ -43,6 +48,7 @@ export class InmueblesService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly motor: MotorActivosService,
+    private readonly s3Service: S3Service,
   ) { }
 
   private nombreDisplay(entity: Inmuebles): string {
@@ -66,6 +72,7 @@ export class InmueblesService {
       nombreProducto: producto?.nombre ?? item.inmueble,
       estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
+      foto: item.foto ?? null,
       nombreCliente: nombreCliente(cliente),
       idTipoProducto:
         tipoProducto?.id != null ? Number(tipoProducto.id) : null,
@@ -80,14 +87,20 @@ export class InmueblesService {
     dto: CreateInmueblesDto,
     idUser: number,
     alcance: UsuarioAlcance,
+    files: ProductoFotoUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
+    // Solo un cliente del alcance de quien crea (403), antes de subir nada a S3.
+    await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+    // La foto se sube a S3 antes de guardar (carpeta propia).
+    const archivo = files.foto?.[0];
+    const foto = archivo
+      ? (await this.s3Service.uploadFile(archivo, INMUEBLES_S3_FOLDER, idUser, EnumModulos.INMUEBLES)).url
+      : null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      // Solo se da de alta en un cliente del alcance de quien crea (403 si no).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const producto = await crearProductoBase(queryRunner.manager, {
         idCliente,
         idUsuario: idUser,
@@ -105,6 +118,7 @@ export class InmueblesService {
         correoRepresentante: dto.correoRepresentante ?? null,
         lat: dto.lat ?? null,
         lng: dto.lng ?? null,
+        foto,
       });
 
       const saved = await queryRunner.manager.save(entity);
@@ -259,6 +273,7 @@ export class InmueblesService {
     dto: UpdateInmueblesDto,
     alcance: UsuarioAlcance,
     idUser: number,
+    files: ProductoFotoUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = alcance.idCliente;
     try {
@@ -286,6 +301,18 @@ export class InmueblesService {
       if (dto.lng !== undefined) updateData.lng = dto.lng;
 
       Object.assign(entity, updateData);
+      const archivo = files.foto?.[0];
+      if (archivo) {
+        // Reemplaza la foto anterior en S3.
+        const { url } = await this.s3Service.updateFile(
+          entity.foto,
+          archivo,
+          INMUEBLES_S3_FOLDER,
+          idUser,
+          EnumModulos.INMUEBLES,
+        );
+        entity.foto = url;
+      }
       await this.repository.save(entity);
 
       if (dto.inmueble !== undefined) {

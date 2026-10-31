@@ -826,6 +826,13 @@ export class MonitoreoService {
 
     applyMonitoreoListJoins(qb);
     applyMonitoreoListSelect(qb);
+    // Nombres de las geocercas activas asignadas a la instalación ("A, B"); null si no tiene.
+    qb.addSelect(
+      `(SELECT GROUP_CONCAT(DISTINCT g.Nombre ORDER BY g.Nombre SEPARATOR ', ')
+          FROM Geocercas g
+         WHERE g.IdInstalacion = i.Id AND g.Estatus = 1)`,
+      'geocercas',
+    );
     return qb;
   }
 

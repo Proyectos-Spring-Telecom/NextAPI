@@ -46,7 +46,7 @@ function activos(registro: { idProducto: number; idCliente: number } | null) {
     productosRepo as never,
     { createQueryRunner: () => qr } as never,
     bitacora as never,
-    tenant(), {} as never,
+    tenant(), {} as never, {} as never,
   );
   return { service, repository, productosRepo, manager };
 }
@@ -85,7 +85,7 @@ describe('Alcance de productos (detalle, edición y alta)', () => {
 
   it('persona ajena → 404 con el mismo mensaje que si no existiera', async () => {
     const repository = { findOne: jest.fn(async () => ({ idProducto: 7, idCliente: 20 })) };
-    const service = new PersonasService(repository as never, {} as never, {} as never, bitacora as never, tenant(), {} as never);
+    const service = new PersonasService(repository as never, {} as never, {} as never, bitacora as never, tenant(), {} as never, {} as never);
     await expect(service.findOne(7, operador)).rejects.toThrow(new NotFoundException('Persona no encontrada'));
   });
 

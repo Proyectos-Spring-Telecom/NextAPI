@@ -8,11 +8,14 @@ import {
   Post,
   Query,
   Request,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -24,6 +27,13 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { PersonasService } from './personas.service';
+import {
+  personasCreateMultipartApiBody,
+  personasFotoInterceptor,
+  personasUpdateMultipartApiBody,
+  StripEmptyPersonaFotoInterceptor,
+} from './personas-upload.interceptor';
+import type { PersonasUploadFiles } from './personas-upload.interceptor';
 import { CreatePersonasDto } from './dto/create-personas.dto';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
@@ -41,6 +51,9 @@ export class PersonasController {
   constructor(private readonly personasService: PersonasService) {}
 
   @Post()
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiBody(personasCreateMultipartApiBody)
   @ApiOperation({
     summary: 'Crear persona',
     description:
@@ -53,9 +66,10 @@ export class PersonasController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async create(
     @Body() dto: CreatePersonasDto,
+    @UploadedFiles() files: PersonasUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.personasService.create(dto, req.user.userId, req.user);
+    return this.personasService.create(dto, req.user.userId, req.user, files ?? {});
   }
 
   @Get('list')
@@ -138,6 +152,9 @@ export class PersonasController {
   }
 
   @Patch(':id')
+  @UseInterceptors(personasFotoInterceptor(), StripEmptyPersonaFotoInterceptor)
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiBody(personasUpdateMultipartApiBody)
   @ApiOperation({
     summary: 'Actualizar persona',
     description:
@@ -150,6 +167,7 @@ export class PersonasController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePersonasDto,
+    @UploadedFiles() files: PersonasUploadFiles,
     @Request() req,
   ): Promise<ApiCrudResponse> {
     return this.personasService.update(
@@ -157,6 +175,7 @@ export class PersonasController {
       dto,
       req.user,
       req.user.userId,
+      files ?? {},
     );
   }
 }

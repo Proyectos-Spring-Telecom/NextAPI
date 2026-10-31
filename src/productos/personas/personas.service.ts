@@ -11,6 +11,8 @@ import { Personas } from 'src/entities/Personas';
 import { Productos } from 'src/entities/Productos';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreatePersonasDto } from './dto/create-personas.dto';
+import { S3Service } from 'src/s3/s3.service';
+import { PERSONAS_S3_FOLDER, PersonasUploadFiles } from './personas-upload.interceptor';
 import { UpdatePersonasDto } from './dto/update-personas.dto';
 import { UpdateProductoEstatusDto } from '../dto/update-producto-estatus.dto';
 import {
@@ -43,6 +45,7 @@ export class PersonasService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly motor: MotorActivosService,
+    private readonly s3Service: S3Service,
   ) { }
 
   private nombreDisplay(entity: Personas): string {
@@ -58,6 +61,7 @@ export class PersonasService {
       id: Number(item.idProducto),
       nombrePersona: item.nombre,
       telefonoPersona: item.telefono,
+      fotoPersona: item.foto ?? null,
       nombreProducto: producto?.nombre ?? item.nombre,
       estatus: producto?.estatus != null ? Number(producto.estatus) : null,
       idCliente: Number(item.idCliente),
@@ -92,14 +96,20 @@ export class PersonasService {
     dto: CreatePersonasDto,
     idUser: number,
     alcance: UsuarioAlcance,
+    files: PersonasUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = dto.idCliente;
+    // Solo un cliente del alcance de quien crea (403), antes de subir nada a S3.
+    await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+    // La foto se sube a S3 antes de guardar (carpeta propia).
+    const archivo = files.foto?.[0];
+    const foto = archivo
+      ? (await this.s3Service.uploadFile(archivo, PERSONAS_S3_FOLDER, idUser, EnumModulos.PERSONAS)).url
+      : null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      // Solo se da de alta en un cliente del alcance de quien crea (403 si no).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       const producto = await crearProductoBase(queryRunner.manager, {
         idCliente,
         idUsuario: idUser,
@@ -112,6 +122,7 @@ export class PersonasService {
         idCliente,
         nombre: dto.nombre,
         telefono: dto.telefono ?? null,
+        foto,
       });
       const saved = await queryRunner.manager.save(entity);
       await queryRunner.commitTransaction();
@@ -258,6 +269,7 @@ export class PersonasService {
     dto: UpdatePersonasDto,
     alcance: UsuarioAlcance,
     idUser: number,
+    files: PersonasUploadFiles = {},
   ): Promise<ApiCrudResponse> {
     const idCliente = alcance.idCliente;
     try {
@@ -273,6 +285,18 @@ export class PersonasService {
 
       if (dto.nombre !== undefined) entity.nombre = dto.nombre;
       if (dto.telefono !== undefined) entity.telefono = dto.telefono;
+      const archivo = files.foto?.[0];
+      if (archivo) {
+        // Reemplaza la foto anterior en S3.
+        const { url } = await this.s3Service.updateFile(
+          entity.foto,
+          archivo,
+          PERSONAS_S3_FOLDER,
+          idUser,
+          EnumModulos.PERSONAS,
+        );
+        entity.foto = url;
+      }
       await this.repository.save(entity);
 
       if (dto.nombre !== undefined) {
