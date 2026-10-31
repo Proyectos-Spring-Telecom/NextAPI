@@ -196,7 +196,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       }
       await acksCh.assertExchange(cfg.comandos.exchange, 'topic', { durable: true });
       for (const protocolo of cfg.comandos.protocolos) {
-        const cola = `commands.${protocolo}`;
+        const cola = `${cfg.comandos.exchange}.${protocolo}`;
         await acksCh.assertQueue(cola, { durable: true });
         await acksCh.bindQueue(cola, cfg.comandos.exchange, `${protocolo}.cmd`);
       }
@@ -221,7 +221,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   /**
-   * Publica un comando en `commands` con routing key `<protocolo>.cmd` y espera
+   * Publica un comando en `telemetry.commands` con routing key `<protocolo>.cmd` y espera
    * la confirmación del broker. Sin conexión o con RabbitMQ apagado → error:
    * el comando se queda pendiente y ComandosService lo reintenta.
    */

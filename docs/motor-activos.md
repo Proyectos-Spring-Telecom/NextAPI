@@ -132,7 +132,7 @@ Todo equipo **instalado** debe transmitir. Si deja de hacerlo, **monitoreo se en
 
 Hoy la cola va en un solo sentido (sockets → Next). La configuración que se captura en Next (`RelojConfig`) nunca llega al reloj.
 
-- **Next:** tabla `ComandosDispositivo` (`Id`, `IdDispositivo`, `Tipo`, `Parametros`, `Estatus` pendiente/enviado/confirmado/fallido/vencido, `Intentos`, `IdUsuario`, fechas). Se publica en el exchange **`commands`** con routing key `<protocolo>.cmd` (outbox, igual que la ingesta).
+- **Next:** tabla `ComandosDispositivo` (`Id`, `IdDispositivo`, `Tipo`, `Parametros`, `Estatus` pendiente/enviado/confirmado/fallido/vencido, `Intentos`, `IdUsuario`, fechas). Se publica en el exchange **`telemetry.commands`** con routing key `<protocolo>.cmd` (outbox, igual que la ingesta).
 - **Sockets** (kit compartido `springSocketKit`, se cambia una vez y se sincroniza a todos): consumidor que guarda el comando en su SQLite, lo manda cuando el equipo está conectado y publica la confirmación `<protocolo>.cmd.ack` con la respuesta del equipo.
 - **Primer uso, reloj FA100S** (el protocolo lo permite):
   - **números de emergencia** `SOS1–3`, `CENTER` y agenda `PHB` (hasta 15);
@@ -370,7 +370,7 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 **Base:** `deploy/sql/MotorActivosFaseF.sql` (se puede repetir): `ComandosDispositivo` (cada comando y su recorrido) y `NumerosEmergenciaReloj` (de la persona: si cambia el reloj, se le vuelven a mandar al nuevo).
 
 **Canal** (NextAPI ↔ sockets por RabbitMQ):
-- NextAPI guarda el comando (`pendiente`) y lo publica en el exchange `commands` con routing `<protocolo>.cmd`; declara el exchange y la cola `commands.<protocolo>` (hoy `commands.fa100s`). Sin RabbitMQ se queda pendiente y se reintenta cada minuto; vence a las `COMANDOS_VIGENCIA_HORAS` (72).
+- NextAPI guarda el comando (`pendiente`) y lo publica en el exchange `telemetry.commands` con routing `<protocolo>.cmd`; declara el exchange y la cola `telemetry.commands.<protocolo>` (hoy `telemetry.commands.fa100s`). Prefijo `telemetry` porque los usuarios del broker (`backend`, `avl`) solo tienen permisos sobre `^telemetry.*`. Sin RabbitMQ se queda pendiente y se reintenta cada minuto; vence a las `COMANDOS_VIGENCIA_HORAS` (72).
 - El socket (kit `CommandInbox`, opcional por socket) consume sin declarar, guarda en su SQLite antes de confirmar al broker, entrega al equipo cuando está conectado (sobrevive reinicios) y responde por su outbox en `telemetry` con `<protocolo>.cmd.ack`: `recibido`, `enviado`, `confirmado` (el equipo respondió con la misma palabra), `vencido`, `fallido`.
 - NextAPI consume las confirmaciones (`telemetry.commands.acks`, DLQ `telemetry.commands.dlq`): el estatus avanza y nunca retrocede; una confirmación de otro equipo se ignora.
 

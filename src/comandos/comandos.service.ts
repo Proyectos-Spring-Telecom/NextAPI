@@ -17,7 +17,7 @@ const GRACIA_VENCIDO_MS = 3_600_000;
 
 /**
  * Comandos de Next a los equipos (docs/motor-activos.md §8): se guardan en
- * ComandosDispositivo (pendiente) y se publican en el exchange `commands`. Si
+ * ComandosDispositivo (pendiente) y se publican en el exchange `telemetry.commands`. Si
  * RabbitMQ no está, se quedan pendientes y se reintentan cada minuto; el
  * socket los guarda, los entrega cuando el equipo se conecta y confirma.
  */

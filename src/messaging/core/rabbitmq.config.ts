@@ -33,7 +33,10 @@ export interface RabbitMqRuntimeConfig {
   };
   /** Comandos de Next a los equipos (docs/motor-activos.md §8). */
   comandos: {
-    /** Exchange topic de salida: `<protocolo>.cmd` → cola `commands.<protocolo>` que consume el socket. */
+    /**
+     * Exchange topic de salida: `<protocolo>.cmd` → cola `telemetry.commands.<protocolo>` que
+     * consume el socket. Prefijo `telemetry` porque los usuarios del broker solo operan ahí.
+     */
     exchange: string;
     protocolos: string[];
     /** Confirmaciones del socket (`<protocolo>.cmd.ack` en el exchange de telemetría). */
@@ -149,7 +152,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
         config.get<string>('RABBITMQ_QUEUE_AVL_DLQ') ?? 'telemetry.avl.dlq',
     },
     comandos: {
-      exchange: config.get<string>('RABBITMQ_EXCHANGE_COMANDOS') ?? 'commands',
+      exchange: config.get<string>('RABBITMQ_EXCHANGE_COMANDOS') ?? 'telemetry.commands',
       protocolos: ['fa100s'],
       acks: {
         queue:
