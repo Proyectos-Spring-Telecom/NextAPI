@@ -183,6 +183,7 @@ export class Entorno {
       CRM_HMAC_SECRET: SECRETO_HMAC,
       CRM_ID_USUARIO: String(NEXT.CRM.id),
       RABBITMQ_ENABLED: 'false',
+      VIGILANCIA_TRANSMISION_ENABLED: 'false',
       WEBHOOK_SUBSCRIBERS: '',
       TRACKCAM_WEBHOOK_URL: '',
       LOG_LEVEL: 'error',
@@ -200,7 +201,7 @@ export class Entorno {
     // entidades: si el código espera algo que la base real no tiene, la
     // batería falla aquí y no en producción.
     this.mysql.archivo('Next', join(__dirname, 'esquema/next-produccion.sql'));
-    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql']) {
+    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql', 'MotorActivosFaseE.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
     await this.compararEsquema();
@@ -252,7 +253,7 @@ export class Entorno {
       synchronize: false,
     });
     await ds.initialize();
-    const tablas = /^(OrdenesServicio|OrdenServicio\w+|CatOrdenServicioOpciones|CatMotivosOrdenServicio|CatEstatusRecurso|MovimientosRecurso|CorreccionesInstalacion)$/;
+    const tablas = /^(OrdenesServicio|OrdenServicio\w+|CatOrdenServicioOpciones|CatMotivosOrdenServicio|CatEstatusRecurso|MovimientosRecurso|CorreccionesInstalacion|VigilanciaTransmisionTipo|EvaluacionesTransmision|AvisosSinTransmision)$/;
     const difs: string[] = [];
     try {
       for (const meta of ds.entityMetadatas.filter((m: any) => tablas.test(m.tableName))) {
@@ -317,6 +318,12 @@ export class Entorno {
       SET FOREIGN_KEY_CHECKS = 1;
       `,
     );
+  }
+
+  /** Un servicio de la NextAPI en marcha (p. ej. la ingesta, que en producción alimenta RabbitMQ). */
+  servicioNext<T>(tipo: new (...args: never[]) => T): T {
+    if (!this.next) throw new Error('NextAPI no está arrancada');
+    return this.next.get(tipo);
   }
 
   /**

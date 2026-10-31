@@ -171,7 +171,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 | B | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
 | C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D ✅ | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
-| E | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
+| E ✅ | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
 | F | Canal de comandos y números de emergencia del reloj | kit de sockets |
 
 Cada fase cierra con unitarias, la batería, una revisión independiente, la documentación al día (incluidas `front-next.md` y `app-instaladores.md`) y comandos de despliegue.
@@ -268,6 +268,36 @@ Queda la ruta `sims/:id/historial`, que depende de registrar `MotorActivosModule
 
 **Endpoint:** `PATCH /instalaciones/:id/vigente-desde` (roles 1–4, motivo obligatorio): solo hacia atrás, no futura, solo activas; sin traslape con la versión anterior ni con otro periodo del mismo dispositivo o SIM. Bloquea la fila y escribe condicional a la fecha leída (409 si cambió); el cambio de componente y la baja también bloquean la fila.
 
-**Pendiente (fase E):** los incidentes automáticos todavía toman el cliente actual del dispositivo; un equipo que transmite sin instalación (almacén, taller) puede abrirle un incidente a ese cliente. La ingesta por estatus (§7) lo resuelve.
+Los incidentes automáticos toman el cliente de la instalación activa desde la fase E (§15).
 
 **Pruebas:** `test/e2e-ordenes/vigencia.e2e-spec.ts` (corrección, traslapes, roles, cambio de equipo en histórico y distancia, última posición, consola, incidentes y el script de saneamiento) y unitarias de tramos.
+
+
+## 15. Fase E implementada (30/10/2026)
+
+**Base:** `deploy/sql/MotorActivosFaseE.sql` crea `VigilanciaTransmisionTipo` (umbral por tipo de equipo; reloj = 24 h, el resto 12 h por omisión), `EvaluacionesTransmision` (una fila por día: candado de la evaluación diaria) y `AvisosSinTransmision` (bandeja).
+
+**Ingesta por estatus (§7):**
+- La búsqueda del equipo acepta cualquier estatus (antes solo 1 y 2) y devuelve el estatus. Un número de serie o IMEI desconocido sigue yendo a huérfanos.
+- La posición siempre se guarda. **Sin instalación activa no abre incidentes**: es evidencia y ningún cliente la ve (queda fuera de todo tramo).
+- La búsqueda tiene caché de 10 min: si llega una alerta de un equipo que la caché da por no instalado, se confirma en la base (solo en ese caso), para no perder la alerta de un equipo recién instalado.
+- Los incidentes automáticos van al cliente de la **instalación activa** del equipo, no al cliente del dispositivo.
+- **Inservible (5) que transmite:** un incidente abierto por equipo (`DatosOrigen.alerta = inservible_transmite`), en el **cliente raíz** (la operación): lo atiende monitoreo, no el cliente final. Trae el cliente dueño del equipo. Sin cliente raíz no se abre (no cae al cliente dueño).
+  - No se duplica mientras siga abierto (candado de MySQL por IMEI entre instancias) y, ya cerrado, no se vuelve a abrir en 24 h aunque siga transmitiendo.
+  - No se mezcla con las alertas de consola. Una memoria de 10 min evita consultar en cada posición.
+- Paneles: sus eventos ya se guardaban aunque el panel no estuviera dado de alta (`EventoAlarma.Estatus = 0`); el incidente de panel inservible no está cubierto.
+
+**Equipos sin instalación:** `GET /dispositivos/sin-instalacion` (roles 1–3; `desde`, `estatus`): equipos con transmisión reciente y sin instalación activa, con su estatus y la última instalación de la que salieron.
+
+**Vigilancia de transmisión (§7b)**, módulo `src/vigilancia-transmision/`:
+- Última transmisión: `UltimaPosicion.FHRegistro` (o `FechaHora`) si es de la vigencia actual (`FechaHora >= VigenteDesde`); paneles, `PanelAlarma.UltimoHeartbeat`. Nada en la vigencia → lista "sin primera transmisión", sin aviso.
+- Cada 10 min: cierra los avisos resueltos (`transmitio`, `baja`, o `cambio` si la versión de la instalación ya no existe). Entre 9:00 y 11:00 (CDMX) evalúa una vez al día; el candado es la fila del día en `EvaluacionesTransmision`, así que reinicios o dos instancias no la repiten. Si una corrida no terminó (falla o reinicio), se retoma pasados 15 min dentro de la ventana.
+- Una evaluación manual cuenta como la del día: si se corre a las 8:00, la de las 9:00 ya no corre.
+- Un aviso vivo por instalación (UNIQUE sobre una columna generada): cada evaluación lo actualiza. Resultado `taller` con fecha de regreso pausa la vigilancia de esa instalación hasta esa fecha; pasada, si sigue sin transmitir, el aviso vuelve a abierto.
+- Atender un aviso que se cerró solo en ese momento → 409.
+- La bandeja agrupa por compañía telefónica y marca posible falla del proveedor con `VIGILANCIA_PROVEEDOR_MIN` (3) o más avisos de la misma compañía **abiertos en la misma evaluación** (`FechaPrimeraEvaluacion`): equipos que llevan semanas sin transmitir por causas distintas no la disparan.
+- Los cerrados, sin `fecha`, son los de los últimos 30 días.
+- Endpoints: `GET /vigilancia-transmision/avisos`, `GET /vigilancia-transmision/sin-primera-transmision`, `PATCH /vigilancia-transmision/avisos/:id/atender` (roles 1–5) y `POST /vigilancia-transmision/evaluar` (roles 1–2, manual; 409 si ya corrió hoy salvo `forzar`). `VIGILANCIA_TRANSMISION_ENABLED=false` apaga el programador.
+- Sin push por WebSocket: el portal consulta la bandeja.
+
+**Pruebas:** `test/e2e-ordenes/ingesta.e2e-spec.ts` y `vigilancia.e2e-spec.ts`, más unitarias de las reglas de vigilancia.

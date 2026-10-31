@@ -429,3 +429,21 @@ Desde la fase D ([motor-activos.md](motor-activos.md) §14), **cada instalación
   - Solo hacia atrás, no futura y solo instalaciones activas. Si se traslapa con la versión anterior de la instalación o con otro periodo del mismo equipo o SIM → 400 con el periodo que choca.
   - Responde `data.vigenteDesde` y `data.vigenteDesdeAnterior`. Al corregirla aparecen los recorridos anteriores al alta.
   - Propuesta: botón "Corregir fecha de instalación" en el detalle, con fecha, hora y motivo obligatorio.
+
+## 20. Sin transmisión, equipos sin instalación e incidentes de inservibles (fase E)
+
+Desde la fase E ([motor-activos.md](motor-activos.md) §15):
+
+- **Bandeja "Sin transmisión"** (monitoreo, roles 1–5): `GET /vigilancia-transmision/avisos` (sin `estatus` trae los vivos: `abierto` y `atendido`; `?estatus=cerrado&fecha=YYYY-MM-DD` para el histórico).
+  - Cada aviso: instalación, cliente, vehículo (placa, económico), equipo (IMEI, serie, tipo), SIM y compañía, última transmisión, horas sin transmitir, estatus, resultado y `posibleFallaProveedor`.
+  - `porProveedor`: avisos por compañía telefónica según la evaluación en que se abrieron (`fechaEvaluacion` del grupo = `fechaPrimeraEvaluacion` de los avisos); si marca `posibleFallaProveedor`, mostrarlo como banner ("posible falla de Telcel: 5 equipos").
+  - Se genera una vez al día entre 9:00 y 11:00; consultar la bandeja al entrar y cada pocos minutos (no hay push).
+  - **Atender:** `PATCH /vigilancia-transmision/avisos/:id/atender` con `{ resultado, comentario?, fechaRegreso? }`. `resultado`: `falla_equipo`, `taller` (exige `fechaRegreso` futura; pausa la vigilancia de esa unidad hasta esa fecha), `proveedor`, `cliente_avisado`, `otro`.
+  - El aviso se cierra solo cuando el equipo vuelve a transmitir o la instalación se da de baja. Si se cerró justo mientras se atendía → 409 (recargar la bandeja).
+  - Pasada la fecha de regreso del taller, si sigue sin transmitir, vuelve a `abierto` sin resultado.
+  - `?estatus=cerrado` sin `fecha` trae los cerrados de los últimos 30 días.
+- **"Sin primera transmisión":** `GET /vigilancia-transmision/sin-primera-transmision`. Instalaciones activas que nunca han transmitido en su vigencia; no generan avisos diarios. Una pestaña aparte de la bandeja.
+- **Equipos sin instalación** (roles 1–3): `GET /dispositivos/sin-instalacion?desde=&estatus=`. Equipos que transmiten sin estar instalados, con su estatus y la última instalación de la que salieron. Propuesta: una pantalla en inventario.
+- **Incidentes:**
+  - un equipo sin instalación (almacén, taller) ya no le abre incidentes a ningún cliente;
+  - un **equipo inservible que transmite** abre un incidente para monitoreo (en el cliente raíz), con la descripción "Equipo inservible transmitiendo (posible robo o vandalismo)" y el cliente dueño del equipo.

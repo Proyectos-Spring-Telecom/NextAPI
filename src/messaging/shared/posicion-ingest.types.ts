@@ -33,6 +33,12 @@ export interface PosicionIngestBase {
   idTipoDispositivo?: number | null;
   /** Instalación activa del dispositivo (geocerca requiere IdInstalacion no null). */
   idInstalacion?: number | null;
+  /**
+   * Estatus del dispositivo (CatEstatusRecurso). Sin instalación activa la
+   * posición se guarda pero no abre incidentes al cliente; 5 (inservible)
+   * abre un incidente propio (docs/motor-activos.md §7).
+   */
+  estatusDispositivo?: number | null;
   /** JSON de auditoría → TelemetryIngestLog.PayloadJson */
   auditPayload?: unknown;
 }

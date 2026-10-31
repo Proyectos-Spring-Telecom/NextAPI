@@ -34,8 +34,9 @@ export class Jt808IngestService {
     let imei: string;
     let idTipoDispositivo: number;
     let idInstalacion: number | null;
+    let estatusDispositivo: number;
     try {
-      ({ imei, idTipoDispositivo, idInstalacion } =
+      ({ imei, idTipoDispositivo, idInstalacion, estatus: estatusDispositivo } =
         await this.deviceLookup.resolve(envelope.deviceId));
     } catch (error) {
       if (
@@ -66,6 +67,7 @@ export class Jt808IngestService {
         imei,
         idTipoDispositivo,
         idInstalacion,
+        estatusDispositivo,
         auditPayload: extractJt808Audit(envelope.payload, 'alarm'),
       });
     }
@@ -88,6 +90,7 @@ export class Jt808IngestService {
       imei,
       idTipoDispositivo,
       idInstalacion,
+      estatusDispositivo,
       auditPayload: extractJt808Audit(envelope.payload, envelope.kind),
       posicion: mapAcometidasToPosicion(imei, p),
       media: {

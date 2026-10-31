@@ -39,8 +39,9 @@ export class Fa100sIngestService {
     let imei: string;
     let idTipoDispositivo: number;
     let idInstalacion: number | null;
+    let estatusDispositivo: number;
     try {
-      ({ imei, idTipoDispositivo, idInstalacion } =
+      ({ imei, idTipoDispositivo, idInstalacion, estatus: estatusDispositivo } =
         await this.deviceLookup.resolveByImei(imeiKey));
     } catch (error) {
       if (
@@ -71,6 +72,7 @@ export class Fa100sIngestService {
       imei,
       idTipoDispositivo,
       idInstalacion,
+      estatusDispositivo,
       auditPayload: extractFa100sAudit(envelope.payload),
     };
 

@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { EstatusEnum } from 'src/common/estatus.enum';
+import { Dispositivos } from 'src/entities/Dispositivos';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import { Fotos } from 'src/entities/Fotos';
 import { Geocercas } from 'src/entities/Geocercas';
 import { Posiciones } from 'src/entities/Posiciones';
@@ -111,7 +114,11 @@ export class PosicionIngestService {
       );
 
       // Antes del INSERT: el trigger actualiza UltimaPosicion con esta fila.
-      abreIncidente = await this.iniciaAlerta(manager, req.imei, posicionData);
+      // Sin instalación activa la posición es evidencia (almacén, taller):
+      // no le abre incidentes a ningún cliente (docs/motor-activos.md §7).
+      abreIncidente =
+        (await this.iniciaAlerta(manager, req.imei, posicionData)) &&
+        (req.idInstalacion != null || (await this.instalacionActiva(manager, req.imei)));
 
       const insertResult = await manager.insert(Posiciones, posicionData);
       const posicionId = Number(insertResult.identifiers[0]?.id);
@@ -131,6 +138,11 @@ export class PosicionIngestService {
 
     if (!result.duplicate && result.posicionId != null) {
       void this.monitoreoGateway.notificarImei(req.imei);
+      if (Number(req.estatusDispositivo) === EstatusRecurso.INSERVIBLE) {
+        // Un equipo dado por inservible no debería transmitir: posible robo o
+        // vandalismo. Fuera de la transacción y sin esperar, como las alertas.
+        void this.incidentesAuto.registrarInservibleTransmite(result.posicionId, req.imei);
+      }
       if (abreIncidente) {
         // Fuera de la transacción y sin esperar: nunca frena el ingest.
         void this.incidentesAuto.registrarDesdePosicion(
@@ -196,6 +208,21 @@ export class PosicionIngestService {
       void this.monitoreoGateway.notificarImei(req.imei);
     }
     return result;
+  }
+
+  /**
+   * La búsqueda del equipo tiene caché: un equipo recién instalado puede
+   * llegar como "sin instalación" unos minutos. Solo se consulta cuando la
+   * posición abriría un incidente.
+   */
+  private async instalacionActiva(manager: EntityManager, imei: string): Promise<boolean> {
+    const fila = await manager
+      .createQueryBuilder(Instalaciones, 'i')
+      .innerJoin(Dispositivos, 'd', 'd.id = i.idDispositivo')
+      .select('i.id', 'id')
+      .where('d.imei = :imei AND i.estatus = :activa', { imei, activa: EstatusEnum.ACTIVO })
+      .getRawOne<{ id: string | number }>();
+    return fila != null;
   }
 
   /**

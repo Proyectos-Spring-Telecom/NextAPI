@@ -2,10 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA,
-  EstatusEnum,
-} from '../../common/estatus.enum';
+import { EstatusEnum } from '../../common/estatus.enum';
 import { imeiToString } from '../../common/imei.util';
 import { Dispositivos } from '../../entities/Dispositivos';
 import { Instalaciones } from '../../entities/Instalaciones';
@@ -17,6 +14,12 @@ export interface DeviceResolved {
   idTipoDispositivo: number;
   /** Instalación activa del dispositivo; null si no hay (geocerca no aplica). */
   idInstalacion: number | null;
+  /**
+   * Estatus del dispositivo (CatEstatusRecurso). La ingesta acepta todos
+   * (docs/motor-activos.md §7): sin instalación se guarda como evidencia y no
+   * abre incidentes al cliente; inservible (5) abre un incidente propio.
+   */
+  estatus: number;
 }
 
 export class DeviceNotFoundError extends Error {
@@ -80,16 +83,15 @@ export class DeviceLookupService {
       .addSelect('d.idCliente', 'idCliente')
       .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
       .addSelect('i.id', 'idInstalacion')
+      .addSelect('d.estatus', 'estatus')
       .where('d.numeroSerie = :deviceId', { deviceId })
-      .andWhere('d.estatus IN (:...estatus)', {
-        estatus: [...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA],
-      })
       .orderBy('i.id', 'DESC')
       .getRawOne<{
         imei: string | null;
         idCliente: string | number;
         idTipoDispositivo: string | number;
         idInstalacion: string | number | null;
+        estatus: string | number;
       }>();
 
     if (!row) {
@@ -113,6 +115,7 @@ export class DeviceLookupService {
         idInstalacion != null && Number.isFinite(idInstalacion)
           ? idInstalacion
           : null,
+      estatus: Number(row.estatus),
     };
     this.writeCache(`ns:${deviceId}`, resolved);
     return resolved;
@@ -146,16 +149,15 @@ export class DeviceLookupService {
       .addSelect('d.idCliente', 'idCliente')
       .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
       .addSelect('i.id', 'idInstalacion')
-      .where('CAST(d.imei AS CHAR) = :imeiKey', { imeiKey })
-      .andWhere('d.estatus IN (:...estatus)', {
-        estatus: [...ESTATUS_DISPOSITIVO_INGEST_TELEMETRIA],
-      })
+      .addSelect('d.estatus', 'estatus')
+      .where('d.imei = :imeiKey', { imeiKey })
       .orderBy('i.id', 'DESC')
       .getRawOne<{
         imei: string | null;
         idCliente: string | number;
         idTipoDispositivo: string | number;
         idInstalacion: string | number | null;
+        estatus: string | number;
       }>();
 
     if (!row) {
@@ -179,6 +181,7 @@ export class DeviceLookupService {
         idInstalacion != null && Number.isFinite(idInstalacion)
           ? idInstalacion
           : null,
+      estatus: Number(row.estatus),
     };
     this.writeCache(cacheKey, resolved);
     return resolved;

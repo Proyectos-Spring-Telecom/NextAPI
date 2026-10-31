@@ -16,6 +16,7 @@ import { SimsModule } from './sims/sims.module';
 import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { MotorActivosModule } from './motor-activos/motor-activos.module';
+import { VigilanciaTransmisionModule } from './vigilancia-transmision/vigilancia-transmision.module';
 import { OrdenesServicioModule } from './ordenes-servicio/ordenes-servicio.module';
 import { IntegracionCrmModule } from './integracion-crm/integracion-crm.module';
 import { OperadoresModule } from './operadores/operadores.module';
@@ -117,6 +118,9 @@ import * as jwt from 'jsonwebtoken';
         CRM_HMAC_SECRET: Joi.string().allow('').default(''),
         CRM_ID_USUARIO: Joi.number().integer().optional(),
         SIA_OFFLINE_THRESHOLD_MS: Joi.number().default(600000),
+        // Vigilancia de transmisión (docs/motor-activos.md §7b).
+        VIGILANCIA_TRANSMISION_ENABLED: Joi.boolean().default(true),
+        VIGILANCIA_PROVEEDOR_MIN: Joi.number().integer().min(1).default(3),
         RABBITMQ_ENABLED: Joi.boolean().default(false),
         RABBITMQ_HOST: Joi.string().default('127.0.0.1'),
         RABBITMQ_PORT: Joi.number().default(5672),
@@ -233,6 +237,8 @@ import * as jwt from 'jsonwebtoken';
     DashboardModule,
 
     ConsolaModule,
+
+    VigilanciaTransmisionModule,
 
     MessagingModule,
 

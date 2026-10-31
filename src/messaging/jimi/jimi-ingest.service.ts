@@ -39,8 +39,9 @@ export class JimiIngestService {
     let imei: string;
     let idTipoDispositivo: number;
     let idInstalacion: number | null;
+    let estatusDispositivo: number;
     try {
-      ({ imei, idTipoDispositivo, idInstalacion } =
+      ({ imei, idTipoDispositivo, idInstalacion, estatus: estatusDispositivo } =
         await this.deviceLookup.resolveByImei(imeiKey));
     } catch (error) {
       if (
@@ -72,6 +73,7 @@ export class JimiIngestService {
         imei,
         idTipoDispositivo,
         idInstalacion,
+        estatusDispositivo,
         auditPayload: extractJimiAudit(envelope.payload, 'alarm'),
       });
     }
@@ -86,6 +88,7 @@ export class JimiIngestService {
       imei,
       idTipoDispositivo,
       idInstalacion,
+      estatusDispositivo,
       auditPayload: extractJimiAudit(envelope.payload, 'position'),
       posicion: mapJimiToPosicion(imei, p),
       media: {
