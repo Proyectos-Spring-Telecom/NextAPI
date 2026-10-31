@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConsumeMessage } from 'amqplib';
 import { In, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { ComandosDispositivo } from 'src/entities/ComandosDispositivo';
+import { ParametrosTrackCam } from 'src/entities/ParametrosTrackCam';
+import { idEquipoComando } from 'src/comandos/id-equipo';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { aplicaAck, ESTADOS_ACK, estatusQueAceptan, type EstadoAck, type EstatusComando } from 'src/comandos/estados-comando';
 import { isoUtcToMexicoCityAsUtcDate, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
@@ -46,12 +49,16 @@ export class ComandosAcksConsumer {
       this.logger.warn(`ack de un comando que no existe: ${idComando}`);
       return 'ignorado';
     }
-    const equipo = await this.dispositivosRepo.findOne({ where: { id: comando.idDispositivo }, select: { id: true, imei: true } });
-    if (!equipo || String(equipo.imei ?? '') !== String(body.deviceId ?? '')) {
+    const equipo = await this.dispositivosRepo.findOne({
+      where: { id: comando.idDispositivo },
+      select: { id: true, imei: true, numeroSerie: true },
+    });
+    if (!equipo || idEquipoComando(comando.protocolo, equipo) !== String(body.deviceId ?? '').trim()) {
       this.logger.warn(`ack del comando ${idComando} desde otro equipo (${String(body.deviceId)}): se ignora`);
       return 'ignorado';
     }
     if (!aplicaAck(comando.estatus as EstatusComando, estado)) return 'ignorado';
+    const resultado = esObjeto(body.resultado) ? body.resultado : null;
     const at = typeof body.at === 'string' ? isoUtcToMexicoCityAsUtcDate(body.at) : nowMexicoCityAsUtcDate();
     const campo = FECHA_POR_ESTADO[estado];
     // Una sola escritura condicional a los estatus desde los que este ack avanza:
@@ -63,8 +70,37 @@ export class ComandosAcksConsumer {
         estatus: estado,
         ...(campo ? { [campo]: at } : {}),
         ...(body.detalle != null ? { detalle: String(body.detalle).slice(0, 500) } : {}),
+        // JSON: TypeORM tipa la columna como objeto parcial; el valor va tal cual.
+        ...(resultado ? { resultado: resultado as QueryDeepPartialEntity<ComandosDispositivo>['resultado'] } : {}),
       },
     );
-    return r.affected ? 'aplicado' : 'ignorado';
+    if (!r.affected) return 'ignorado';
+    // También en fallido: la cámara pudo aplicar una parte y trae lo que quedó.
+    if ((estado === 'confirmado' || estado === 'fallido') && comando.protocolo === 'jt808' && resultado) {
+      await this.guardarLectura(Number(comando.idDispositivo), resultado);
+    }
+    return 'aplicado';
   }
+
+  /**
+   * La lectura de la TrackCam (al confirmar o fallar PARAMS, o LEERPARAMS) reemplaza la
+   * guardada, salvo que ya haya una más nueva: dos acks fuera de orden no
+   * regresan a valores viejos.
+   */
+  private async guardarLectura(idDispositivo: number, resultado: Record<string, unknown>): Promise<void> {
+    if (!esObjeto(resultado.parametros)) return;
+    const fecha = typeof resultado.leidoAt === 'string' ? isoUtcToMexicoCityAsUtcDate(resultado.leidoAt) : nowMexicoCityAsUtcDate();
+    const tabla = this.comandosRepo.manager.getRepository(ParametrosTrackCam).metadata.tablePath;
+    await this.comandosRepo.query(
+      `INSERT INTO ${tabla} (IdDispositivo, Leido, FechaLectura) VALUES (?, CAST(? AS JSON), ?)
+       ON DUPLICATE KEY UPDATE
+         Leido = IF(FechaLectura IS NULL OR FechaLectura <= VALUES(FechaLectura), VALUES(Leido), Leido),
+         FechaLectura = IF(FechaLectura IS NULL OR FechaLectura <= VALUES(FechaLectura), VALUES(FechaLectura), FechaLectura)`,
+      [idDispositivo, JSON.stringify(resultado.parametros), fecha],
+    );
+  }
+}
+
+function esObjeto(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }

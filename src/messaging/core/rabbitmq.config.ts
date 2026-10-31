@@ -169,7 +169,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
     },
     comandos: {
       exchange: config.get<string>('RABBITMQ_EXCHANGE_COMANDOS') ?? 'telemetry.commands',
-      protocolos: ['fa100s'],
+      protocolos: ['fa100s', 'jt808'],
       acks: {
         queue:
           config.get<string>('RABBITMQ_QUEUE_COMANDOS_ACKS') ??

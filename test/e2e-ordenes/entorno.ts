@@ -201,7 +201,7 @@ export class Entorno {
     // entidades: si el código espera algo que la base real no tiene, la
     // batería falla aquí y no en producción.
     this.mysql.archivo('Next', join(__dirname, 'esquema/next-produccion.sql'));
-    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql', 'MotorActivosFaseE.sql', 'MotorActivosFaseB.sql', 'MotorActivosFaseC.sql', 'MotorActivosFaseCGeocercas.sql', 'MotorActivosFaseF.sql']) {
+    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql', 'MotorActivosFaseE.sql', 'MotorActivosFaseB.sql', 'MotorActivosFaseC.sql', 'MotorActivosFaseCGeocercas.sql', 'MotorActivosFaseF.sql', 'MotorActivosFaseFTrackCam.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
     await this.compararEsquema();

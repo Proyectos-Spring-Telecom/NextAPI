@@ -141,7 +141,8 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
   - intervalos.
 
   Catálogo en Next: números de emergencia del reloj por persona/instalación, con pantalla en el front.
-- **Después:** parámetros de TrackCam (hoy por HTTP al gateway) y otros equipos, por el mismo canal.
+- **TrackCam** (31/10): parámetros JT808 por el mismo canal (§19). **Después:** TrackGas, Panel y S18.
+- **La consola de configuración de equipos es de Next** (front): llama a NextAPI y NextAPI llega al equipo por cola → socket → GPRS. El front nunca habla con los sockets; SMS no se usa.
 
 ## 9. Saneamiento de datos (script revisado antes de correr)
 
@@ -389,3 +390,30 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - En el socket: el perfil automático de `UPLOAD` ya no pisa el intervalo que mande Next; un comando `enviado` sin respuesta se reintenta al siguiente reporte del reloj (hasta 3 veces, luego `fallido`) y vence en su vigencia; la respuesta exacta (`PHB2`, `SOS3`) confirma su comando; el buzón se recupera si se cierra el canal o la cola aún no existe.
 
 **Pruebas:** `test/e2e-ordenes/reloj-comandos.e2e-spec.ts`, unitarias de los comandos y del recorrido; en el kit y en FA100S, sus suites (`kit/commands/commands.spec.ts`, `src/comandos.spec.ts`).
+
+## 19. TrackCam por el canal de comandos (31/10/2026)
+
+**Base:** `deploy/sql/MotorActivosFaseFTrackCam.sql` (se puede repetir): columna `ComandosDispositivo.Resultado` (lo que el equipo devolvió al confirmar) y `ParametrosTrackCam` (1:1 con el equipo: `Deseado` = lo pedido desde Next, `Leido` = última lectura completa de la cámara, con `FechaLectura`; llaves = id hex `0x0029`).
+
+**Canal:** protocolo `jt808`, cola `telemetry.commands.jt808` (NextAPI la declara; tope `comandos-tope` del broker). El gateway la consume con `TRACKCAM_COMMANDS_ENABLED=true` (usuario `sock_trackcam`, solo lectura de esa cola). La cámara se nombra por su **número de serie** (= terminal JT808), no por IMEI.
+
+**Comandos** (`src/comandos/comandos-jt808.ts`):
+- `PARAMS,0029=30,0055=100`: el gateway escribe con 0x8103, relee con 0x8104 y confirma solo si la cámara guardó cada valor; si la cámara lo rechaza o guarda otro valor → `fallido` con el motivo (`0x0027=600 (se pidió 300)`).
+- `LEERPARAMS`: solo lee. La confirmación trae la lectura completa en el ack (`resultado.parametros`); un `PARAMS` fallido también (la cámara pudo aplicar una parte). Next la guarda en `Resultado` y en `ParametrosTrackCam.Leido` (una lectura más vieja no pisa una más nueva).
+- Uno a la vez por cámara, y en el gateway un solo 0x8103/0x8104 a la vez por cámara (perfil, REST y comandos: dos 0x0104 en subpaquetes se mezclarían); si la cámara está desconectada, lo entrega al autenticar. Sin respuesta se queda `enviado` y el kit lo reenvía (10 min, hasta 3).
+
+**Catálogo de la consola** (12 parámetros DWORD, con rango): intervalos de reporte (motor encendido, apagado, emergencia), estrategia y distancia de reporte, ángulo de giro, velocidad máxima y duración del exceso, conducción continua y diaria, descanso mínimo y estacionamiento máximo. **Fuera a propósito:** heartbeat, alarmas con foto, servidor, APN y puertos (los mantiene el perfil del gateway; un error deja a la cámara sin conexión), máscaras de alarma (un `0xFFFFFFFF` silencia el pánico), fotos programadas de la cámara (la política es que no tome fotos propias) y el odómetro (cambia solo; la verificación releyendo fallaría con el vehículo en marcha). El gateway tiene la misma lista con los mismos rangos (`PARAMETROS_PERMITIDOS`) y rechaza el resto.
+
+**API** (roles 1–5, instalación activa de clase `TRACKCAM`):
+- `GET /instalaciones/:id/trackcam/parametros`: por parámetro, catálogo, `deseado`, `leido` y `pendiente` (pedido y la cámara aún tiene otro valor).
+- `PUT /instalaciones/:id/trackcam/parametros`: guarda como deseados los campos enviados y los manda en un solo `PARAMS`.
+- `POST /instalaciones/:id/trackcam/parametros/leer`: `LEERPARAMS`.
+- `GET /instalaciones/:id/trackcam/comandos`: los últimos 100, con `resultado`.
+- **Nada se manda solo.** `GET /gateway/config/params` del gateway sigue como lectura directa de operación; la consola usa Next.
+
+**Kit** (`springSocketKit` e8cbd11 y 50a6877): `confirmarComando(cmd, resultado?)` confirma por id (JT808 dice a qué mensaje contesta) y `resultado` viaja en el ack; `fallar(cmd, detalle, resultado?)` igual; `marcarEnviado` devuelve si lo tomó. Compatible con los demás sockets.
+
+**Revisión independiente (31/10):** el odómetro salió del catálogo (no se verifica releyendo); un fallido trae lo que quedó en la cámara (antes `Leido` se quedaba viejo y el campo aplicado seguía "pendiente"); un solo 0x8103/0x8104 a la vez por cámara en el gateway; la cámara se busca en el registro por `numero_serie` (el `terminal_id` del registro es el id de NextAPI, no el JT808); el gateway acepta solo la lista permitida con rango, no "todo DWORD salvo protegidos".
+
+**Pruebas:** `test/e2e-ordenes/trackcam-comandos.e2e-spec.ts`, `src/comandos/comandos-jt808.spec.ts`; en el gateway `src/transport/jt808/jt808-comandos.service.spec.ts` (escritura, verificación, rechazo, valor no guardado, protegidos, cámara desconectada, reenvío, orden).
+

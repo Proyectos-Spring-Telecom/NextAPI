@@ -484,3 +484,14 @@ Desde la fase F ([motor-activos.md](motor-activos.md) §18), Next le manda al re
 - **Números de emergencia** (roles 1–6): `GET` / `PUT /instalaciones/:id/reloj/numeros-emergencia` con `{ sos: [hasta 3], centro, agenda: [{ nombre (hasta 10), telefono }] (hasta 15) }`. Lo que no se envía no cambia. Son de la persona: si se cambia el reloj, volver a guardarlos para mandarlos al nuevo.
 - **Configuración** (roles 1–5): `POST /instalaciones/:id/reloj/configuracion` con los campos a cambiar: `intervaloReporteSegundos`, `deteccionCaida`, `llamadaPorCaida`, `sensibilidadCaida` (1–6; mayor = menos sensible).
 - **Estatus de lo enviado:** `GET /instalaciones/:id/reloj/comandos`. `pendiente` y `publicado` = todavía en Next/cola; `recibido` = en el socket; `enviado` = ya se escribió al reloj; `confirmado` = el reloj lo aplicó; `vencido` = el reloj no se conectó a tiempo (72 h). Mostrar el último de cada tipo con su estatus; si el reloj está apagado, se le entrega al conectarse.
+
+## 24. TrackCam: parámetros de la cámara (31/10/2026)
+
+Desde el 31/10 ([motor-activos.md](motor-activos.md) §19) la consola de configuración de equipos también cubre la TrackCam, por el mismo canal que el reloj. En el detalle de una instalación de TrackCam (`clase = TRACKCAM`), roles 1–5:
+
+- **Ver:** `GET /instalaciones/:id/trackcam/parametros` → `{ fechaLectura, fechaActualizacion, parametros: [{ nombre, id, etiqueta, unidad, min, max, deseado, leido, pendiente }] }`. Pintar una fila por parámetro con lo que tiene la cámara (`leido`) y, si `pendiente`, lo pedido (`deseado`) marcado como "por aplicar". `fechaLectura` = cuándo se leyó la cámara por última vez (null = nunca).
+- **Cambiar:** `PUT /instalaciones/:id/trackcam/parametros` con solo los campos a cambiar, por `nombre` (p. ej. `{ "intervaloReporteSegundos": 30, "velocidadMaximaKmh": 100 }`). Validar con `min`/`max` del `GET`. 400 si no va ninguno o alguno está fuera de rango.
+- **Leer la cámara:** `POST /instalaciones/:id/trackcam/parametros/leer` (botón "Leer de la cámara"). Al confirmarse, el `GET` trae la lectura nueva.
+- **Estatus:** `GET /instalaciones/:id/trackcam/comandos`, igual que el reloj (§23): `pendiente`/`publicado` → `recibido` → `enviado` → `confirmado`. `fallido` trae el motivo en `detalle` (p. ej. "La cámara aceptó pero guardó otro valor: 0x0027=600 (se pidió 300)"); mostrarlo tal cual. Aun fallido, el `GET` de parámetros ya trae lo que quedó en la cámara. Si la cámara está apagada, se aplica al encender.
+- No hay campos de heartbeat, servidor, APN, fotos por alarma ni odómetro: los mantiene el gateway o la cámara.
+

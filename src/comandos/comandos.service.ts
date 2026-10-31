@@ -5,7 +5,13 @@ import { ComandosDispositivo } from 'src/entities/ComandosDispositivo';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { RabbitMqConnectionService } from 'src/messaging/core/rabbitmq.connection.service';
 import { fechaPared, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
-import type { ComandoFa100s } from './comandos-fa100s';
+import { idEquipoComando } from './id-equipo';
+
+/** Un comando ya armado por el módulo de su protocolo (comandos-fa100s, comandos-jt808). */
+export interface ComandoEquipo {
+  tipo: string;
+  contenido: string;
+}
 
 /** México no tiene horario de verano desde 2022: hora de pared = UTC − 6 h. */
 const DESFASE_MEXICO_MS = 6 * 3_600_000;
@@ -55,7 +61,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     params: {
       idDispositivo: number;
       protocolo: string;
-      comandos: readonly ComandoFa100s[];
+      comandos: readonly ComandoEquipo[];
       idUsuario: number | null;
       origen?: 'api' | 'sistema';
     },
@@ -110,17 +116,19 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     const repo = this.dataSource.getRepository(ComandosDispositivo);
     const equipo = await this.dataSource.getRepository(Dispositivos).findOne({
       where: { id: c.idDispositivo },
-      select: { id: true, imei: true },
+      select: { id: true, imei: true, numeroSerie: true },
     });
-    if (!equipo?.imei) {
-      await repo.update({ id: c.id, estatus: 'pendiente' }, { estatus: 'fallido', detalle: 'El equipo no tiene IMEI' });
+    const deviceId = equipo ? idEquipoComando(c.protocolo, equipo) : '';
+    if (!deviceId) {
+      const falta = c.protocolo === 'jt808' ? 'número de serie' : 'IMEI';
+      await repo.update({ id: c.id, estatus: 'pendiente' }, { estatus: 'fallido', detalle: `El equipo no tiene ${falta}` });
       return false;
     }
     try {
       await this.rabbit.publicarComando(c.protocolo, `cmd-${c.id}`, {
         idComando: Number(c.id),
         protocol: c.protocolo,
-        deviceId: String(equipo.imei),
+        deviceId,
         tipo: c.tipo,
         contenido: c.contenido,
         venceAt: new Date(new Date(c.venceAt).getTime() + DESFASE_MEXICO_MS).toISOString(),
@@ -191,6 +199,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
         contenido: c.contenido,
         estatus: c.estatus,
         detalle: c.detalle,
+        resultado: c.resultado ?? null,
         intentos: Number(c.intentos),
         idUsuario: c.idUsuario != null ? Number(c.idUsuario) : null,
         origen: c.origen,

@@ -28,6 +28,10 @@ export class ComandosDispositivo {
   @Column('varchar', { name: 'Detalle', nullable: true, length: 500 })
   detalle: string | null;
 
+  /** Lo que el equipo devolvió al confirmar (p. ej. los parámetros leídos de la TrackCam). */
+  @Column('json', { name: 'Resultado', nullable: true })
+  resultado: Record<string, unknown> | null;
+
   @Column('int', { name: 'Intentos', default: () => "'0'" })
   intentos: number;
 
