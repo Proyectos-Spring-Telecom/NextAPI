@@ -407,6 +407,8 @@ Recomendado: `eventId` determinista por posición (reenvío = duplicado); `recei
 
 `payload.IdFoto` / `jt808.multimediaId` → solo `Fotos.IdFoto` (no FK de Posiciones).
 
+**Orden por equipo (31/10/2026):** las posiciones y alarmas de un mismo equipo (`protocol|deviceId`) se procesan una a la vez y en el orden en que llegan; equipos distintos van en paralelo (`src/messaging/core/orden-por-equipo.ts`). Las reglas que comparan con la posición anterior (tiempo detenido, inicio de alerta, geocerca) ya no se calculan al revés. Prefetch AVL por omisión 50 (`RABBITMQ_PREFETCH_AVL`) para que el lote atrasado de un equipo no frene a los demás; la concurrencia a MySQL la limita `RABBITMQ_MAX_CONCURRENT_DB`. Un reintento por error temporal se vuelve a publicar al final de la cola y todavía puede quedar detrás de posiciones más nuevas del equipo.
+
 ### 12.4 Reintentos y DLQ
 
 | Caso | Resultado |

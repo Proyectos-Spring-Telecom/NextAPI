@@ -19,6 +19,7 @@ import {
   readRabbitMqConfig,
 } from './rabbitmq.config';
 import { handleConsumerMessage } from './rabbitmq.consumer.handler';
+import { OrdenPorEquipo } from './orden-por-equipo';
 import { RabbitMqMetricsService } from './rabbitmq-metrics.service';
 import { QUEUE_LABEL } from './rabbitmq-queue-labels';
 import { BrokerQueueResult } from './rabbitmq-queue-status.util';
@@ -31,6 +32,24 @@ type ConsumerRegistration = {
   handler: (msg: ConsumeMessage) => Promise<void>;
   consumerTag: string;
 };
+
+/** `protocolo|deviceId` de los headers (o del cuerpo): la misma llave en posiciones y alarmas. */
+export function llaveEquipo(msg: ConsumeMessage): string | null {
+  const h = msg.properties.headers ?? {};
+  const texto = (v: unknown) => (v == null ? '' : Buffer.isBuffer(v) ? v.toString('utf8') : String(v)).trim();
+  let protocolo = texto(h.protocol);
+  let deviceId = texto(h.deviceId);
+  if (!protocolo || !deviceId) {
+    try {
+      const body = JSON.parse(msg.content.toString('utf8')) as { protocol?: unknown; deviceId?: unknown };
+      protocolo ||= texto(body.protocol);
+      deviceId ||= texto(body.deviceId);
+    } catch {
+      return null;
+    }
+  }
+  return deviceId ? `${protocolo}|${deviceId}` : null;
+}
 
 @Injectable()
 export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy {
@@ -47,6 +66,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   /** Canales cerrados: un mensaje en espera de MySQL deja de intentar (el broker lo reentrega). */
   private readonly closedChannels = new WeakSet<Channel>();
   private comandosChannel: ConfirmChannel | null = null;
+  /** Posiciones y alarmas de un mismo equipo, en orden y una a la vez (ambas colas AVL comparten llaves). */
+  private readonly ordenPorEquipo = new OrdenPorEquipo();
   private readonly comandosDevueltos = new Set<string>();
 
   constructor(
@@ -430,12 +451,14 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.avl.events,
       QUEUE_LABEL.avlEvents,
       (m) => this.avlEventsConsumer.consume(m, 'position'),
+      llaveEquipo,
     );
     await this.registerConsumer(
       avlAlarmsCh,
       cfg.avl.alarms,
       QUEUE_LABEL.avlAlarms,
       (m) => this.avlEventsConsumer.consume(m, 'alarm'),
+      llaveEquipo,
     );
     // Comandos aparte: si el broker los rechaza (permisos), la ingesta sigue.
     await this.prepararComandos(cfg);
@@ -450,6 +473,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     queueDef: RabbitMqQueueDefinition,
     label: string,
     handler: (msg: ConsumeMessage) => Promise<void>,
+    /** Llave de orden: los mensajes de una misma llave (equipo) se procesan uno a uno, en orden. */
+    llave?: (msg: ConsumeMessage) => string | null,
   ) {
     const { consumerTag } = await channel.consume(
       queueDef.queue,
@@ -457,7 +482,10 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
         if (!msg) {
           return;
         }
-        this.onMessage(msg, channel, label, queueDef, () => handler(msg)).catch(
+        // Todo el ciclo del mensaje (espera de BD, ingesta, ack o DLQ) en el turno de su equipo.
+        this.ordenPorEquipo
+          .run(llave?.(msg), () => this.onMessage(msg, channel, label, queueDef, () => handler(msg)))
+          .catch(
           (error: unknown) => {
             // ack/nack sobre un canal ya cerrado: el broker reentrega el mensaje.
             this.logger.warn(

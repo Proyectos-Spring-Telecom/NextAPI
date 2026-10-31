@@ -57,6 +57,13 @@ function dlqArgs(dlx: string, failedRoutingKey: string) {
 
 export { dlqArgs };
 
+/**
+ * AVL: los mensajes de un mismo equipo se procesan en orden, uno a la vez
+ * (OrdenPorEquipo); con 50 en vuelo, el lote atrasado de un equipo no frena a
+ * los demás. La concurrencia a MySQL la sigue limitando RABBITMQ_MAX_CONCURRENT_DB.
+ */
+const PREFETCH_AVL = 50;
+
 function prefetch(
   config: ConfigService,
   specificKey: string,
@@ -137,7 +144,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
           config.get<string>('RABBITMQ_QUEUE_AVL_EVENTS') ??
           'telemetry.avl.events',
         bindings: ['jt808.position', 'jimi.position', 'fa100s.position'],
-        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', PREFETCH_AVL),
         dlqRoutingKey: 'telemetry.avl.failed',
       },
       alarms: {
@@ -145,7 +152,7 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
           config.get<string>('RABBITMQ_QUEUE_AVL_ALARMS') ??
           'telemetry.avl.alarms',
         bindings: ['jt808.alarm.*', 'jimi.alarm.*', 'fa100s.alarm.*'],
-        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', defaultPrefetch),
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_AVL', PREFETCH_AVL),
         dlqRoutingKey: 'telemetry.avl.failed',
       },
       dlq:
