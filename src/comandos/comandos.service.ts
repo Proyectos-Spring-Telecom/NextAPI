@@ -125,7 +125,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
         contenido: c.contenido,
         venceAt: new Date(new Date(c.venceAt).getTime() + DESFASE_MEXICO_MS).toISOString(),
         creadoAt: new Date(new Date(c.fechaCreacion).getTime() + DESFASE_MEXICO_MS).toISOString(),
-      });
+      }, new Date(c.venceAt).getTime() - nowMexicoCityAsUtcDate().getTime());
       await repo.update(
         { id: c.id, estatus: 'pendiente' },
         { estatus: 'publicado', fechaPublicado: nowMexicoCityAsUtcDate(), intentos: Number(c.intentos) + 1, detalle: null },

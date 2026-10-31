@@ -31,6 +31,8 @@ export interface RabbitMqRuntimeConfig {
     alarms: RabbitMqQueueDefinition;
     dlq: string;
   };
+  /** Reintento con espera (colas de retraso que regresan al exchange principal). */
+  retry: { exchange: string; esperasMs: number[] };
   /** Comandos de Next a los equipos (docs/motor-activos.md §8). */
   comandos: {
     /**
@@ -157,6 +159,13 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_AVL_DLQ') ?? 'telemetry.avl.dlq',
+    },
+    retry: {
+      exchange: config.get<string>('RABBITMQ_EXCHANGE_RETRY') ?? 'telemetry.retry',
+      esperasMs: String(config.get('RABBITMQ_RETRY_DELAYS_MS') ?? '5000,30000,120000')
+        .split(',')
+        .map((x) => Number(x.trim()))
+        .filter((x) => Number.isFinite(x) && x > 0),
     },
     comandos: {
       exchange: config.get<string>('RABBITMQ_EXCHANGE_COMANDOS') ?? 'telemetry.commands',

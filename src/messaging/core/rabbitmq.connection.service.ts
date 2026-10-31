@@ -68,6 +68,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   private comandosChannel: ConfirmChannel | null = null;
   /** Posiciones y alarmas de un mismo equipo, en orden y una a la vez (ambas colas AVL comparten llaves). */
   private readonly ordenPorEquipo = new OrdenPorEquipo();
+  /** Las colas de retraso están declaradas: los reintentos esperan en lugar de ser inmediatos. */
+  private retryListo = false;
   private readonly comandosDevueltos = new Set<string>();
 
   constructor(
@@ -198,6 +200,37 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   /**
+   * Colas de retraso para reintentos: exchange headers `telemetry.retry` y una
+   * cola por espera (`telemetry.retry.<ms>`) con TTL; al vencer, el mensaje
+   * regresa al exchange principal con su routing key original (sin
+   * x-dead-letter-routing-key). Si no se pueden declarar, reintento inmediato.
+   */
+  private async prepararReintentos(cfg: RabbitMqRuntimeConfig): Promise<boolean> {
+    if (!cfg.retry.esperasMs.length || !this.connection) return false;
+    // Canal propio: un 403 aquí cierra solo este canal, no la conexión de la ingesta.
+    const ch = await this.connection.createChannel();
+    ch.on('error', (err: Error) => this.logger.error(`Canal de reintentos: ${err?.message}`));
+    try {
+      await ch.assertExchange(cfg.retry.exchange, 'headers', { durable: true });
+      for (const ms of cfg.retry.esperasMs) {
+        const cola = `${cfg.retry.exchange}.${ms}`;
+        await ch.assertQueue(cola, {
+          durable: true,
+          arguments: { 'x-message-ttl': ms, 'x-dead-letter-exchange': cfg.exchange },
+        });
+        await ch.bindQueue(cola, cfg.retry.exchange, '', { 'x-match': 'all', 'x-retraso': String(ms) });
+      }
+      this.logger.log(`Reintentos con espera: ${cfg.retry.esperasMs.map((ms) => `${ms / 1000}s`).join(', ')}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Colas de retraso no disponibles (reintento inmediato): ${(error as Error)?.message}`);
+      return false;
+    } finally {
+      await ch.close().catch(() => undefined);
+    }
+  }
+
+  /**
    * Canal de comandos (docs/motor-activos.md §8) en sus propios canales: un
    * error aquí (p. ej. 403 por permisos del usuario en el broker) no tumba la
    * conexión ni la ingesta; los comandos se quedan pendientes en la base y se
@@ -246,7 +279,13 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
    * la confirmación del broker. Sin conexión o con RabbitMQ apagado → error:
    * el comando se queda pendiente y ComandosService lo reintenta.
    */
-  async publicarComando(protocolo: string, messageId: string, cuerpo: Record<string, unknown>): Promise<void> {
+  async publicarComando(
+    protocolo: string,
+    messageId: string,
+    cuerpo: Record<string, unknown>,
+    /** Lo que le queda de vigencia: el broker lo descarta si nadie lo consume antes. */
+    vigenciaMs?: number,
+  ): Promise<void> {
     const ch = this.comandosChannel;
     if (!ch || !this.cfg?.enabled) throw new Error('RabbitMQ no disponible para publicar comandos');
     ch.publish(this.cfg.comandos.exchange, `${protocolo}.cmd`, Buffer.from(JSON.stringify(cuerpo)), {
@@ -255,6 +294,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       messageId,
       headers: { protocol: protocolo, kind: 'command' },
       mandatory: true,
+      ...(vigenciaMs != null ? { expiration: String(Math.max(1000, Math.round(vigenciaMs))) } : {}),
     });
     await ch.waitForConfirms();
     if (this.comandosDevueltos.delete(messageId)) {
@@ -434,6 +474,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     );
 
 
+    this.retryListo = await this.prepararReintentos(cfg);
+
     await this.registerConsumer(
       axproEventsCh,
       cfg.axpro.events,
@@ -540,6 +582,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       dbGate: this.dbGate,
       dbHoldMaxMs: this.cfg!.dbHoldMaxMs,
       isChannelClosed: () => this.closedChannels.has(channel),
+      ...(this.retryListo ? { retry: this.cfg!.retry } : {}),
     }, handler);
   }
 }

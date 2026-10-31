@@ -124,3 +124,33 @@ describe('DbAvailabilityGate', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('MySQL disponible de nuevo'));
   });
 });
+
+describe('reintento con espera', () => {
+  const deadlock = () =>
+    new QueryFailedError('INSERT', [], Object.assign(new Error('Deadlock found when trying to get lock'), {
+      code: 'ER_LOCK_DEADLOCK',
+      errno: 1213,
+    }));
+  const retry = { exchange: 'telemetry.retry', esperasMs: [5000, 30000, 120000] };
+
+  it('el primer reintento va a la cola de 5 s con su routing key original', async () => {
+    const { channel, options } = setup({ retry });
+    await handleConsumerMessage(msg(), options, async () => { throw deadlock(); });
+    expect(channel.publish).toHaveBeenCalledWith(
+      'telemetry.retry',
+      'jimi.position',
+      expect.any(Buffer),
+      expect.objectContaining({ headers: expect.objectContaining({ 'x-retraso': '5000', 'x-retry-count': 1 }) }),
+    );
+    expect(channel.ack).toHaveBeenCalledTimes(1);
+  });
+
+  it('el tercero va a la de 120 s; sin colas de retraso, inmediato al exchange principal', async () => {
+    const conRetry = setup({ retry });
+    await handleConsumerMessage(msg({ 'x-retry-count': 2 }), conRetry.options, async () => { throw deadlock(); });
+    expect(conRetry.channel.publish.mock.calls[0][3].headers['x-retraso']).toBe('120000');
+    const sin = setup();
+    await handleConsumerMessage(msg(), sin.options, async () => { throw deadlock(); });
+    expect(sin.channel.publish.mock.calls[0][0]).toBe('telemetry');
+  });
+});

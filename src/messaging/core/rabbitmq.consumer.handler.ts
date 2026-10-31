@@ -33,6 +33,12 @@ export interface ConsumerHandlerOptions {
   dbHoldMaxMs?: number;
   /** El canal se cerró mientras se esperaba a MySQL: soltar el mensaje. */
   isChannelClosed?: () => boolean;
+  /**
+   * Reintento con espera: el mensaje va a una cola de retraso (`x-retraso` =
+   * milisegundos) que al vencer lo regresa al exchange principal con su routing
+   * key. Sin esto, el reintento es inmediato.
+   */
+  retry?: { exchange: string; esperasMs: readonly number[] };
 }
 
 export async function handleConsumerMessage(
@@ -129,12 +135,22 @@ export async function handleConsumerMessage(
     `${label} reintento ${nextRetry}/${maxRetries} eventId=${eventId ?? 'n/a'}: ${(error as Error)?.message}`,
   );
 
-  channel.publish(exchange, routingKey, msg.content, {
+  const props = {
     contentType: msg.properties.contentType,
     contentEncoding: msg.properties.contentEncoding,
     deliveryMode: msg.properties.deliveryMode ?? 2,
     messageId: msg.properties.messageId,
-    headers: nextRetryHeaders(msg),
-  });
+  };
+  const esperas = options.retry?.esperasMs ?? [];
+  if (options.retry && esperas.length) {
+    // 1.º intento a la primera espera, 2.º a la segunda…; la última se repite.
+    const espera = esperas[Math.min(nextRetry - 1, esperas.length - 1)];
+    channel.publish(options.retry.exchange, routingKey, msg.content, {
+      ...props,
+      headers: { ...nextRetryHeaders(msg), 'x-retraso': String(espera) },
+    });
+  } else {
+    channel.publish(exchange, routingKey, msg.content, { ...props, headers: nextRetryHeaders(msg) });
+  }
   channel.ack(msg);
 }
