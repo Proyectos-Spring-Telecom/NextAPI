@@ -177,6 +177,50 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   /**
+   * Canal de comandos (docs/motor-activos.md §8) en sus propios canales: un
+   * error aquí (p. ej. 403 por permisos del usuario en el broker) no tumba la
+   * conexión ni la ingesta; los comandos se quedan pendientes en la base y se
+   * vuelve a intentar en la siguiente reconexión.
+   */
+  private async prepararComandos(cfg: RabbitMqRuntimeConfig): Promise<void> {
+    const conn = this.connection;
+    if (!conn) return;
+    try {
+      const acksCh = await conn.createChannel();
+      const pubCh = await conn.createConfirmChannel();
+      for (const ch of [acksCh, pubCh]) {
+        ch.on('error', (err: Error) => this.logger.error(`Canal de comandos: ${err?.message}`));
+        ch.on('close', () => {
+          if (this.comandosChannel === pubCh || ch === acksCh) this.comandosChannel = null;
+        });
+      }
+      await acksCh.assertExchange(cfg.comandos.exchange, 'topic', { durable: true });
+      for (const protocolo of cfg.comandos.protocolos) {
+        const cola = `commands.${protocolo}`;
+        await acksCh.assertQueue(cola, { durable: true });
+        await acksCh.bindQueue(cola, cfg.comandos.exchange, `${protocolo}.cmd`);
+      }
+      await this.setupQueue(acksCh, cfg.exchange, cfg.dlx, cfg.comandos.acks);
+      await acksCh.assertQueue(cfg.comandos.dlq, { durable: true });
+      await acksCh.bindQueue(cfg.comandos.dlq, cfg.dlx, cfg.comandos.acks.dlqRoutingKey);
+      // Con `mandatory`, un comando sin cola regresa aquí antes de su confirmación.
+      pubCh.on('return', (msg) => {
+        if (msg.properties.messageId) this.comandosDevueltos.add(String(msg.properties.messageId));
+      });
+      await this.registerConsumer(acksCh, cfg.comandos.acks, QUEUE_LABEL.comandosAcks, (m) =>
+        this.comandosAcksConsumer.consume(m),
+      );
+      this.comandosChannel = pubCh;
+      this.logger.log('Canal de comandos activo');
+    } catch (error) {
+      this.comandosChannel = null;
+      this.logger.error(
+        `Canal de comandos apagado (la ingesta sigue): ${(error as Error)?.message}. Revisar permisos del usuario en el broker.`,
+      );
+    }
+  }
+
+  /**
    * Publica un comando en `commands` con routing key `<protocolo>.cmd` y espera
    * la confirmación del broker. Sin conexión o con RabbitMQ apagado → error:
    * el comando se queda pendiente y ComandosService lo reintenta.
@@ -334,23 +378,17 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     const axproHbCh = await this.connection.createChannel();
     const avlEventsCh = await this.connection.createChannel();
     const avlAlarmsCh = await this.connection.createChannel();
-    const comandosAcksCh = await this.connection.createChannel();
-    // Publicación de comandos con confirmación del broker (ComandosService).
-    const comandosPubCh = await this.connection.createConfirmChannel();
 
     this.bindChannelEvents(axproEventsCh, 'axpro-events');
     this.bindChannelEvents(axproHbCh, 'axpro-heartbeats');
     this.bindChannelEvents(avlEventsCh, 'avl-events');
     this.bindChannelEvents(avlAlarmsCh, 'avl-alarms');
-    this.bindChannelEvents(comandosAcksCh, 'comandos-acks');
-    this.bindChannelEvents(comandosPubCh, 'comandos-publicacion');
 
     for (const ch of [
       axproEventsCh,
       axproHbCh,
       avlEventsCh,
       avlAlarmsCh,
-      comandosAcksCh,
     ]) {
       await ch.assertExchange(cfg.exchange, 'topic', { durable: true });
       await ch.assertExchange(cfg.dlx, 'topic', { durable: true });
@@ -374,22 +412,6 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.avl.events.dlqRoutingKey,
     );
 
-    // Comandos: Next declara el exchange y la cola de cada protocolo; el socket solo consume.
-    await comandosAcksCh.assertExchange(cfg.comandos.exchange, 'topic', { durable: true });
-    for (const protocolo of cfg.comandos.protocolos) {
-      const cola = `commands.${protocolo}`;
-      await comandosAcksCh.assertQueue(cola, { durable: true });
-      await comandosAcksCh.bindQueue(cola, cfg.comandos.exchange, `${protocolo}.cmd`);
-    }
-    await this.setupQueue(comandosAcksCh, cfg.exchange, cfg.dlx, cfg.comandos.acks);
-    await comandosAcksCh.assertQueue(cfg.comandos.dlq, { durable: true });
-    await comandosAcksCh.bindQueue(cfg.comandos.dlq, cfg.dlx, cfg.comandos.acks.dlqRoutingKey);
-    // Con `mandatory`, un comando sin cola (no está declarada o no hay binding) regresa
-    // aquí antes de su confirmación: publicarComando lo trata como no publicado.
-    comandosPubCh.on('return', (msg) => {
-      if (msg.properties.messageId) this.comandosDevueltos.add(String(msg.properties.messageId));
-    });
-    this.comandosChannel = comandosPubCh;
 
     await this.registerConsumer(
       axproEventsCh,
@@ -415,12 +437,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       QUEUE_LABEL.avlAlarms,
       (m) => this.avlEventsConsumer.consume(m, 'alarm'),
     );
-    await this.registerConsumer(
-      comandosAcksCh,
-      cfg.comandos.acks,
-      QUEUE_LABEL.comandosAcks,
-      (m) => this.comandosAcksConsumer.consume(m),
-    );
+    // Comandos aparte: si el broker los rechaza (permisos), la ingesta sigue.
+    await this.prepararComandos(cfg);
 
     this.logger.log(
       `Consumidores activos (prefetch axpro=${cfg.axpro.events.prefetch}/${cfg.axpro.heartbeats.prefetch}, avl=${cfg.avl.events.prefetch}/${cfg.avl.alarms.prefetch}, maxDb=${cfg.maxConcurrentDb}, maxRetries=${cfg.maxRetries}, esperaBD<=${cfg.dbRetryMaxDelayMs}ms)`,
