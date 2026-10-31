@@ -286,7 +286,8 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - **Inservible (5) que transmite:** un incidente abierto por equipo (`DatosOrigen.alerta = inservible_transmite`), en el **cliente raíz** (la operación): lo atiende monitoreo, no el cliente final. Trae el cliente dueño del equipo. Sin cliente raíz no se abre (no cae al cliente dueño).
   - No se duplica mientras siga abierto (candado de MySQL por IMEI entre instancias) y, ya cerrado, no se vuelve a abrir en 24 h aunque siga transmitiendo.
   - No se mezcla con las alertas de consola. Una memoria de 10 min evita consultar en cada posición.
-- Paneles: sus eventos ya se guardaban aunque el panel no estuviera dado de alta (`EventoAlarma.Estatus = 0`); el incidente de panel inservible no está cubierto.
+- Paneles: sus eventos ya se guardaban aunque el panel no estuviera dado de alta (`EventoAlarma.Estatus = 0`). **Panel inservible que transmite (31/10):** un evento SIA o un heartbeat de un panel con `PanelAlarma.Estatus = 5` abre el mismo incidente en el cliente raíz (`TipoOrigen = 2`, `IdEventoAlarma` = el evento guardado, o null si fue heartbeat; `DatosOrigen.cuentaSia` y `transmision = evento|heartbeat`) y ya no se reporta como panel sin alta en huérfanos. El candado y el enfriamiento de 24 h van por equipo (`DatosOrigen.idDispositivo`), igual para GPS y paneles.
+- **Tiempo real (31/10):** la bandeja, los incidentes de inservibles y el estatus de los comandos se empujan por `/monitoreo` (`docs/contratos.md` §11.4).
 
 **Equipos sin instalación:** `GET /dispositivos/sin-instalacion` (roles 1–3; `desde`, `estatus`): equipos con transmisión reciente y sin instalación activa, con su estatus y la última instalación de la que salieron.
 

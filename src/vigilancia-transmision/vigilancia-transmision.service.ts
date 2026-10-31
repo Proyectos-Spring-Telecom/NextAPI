@@ -4,7 +4,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, In } from 'typeorm';
 import { AvisosSinTransmision } from 'src/entities/AvisosSinTransmision';
@@ -115,7 +117,28 @@ export class VigilanciaTransmisionService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    @Optional() private readonly gateway?: MonitoreoGateway,
   ) {}
+
+  /**
+   * Tiempo real (`vigilancia:avisos` en `/monitoreo`, room de operación): los
+   * avisos que cambiaron, con el mismo ítem que la bandeja. Nunca falla la
+   * operación que lo llama.
+   */
+  private async notificar(motivo: 'evaluacion' | 'atencion', ids: readonly number[]): Promise<void> {
+    if (!this.gateway || !ids.length) return;
+    try {
+      const vivos = await this.listar({});
+      const cambiados = new Set(ids);
+      this.gateway.emitAvisosSinTransmision({
+        motivo,
+        avisos: vivos.data.filter((a) => cambiados.has(a.id)),
+        ...(motivo === 'evaluacion' ? { porProveedor: vivos.porProveedor } : {}),
+      });
+    } catch (error) {
+      this.logger.warn(`[Vigilancia] no se pudo notificar ${motivo}: ${(error as Error)?.message}`);
+    }
+  }
 
   private proveedorMinimo(): number {
     return Number(this.config.get('VIGILANCIA_PROVEEDOR_MIN') ?? PROVEEDOR_MIN_DEFECTO) || PROVEEDOR_MIN_DEFECTO;
@@ -173,6 +196,7 @@ export class VigilanciaTransmisionService {
     );
     const pausadas = await this.instalacionesEnTaller(ahora);
 
+    const tocados: number[] = [];
     const r: ResultadoEvaluacion = { fecha: dia, evaluadas: candidatas.length, avisos: 0, nuevos: 0, pausadas: 0, sinPrimeraTransmision: 0, cerrados };
     for (const c of candidatas) {
       if (!c.ultima) {
@@ -198,20 +222,24 @@ export class VigilanciaTransmisionService {
       const vivo = vivos.get(c.idInstalacion);
       if (vivo) {
         await repoAvisos.update({ id: vivo.id }, { ...datos, ...reabrirSiTermino(vivo, ahora) });
+        tocados.push(Number(vivo.id));
       } else {
         try {
-          await repoAvisos.insert({
+          const nuevo = await repoAvisos.insert({
             ...datos,
             idInstalacion: c.idInstalacion,
             estatus: 'abierto',
             fechaPrimeraEvaluacion: dia,
             fechaCreacion: ahora,
           });
+          tocados.push(Number(nuevo.identifiers[0].id));
           r.nuevos += 1;
         } catch (error) {
           // Otra evaluación (forzada, otra instancia) lo abrió en medio: UQ_AvisosSinTx_Vivo.
           if ((error as { code?: string })?.code !== 'ER_DUP_ENTRY') throw error;
           await repoAvisos.update({ idInstalacion: c.idInstalacion, estatus: In([...ESTATUS_AVISO_VIVO]) }, datos);
+          const ganador = await repoAvisos.findOne({ where: { idInstalacion: c.idInstalacion, estatus: In([...ESTATUS_AVISO_VIVO]) } });
+          if (ganador) tocados.push(Number(ganador.id));
         }
       }
       r.avisos += 1;
@@ -222,6 +250,7 @@ export class VigilanciaTransmisionService {
       `[Vigilancia] ${dia} (${opciones.origen}): ${r.evaluadas} instalaciones, ${r.avisos} avisos (${r.nuevos} nuevos), ` +
         `${r.pausadas} en taller, ${r.sinPrimeraTransmision} sin primera transmisión, ${cerrados} cerrados`,
     );
+    await this.notificar('evaluacion', tocados);
     return r;
   }
 
@@ -244,8 +273,8 @@ export class VigilanciaTransmisionService {
    */
   async cerrarResueltos(): Promise<number> {
     const ahora = nowMexicoCityAsUtcDate();
-    const filas: Array<{ id: unknown; ultimaAviso: unknown; estatusInst: unknown; existe: unknown; ultima: unknown }> = await this.dataSource.query(
-      `SELECT a.Id AS id, a.UltimaTransmision AS ultimaAviso, i.Estatus AS estatusInst, i.Id AS existe, ${SQL_ULTIMA} AS ultima
+    const filas: Array<{ id: unknown; idInstalacion: unknown; ultimaAviso: unknown; estatusInst: unknown; existe: unknown; ultima: unknown }> = await this.dataSource.query(
+      `SELECT a.Id AS id, a.IdInstalacion AS idInstalacion, a.UltimaTransmision AS ultimaAviso, i.Estatus AS estatusInst, i.Id AS existe, ${SQL_ULTIMA} AS ultima
          FROM AvisosSinTransmision a
          LEFT JOIN Instalaciones i ON i.Id = a.IdInstalacion
          LEFT JOIN Dispositivos d ON d.Id = i.IdDispositivo
@@ -255,6 +284,7 @@ export class VigilanciaTransmisionService {
     );
     const repo = this.dataSource.getRepository(AvisosSinTransmision);
     let cerrados = 0;
+    const cerradosEvento: Array<{ id: number; idInstalacion: number; estatus: 'cerrado'; motivoCierre: MotivoCierreAviso; fechaCierre: string }> = [];
     for (const x of filas) {
       let motivo: MotivoCierreAviso | null = null;
       if (x.existe == null) motivo = 'cambio';
@@ -266,7 +296,12 @@ export class VigilanciaTransmisionService {
         { estatus: 'cerrado', motivoCierre: motivo, fechaCierre: ahora },
       );
       cerrados += r.affected ?? 0;
+      if (r.affected) {
+        cerradosEvento.push({ id: Number(x.id), idInstalacion: Number(x.idInstalacion), estatus: 'cerrado', motivoCierre: motivo, fechaCierre: fechaPared(ahora) });
+      }
     }
+    // El aviso cerrado sale de la bandeja: basta su id y por qué.
+    if (cerradosEvento.length) this.gateway?.emitAvisosSinTransmision({ motivo: 'cierre', avisos: cerradosEvento });
     return cerrados;
   }
 
@@ -412,6 +447,8 @@ export class VigilanciaTransmisionService {
     if (!actualizado.affected) {
       throw new ConflictException('El aviso se cerró mientras se atendía: el equipo volvió a transmitir o la instalación ya no está activa.');
     }
+    // Los demás operadores ven que alguien ya lo atendió.
+    await this.notificar('atencion', [id]);
     return {
       status: 'success',
       message: 'Aviso atendido.',

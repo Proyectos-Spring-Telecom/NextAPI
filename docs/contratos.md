@@ -294,7 +294,15 @@ Body `{ idCliente, idUsuarios: number[] }` (mín. 1). Devuelve las instalaciones
 | `monitoreo:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano (listado) |
 | `consola:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano de `UltimaPosicion` (consola) |
 
-Se emite tras ingest GPS (`notificarImei`) o cambios de dispositivo / instalación / panel relevantes.
+| `vigilancia:avisos` | Server → room `operacion` (roles 1–5) | `{ motivo: 'evaluacion' \| 'atencion' \| 'cierre', avisos[], porProveedor? }`. En `evaluacion` y `atencion`, cada aviso es el ítem de `GET /vigilancia-transmision/avisos`; en `cierre`, `{ id, idInstalacion, estatus: 'cerrado', motivoCierre, fechaCierre }`. `porProveedor` solo en `evaluacion` |
+| `incidente:inservible` | Server → room `operacion` | `{ idIncidente, tipo: 'equipo' \| 'panel', idDispositivo, numeroSerie, identificador, idClienteDispositivo, descripcion, fechaInicio }` al abrirse el incidente de un inservible que transmite |
+| `comando:actualizacion` | Server → rooms `comandos-op:{id}` (roles 1–5) y, solo del reloj, `comandos-cliente:{id}` (rol 6): los mismos roles que sus `GET …/comandos`; 7 y 9 no lo reciben | `{ idInstalacion, idDispositivo, comando }`; `comando` = ítem de `GET …/reloj/comandos` o `…/trackcam/comandos`, con cada confirmación del socket (`recibido` → `enviado` → `confirmado` / `fallido` / `vencido`) |
+
+`monitoreo:actualizacion` y `consola:actualizacion` se emiten tras ingest GPS (`notificarImei`) o cambios de dispositivo / instalación / panel relevantes. Las rooms se fijan al conectar: una instalación nueva o un cambio de rol se ve al reconectar.
+
+### 11.4b Socket.IO — `/alarmas`
+
+Paneles (los visibles para el usuario): `conexion:lista` (`{ idsPaneles }`) y, por room `panel:{id}`: `evento:nuevo` (evento SIA), `panel:heartbeat` y `panel:estado` (en línea).
 
 ### 11.5 `GET /monitoreo/:idInstalacion/historico`
 

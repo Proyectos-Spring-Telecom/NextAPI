@@ -437,7 +437,7 @@ Desde la fase E ([motor-activos.md](motor-activos.md) §15):
 - **Bandeja "Sin transmisión"** (monitoreo, roles 1–5): `GET /vigilancia-transmision/avisos` (sin `estatus` trae los vivos: `abierto` y `atendido`; `?estatus=cerrado&fecha=YYYY-MM-DD` para el histórico).
   - Cada aviso: instalación, cliente, vehículo (placa, económico), equipo (IMEI, serie, tipo), SIM y compañía, última transmisión, horas sin transmitir, estatus, resultado y `posibleFallaProveedor`.
   - `porProveedor`: avisos por compañía telefónica según la evaluación en que se abrieron (`fechaEvaluacion` del grupo = `fechaPrimeraEvaluacion` de los avisos); si marca `posibleFallaProveedor`, mostrarlo como banner ("posible falla de Telcel: 5 equipos").
-  - Se genera una vez al día entre 9:00 y 11:00; consultar la bandeja al entrar y cada pocos minutos (no hay push).
+  - Se genera una vez al día entre 9:00 y 11:00. Cargar la bandeja al entrar y escuchar `vigilancia:avisos` en `/monitoreo` (§25): trae los avisos nuevos o actualizados (`evaluacion`), los que atendió otro operador (`atencion`) y los que salen de la bandeja (`cierre`, solo `id` y `motivoCierre`).
   - **Atender:** `PATCH /vigilancia-transmision/avisos/:id/atender` con `{ resultado, comentario?, fechaRegreso? }`. `resultado`: `falla_equipo`, `taller` (exige `fechaRegreso` futura; pausa la vigilancia de esa unidad hasta esa fecha), `proveedor`, `cliente_avisado`, `otro`.
   - El aviso se cierra solo cuando el equipo vuelve a transmitir o la instalación se da de baja. Si se cerró justo mientras se atendía → 409 (recargar la bandeja).
   - Pasada la fecha de regreso del taller, si sigue sin transmitir, vuelve a `abierto` sin resultado.
@@ -494,4 +494,19 @@ Desde el 31/10 ([motor-activos.md](motor-activos.md) §19) la consola de configu
 - **Leer la cámara:** `POST /instalaciones/:id/trackcam/parametros/leer` (botón "Leer de la cámara"). Al confirmarse, el `GET` trae la lectura nueva.
 - **Estatus:** `GET /instalaciones/:id/trackcam/comandos`, igual que el reloj (§23): `pendiente`/`publicado` → `recibido` → `enviado` → `confirmado`. `fallido` trae el motivo en `detalle` (p. ej. "La cámara aceptó pero guardó otro valor: 0x0027=600 (se pidió 300)"); mostrarlo tal cual. Aun fallido, el `GET` de parámetros ya trae lo que quedó en la cámara. Si la cámara está apagada, se aplica al encender.
 - No hay campos de heartbeat, servidor, APN, fotos por alarma ni odómetro: los mantiene el gateway o la cámara.
+
+## 25. Tiempo real (Socket.IO): qué escuchar en cada pantalla (31/10/2026)
+
+Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y luego solo escucha. Conectar con el JWT de acceso en `auth.token` (o `Authorization`/`?token=`). Las salas se fijan al conectar: tras crear una instalación nueva o cambiar de rol, reconectar. Contrato: `docs/contratos.md` §11.4.
+
+| Pantalla | Namespace | Evento | Qué hacer |
+|---|---|---|---|
+| Mapa / listado | `/monitoreo` | `conexion:lista`, luego `monitoreo:actualizacion` | Pintar la lista inicial y reemplazar el ítem de esa instalación |
+| Consola | `/monitoreo` | `conexion:consola`, luego `consola:actualizacion` | Igual, con el ítem de `GET /monitoreo/consola` |
+| Bandeja "Sin transmisión" (roles 1–5) | `/monitoreo` | `vigilancia:avisos` | `evaluacion`/`atencion`: insertar o reemplazar por `id` (y `porProveedor` si viene); `cierre`: quitar por `id` |
+| Incidentes (roles 1–5) | `/monitoreo` | `incidente:inservible` | Aviso destacado "equipo/panel inservible transmitiendo" con `idIncidente`; abrir el detalle con el `GET` de incidentes |
+| Consola de configuración (reloj §23, TrackCam §24; roles 1–5, y el cliente 6 los del reloj) | `/monitoreo` | `comando:actualizacion` | Reemplazar el comando por `comando.id` en la lista; en TrackCam, al llegar `confirmado` o `fallido`, volver a pedir `GET …/trackcam/parametros` (trae la lectura nueva) |
+| Paneles | `/alarmas` | `conexion:lista`, `evento:nuevo`, `panel:heartbeat`, `panel:estado` | Ya existente |
+
+Lo que no empuja (consultar al entrar): equipos sin instalación (§20), "sin primera transmisión" y el histórico de cerrados.
 

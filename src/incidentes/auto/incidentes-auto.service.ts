@@ -1,13 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   EstatusEnum,
   EstatusIncidente,
   TipoOrigenIncidente,
 } from 'src/common/estatus.enum';
 import { Clientes } from 'src/entities/Clientes';
-import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import { fechaPared, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import { EventoAlarma } from 'src/entities/EventoAlarma';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { imeiToString } from 'src/common/imei.util';
 import { Dispositivos } from 'src/entities/Dispositivos';
@@ -30,7 +32,7 @@ const MEMORIA_INSERVIBLE_MS = 10 * 60_000;
 
 /** Medio de los seguimientos que agrega el sistema (no un usuario). */
 export const MEDIO_SEGUIMIENTO_ALERTA = 'Alerta automática';
-import { snapshotPosicion } from '../map-datos-origen.util';
+import { snapshotEventoAlarma, snapshotPosicion } from '../map-datos-origen.util';
 
 /**
  * Alta automática de incidentes cuando una unidad entra en alerta.
@@ -61,6 +63,7 @@ export class IncidentesAutoService {
     private readonly dispositivosRepo: Repository<Dispositivos>,
     @InjectRepository(SeguimientoIncidentes)
     private readonly seguimientosRepo: Repository<SeguimientoIncidentes>,
+    @Optional() private readonly monitoreoGateway?: MonitoreoGateway,
   ) {}
 
   async registrarDesdePosicion(
@@ -157,19 +160,95 @@ export class IncidentesAutoService {
    * equipo, en el cliente raíz (la operación): lo atiende monitoreo, no el
    * cliente final; el cliente dueño del equipo queda en la descripción y en
    * DatosOrigen. Después de cerrado no se vuelve a abrir en 24 h aunque el
-   * equipo siga transmitiendo. Un candado de MySQL por IMEI evita duplicados
-   * entre instancias; una memoria corta evita consultar en cada posición.
+   * equipo siga transmitiendo. Un candado de MySQL por equipo evita duplicados
+   * entre instancias; una memoria corta evita consultar en cada transmisión.
    */
   async registrarInservibleTransmite(posicionId: number, imeiRaw: string): Promise<void> {
     const imei = imeiToString(imeiRaw);
     if (!imei || !Number.isFinite(posicionId) || posicionId < 1) return;
-    const hasta = this.inservibleVisto.get(imei);
+    await this.abrirInservible(`imei:${imei}`, async (m) => {
+      const [posicion, equipo] = await Promise.all([
+        m.findOne(Posiciones, { where: { id: posicionId } }),
+        m.findOne(Dispositivos, { where: { imei }, select: { id: true, idCliente: true, numeroSerie: true } }),
+      ]);
+      if (!posicion || !equipo) return null;
+      return {
+        equipo,
+        tipo: 'equipo',
+        identificador: `IMEI ${imei}`,
+        campos: {
+          tipoOrigen: TipoOrigenIncidente.POSICION,
+          idPosicion: Number(posicion.id),
+          idPosicionOrigen: Number(posicion.id),
+          idEventoAlarma: null,
+          idEventoAlarmaOrigen: null,
+          fechaInicio: posicion.fechaHora,
+        },
+        datosOrigen: snapshotPosicion(posicion),
+      };
+    });
+  }
+
+  /**
+   * Panel inservible que transmite (evento SIA o heartbeat): mismo incidente
+   * que un equipo con posición (§7). `idEventoAlarma` es el evento guardado;
+   * un heartbeat no tiene evento (null).
+   */
+  async registrarPanelInservibleTransmite(params: {
+    idDispositivo: number;
+    cuentaSia: string;
+    idEventoAlarma: number | null;
+    recibidoEn: Date;
+  }): Promise<void> {
+    const { idDispositivo, cuentaSia, idEventoAlarma, recibidoEn } = params;
+    if (!Number.isFinite(idDispositivo) || idDispositivo < 1) return;
+    await this.abrirInservible(`panel:${idDispositivo}`, async (m) => {
+      const [equipo, evento] = await Promise.all([
+        m.findOne(Dispositivos, { where: { id: idDispositivo }, select: { id: true, idCliente: true, numeroSerie: true } }),
+        idEventoAlarma != null ? m.findOne(EventoAlarma, { where: { id: idEventoAlarma } }) : Promise.resolve(null),
+      ]);
+      if (!equipo) return null;
+      return {
+        equipo,
+        tipo: 'panel',
+        identificador: `cuenta SIA ${cuentaSia}`,
+        campos: {
+          tipoOrigen: TipoOrigenIncidente.EVENTO_ALARMA,
+          idPosicion: null,
+          idPosicionOrigen: null,
+          idEventoAlarma: evento ? Number(evento.id) : null,
+          idEventoAlarmaOrigen: evento ? Number(evento.id) : null,
+          fechaInicio: evento?.recibidoEn ?? recibidoEn,
+        },
+        datosOrigen: {
+          ...(evento ? snapshotEventoAlarma(evento) : { recibidoEn }),
+          cuentaSia,
+          transmision: evento ? 'evento' : 'heartbeat',
+        },
+      };
+    });
+  }
+
+  private async abrirInservible(
+    clave: string,
+    origen: (m: EntityManager) => Promise<{
+      equipo: Pick<Dispositivos, 'id' | 'idCliente' | 'numeroSerie'>;
+      tipo: 'equipo' | 'panel';
+      identificador: string;
+      campos: Pick<
+        Incidentes,
+        'tipoOrigen' | 'idPosicion' | 'idPosicionOrigen' | 'idEventoAlarma' | 'idEventoAlarmaOrigen' | 'fechaInicio'
+      >;
+      datosOrigen: Record<string, unknown>;
+    } | null>,
+  ): Promise<void> {
+    const hasta = this.inservibleVisto.get(clave);
     if (hasta != null && hasta > Date.now()) return;
-    const clave = `${imei}|${ALERTA_INSERVIBLE}`;
-    if (this.enCurso.has(clave)) return;
-    this.enCurso.add(clave);
+    const enCurso = `${clave}|${ALERTA_INSERVIBLE}`;
+    if (this.enCurso.has(enCurso)) return;
+    this.enCurso.add(enCurso);
     const qr = this.incidentesRepo.manager.connection.createQueryRunner();
-    const candado = `inservible:${imei}`;
+    const candado = `inservible:${clave}`;
     try {
       await qr.connect();
       const [lock] = await qr.query('SELECT GET_LOCK(?, 5) AS l', [candado]);
@@ -184,10 +263,18 @@ export class IncidentesAutoService {
         .limit(1)
         .getRawOne<{ id: string | number }>();
       if (!raiz) {
-        this.logger.warn(`[IncidenteAuto] sin cliente raíz: no se abre el incidente de inservible imei=${imei}`);
+        this.logger.warn(`[IncidenteAuto] sin cliente raíz: no se abre el incidente de inservible ${clave}`);
         return;
       }
       const idCliente = Number(raiz.id);
+
+      const datos = await origen(m);
+      if (!datos) {
+        // Sin posición o sin equipo: no se reintenta en cada transmisión.
+        this.inservibleVisto.set(clave, Date.now() + MEMORIA_INSERVIBLE_MS);
+        return;
+      }
+      const { equipo } = datos;
 
       // Abierto, o cerrado hace menos de 24 h: no se abre otro.
       const vigente = await m
@@ -199,52 +286,53 @@ export class IncidentesAutoService {
           desde: new Date(nowMexicoCityAsUtcDate().getTime() - ENFRIAMIENTO_INSERVIBLE_MS),
         })
         .andWhere("JSON_UNQUOTE(JSON_EXTRACT(inc.DatosOrigen, '$.alerta')) = :alerta", { alerta: ALERTA_INSERVIBLE })
-        .andWhere("JSON_UNQUOTE(JSON_EXTRACT(inc.DatosOrigen, '$.imei')) = :imei", { imei })
+        .andWhere("CAST(JSON_EXTRACT(inc.DatosOrigen, '$.idDispositivo') AS SIGNED) = :idDispositivo", {
+          idDispositivo: Number(equipo.id),
+        })
         .getRawOne<{ id: string | number }>();
       if (vigente) {
-        this.inservibleVisto.set(imei, Date.now() + MEMORIA_INSERVIBLE_MS);
+        this.inservibleVisto.set(clave, Date.now() + MEMORIA_INSERVIBLE_MS);
         return;
       }
-
-      const [posicion, equipo] = await Promise.all([
-        m.findOne(Posiciones, { where: { id: posicionId } }),
-        m.findOne(Dispositivos, { where: { imei }, select: { id: true, idCliente: true, numeroSerie: true } }),
-      ]);
-      if (!posicion || !equipo) return;
 
       const saved = await m.save(
         m.create(Incidentes, {
           idCliente,
-          tipoOrigen: TipoOrigenIncidente.POSICION,
-          idPosicion: Number(posicion.id),
-          idPosicionOrigen: Number(posicion.id),
-          idEventoAlarma: null,
-          idEventoAlarmaOrigen: null,
+          ...datos.campos,
           datosOrigen: {
-            ...snapshotPosicion(posicion),
+            ...datos.datosOrigen,
             alerta: ALERTA_INSERVIBLE,
             idDispositivo: Number(equipo.id),
             idClienteDispositivo: equipo.idCliente != null ? Number(equipo.idCliente) : null,
           },
           idUsuario: null,
           descripcion:
-            `Equipo inservible transmitiendo (posible robo o vandalismo): serie ${equipo.numeroSerie}, ` +
-            `IMEI ${imei}, cliente del equipo ${equipo.idCliente ?? 'almacén'}.`,
-          fechaInicio: posicion.fechaHora,
+            `${datos.tipo === 'panel' ? 'Panel' : 'Equipo'} inservible transmitiendo (posible robo o vandalismo): ` +
+            `serie ${equipo.numeroSerie}, ${datos.identificador}, cliente del equipo ${equipo.idCliente ?? 'almacén'}.`,
           fechaCierre: null,
           estatus: EstatusIncidente.ABIERTO,
         }),
       );
-      this.inservibleVisto.set(imei, Date.now() + MEMORIA_INSERVIBLE_MS);
-      this.logger.log(`[IncidenteAuto] inservible transmite imei=${imei} posicion=${posicionId} → Incidente=${saved.id}`);
+      this.inservibleVisto.set(clave, Date.now() + MEMORIA_INSERVIBLE_MS);
+      this.logger.log(`[IncidenteAuto] inservible transmite ${clave} → Incidente=${saved.id}`);
+      this.monitoreoGateway?.emitIncidenteInservible({
+        idIncidente: Number(saved.id),
+        tipo: datos.tipo,
+        idDispositivo: Number(equipo.id),
+        numeroSerie: equipo.numeroSerie,
+        identificador: datos.identificador,
+        idClienteDispositivo: equipo.idCliente != null ? Number(equipo.idCliente) : null,
+        descripcion: saved.descripcion,
+        fechaInicio: fechaPared(new Date(saved.fechaInicio)),
+      });
     } catch (error) {
       this.logger.warn(
-        `[IncidenteAuto] no se pudo crear el incidente de inservible imei=${imei}: ${(error as Error)?.message}`,
+        `[IncidenteAuto] no se pudo crear el incidente de inservible ${clave}: ${(error as Error)?.message}`,
       );
     } finally {
       await qr.query('SELECT RELEASE_LOCK(?)', [candado]).catch(() => undefined);
       await qr.release();
-      this.enCurso.delete(clave);
+      this.enCurso.delete(enCurso);
     }
   }
 

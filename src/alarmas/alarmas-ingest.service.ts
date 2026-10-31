@@ -15,6 +15,8 @@ import { AlarmasGateway } from './alarmas.gateway';
 import { mapEventoItem } from './alarmas-mapper';
 import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { TelemetriaHuerfanosService } from 'src/telemetria-huerfanos/telemetria-huerfanos.service';
+import { IncidentesAutoService } from 'src/incidentes/auto/incidentes-auto.service';
+import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import { isoUtcToMexicoCityAsUtcDate, isoUtcToMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 
 const UPSERT_ULTIMO_SQL = `
@@ -50,6 +52,7 @@ export class AlarmasIngestService {
     private readonly gateway: AlarmasGateway,
     private readonly monitoreoGateway: MonitoreoGateway,
     private readonly huerfanos: TelemetriaHuerfanosService,
+    private readonly incidentesAuto: IncidentesAutoService,
   ) {}
 
   async ingestEvento(
@@ -114,7 +117,11 @@ export class AlarmasIngestService {
       await qr.commitTransaction();
 
       if (idPanel == null) {
-        // El evento queda en EventoAlarma con Estatus=0; aquí se reporta el panel sin alta
+        // El evento queda en EventoAlarma con Estatus=0 (evidencia, sin cliente).
+        if (await this.panelInservibleTransmite(dto.cuentaSia, Number(saved.id), saved.recibidoEn)) {
+          return { accepted: true };
+        }
+        // Panel sin alta.
         this.logger.debug(
           `evento huérfano cuentaSia=${dto.cuentaSia} idEvento=${saved.id}`,
         );
@@ -220,6 +227,9 @@ export class AlarmasIngestService {
 
       if (idPanel == null) {
         await qr.commitTransaction();
+        if (await this.panelInservibleTransmite(dto.cuentaSia, null, isoUtcToMexicoCityAsUtcDate(dto.ultimoHeartbeat))) {
+          return { accepted: true };
+        }
         await this.huerfanos.registrar({
           protocol: 'axpro',
           deviceId: dto.cuentaSia,
@@ -249,6 +259,35 @@ export class AlarmasIngestService {
     } finally {
       await qr.release();
     }
+  }
+
+  /**
+   * Un panel dado por inservible que transmite (evento o heartbeat) no es un
+   * panel sin alta: abre el incidente de inservible (docs/motor-activos.md §7),
+   * fuera de la transacción y sin esperar. true si era un panel inservible.
+   */
+  private async panelInservibleTransmite(cuentaSia: string, idEventoAlarma: number | null, recibidoEn: Date): Promise<boolean> {
+    if (!cuentaSia) return false;
+    let panel: PanelAlarma | null;
+    try {
+      // PanelAlarma.Estatus sigue al del equipo (motor de activos): 5 = inservible.
+      panel = await this.panelRepo.findOne({
+        where: { cuentaSia, estatus: EstatusRecurso.INSERVIBLE },
+        select: { idDispositivo: true, cuentaSia: true },
+      });
+    } catch (error) {
+      // El evento ya está guardado: sin la consulta, se trata como panel sin alta (huérfanos).
+      this.logger.warn(`panel inservible cuentaSia=${cuentaSia}: ${(error as Error)?.message}`);
+      return false;
+    }
+    if (!panel) return false;
+    void this.incidentesAuto.registrarPanelInservibleTransmite({
+      idDispositivo: Number(panel.idDispositivo),
+      cuentaSia,
+      idEventoAlarma,
+      recibidoEn,
+    });
+    return true;
   }
 
   private formatTimestampPanelIngest(

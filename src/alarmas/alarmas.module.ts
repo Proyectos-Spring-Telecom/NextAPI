@@ -1,3 +1,4 @@
+import { IncidentesAutoModule } from 'src/incidentes/auto/incidentes-auto.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from 'src/auth/auth.module';
@@ -28,6 +29,7 @@ import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-h
     MonitoreoModule,
     TenantFilterModule,
     TelemetriaHuerfanosModule,
+    IncidentesAutoModule,
   ],
   controllers: [AlarmasIngestController, AlarmasController],
   providers: [

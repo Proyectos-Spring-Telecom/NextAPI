@@ -4,7 +4,8 @@ import { DataSource, EntityManager, In, LessThan } from 'typeorm';
 import { ComandosDispositivo } from 'src/entities/ComandosDispositivo';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { RabbitMqConnectionService } from 'src/messaging/core/rabbitmq.connection.service';
-import { fechaPared, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import { itemComando } from './item-comando';
 import { idEquipoComando } from './id-equipo';
 
 /** Un comando ya armado por el módulo de su protocolo (comandos-fa100s, comandos-jt808). */
@@ -191,25 +192,6 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
       order: { id: 'DESC' },
       take: 100,
     });
-    const f = (d: Date | null) => (d ? fechaPared(new Date(d)) : null);
-    return {
-      data: filas.map((c) => ({
-        id: Number(c.id),
-        tipo: c.tipo,
-        contenido: c.contenido,
-        estatus: c.estatus,
-        detalle: c.detalle,
-        resultado: c.resultado ?? null,
-        intentos: Number(c.intentos),
-        idUsuario: c.idUsuario != null ? Number(c.idUsuario) : null,
-        origen: c.origen,
-        fechaCreacion: f(c.fechaCreacion),
-        fechaPublicado: f(c.fechaPublicado),
-        fechaRecibido: f(c.fechaRecibido),
-        fechaEnviado: f(c.fechaEnviado),
-        fechaConfirmado: f(c.fechaConfirmado),
-        venceAt: f(c.venceAt),
-      })),
-    };
+    return { data: filas.map(itemComando) };
   }
 }

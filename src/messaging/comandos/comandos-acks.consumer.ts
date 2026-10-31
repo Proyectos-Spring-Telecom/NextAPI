@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConsumeMessage } from 'amqplib';
 import { In, Repository } from 'typeorm';
@@ -6,6 +6,9 @@ import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialE
 import { ComandosDispositivo } from 'src/entities/ComandosDispositivo';
 import { ParametrosTrackCam } from 'src/entities/ParametrosTrackCam';
 import { idEquipoComando } from 'src/comandos/id-equipo';
+import { itemComando } from 'src/comandos/item-comando';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { aplicaAck, ESTADOS_ACK, estatusQueAceptan, type EstadoAck, type EstatusComando } from 'src/comandos/estados-comando';
 import { isoUtcToMexicoCityAsUtcDate, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
@@ -30,6 +33,7 @@ export class ComandosAcksConsumer {
     private readonly comandosRepo: Repository<ComandosDispositivo>,
     @InjectRepository(Dispositivos)
     private readonly dispositivosRepo: Repository<Dispositivos>,
+    @Optional() private readonly gateway?: MonitoreoGateway,
   ) {}
 
   async consume(msg: ConsumeMessage): Promise<void> {
@@ -79,7 +83,33 @@ export class ComandosAcksConsumer {
     if ((estado === 'confirmado' || estado === 'fallido') && comando.protocolo === 'jt808' && resultado) {
       await this.guardarLectura(Number(comando.idDispositivo), resultado);
     }
+    await this.notificar(idComando);
     return 'aplicado';
+  }
+
+  /**
+   * Tiempo real (`comando:actualizacion` en `/monitoreo`, room de la
+   * instalación activa del equipo): la consola de configuración ve avanzar el
+   * comando sin consultar. Nunca falla el ack.
+   */
+  private async notificar(idComando: number): Promise<void> {
+    if (!this.gateway) return;
+    try {
+      const comando = await this.comandosRepo.findOne({ where: { id: idComando } });
+      if (!comando) return;
+      const inst = await this.comandosRepo.manager.findOne(Instalaciones, {
+        where: { idDispositivo: comando.idDispositivo, estatus: 1 },
+        select: { id: true },
+      });
+      if (!inst) return;
+      // Mismos roles que los GET: reloj 1–6 (`…/reloj/comandos`), TrackCam 1–5.
+      this.gateway.emitComando(
+        { idInstalacion: Number(inst.id), idDispositivo: Number(comando.idDispositivo), comando: itemComando(comando) },
+        comando.protocolo === 'fa100s' ? 'operacion_y_cliente' : 'operacion',
+      );
+    } catch (error) {
+      this.logger.warn(`comando ${idComando}: no se pudo notificar: ${(error as Error)?.message}`);
+    }
   }
 
   /**
