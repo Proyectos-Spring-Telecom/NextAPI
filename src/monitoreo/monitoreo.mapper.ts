@@ -89,7 +89,7 @@ export function mapTelemetriaUltimaPosicion(
 
 type MonitoreoBase = {
   idInstalacion: number;
-  /** Geocercas activas asignadas a la instalación ("A, B"); null si no tiene. */
+  /** Geocercas activas del vehículo de la instalación ("A, B"); null si no tiene. */
   geocercas: string | null;
   idCliente: number;
   idTipoProducto: number;

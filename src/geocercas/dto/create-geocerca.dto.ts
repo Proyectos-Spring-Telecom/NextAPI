@@ -26,8 +26,20 @@ export class CreateGeocercaDto {
 
   @ApiPropertyOptional({
     description:
-      'ID de instalación asociada (opcional). Debe pertenecer al mismo cliente.',
+      'Vehículo (producto) al que aplica la geocerca; debe ser del mismo cliente. La geocerca sigue al vehículo ' +
+      'aunque cambie el equipo o tenga varias instalaciones (GPS + TrackCam). Sin vehículo no se evalúa.',
+    example: 1000210,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  idProducto?: number | null;
+
+  @ApiPropertyOptional({
+    description: '**Obsoleto:** usar `idProducto`. Si se envía, la geocerca toma el vehículo de esa instalación.',
     example: 10,
+    deprecated: true,
   })
   @IsOptional()
   @Type(() => Number)

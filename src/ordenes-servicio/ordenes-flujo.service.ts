@@ -17,6 +17,8 @@ import { CatMotivosOrdenServicio } from 'src/entities/CatMotivosOrdenServicio';
 import { CatOrdenServicioOpciones } from 'src/entities/CatOrdenServicioOpciones';
 import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
+import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
+import { Dispositivos } from 'src/entities/Dispositivos';
 import { OrdenesServicio } from 'src/entities/OrdenesServicio';
 import { OrdenServicioPruebas } from 'src/entities/OrdenServicioPruebas';
 import { OrdenServicioRespuestas } from 'src/entities/OrdenServicioRespuestas';
@@ -518,11 +520,28 @@ export class OrdenesFlujoService {
     if (orden.idProducto == null) {
       throw new BadRequestException('Primero indica el vehículo (idProducto)');
     }
+    // La autorización es para retirar el equipo de la MISMA clase (fase C: un GPS no
+    // retira la TrackCam). Con el equipo ya capturado se revisa su clase; sin él,
+    // cuenta cualquier equipo del vehículo y al cerrar solo se retira el de su clase.
+    const fila =
+      orden.idDispositivoNuevo != null
+        ? await this.dataSource
+            .createQueryBuilder()
+            .from(Dispositivos, 'd')
+            .innerJoin(CatTipoDispositivo, 't', 't.id = d.idTipoDispositivo')
+            .select('t.clase', 'clase')
+            .where('d.id = :id', { id: Number(orden.idDispositivoNuevo) })
+            .getRawOne<{ clase: string | null }>()
+        : null;
     const conEquipo = await this.instalacionesRepo.findOne({
-      where: { idProducto: Number(orden.idProducto), estatus: EstatusEnum.ACTIVO },
+      where: {
+        idProducto: Number(orden.idProducto),
+        estatus: EstatusEnum.ACTIVO,
+        ...(orden.idDispositivoNuevo != null ? { clase: fila?.clase || 'AVL' } : {}),
+      },
     });
     if (!conEquipo) {
-      throw new BadRequestException('Ese vehículo no tiene un equipo registrado en Next: no hace falta autorización');
+      throw new BadRequestException('Ese vehículo no tiene un equipo de esa clase registrado en Next: no hace falta autorización');
     }
     if (orden.autorizacion === AUTORIZACION.PENDIENTE) return this.ok(orden, 'La autorización ya estaba pedida');
     if (orden.autorizacion === AUTORIZACION.AUTORIZADA) return this.ok(orden, 'La desinstalación ya está autorizada');

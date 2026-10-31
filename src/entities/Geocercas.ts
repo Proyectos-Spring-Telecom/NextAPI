@@ -9,14 +9,13 @@ import {
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
-import { Instalaciones } from './Instalaciones';
+import { Productos } from './Productos';
 import { UsuariosGeocerca } from './UsuariosGeocerca';
 
 @applySchema
 @Index('IX_Geocercas_IdCliente', ['idCliente'])
-@Index('IX_Geocercas_IdInstalacion', ['idInstalacion'])
 @Index('IX_Geocercas_Cliente_Estatus', ['idCliente', 'estatus'])
-@Index('FK_Geocercas_Instalaciones', ['idCliente', 'idInstalacion'])
+@Index('IX_Geocercas_Cliente_Producto', ['idCliente', 'idProducto'])
 @Entity('Geocercas')
 export class Geocercas {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
@@ -25,8 +24,9 @@ export class Geocercas {
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
-  @Column('bigint', { name: 'IdInstalacion', nullable: true })
-  idInstalacion: number | null;
+  /** Vehículo (producto) al que aplica, no la versión de la instalación (fase C). NULL = no se evalúa. */
+  @Column('bigint', { name: 'IdProducto', nullable: true })
+  idProducto: number | null;
 
   @Column('varchar', { name: 'Nombre', length: 100 })
   nombre: string;
@@ -65,16 +65,16 @@ export class Geocercas {
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
 
-  @ManyToOne(() => Instalaciones, {
+  @ManyToOne(() => Productos, {
     onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
+    onUpdate: 'NO ACTION',
     nullable: true,
   })
   @JoinColumn([
     { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdInstalacion', referencedColumnName: 'id' },
+    { name: 'IdProducto', referencedColumnName: 'id' },
   ])
-  idInstalacion2: Instalaciones | null;
+  idProducto2: Productos | null;
 
   @OneToMany(() => UsuariosGeocerca, (ug) => ug.idGeocerca2)
   usuariosGeocerca: UsuariosGeocerca[];

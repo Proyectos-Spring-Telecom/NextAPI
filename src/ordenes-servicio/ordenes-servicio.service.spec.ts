@@ -53,6 +53,7 @@ function build(
     create: jest.fn(async () => ({ status: 'success', message: '', data: { id: 98 } })),
     update: jest.fn(async () => ({ status: 'success', message: '', data: { id: 99 } })),
     baja: jest.fn(async () => ({ status: 'success', message: '', data: { id: 10 } })),
+    claseDe: jest.fn(async () => 'AVL'),
   };
   const usuarios = { findOne: jest.fn(async () => ({ id: 7 })) };
   const bitacora = { logToBitacora: jest.fn() };

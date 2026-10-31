@@ -203,6 +203,28 @@ export class MonitoreoController {
     );
   }
 
+  @Get('producto/:idProducto/historico')
+  @ApiOperation({
+    summary: 'Histórico del vehículo (todas sus instalaciones activas)',
+    description: [
+      'Fase C: un vehículo puede tener un GPS, una TrackCam, un reloj… (una instalación activa por clase de equipo).',
+      'Junta el histórico de cada instalación activa del vehículo que el usuario puede ver (mismo recorte por vigencia',
+      'que `GET /monitoreo/:idInstalacion/historico`). Cada posición trae `fuente` (clase del equipo: `avl`, `trackcam`,',
+      '`reloj`) e `idInstalacionFuente`. `porFuente` resume cada instalación con su distancia. Por defecto el front muestra',
+      'la fuente `avl` y deja alternar.',
+    ].join(' '),
+  })
+  @ApiParam({ name: 'idProducto', type: Number })
+  @ApiResponse({ status: 200, description: '`{ porFuente: [...], posiciones: [...] }`, posiciones DESC por fecha' })
+  @ApiResponse({ status: 404, description: 'El vehículo no tiene instalaciones activas visibles' })
+  async findHistoricoProducto(
+    @Param('idProducto', ParseIntPipe) idProducto: number,
+    @Query() query: FilterHistoricoMonitoreoDto,
+    @Request() req,
+  ) {
+    return this.monitoreoService.historicoProducto(idProducto, query.fechaInicio, query.fechaFinal, req.user);
+  }
+
   @Get(':idInstalacion/historico')
   @ApiOperation({
     summary: 'Histórico de posiciones por instalación',

@@ -16,4 +16,8 @@ export class CatTipoDispositivo {
 
   @Column('tinyint', { name: 'Estatus', default: () => "'1'" })
   estatus: number;
+
+  /** AVL | TRACKCAM | PANEL | RELOJ: una instalación activa por clase y vehículo (fase C). */
+  @Column('varchar', { name: 'Clase', length: 12, default: () => "'AVL'" })
+  clase: string;
 }

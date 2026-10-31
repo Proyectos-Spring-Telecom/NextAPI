@@ -21,6 +21,7 @@ import { Usuarios } from './Usuarios';
   unique: true,
 })
 @Index('UQ_Inst_SimActivo', ['idCliente', 'simActivo'], { unique: true })
+@Index('UQ_Inst_ProductoClaseActiva', ['idCliente', 'idProducto', 'claseActiva'], { unique: true })
 @Index('IX_Instalaciones_Cliente_Estatus', [
   'idCliente',
   'estatusInstalacion',
@@ -101,6 +102,23 @@ export class Instalaciones {
     onUpdate: 'CURRENT_TIMESTAMP',
   })
   fechaActualizacion: Date;
+
+  /** Clase del equipo de esta versión (fase C); un cambio de equipo es de la misma clase. */
+  @Column('varchar', { name: 'Clase', length: 12, default: () => "'AVL'" })
+  clase: string;
+
+  /** Clase mientras está activa: UNIQUE (IdCliente, IdProducto, ClaseActiva). */
+  @Column({
+    type: 'varchar',
+    name: 'ClaseActiva',
+    length: 12,
+    nullable: true,
+    asExpression: 'if((`Estatus` = 1),`Clase`,NULL)',
+    generatedType: 'STORED',
+    insert: false,
+    update: false,
+  })
+  claseActiva: string | null;
 
   @Column({
     type: 'bigint',

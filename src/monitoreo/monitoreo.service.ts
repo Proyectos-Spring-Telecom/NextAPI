@@ -708,6 +708,53 @@ export class MonitoreoService {
     }
   }
 
+  /**
+   * Histórico de un vehículo con varias instalaciones activas (fase C): el de
+   * cada instalación visible, cada punto con su fuente (clase del equipo).
+   */
+  async historicoProducto(
+    idProducto: number,
+    fechaInicioRaw: string,
+    fechaFinalRaw: string,
+    alcance: UsuarioAlcance,
+  ) {
+    // Fechas inválidas son error del pedido (400), no "sin instalaciones" (404).
+    let inicio: string;
+    let fin: string;
+    try {
+      inicio = parseFechaHistorico(fechaInicioRaw);
+      fin = parseFechaHistorico(fechaFinalRaw);
+    } catch {
+      throw new BadRequestException('fechaInicio / fechaFinal tienen un formato inválido');
+    }
+    if (inicio > fin) throw new BadRequestException('fechaInicio no puede ser posterior a fechaFinal');
+    const activas = await this.instalacionesRepo.find({
+      where: { idProducto, estatus: EstatusEnum.ACTIVO },
+      select: { id: true, clase: true },
+      order: { id: 'ASC' },
+    });
+    const porFuente: Array<{ idInstalacion: number; fuente: string; totalDistancia: number; total: number }> = [];
+    const posiciones: Array<HistoricoMonitoreoResponse['posiciones'][number] & { fuente: string; idInstalacionFuente: number }> = [];
+    for (const inst of activas) {
+      const fuente = String(inst.clase || 'AVL').toLowerCase();
+      let r: HistoricoMonitoreoResponse;
+      try {
+        r = await this.reporteHistorico(Number(inst.id), fechaInicioRaw, fechaFinalRaw, alcance);
+      } catch (error) {
+        // Fuera del alcance del usuario (7/9 sin asignar) o sin histórico GPS (panel): esa fuente no aplica.
+        if (error instanceof NotFoundException || error instanceof BadRequestException) continue;
+        throw error;
+      }
+      porFuente.push({ idInstalacion: Number(inst.id), fuente, totalDistancia: r.totalDistancia, total: r.posiciones.length });
+      for (const p of r.posiciones) posiciones.push({ ...p, fuente, idInstalacionFuente: Number(inst.id) });
+    }
+    if (!porFuente.length) {
+      throw new NotFoundException('El vehículo no tiene instalaciones activas visibles con histórico');
+    }
+    posiciones.sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+    return { porFuente, posiciones };
+  }
+
   async idsInstalacionesVisibles(
     idUsuario: number,
     idClienteToken: number,
@@ -826,11 +873,11 @@ export class MonitoreoService {
 
     applyMonitoreoListJoins(qb);
     applyMonitoreoListSelect(qb);
-    // Nombres de las geocercas activas asignadas a la instalación ("A, B"); null si no tiene.
+    // Nombres de las geocercas activas del vehículo de la instalación ("A, B"); null si no tiene.
     qb.addSelect(
       `(SELECT GROUP_CONCAT(DISTINCT g.Nombre ORDER BY g.Nombre SEPARATOR ', ')
           FROM Geocercas g
-         WHERE g.IdInstalacion = i.Id AND g.Estatus = 1)`,
+         WHERE g.IdProducto = i.IdProducto AND g.IdCliente = i.IdCliente AND g.Estatus = 1)`,
       'geocercas',
     );
     return qb;

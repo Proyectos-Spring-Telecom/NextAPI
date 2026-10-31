@@ -19,13 +19,12 @@ import {
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
+import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { Sims } from 'src/entities/Sims';
 import { Productos } from 'src/entities/Productos';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { Usuarios } from 'src/entities/Usuarios';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
-import { Geocercas } from 'src/entities/Geocercas';
-import { UsuariosGeocerca } from 'src/entities/UsuariosGeocerca';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
@@ -92,6 +91,21 @@ import {
   EstatusRecurso,
   estatusSalidaPorBaja,
 } from 'src/motor-activos/estatus-recurso';
+
+/** Clase de una instalación sin equipo o de un tipo sin clase (fase C). */
+const CLASE_POR_OMISION = 'AVL';
+
+/**
+ * Dos altas simultáneas de la misma clase en un vehículo: la segunda choca con
+ * UQ_Inst_ProductoClaseActiva. Se responde 409 en lugar del error de la base.
+ */
+function choqueDeClase(error: unknown): ConflictException | null {
+  const e = error as { message?: string; driverError?: { message?: string } };
+  const texto = `${e?.message ?? ''} ${e?.driverError?.message ?? ''}`;
+  return texto.includes('UQ_Inst_ProductoClaseActiva')
+    ? new ConflictException('El vehículo ya tiene una instalación activa de esa clase de equipo (se dio de alta al mismo tiempo).')
+    : null;
+}
 
 /** De dónde viene la operación (para el historial de los recursos). Sin él = REST. */
 export interface OrigenOperacion {
@@ -211,18 +225,71 @@ export class InstalacionesService {
     return producto;
   }
 
+  /**
+   * El vehículo puede recibir una instalación de esta clase (fase C): está
+   * disponible (1), o ya instalado (2) con equipos de otra clase. Un GPS, una
+   * TrackCam, un panel… por vehículo (UQ_Inst_ProductoClaseActiva).
+   */
   private async validarProductoDisponibleParaAsignar(
     idProducto: number,
     idCliente: number,
     manager?: EntityManager,
+    clase = CLASE_POR_OMISION,
+    excludeInstalacionId?: number,
   ): Promise<Productos> {
     const producto = await this.validarProducto(idProducto, idCliente, manager);
-    if (Number(producto.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
+    const estatus = Number(producto.estatus);
+    if (estatus === EnumEstatusProductoDispositivo.ACTIVO) return producto;
+    if (estatus === EstatusRecurso.INSTALADO) {
+      const misma = await (manager ?? this.repository.manager).findOne(Instalaciones, {
+        where: { idProducto, estatus: EstatusEnum.ACTIVO, clase },
+        select: { id: true },
+      });
+      if (!misma || Number(misma.id) === excludeInstalacionId) return producto;
       throw new BadRequestException(
-        'El producto debe estar en estatus activo (disponible)',
+        `El vehículo ya tiene una instalación ${clase} activa (${Number(misma.id)}): un equipo por clase.`,
       );
     }
-    return producto;
+    throw new BadRequestException(
+      'El producto debe estar disponible (1), o instalado con equipos de otra clase',
+    );
+  }
+
+  /** Clase del equipo (CatTipoDispositivo.Clase); sin equipo, la clase por omisión. */
+  async claseDe(manager: EntityManager, idDispositivo: number | null | undefined): Promise<string> {
+    if (idDispositivo == null) return CLASE_POR_OMISION;
+    const fila = await manager
+      .createQueryBuilder(Dispositivos, 'd')
+      .innerJoin(CatTipoDispositivo, 't', 't.id = d.idTipoDispositivo')
+      .select('t.clase', 'clase')
+      .where('d.id = :id', { id: idDispositivo })
+      .getRawOne<{ clase: string | null }>();
+    return fila?.clase || CLASE_POR_OMISION;
+  }
+
+  /**
+   * Bloquea los vehículos de la operación (orden fijo, sin interbloqueos): con
+   * varias instalaciones por vehículo (fase C), dos bajas o altas simultáneas
+   * deciden su estatus (1 o 2) una después de la otra.
+   */
+  private async bloquearProductos(manager: EntityManager, ...ids: Array<number | null | undefined>): Promise<void> {
+    for (const id of [...new Set(ids.filter((x): x is number => x != null).map(Number))].sort((a, b) => a - b)) {
+      await manager.createQueryBuilder(Productos, 'p').setLock('pessimistic_write').where('p.id = :id', { id }).getOne();
+    }
+  }
+
+  /** ¿El vehículo tiene otras instalaciones activas? Si sí, sigue instalado (2) aunque esta salga. */
+  private async otrasActivasDelProducto(manager: EntityManager, idProducto: number, excludeId: number): Promise<boolean> {
+    const otra = await manager
+      .createQueryBuilder(Instalaciones, 'i')
+      .select('i.id', 'id')
+      .where('i.idProducto = :idProducto AND i.estatus = :activa AND i.id <> :excludeId', {
+        idProducto,
+        activa: EstatusEnum.ACTIVO,
+        excludeId,
+      })
+      .getRawOne<{ id: string | number }>();
+    return otra != null;
   }
 
   private async validarDispositivoPerteneceCliente(
@@ -478,39 +545,6 @@ export class InstalacionesService {
     }
   }
 
-  /**
-   * Elimina las geocercas ligadas a la instalación y sus UsuariosGeocerca.
-   * Borrado explícito (no depende del ON DELETE de la FK). Usa el manager de la
-   * transacción del llamador.
-   */
-  private async eliminarGeocercasDeInstalacion(
-    manager: EntityManager,
-    idInstalacion: number,
-    idCliente: number,
-  ): Promise<{ id: number; nombre: string }[]> {
-    try {
-      const geocercas = await manager.find(Geocercas, {
-        where: { idInstalacion, idCliente },
-        select: { id: true, nombre: true },
-      });
-
-      if (geocercas.length === 0) {
-        return [];
-      }
-
-      const idsGeocerca = geocercas.map((g) => Number(g.id));
-      await manager.delete(UsuariosGeocerca, { idGeocerca: In(idsGeocerca) });
-      await manager.delete(Geocercas, { id: In(idsGeocerca) });
-
-      return geocercas.map((g) => ({ id: Number(g.id), nombre: g.nombre }));
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new BadRequestException(
-        'No fue posible eliminar las geocercas asociadas a la instalación. La operación no se completó.',
-      );
-    }
-  }
-
   private resolverAccionCambio(
     actual: Instalaciones,
     dto: UpdateInstalacionesDto,
@@ -557,10 +591,14 @@ export class InstalacionesService {
       if (alcance) {
         await this.tenantFilter.assertClienteDestino(alcance, idCliente);
       }
-      await this.validarProductoDisponibleParaAsignar(
+      // Una instalación activa por clase de equipo y vehículo (fase C).
+      await this.bloquearProductos(qr.manager, dto.idProducto);
+      const clase = await this.claseDe(qr.manager, dto.idDispositivo ?? null);
+      const producto = await this.validarProductoDisponibleParaAsignar(
         dto.idProducto,
         idCliente,
         qr.manager,
+        clase,
       );
       // Sin alcance (llamada interna) o rol de operación: puede tomar del almacén.
       const almacen = !alcance || this.tenantFilter.esRolSinFiltro(alcance.rol);
@@ -590,6 +628,7 @@ export class InstalacionesService {
           idProducto: dto.idProducto,
           idDispositivo,
           idSim,
+          clase,
           estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
           idHistoricoInstalacion: null,
           vigenteDesde: ahora,
@@ -607,7 +646,8 @@ export class InstalacionesService {
             ...c,
             idCliente,
             idClienteAnterior: c.tipo === 'producto' ? idCliente : (clienteAntes.get(c.tipo) ?? null),
-            esperado: EstatusRecurso.DISPONIBLE,
+            // El vehículo puede estar ya instalado con equipos de otra clase (2 → 2).
+            esperado: c.tipo === 'producto' ? Number(producto.estatus) : EstatusRecurso.DISPONIBLE,
             nuevo: EstatusRecurso.INSTALADO,
             accion: 'instalacion',
           },
@@ -659,6 +699,8 @@ export class InstalacionesService {
         (error as Error)?.message,
       );
       if (error instanceof HttpException) throw error;
+      const choque = choqueDeClase(error);
+      if (choque) throw choque;
       throw new BadRequestException(
         'No fue posible crear la instalación. Verifique los datos e intente nuevamente.',
       );
@@ -1119,6 +1161,7 @@ export class InstalacionesService {
       const idCliente = Number(actual.idCliente);
       const idProducto =
         dto.idProducto !== undefined ? dto.idProducto : Number(actual.idProducto);
+      await this.bloquearProductos(qr.manager, Number(actual.idProducto), idProducto);
       const idDispositivo =
         dto.idDispositivo !== undefined
           ? dto.idDispositivo
@@ -1159,16 +1202,39 @@ export class InstalacionesService {
       let estatusDispositivoSaliente: number | null = null;
       let estatusSimSaliente: number | null = null;
 
-      if (cambiaProducto) {
-        estatusProductoSaliente = assertEstatusSalida(
-          'producto',
-          dto.estatusProductoAnterior,
-          'estatusProductoAnterior',
+      // La clase es de la instalación: un cambio de equipo es de la misma clase
+      // (un GPS por otro GPS); para agregar otra clase se da de alta otra instalación.
+      const claseActual = actual.clase || CLASE_POR_OMISION;
+      const clase = idDispositivo != null ? await this.claseDe(qr.manager, idDispositivo) : claseActual;
+      if (cambiaDispositivo && idDispositivoAnterior != null && idDispositivo != null && clase !== claseActual) {
+        throw new BadRequestException(
+          `El equipo nuevo es de clase ${clase} y la instalación es ${claseActual}: da de alta otra instalación para esa clase.`,
         );
-        await this.validarProductoDisponibleParaAsignar(
+      }
+
+      // Estatus del vehículo que entra (1, o 2 con equipos de otra clase) y si el que sale queda con otras.
+      let estatusProductoEntrante = EstatusRecurso.DISPONIBLE as number;
+      let productoAnteriorSigue = false;
+      if (cambiaProducto) {
+        productoAnteriorSigue = await this.otrasActivasDelProducto(qr.manager, idProductoAnterior, Number(actual.id));
+        // Si el vehículo que sale conserva otras instalaciones sigue instalado: no se pide su estatus de salida.
+        if (!productoAnteriorSigue) {
+          estatusProductoSaliente = assertEstatusSalida(
+            'producto',
+            dto.estatusProductoAnterior,
+            'estatusProductoAnterior',
+          );
+        }
+        const entrante = await this.validarProductoDisponibleParaAsignar(
           idProducto,
           idCliente,
+          qr.manager,
+          clase,
         );
+        estatusProductoEntrante = Number(entrante.estatus);
+      } else if (clase !== claseActual) {
+        // Una instalación sin equipo que recibe uno: la clase nueva debe estar libre en el vehículo.
+        await this.validarProductoDisponibleParaAsignar(idProducto, idCliente, qr.manager, clase, Number(actual.id));
       } else {
         await this.validarProducto(idProducto, idCliente);
       }
@@ -1257,6 +1323,7 @@ export class InstalacionesService {
           idProducto,
           idDispositivo,
           idSim,
+          clase,
           estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
           idHistoricoInstalacion: Number(hist.id),
           vigenteDesde: ahora,
@@ -1271,12 +1338,6 @@ export class InstalacionesService {
         Number(nueva.id),
       );
 
-      const geocercasEliminadas = await this.eliminarGeocercasDeInstalacion(
-        qr.manager,
-        Number(actual.id),
-        idCliente,
-      );
-
       await qr.manager.delete(Instalaciones, { id: actual.id, idCliente });
 
       // El componente que sale: instalado (2) → el estatus indicado; el que entra: disponible (1) → instalado.
@@ -1289,10 +1350,16 @@ export class InstalacionesService {
         idClienteAnterior?: number | null;
         idClienteNuevo?: number | null;
       }> = [];
-      if (cambiaProducto && estatusProductoSaliente != null) {
+      if (cambiaProducto && (estatusProductoSaliente != null || productoAnteriorSigue)) {
         movimientos.push(
-          { tipo: 'producto', id: idProductoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusProductoSaliente },
-          { tipo: 'producto', id: idProducto, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO },
+          // Con otras instalaciones activas el vehículo sigue instalado (2 → 2).
+          {
+            tipo: 'producto',
+            id: idProductoAnterior,
+            esperado: EstatusRecurso.INSTALADO,
+            nuevo: productoAnteriorSigue ? EstatusRecurso.INSTALADO : (estatusProductoSaliente as number),
+          },
+          { tipo: 'producto', id: idProducto, esperado: estatusProductoEntrante, nuevo: EstatusRecurso.INSTALADO },
         );
       }
       if (cambiaDispositivo) {
@@ -1330,7 +1397,6 @@ export class InstalacionesService {
           idNuevo: Number(nueva.id),
           dto,
           idCliente,
-          geocercasEliminadas,
         },
         idUser,
         EnumModulos.INSTALACIONES,
@@ -1360,6 +1426,8 @@ export class InstalacionesService {
         (error as Error)?.message,
       );
       if (error instanceof HttpException) throw error;
+      const choque = choqueDeClase(error);
+      if (choque) throw choque;
       throw new BadRequestException((error as Error)?.message);
     } finally {
       if (propia) {
@@ -1391,6 +1459,7 @@ export class InstalacionesService {
     const resultado = await this.dataSource.transaction(async (manager) => {
       const actual = await manager.findOne(Instalaciones, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!actual) throw new NotFoundException('No se encontró la instalación solicitada.');
+      await this.bloquearProductos(manager, Number(actual.idProducto), Number(dto.idProducto));
       if (Number(actual.estatus) !== EstatusEnum.ACTIVO) {
         throw new BadRequestException('Solo se corrige el cliente de una instalación activa.');
       }
@@ -1401,7 +1470,8 @@ export class InstalacionesService {
       if (!(await manager.exists(Clientes, { where: { id: destino } }))) {
         throw new BadRequestException('IdCliente no existe');
       }
-      await this.validarProductoDisponibleParaAsignar(dto.idProducto, destino, manager);
+      const clase = actual.clase || CLASE_POR_OMISION;
+      const productoDestino = await this.validarProductoDisponibleParaAsignar(dto.idProducto, destino, manager, clase);
       // Una orden de servicio abierta sobre esta instalación ya no podría cerrarse.
       const abierta = await manager.findOne(OrdenesServicio, {
         where: { idInstalacion: Number(actual.id), estatus: In(['programada', 'borrador']) },
@@ -1441,12 +1511,20 @@ export class InstalacionesService {
         { id: actual.id, idCliente: origenCliente },
         { estatusInstalacion: EnumEstatusInstalacion.INACTIVO, estatus: EstatusEnum.INACTIVO, idUsuario: idUser },
       );
-      await this.eliminarGeocercasDeInstalacion(manager, Number(actual.id), origenCliente);
 
       const ctxAnterior = this.contexto(idUser, Number(actual.id), undefined, nota);
+      // Con otras instalaciones activas (otra clase) el vehículo sigue instalado.
+      const productoSigue = await this.otrasActivasDelProducto(manager, Number(actual.idProducto), Number(actual.id));
       await this.motor.mover(
         manager,
-        { tipo: 'producto', id: Number(actual.idProducto), idCliente: origenCliente, esperado: EstatusRecurso.INSTALADO, nuevo: 1, accion: 'baja' },
+        {
+          tipo: 'producto',
+          id: Number(actual.idProducto),
+          idCliente: origenCliente,
+          esperado: EstatusRecurso.INSTALADO,
+          nuevo: productoSigue ? EstatusRecurso.INSTALADO : EstatusRecurso.DISPONIBLE,
+          accion: 'baja',
+        },
         ctxAnterior,
       );
 
@@ -1476,6 +1554,7 @@ export class InstalacionesService {
           idProducto: dto.idProducto,
           idDispositivo,
           idSim,
+          clase,
           estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
           idHistoricoInstalacion: null,
           vigenteDesde: ahora,
@@ -1485,7 +1564,7 @@ export class InstalacionesService {
       );
       await this.motor.mover(
         manager,
-        { tipo: 'producto', id: Number(dto.idProducto), idCliente: destino, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
+        { tipo: 'producto', id: Number(dto.idProducto), idCliente: destino, esperado: Number(productoDestino.estatus), nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
         this.contexto(idUser, Number(nueva.id), undefined, nota),
       );
       await this.asignarInstalacionUsuariosPorDefecto(manager, Number(nueva.id), destino);
@@ -1720,6 +1799,7 @@ export class InstalacionesService {
       if (!actual) {
         throw new NotFoundException('No se encontró la instalación solicitada.');
       }
+      await this.bloquearProductos(qr.manager, Number(actual.idProducto));
 
       const idCliente = Number(actual.idCliente);
       const componentes = {
@@ -1742,6 +1822,13 @@ export class InstalacionesService {
           qr.manager,
           componentes,
           this.tenantFilter.esRolSinFiltro(rol),
+        );
+        // El vehículo: disponible, o instalado con equipos de otra clase (fase C).
+        const producto = await this.validarProductoDisponibleParaAsignar(
+          componentes.idProducto,
+          idCliente,
+          qr.manager,
+          actual.clase || CLASE_POR_OMISION,
         );
 
         // Versión nueva enlazada a la baja archivada (una baja anterior al
@@ -1767,7 +1854,7 @@ export class InstalacionesService {
               ...c,
               idCliente,
               idClienteAnterior: c.tipo === 'producto' ? idCliente : (clienteAntes.get(c.tipo) ?? null),
-              esperado: EstatusRecurso.DISPONIBLE,
+              esperado: c.tipo === 'producto' ? Number(producto.estatus) : EstatusRecurso.DISPONIBLE,
               nuevo: EstatusRecurso.INSTALADO,
               accion: 'reactivacion',
             },
@@ -1840,6 +1927,8 @@ export class InstalacionesService {
           idUsuario: idUser,
         },
       );
+      // Con otras instalaciones activas (otra clase de equipo) el vehículo sigue instalado.
+      const productoSigue = await this.otrasActivasDelProducto(qr.manager, componentes.idProducto, Number(actual.id));
       for (const c of this.componentes(componentes)) {
         await this.motor.mover(
           qr.manager,
@@ -1847,7 +1936,10 @@ export class InstalacionesService {
             ...c,
             idCliente,
             esperado: EstatusRecurso.INSTALADO,
-            nuevo: estatusSalidaPorBaja(c.tipo, dto.estatusInstalacion),
+            nuevo:
+              c.tipo === 'producto' && productoSigue
+                ? EstatusRecurso.INSTALADO
+                : estatusSalidaPorBaja(c.tipo, dto.estatusInstalacion),
             accion: 'baja',
             // Equipo y SIM regresan al almacén; el producto se queda con su cliente.
             ...(c.tipo === 'producto' ? {} : { idClienteNuevo: null }),
@@ -1855,11 +1947,6 @@ export class InstalacionesService {
           ctx,
         );
       }
-      const geocercasEliminadas = await this.eliminarGeocercasDeInstalacion(
-        qr.manager,
-        Number(actual.id),
-        idCliente,
-      );
 
       if (propia) {
         await qr.commitTransaction();
@@ -1875,7 +1962,7 @@ export class InstalacionesService {
         'Instalaciones',
         `Se cambió la instalación ID: ${id} a estatus ${etiqueta} (${dto.estatusInstalacion})`,
         'UPDATE',
-        { id, dto, idCliente, geocercasEliminadas },
+        { id, dto, idCliente },
         idUser,
         EnumModulos.INSTALACIONES,
         EstatusEnumBitcora.SUCCESS,
@@ -1905,6 +1992,8 @@ export class InstalacionesService {
         (error as Error)?.message,
       );
       if (error instanceof HttpException) throw error;
+      const choque = choqueDeClase(error);
+      if (choque) throw choque;
       throw new BadRequestException(
         'No se pudo actualizar el estatus de la instalación. Intente de nuevo o contacte a soporte.',
       );
@@ -2049,11 +2138,7 @@ export class InstalacionesService {
         'No se puede activar la instalación: el producto vinculado no existe o no pertenece al cliente.',
       );
     }
-    if (Number(producto.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
-      throw new BadRequestException(
-        'No se puede activar la instalación: el producto no está disponible (debe estar en estatus activo).',
-      );
-    }
+    // Su estatus (disponible, o instalado con otra clase) lo valida validarProductoDisponibleParaAsignar.
 
     if (instalacion.idDispositivo != null) {
       // Del almacén o reservado al cliente (fase B).

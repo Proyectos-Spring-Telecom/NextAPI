@@ -38,7 +38,7 @@ const ITEM_EXAMPLE = {
   id: 1,
   idCliente: 1,
   nombreCliente: 'Next',
-  idInstalacion: 10,
+  idProducto: 1000210,
   nombre: 'Zona industrial norte',
   descripcion: 'Perímetro de la planta norte',
   geocerca: {
@@ -84,7 +84,7 @@ export class GeocercasController {
       '- Roles **Cliente (6)** y **Usuario (9):** se toma del JWT (se ignora el body).',
       '- Resto de roles: obligatorio en body y debe estar en el alcance del rol.',
       '',
-      '**idInstalacion:** opcional; si se envía debe pertenecer al cliente.',
+      '**idProducto:** vehículo al que aplica (opcional, del mismo cliente); la geocerca sigue al vehículo aunque cambie el equipo. `idInstalacion` es obsoleto: toma el vehículo de esa instalación. En las respuestas `idInstalacion` es la instalación activa del vehículo (GPS primero).',
       '',
       '**usuariosIds:**',
       '- Roles **Cliente (6)** y **Usuario (9):** opcional; si se omite o `[]`, se vincula el usuario del token.',

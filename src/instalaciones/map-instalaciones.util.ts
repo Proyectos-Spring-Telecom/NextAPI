@@ -71,6 +71,7 @@ export function mapInstalacionPlana(entity: Instalaciones) {
         ? Number(entity.idHistoricoInstalacion)
         : null,
     vigenteDesde: entity.vigenteDesde,
+    clase: (entity as { clase?: string }).clase ?? null,
     idUsuario: entity.idUsuario != null ? Number(entity.idUsuario) : null,
     nombreCliente: nombreCliente(entity.idCliente2),
     nombreUsuario: nombreUsuario(entity.idUsuario2),
@@ -91,6 +92,7 @@ export function mapInstalacionHistoricoVigente(entity: Instalaciones) {
         ? Number(entity.idHistoricoInstalacion)
         : null,
     vigenteDesde: entity.vigenteDesde,
+    clase: (entity as { clase?: string }).clase ?? null,
     idUsuario: entity.idUsuario != null ? Number(entity.idUsuario) : null,
     nombreCliente: nombreCliente(entity.idCliente2),
     nombreUsuario: nombreUsuario(entity.idUsuario2),
@@ -119,6 +121,7 @@ export function mapHistoricoPlano(entity: HistoricoInstalaciones) {
         ? Number(entity.idInstalacionOriginal)
         : null,
     vigenteDesde: entity.vigenteDesde,
+    clase: (entity as { clase?: string }).clase ?? null,
     vigenteHasta: entity.vigenteHasta,
     idHistoricoInstalacion:
       entity.idHistoricoInstalacion != null
@@ -144,6 +147,7 @@ export function mapHistoricoDetallePlano(entity: HistoricoInstalaciones) {
         ? Number(entity.idInstalacionOriginal)
         : null,
     vigenteDesde: entity.vigenteDesde,
+    clase: (entity as { clase?: string }).clase ?? null,
     vigenteHasta: entity.vigenteHasta,
     idHistoricoInstalacion:
       entity.idHistoricoInstalacion != null

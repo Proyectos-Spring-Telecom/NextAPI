@@ -27,13 +27,17 @@ export function mapUsuariosGeocercaPlano(items: UsuariosGeocerca[] | undefined) 
     }));
 }
 
-export function mapGeocercaPlano(item: Geocercas) {
+/**
+ * `idInstalacion` es de compatibilidad (obsoleto): la instalación activa del
+ * vehículo, GPS antes que TrackCam o reloj. La geocerca cuelga de `idProducto`.
+ */
+export function mapGeocercaPlano(item: Geocercas, idInstalacion: number | null = null) {
   return {
     id: Number(item.id),
     idCliente: Number(item.idCliente),
     nombreCliente: nombreCliente(item.idCliente2),
-    idInstalacion:
-      item.idInstalacion != null ? Number(item.idInstalacion) : null,
+    idProducto: item.idProducto != null ? Number(item.idProducto) : null,
+    idInstalacion,
     nombre: item.nombre,
     descripcion: item.descripcion,
     geocerca: item.geocerca,

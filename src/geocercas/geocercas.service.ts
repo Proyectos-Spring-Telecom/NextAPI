@@ -11,6 +11,8 @@ import { Geocercas } from 'src/entities/Geocercas';
 import { UsuariosGeocerca } from 'src/entities/UsuariosGeocerca';
 import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
+import { Productos } from 'src/entities/Productos';
+import { Dispositivos } from 'src/entities/Dispositivos';
 import { Usuarios } from 'src/entities/Usuarios';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
@@ -22,6 +24,7 @@ import {
 import {
   EnumModulos,
   EnumRoles,
+  EnumTipoDispositivo,
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { CreateGeocercaDto } from './dto/create-geocerca.dto';
@@ -30,6 +33,14 @@ import {
   mapGeocercaPlano,
   RELACIONES_GEOCERCA,
 } from './map-geocercas.util';
+
+/** Tipos de rastreo que se prefieren como `idInstalacion` de compatibilidad (GPS antes que TrackCam o reloj). */
+const TIPOS_RASTREO_PREFERIDOS = [
+  EnumTipoDispositivo.RASTREADOR,
+  EnumTipoDispositivo.AVL,
+  EnumTipoDispositivo.TELEFONO,
+  EnumTipoDispositivo.TRACKGAS,
+];
 
 @Injectable()
 export class GeocercasService {
@@ -61,22 +72,72 @@ export class GeocercasService {
     }
   }
 
-  private async assertInstalacionDelCliente(
+  /**
+   * Vehículo (producto) de la geocerca (fase C): `idProducto` del cliente o, por
+   * compatibilidad, el producto de la instalación `idInstalacion` (obsoleto).
+   * `undefined` = no se envió ninguno; `null` = geocerca sin vehículo (no se evalúa).
+   */
+  private async resolverProducto(
     idCliente: number,
-    idInstalacion: number | null | undefined,
-  ): Promise<number | null> {
-    if (idInstalacion == null) {
-      return null;
+    dto: { idProducto?: number | null; idInstalacion?: number | null },
+  ): Promise<number | null | undefined> {
+    if (dto.idProducto !== undefined) {
+      if (dto.idProducto === null) return null;
+      const producto = await this.instalacionesRepo.manager.findOne(Productos, {
+        where: { id: dto.idProducto, idCliente },
+        select: { id: true },
+      });
+      if (!producto) {
+        throw new BadRequestException('IdProducto no existe o no pertenece al cliente');
+      }
+      return Number(dto.idProducto);
     }
-    const instalacion = await this.instalacionesRepo.findOne({
-      where: { id: idInstalacion, idCliente },
-    });
-    if (!instalacion) {
-      throw new BadRequestException(
-        'IdInstalacion no existe o no pertenece al cliente',
-      );
+    if (dto.idInstalacion !== undefined) {
+      if (dto.idInstalacion === null) return null;
+      const instalacion = await this.instalacionesRepo.findOne({
+        where: { id: dto.idInstalacion, idCliente },
+        select: { id: true, idProducto: true },
+      });
+      if (!instalacion) {
+        throw new BadRequestException('IdInstalacion no existe o no pertenece al cliente');
+      }
+      return Number(instalacion.idProducto);
     }
-    return Number(idInstalacion);
+    return undefined;
+  }
+
+  /** Mismo producto en el cliente nuevo (cambio de cliente de la geocerca): debe existir ahí. */
+  private async assertProductoDelCliente(idCliente: number, idProducto: number): Promise<void> {
+    const ok = await this.instalacionesRepo.manager.exists(Productos, { where: { id: idProducto, idCliente } });
+    if (!ok) throw new BadRequestException('IdProducto no existe o no pertenece al cliente');
+  }
+
+  /**
+   * `idInstalacion` de compatibilidad en las respuestas: la instalación activa
+   * del vehículo con equipo de rastreo (GPS antes que TrackCam o reloj).
+   */
+  private async instalacionesVigentes(geocercas: Geocercas[]): Promise<Map<number, number>> {
+    const ids = [...new Set(geocercas.map((g) => g.idProducto).filter((x): x is number => x != null).map(Number))];
+    if (!ids.length) return new Map();
+    const filas: Array<{ idProducto: unknown; id: unknown }> = await this.instalacionesRepo
+      .createQueryBuilder('i')
+      .leftJoin(Dispositivos, 'd', 'd.id = i.idDispositivo')
+      .select(['i.idProducto AS idProducto', 'i.id AS id'])
+      .where('i.idProducto IN (:...ids) AND i.estatus = :activa', { ids, activa: EstatusEnum.ACTIVO })
+      .orderBy(`CASE WHEN d.idTipoDispositivo IN (${TIPOS_RASTREO_PREFERIDOS.join(',')}) THEN 0 ELSE 1 END`, 'ASC')
+      .addOrderBy('i.id', 'ASC')
+      .getRawMany();
+    const porProducto = new Map<number, number>();
+    for (const f of filas) {
+      const p = Number(f.idProducto);
+      if (!porProducto.has(p)) porProducto.set(p, Number(f.id));
+    }
+    return porProducto;
+  }
+
+  private async mapear(items: Geocercas[]) {
+    const vigentes = await this.instalacionesVigentes(items);
+    return items.map((g) => mapGeocercaPlano(g, g.idProducto != null ? (vigentes.get(Number(g.idProducto)) ?? null) : null));
   }
 
   private async assertUsuariosDelCliente(
@@ -278,10 +339,7 @@ export class GeocercasService {
         idClienteToken,
         dto.idCliente,
       );
-      const idInstalacion = await this.assertInstalacionDelCliente(
-        idCliente,
-        dto.idInstalacion,
-      );
+      const idProducto = (await this.resolverProducto(idCliente, dto)) ?? null;
       const usuariosIds = await this.resolveUsuariosIdsCreate(
         rol,
         idUser,
@@ -294,7 +352,7 @@ export class GeocercasService {
 
       const entity = geocercaRepo.create({
         idCliente,
-        idInstalacion,
+        idProducto,
         nombre: dto.nombre.trim(),
         descripcion: dto.descripcion?.trim() || null,
         geocerca: dto.geocerca,
@@ -388,7 +446,7 @@ export class GeocercasService {
         order: { id: 'ASC' },
       });
 
-      return { data: data.map((item) => mapGeocercaPlano(item)) };
+      return { data: await this.mapear(data) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
@@ -428,7 +486,7 @@ export class GeocercasService {
       });
 
       return {
-        data: data.map((item) => mapGeocercaPlano(item)),
+        data: await this.mapear(data),
         paginated: {
           total,
           page,
@@ -448,7 +506,7 @@ export class GeocercasService {
     rol: number,
   ): Promise<{ data: ReturnType<typeof mapGeocercaPlano> }> {
     const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
-    return { data: mapGeocercaPlano(entity) };
+    return { data: (await this.mapear([entity]))[0] };
   }
 
   async update(
@@ -473,19 +531,11 @@ export class GeocercasService {
         dto.idCliente,
       );
 
-      let idInstalacion: number | null =
-        entity.idInstalacion != null ? Number(entity.idInstalacion) : null;
-
-      if (dto.idInstalacion !== undefined) {
-        idInstalacion = await this.assertInstalacionDelCliente(
-          idCliente,
-          dto.idInstalacion,
-        );
-      } else if (idClienteAnterior !== idCliente && idInstalacion != null) {
-        idInstalacion = await this.assertInstalacionDelCliente(
-          idCliente,
-          idInstalacion,
-        );
+      const enviado = await this.resolverProducto(idCliente, dto);
+      const idProducto: number | null =
+        enviado !== undefined ? enviado : entity.idProducto != null ? Number(entity.idProducto) : null;
+      if (enviado === undefined && idClienteAnterior !== idCliente && idProducto != null) {
+        await this.assertProductoDelCliente(idCliente, idProducto);
       }
 
       let usuariosIdsSync: number[] | undefined;
@@ -509,9 +559,7 @@ export class GeocercasService {
         entity.geocerca = dto.geocerca;
       }
       entity.idCliente = idCliente;
-      if (dto.idInstalacion !== undefined || idClienteAnterior !== idCliente) {
-        entity.idInstalacion = idInstalacion;
-      }
+      entity.idProducto = idProducto;
 
       const saved = await geocercaRepo.save(entity);
 

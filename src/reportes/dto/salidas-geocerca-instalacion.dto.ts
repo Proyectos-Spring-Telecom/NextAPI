@@ -35,7 +35,7 @@ export class ReporteSalidasGeocercaInstalacionDto {
   @ApiPropertyOptional({
     description:
       'IDs de geocercas a evaluar (1..N). Deben pertenecer al cliente de la instalación, ' +
-      'estar activas y estar asociadas a esta instalación (`Geocercas.IdInstalacion`). ' +
+      'estar activas y ser del vehículo de esta instalación (`Geocercas.IdProducto`). ' +
       'Inexistentes o de otro cliente → 404; de este cliente pero asociadas a otra ' +
       'instalación → 400. Si se omite → todas las geocercas activas asociadas a la instalación.',
     type: [Number],

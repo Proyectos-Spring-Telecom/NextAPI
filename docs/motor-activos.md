@@ -169,7 +169,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 |---|---|---|
 | A ✅ | Catálogo de estatus, transiciones, `MovimientosRecurso`, motor sobre los endpoints existentes, baja archivada | — |
 | B ✅ | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
-| C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
+| C ✅ | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D ✅ | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
 | E ✅ | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
 | F | Canal de comandos y números de emergencia del reloj | kit de sockets |
@@ -333,3 +333,33 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - El saneamiento conviene correrlo con poco tráfico: si una instalación entra en medio, la transacción se revierte completa.
 
 **Pruebas:** `test/e2e-ordenes/almacen.e2e-spec.ts` (alta en almacén, selector, instalar/desinstalar, reserva, reactivación, corregir instalación y saneamiento) y la batería completa con el esquema nuevo. También el cambio de equipo, el usuario de cliente con el almacén y la reserva que se suelta.
+
+
+## 17. Fase C implementada (30/10/2026)
+
+**Base:**
+- `deploy/sql/MotorActivosFaseC.sql`: `CatTipoDispositivo.Clase` (AVL para rastreador, AVL, teléfono y TrackGas; TRACKCAM; PANEL; RELOJ), `Instalaciones.Clase` (la de su equipo, backfill) y `ClaseActiva` generada con `UNIQUE (IdCliente, IdProducto, ClaseActiva)`. Antes de correrlo, la consulta del encabezado debe salir vacía.
+- `deploy/sql/MotorActivosFaseCGeocercas.sql`: `Geocercas.IdProducto` (backfill desde la instalación o, si ya se borró en un cambio, desde su histórico), FK al producto; se quita `IdInstalacion`.
+
+**Varias instalaciones por vehículo, una por clase:**
+- Un vehículo puede tener un GPS, una TrackCam, un panel y un reloj activos a la vez; un segundo de la misma clase → 400.
+- El vehículo está instalado (2) mientras tenga alguna instalación activa; al salir la última regresa a activo (o al estatus pedido). Las demás salidas registran 2 → 2.
+- Un cambio de equipo es de la misma clase (GPS por GPS); para agregar otra clase se da de alta otra instalación.
+- La asignación de usuarios 7/9 sigue por instalación (decisión del 30/10): un usuario asignado al GPS no ve la TrackCam del mismo vehículo si no se le asigna.
+- Órdenes de servicio: el alta sobre un vehículo con equipo solo pide autorización si es de la misma clase, y la baja autorizada retira solo esa instalación.
+
+**Geocercas por vehículo:** cuelgan del producto; un cambio de equipo, una baja o una segunda instalación ya no las borran. El ingest (Estado 8) y los reportes de salidas usan las del vehículo de la instalación; cada instalación del vehículo las evalúa. La API acepta `idProducto` (`idInstalacion` queda obsoleto y se convierte a su vehículo).
+
+**Histórico del vehículo:** `GET /monitoreo/producto/:idProducto/historico` junta el de cada instalación activa visible, con `fuente` (`avl`, `trackcam`, `reloj`) por punto y `porFuente` con la distancia de cada una. Por defecto el front muestra `avl`.
+
+**Revisión independiente (30/10):**
+- El SQL ya no mueve `FechaActualizacion` al poner la clase (en una baja anterior al motor es el fin de su periodo); un candado en tabla temporal detiene el script, antes de tocar el esquema, si un vehículo ya tiene dos activas de la misma clase.
+- Las geocercas de versiones ya borradas no se recuperan: la FK era en cascada y el código las borraba; la bitácora guardó solo id y nombre.
+- Instalar, cambiar, dar de baja, reactivar y corregir bloquean el vehículo: dos operaciones simultáneas sobre el mismo vehículo deciden su estatus una después de la otra. Un choque de la misma clase al mismo tiempo → 409.
+- Cambio de vehículo: si el que sale conserva otras instalaciones, no se pide su estatus de salida.
+- Autorización: con el equipo ya capturado solo procede si el vehículo tiene uno de la misma clase; un `c_equipo` con equipo de otra clase se rechaza al capturarlo, no al cerrar.
+- Salidas de geocerca: cada geocerca se evalúa solo en los tramos en que el equipo estuvo en su vehículo; `geocercasEvaluadas` cuenta geocercas distintas.
+- El histórico del vehículo responde 400 con fechas inválidas.
+- Integración CRM: las unidades siguen contándose por instalación (un GPS y una TrackCam son dos servicios); el listado trae `clase`.
+
+**Pruebas:** `test/e2e-ordenes/clases.e2e-spec.ts` y `geocercas-vehiculo.e2e-spec.ts`. Incluye el cambio de vehículo con otra instalación que se queda.

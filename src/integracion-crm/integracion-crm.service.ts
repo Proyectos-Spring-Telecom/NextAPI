@@ -93,6 +93,7 @@ export class IntegracionCrmService {
               p.Nombre AS producto, tp.Nombre AS tipoProducto,
               v.Placa AS placa, v.NumeroEconomico AS economico,
               CAST(d.Imei AS CHAR) AS imei, d.NumeroSerie AS serie, td.Nombre AS dispositivo,
+              i.Clase AS clase,
               DATE_FORMAT(i.VigenteDesde, '%Y-%m-%d') AS instalada,
               (SELECT o.Folio FROM OrdenesServicio o
                 WHERE o.IdInstalacionResultado = i.Id AND o.Estatus = 'cerrada'

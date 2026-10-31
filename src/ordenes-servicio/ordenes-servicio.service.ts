@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, QueryRunner, Repository } from 'typeorm';
+import { DataSource, In, QueryRunner, Repository, EntityManager } from 'typeorm';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { ApiCrudResponse, EstatusEnumBitcora } from 'src/common/ApiResponse';
 import {
@@ -219,7 +219,20 @@ export class OrdenesServicioService {
       if (dto.idProducto != null) await this.validarProducto(dto.idProducto, Number(orden.idCliente));
       cambios.idProducto = dto.idProducto;
     }
-    if (dto.idDispositivoNuevo !== undefined) cambios.idDispositivoNuevo = dto.idDispositivoNuevo;
+    if (dto.idDispositivoNuevo !== undefined) {
+      // Cambio de equipo: el nuevo es de la clase de la instalación (GPS por GPS, fase C);
+      // se avisa al capturarlo y no hasta el cierre.
+      if (dto.idDispositivoNuevo != null && orden.tipoServicio === 'c_equipo' && orden.idInstalacion != null) {
+        const inst = await this.instalacionesRepo.findOne({ where: { id: Number(orden.idInstalacion) }, select: { id: true, clase: true } });
+        const clase = await this.instalacionesService.claseDe(this.instalacionesRepo.manager, Number(dto.idDispositivoNuevo));
+        if (inst && clase !== (inst.clase || 'AVL')) {
+          throw new BadRequestException(
+            `El equipo es de clase ${clase} y la instalación es ${inst.clase}: un cambio de equipo es de la misma clase`,
+          );
+        }
+      }
+      cambios.idDispositivoNuevo = dto.idDispositivoNuevo;
+    }
     if (dto.idSimNuevo !== undefined) cambios.idSimNuevo = dto.idSimNuevo;
     if (dto.estatusSalienteAnterior !== undefined) cambios.estatusSalienteAnterior = dto.estatusSalienteAnterior;
     if (dto.estatusInstalacionBaja !== undefined) cambios.estatusInstalacionBaja = dto.estatusInstalacionBaja;
@@ -590,9 +603,8 @@ export class OrdenesServicioService {
         if (Number(orden.idProducto) !== Number(orden.idProductoAutorizacion)) {
           throw new BadRequestException('La desinstalación se autorizó para otro vehículo');
         }
-        const existente = await qr.manager.findOne(Instalaciones, {
-          where: { idProducto: Number(orden.idProductoAutorizacion), estatus: EstatusEnum.ACTIVO },
-        });
+        // Solo la del mismo tipo de equipo: un GPS no retira la TrackCam del vehículo.
+        const existente = await this.instalacionMismaClase(orden, Number(orden.idProductoAutorizacion), qr.manager);
         if (existente) {
           await this.instalacionesService.baja(
             Number(existente.id),
@@ -757,12 +769,25 @@ export class OrdenesServicioService {
   }
 
   /** Alta: ¿el vehículo elegido ya tiene una instalación vigente? (pide autorización para quitarla). */
+  /**
+   * ¿El vehículo del alta ya tiene un equipo de la misma clase? (fase C: un
+   * GPS, una TrackCam… por vehículo). Sin equipo elegido todavía, cualquier
+   * instalación activa cuenta, para no cerrar sin la autorización.
+   */
   private async vehiculoConEquipo(o: OrdenesServicio, manager = this.instalacionesRepo.manager): Promise<boolean> {
-    if (o.tipoServicio !== 'instalacion' || o.idProducto == null) return false;
-    const inst = await manager.findOne(Instalaciones, {
-      where: { idProducto: Number(o.idProducto), estatus: EstatusEnum.ACTIVO },
+    return (await this.instalacionMismaClase(o, Number(o.idProducto), manager)) != null;
+  }
+
+  private async instalacionMismaClase(
+    o: OrdenesServicio,
+    idProducto: number,
+    manager: EntityManager,
+  ): Promise<Instalaciones | null> {
+    if (o.tipoServicio !== 'instalacion' || o.idProducto == null) return null;
+    const clase = o.idDispositivoNuevo != null ? await this.instalacionesService.claseDe(manager, Number(o.idDispositivoNuevo)) : null;
+    return manager.findOne(Instalaciones, {
+      where: { idProducto, estatus: EstatusEnum.ACTIVO, ...(clase ? { clase } : {}) },
     });
-    return !!inst;
   }
 
   private paraCierre(o: OrdenesServicio, pruebas: Array<{ clave: string; estatus: string }> = [], vehiculoConEquipo = false) {

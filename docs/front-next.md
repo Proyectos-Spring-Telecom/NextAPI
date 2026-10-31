@@ -462,3 +462,16 @@ Desde la fase B ([motor-activos.md](motor-activos.md) §16):
 - Las configuraciones de panel, TrackCam y reloj ya no traen cliente propio: `idCliente` en sus respuestas es el del equipo.
 - Pasar un equipo o SIM reservado a por revisar, laboratorio o inservible lo regresa al almacén.
 - Un usuario de cliente (6, 7, 9) solo instala lo reservado a su cliente; el almacén es de operación.
+
+
+## 22. Varias instalaciones por vehículo y geocercas del vehículo (fase C)
+
+Desde la fase C ([motor-activos.md](motor-activos.md) §17):
+
+- **Un vehículo puede tener un GPS, una TrackCam, un panel y un reloj activos** (una instalación por clase de equipo). Instalar otro de la misma clase → 400 con la instalación que ya la ocupa. Cada instalación trae `clase` (`AVL`, `TRACKCAM`, `PANEL`, `RELOJ`).
+  - El listado de monitoreo sigue siendo por instalación: un vehículo con GPS y TrackCam aparece dos veces; agrupar por `idProducto` si se quiere una sola fila.
+  - Un cambio de equipo (`PATCH /instalaciones/:id`) es de la misma clase; para agregar una TrackCam a un vehículo con GPS, dar de alta otra instalación.
+- **Histórico del vehículo:** `GET /monitoreo/producto/:idProducto/historico?fechaInicio=&fechaFinal=` → `{ porFuente: [{ idInstalacion, fuente, totalDistancia, total }], posiciones: [... con fuente e idInstalacionFuente] }`. Mostrar por defecto `fuente = avl` y dejar alternar a `trackcam`.
+- **Geocercas:** se dan de alta por vehículo (`idProducto` en `POST /geocercas` y `PATCH /geocercas/:id`). `idInstalacion` sigue aceptándose pero está obsoleto. Las respuestas traen `idProducto`; `idInstalacion` es la instalación activa principal del vehículo (GPS antes que TrackCam), o null.
+  - Ya no se borran al cambiar de equipo ni al dar de baja la instalación.
+- **Asignación de usuarios 7/9:** sigue por instalación; para que un operador vea la TrackCam del vehículo hay que asignársela también.

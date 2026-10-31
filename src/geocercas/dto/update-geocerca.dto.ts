@@ -25,9 +25,22 @@ export class UpdateGeocercaDto {
 
   @ApiPropertyOptional({
     description:
-      'ID de instalación (null para desvincular). Debe pertenecer al cliente de la geocerca.',
+      'Vehículo (producto) al que aplica (null para desvincular). Debe pertenecer al cliente de la geocerca.',
+    example: 1000210,
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  idProducto?: number | null;
+
+  @ApiPropertyOptional({
+    description: '**Obsoleto:** usar `idProducto`. Si se envía, la geocerca toma el vehículo de esa instalación (null = desvincular).',
     example: 10,
     nullable: true,
+    deprecated: true,
   })
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

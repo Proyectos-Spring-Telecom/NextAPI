@@ -34,7 +34,7 @@ export class RecorridoSalidaGeocercaDto {
   @ApiProperty({
     description:
       'Geocerca del evento. Debe pertenecer al cliente de la instalación, estar activa ' +
-      'y estar asociada a esta instalación (`Geocercas.IdInstalacion`).',
+      'y ser del vehículo de esta instalación (`Geocercas.IdProducto`).',
     example: 10,
   })
   @Type(() => Number)

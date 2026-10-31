@@ -394,7 +394,7 @@ export class ReportesController {
       '- Orden: `fechaSalida` descendente (más reciente primero).',
       '',
       '**Aplicabilidad:** una geocerca solo se evalúa contra la instalación de su',
-      '`Geocercas.IdInstalacion` (misma regla que la evaluación en tiempo real);',
+      '`Geocercas.IdProducto`: el vehículo de la instalación (misma regla que la evaluación en tiempo real);',
       'las geocercas sin instalación asociada no se atribuyen a ningún dispositivo.',
       '',
       '**Detección:**',

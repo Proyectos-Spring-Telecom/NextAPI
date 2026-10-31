@@ -43,7 +43,7 @@ import { FuentePosicion } from 'src/common/fuente-posicion';
  *
  * - position/photo → TelemetryIngestLog + media + Posiciones + WS
  * - alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
- * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocerca con IdInstalacion
+ * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocercas del vehículo (IdProducto)
  * - Tiempo detenido (4/5/6): AVL/TRACKCAM/TRACKGAS si Estado=0 y Velocidad=0
  *
  * Cada protocolo: cola AMQP propia + mapper → este servicio.
@@ -260,8 +260,9 @@ export class PosicionIngestService {
   }
 
   /**
-   * Prioridad 3 Sion: fuera de alguna geocerca de la instalación → Estado=8.
-   * No pisa botón (2/3) ni energía (10). Geocercas con IdInstalacion NULL no aplican.
+   * Prioridad 3 Sion: fuera de alguna geocerca del vehículo de la instalación
+   * (`Geocercas.IdProducto`, fase C) → Estado=8. No pisa botón (2/3) ni energía
+   * (10). Geocercas sin vehículo no aplican.
    */
   private async aplicarGeocercaSiCorresponde(
     manager: EntityManager,
@@ -281,9 +282,11 @@ export class PosicionIngestService {
       return;
     }
 
+    // Las del vehículo: siguen aunque cambie el equipo, y aplican a cada equipo del vehículo.
     const geocercas = await manager
       .createQueryBuilder(Geocercas, 'g')
-      .where('g.idInstalacion = :idInstalacion', {
+      .innerJoin(Instalaciones, 'i', 'i.idProducto = g.idProducto AND i.idCliente = g.idCliente')
+      .where('i.id = :idInstalacion', {
         idInstalacion: Number(idInstalacion),
       })
       .andWhere('g.estatus = :activo', { activo: EstatusEnum.ACTIVO })

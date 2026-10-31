@@ -206,7 +206,7 @@ export class InstalacionesController {
       '- **0 (inactivo) / 5 (inservible):** archiva el periodo en `HistoricoInstalaciones` (`Accion = Baja`, ' +
       '`VigenteHasta`), deja la fila con `Estatus` = 0 y saca los componentes: el dispositivo a por revisar (3), ' +
       'o inservible (5) si la baja es 5; la SIM a por revisar (3); el producto a activo (1). ' +
-      'Elimina las geocercas de la instalación (y sus `UsuariosGeocerca`). Una baja 0 se puede corregir a 5.\n' +
+      'Las geocercas son del vehículo y no se borran. Una baja 0 se puede corregir a 5.\n' +
       '- **1 (reactivar):** los componentes deben estar disponibles (1, ya revisados); pasan a instalado (2) ' +
       'y se abre una versión nueva (`VigenteDesde` = ahora).\n' +
       'Una instalación activa no se reactiva y una dada de baja no se vuelve a dar de baja (400).',
@@ -242,7 +242,7 @@ export class InstalacionesController {
       'Roles 1–4, con motivo. Cierra el periodo en el cliente actual (lo transmitido hasta ahora se queda con ese ' +
       'cliente) y regresa su vehículo a activo; el dispositivo y la SIM siguen instalados y pasan al cliente correcto, ' +
       'en una instalación nueva con el vehículo indicado (`idProducto`, disponible en ese cliente; se da de alta antes). ' +
-      'Las geocercas y asignaciones de usuarios de la instalación anterior no se trasladan. Queda en ' +
+      'Las asignaciones de usuarios de la instalación anterior no se trasladan; las geocercas se quedan con el vehículo anterior. Queda en ' +
       '`CorreccionesInstalacion` y en el historial de cada recurso. Responde el id de la instalación nueva.',
   })
   @ApiParam({ name: 'id', description: 'ID de la instalación (activa)' })
@@ -293,11 +293,11 @@ export class InstalacionesController {
     description:
       'En una transacción: archiva la vigente en `HistoricoInstalaciones` con el ' +
       '`estatusInstalacionAnterior` enviado, crea una nueva ACTIVA (1), migra ' +
-      '`UsuariosInstalaciones` al nuevo id, **elimina permanentemente las geocercas** ' +
-      'asociadas a la instalación anterior (y sus `UsuariosGeocerca`) y elimina la fila anterior. ' +
-      'Si cambia producto/dispositivo/SIM: el recurso nuevo debe tener estatus=1 ' +
-      '(disponible) y mismo idCliente; el que sale recibe `estatus*Anterior` (0–5); ' +
-      'el que entra queda en ASIGNADO (2). ' +
+      '`UsuariosInstalaciones` al nuevo id y elimina la fila anterior; las geocercas son del vehículo y se quedan. ' +
+      'Si cambia producto/dispositivo/SIM: el equipo o SIM nuevo debe estar disponible (1), del almacén o reservado al cliente; ' +
+      'el vehículo nuevo, disponible o instalado con equipos de otra clase. Un cambio de equipo es de la misma clase ' +
+      '(GPS por GPS, TrackCam por TrackCam). El que sale recibe `estatus*Anterior` (equipo y SIM: 3, 4 o 5). ' +
+      'El que entra queda instalado (2). ' +
       'Campos: estatusInstalacionAnterior, estatusProductoAnterior, estatusDispositivoAnterior, estatusSimAnterior.',
   })
   @ApiParam({ name: 'id', description: 'ID de la instalación vigente' })

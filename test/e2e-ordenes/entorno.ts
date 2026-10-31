@@ -201,7 +201,7 @@ export class Entorno {
     // entidades: si el código espera algo que la base real no tiene, la
     // batería falla aquí y no en producción.
     this.mysql.archivo('Next', join(__dirname, 'esquema/next-produccion.sql'));
-    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql', 'MotorActivosFaseE.sql', 'MotorActivosFaseB.sql']) {
+    for (const f of ['OrdenesServicio.sql', 'OrdenesServicioEtapa2.sql', 'OrdenesServicioEtapa3.sql', 'OrdenesServicioEtapa4.sql', 'MotorActivosFaseA.sql', 'MotorActivosFaseD.sql', 'MotorActivosFaseE.sql', 'MotorActivosFaseB.sql', 'MotorActivosFaseC.sql', 'MotorActivosFaseCGeocercas.sql']) {
       this.mysql.archivo('Next', join(RAIZ_NEXT, 'deploy/sql', f));
     }
     await this.compararEsquema();
@@ -312,7 +312,7 @@ export class Entorno {
         (4,'BAJA_MANTENIMIENTO','Baja por mantenimiento'),(5,'INSERVIBLE','Inservible');
       INSERT IGNORE INTO CatTipoProducto (Id, Codigo, Nombre) VALUES (1,'VEHICULO','Vehículo'),(2,'ACTIVO','Activo'),(3,'INMUEBLE','Inmueble'),(4,'PERSONA','Persona');
       INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre) VALUES (1,'AVL','AVL');
-      INSERT IGNORE INTO Modulos (Id, Nombre) SELECT n, CONCAT('Módulo ', n) FROM (SELECT 1 n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9 UNION SELECT 10 UNION SELECT 11 UNION SELECT 12 UNION SELECT 13 UNION SELECT 14 UNION SELECT 15 UNION SELECT 16 UNION SELECT 17 UNION SELECT 18 UNION SELECT 19 UNION SELECT 20 UNION SELECT 21 UNION SELECT 22 UNION SELECT 23 UNION SELECT 24 UNION SELECT 25) t;
+      INSERT IGNORE INTO Modulos (Id, Nombre) SELECT n, CONCAT('Módulo ', n) FROM (SELECT 1 n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9 UNION SELECT 10 UNION SELECT 11 UNION SELECT 12 UNION SELECT 13 UNION SELECT 14 UNION SELECT 15 UNION SELECT 16 UNION SELECT 17 UNION SELECT 18 UNION SELECT 19 UNION SELECT 20 UNION SELECT 21 UNION SELECT 22 UNION SELECT 23 UNION SELECT 24 UNION SELECT 25 UNION SELECT 26 UNION SELECT 27 UNION SELECT 28 UNION SELECT 29 UNION SELECT 30) t;
       INSERT IGNORE INTO CatTelefonia (Id, NombreTelefonia) VALUES (1,'Telcel');
       INSERT IGNORE INTO CatPlanesTelefonia (Id, IdTelefonia) VALUES (1,1);
       SET FOREIGN_KEY_CHECKS = 1;

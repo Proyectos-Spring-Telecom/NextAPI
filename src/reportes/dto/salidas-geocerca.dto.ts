@@ -37,7 +37,7 @@ export type EstadoSalidaGeocerca =
 /**
  * Body del reporte de salidas de geocerca.
  * Misma resolución de instalaciones que `posiciones` / paso-por-poi.
- * Una geocerca solo aplica a la instalación indicada en `Geocercas.IdInstalacion`
+ * Una geocerca aplica a las instalaciones de su vehículo (`Geocercas.IdProducto`)
  * (misma regla que la evaluación en tiempo real en `posicion-ingest.service`);
  * las geocercas sin instalación asociada no se atribuyen a ningún dispositivo.
  */
@@ -58,7 +58,7 @@ export class ReporteSalidasGeocercaDto {
       'IDs de geocercas a evaluar (1..N). Todas deben pertenecer al cliente y estar activas; ' +
       'si alguna no existe o es de otro cliente se responde 404. ' +
       'Si se omite → todas las geocercas activas del cliente aplicables a las instalaciones autorizadas. ' +
-      'Una geocerca solo se evalúa contra la instalación de su `IdInstalacion`.',
+      'Una geocerca se evalúa contra las instalaciones de su vehículo (`IdProducto`).',
     type: [Number],
     example: [1, 2, 3],
   })
