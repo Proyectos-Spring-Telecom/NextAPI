@@ -43,7 +43,8 @@ export function applyPaginadoBaseJoins(
     .leftJoin(
       Dispositivos,
       'd',
-      'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+      // Por Id: una instalación dada de baja conserva su equipo aunque ya esté en el almacén u otro cliente.
+      'd.id = i.idDispositivo',
     )
     .leftJoin(CatTipoDispositivo, 'td', 'td.id = d.idTipoDispositivo')
     .leftJoin(CatMarcas, 'marDisp', 'marDisp.id = d.idMarca')
@@ -51,9 +52,9 @@ export function applyPaginadoBaseJoins(
     .leftJoin(
       PanelAlarma,
       'pa',
-      'pa.idDispositivo = d.id AND pa.idCliente = d.idCliente',
+      'pa.idDispositivo = d.id',
     )
-    .leftJoin(Sims, 's', 's.id = i.idSim AND s.idCliente = i.idCliente')
+    .leftJoin(Sims, 's', 's.id = i.idSim')
     .leftJoin(CatTelefonia, 'tel', 'tel.id = s.idTelefonia')
     .leftJoin(CatEstatusInstalacion, 'ei', 'ei.id = i.estatusInstalacion');
 }

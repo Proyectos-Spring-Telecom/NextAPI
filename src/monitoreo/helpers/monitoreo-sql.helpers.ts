@@ -29,12 +29,12 @@ export function applyMonitoreoListJoins(
     .leftJoin(
       TrackcamConfig,
       'tc',
-      'tc.idDispositivo = d.id AND tc.idCliente = d.idCliente',
+      'tc.idDispositivo = d.id',
     )
     .leftJoin(
       PanelAlarma,
       'pa',
-      'pa.idDispositivo = d.id AND pa.idCliente = d.idCliente',
+      'pa.idDispositivo = d.id',
     )
     .leftJoin(UltimoEventoAlarma, 'uea', 'uea.idPanel = d.id')
     .leftJoin(

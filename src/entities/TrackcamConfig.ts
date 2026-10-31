@@ -10,14 +10,10 @@ import { applySchema } from 'src/common/apply-schema.decorator';
 import { Dispositivos } from './Dispositivos';
 
 @applySchema
-@Index('FK_TrackcamConfig_Dispositivo', ['idCliente', 'idDispositivo'])
 @Entity('TrackcamConfig')
 export class TrackcamConfig {
   @PrimaryColumn('bigint', { name: 'IdDispositivo' })
   idDispositivo: number;
-
-  @Column('bigint', { name: 'IdCliente' })
-  idCliente: number;
 
   @Column('int', {
     name: 'IntervaloPosicionSegundos',
@@ -222,9 +218,6 @@ export class TrackcamConfig {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdDispositivo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos;
 }

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Server, Socket } from 'socket.io';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import {
@@ -136,13 +136,13 @@ export class AlarmasGateway
   private async idsPanelesVisibles(
     scope: 'all' | number[],
   ): Promise<number[]> {
-    const where: { estatus: number; idCliente?: ReturnType<typeof In> | number } =
-      { estatus: 1 };
+    // El cliente es el del equipo (la configuración del panel no tiene cliente).
+    const where: FindOptionsWhere<PanelAlarma> = { estatus: 1 };
     if (scope !== 'all') {
       if (scope.length === 0) {
         return [];
       }
-      where.idCliente = scope.length === 1 ? scope[0] : In(scope);
+      where.idDispositivo2 = { idCliente: scope.length === 1 ? scope[0] : In(scope) };
     }
     const paneles = await this.panelRepo.find({
       where,

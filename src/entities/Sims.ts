@@ -54,9 +54,10 @@ export class Sims {
 
   @Column('bigint', {
     name: 'IdCliente',
-    comment: 'Cliente/tenant propietario del SIM',
+    nullable: true,
+    comment: 'NULL = almacén; con cliente sin instalar = reservada; instalada = el de la instalación',
   })
-  idCliente: number;
+  idCliente: number | null;
 
   @Column('varchar', { name: 'Notas', length: 500, nullable: true })
   notas: string | null;

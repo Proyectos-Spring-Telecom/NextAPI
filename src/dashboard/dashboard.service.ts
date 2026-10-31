@@ -498,7 +498,7 @@ export class DashboardService {
       .leftJoin(
         PanelAlarma,
         'pa',
-        'pa.idDispositivo = d.id AND pa.idCliente = d.idCliente',
+        'pa.idDispositivo = d.id',
       )
       .leftJoin(
         Vehiculos,

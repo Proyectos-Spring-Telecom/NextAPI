@@ -111,8 +111,8 @@ Antes de iniciar, la orden no acepta `PATCH`, archivos ni pruebas (400/409).
 | `fechaCaptura`, `lat`, `lng` | Reloj y GPS del teléfono; `lat`/`lng` en `null` si se negó el permiso |
 | `observaciones` | Obligatorias si `fallas_equipo.otro` = sí |
 | `idProducto` | Solo `instalacion`: el vehículo (del cliente). Ver §7 si ya tiene equipo |
-| `idDispositivoNuevo` | `instalacion`, `c_equipo`: equipo que entra |
-| `idSimNuevo` | `instalacion` (opcional), `c_sim`: SIM que entra |
+| `idDispositivoNuevo` | `instalacion`, `c_equipo`: equipo que entra. Del almacén (sin cliente) o reservado al cliente de la orden; reservado a otro cliente → 400 al cerrar. Para elegirlo: `GET /dispositivos/list?idCliente=<cliente de la orden>` (trae lo reservado y el almacén) |
+| `idSimNuevo` | `instalacion` (opcional), `c_sim`: SIM que entra. Igual que el equipo: `GET /sims/list?idCliente=<cliente>` |
 | `estatusSalienteAnterior` | `c_equipo`, `c_sim`: a dónde va el equipo/SIM que sale: **3 por revisar, 4 laboratorio o 5 inservible** (desde el 30/10/2026; 0 y 1 ya no se aceptan) |
 | `estatusInstalacionBaja` | `desinstalacion`: 0 = inactiva (el equipo y la SIM van a revisión), 5 = inservible (el equipo queda inservible; la SIM a revisión) |
 

@@ -132,10 +132,7 @@ export class Instalaciones {
     onUpdate: 'NO ACTION',
     nullable: true,
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdDispositivo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos | null;
 
   @ManyToOne(() => Productos, {
@@ -153,10 +150,7 @@ export class Instalaciones {
     onUpdate: 'NO ACTION',
     nullable: true,
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdSim', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdSim', referencedColumnName: 'id' }])
   idSim2: Sims | null;
 
   @ManyToOne(() => CatEstatusInstalacion, {

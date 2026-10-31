@@ -12,6 +12,12 @@ import { RELOJ_CONFIG_KEYS, RelojConfigKey } from './relojes/reloj-config.keys';
 
 export { nombreCliente };
 
+/** Cliente del equipo de una configuración: la configuración no tiene cliente propio (fase B). NULL = almacén. */
+function clienteDelEquipo(item: { idDispositivo2?: Dispositivos | null }): number | null {
+  const id = item.idDispositivo2?.idCliente;
+  return id != null ? Number(id) : null;
+}
+
 export const RELACIONES_DISPOSITIVO_BASE = [
   'idCliente2',
   'idTipoDispositivo2',
@@ -70,7 +76,7 @@ export function mapDispositivoPlano(item: Dispositivos) {
     eco: item.eco,
     camara: item.camara != null ? Number(item.camara) : 0,
     estatus: item.estatus != null ? Number(item.estatus) : null,
-    idCliente: Number(item.idCliente),
+    idCliente: item.idCliente != null ? Number(item.idCliente) : null,
     nombreCliente: nombreCliente(cliente),
     idTipoDispositivo:
       item.idTipoDispositivo != null ? Number(item.idTipoDispositivo) : null,
@@ -96,7 +102,7 @@ export function mapPanelAlarmaPlano(item: PanelAlarma) {
       eco: null,
       camara: 0,
       estatus: item.estatus != null ? Number(item.estatus) : null,
-      idCliente: Number(item.idCliente),
+      idCliente: clienteDelEquipo(item),
       nombreCliente: null,
       idTipoDispositivo: null,
       nombreTipoDispositivo: null,
@@ -147,7 +153,7 @@ export function mapTrackcamPlano(item: TrackcamConfig) {
         eco: null,
         camara: 0,
         estatus: null,
-        idCliente: Number(item.idCliente),
+        idCliente: clienteDelEquipo(item),
         nombreCliente: null,
         idTipoDispositivo: null,
         nombreTipoDispositivo: null,
@@ -164,7 +170,7 @@ export function mapTrackcamPlano(item: TrackcamConfig) {
     ...plano,
     ...pickTrackcamConfig(item),
     id: Number(item.idDispositivo),
-    idCliente: Number(item.idCliente),
+    idCliente: clienteDelEquipo(item),
     fechaCreacion: item.fechaCreacion ?? plano.fechaCreacion,
     fechaActualizacion: item.fechaActualizacion ?? plano.fechaActualizacion,
   };
@@ -182,7 +188,7 @@ export function mapRelojPlano(item: RelojConfig) {
         eco: null,
         camara: 0,
         estatus: null,
-        idCliente: Number(item.idCliente),
+        idCliente: clienteDelEquipo(item),
         nombreCliente: null,
         idTipoDispositivo: null,
         nombreTipoDispositivo: null,
@@ -199,7 +205,7 @@ export function mapRelojPlano(item: RelojConfig) {
     ...plano,
     ...pickRelojConfig(item),
     id: Number(item.idDispositivo),
-    idCliente: Number(item.idCliente),
+    idCliente: clienteDelEquipo(item),
     fechaCreacion: item.fechaCreacion ?? plano.fechaCreacion,
     fechaActualizacion: item.fechaActualizacion ?? plano.fechaActualizacion,
   };
@@ -220,7 +226,7 @@ export function buildTrackcamWebhookData(item: TrackcamConfig): {
         eco: null,
         camara: 0,
         estatus: null,
-        idCliente: Number(item.idCliente),
+        idCliente: clienteDelEquipo(item),
         nombreCliente: null,
         idTipoDispositivo: null,
         nombreTipoDispositivo: null,
@@ -235,7 +241,7 @@ export function buildTrackcamWebhookData(item: TrackcamConfig): {
 
   const config: Record<string, number | string | Date | null> = {
     idDispositivo: Number(item.idDispositivo),
-    idCliente: Number(item.idCliente),
+    idCliente: clienteDelEquipo(item),
   };
   for (const key of TRACKCAM_CONFIG_KEYS) {
     const value = item[key];

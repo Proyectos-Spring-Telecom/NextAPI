@@ -2765,7 +2765,7 @@ export class ReportesService {
       qb.innerJoin(
         Dispositivos,
         'd',
-        'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+        'd.id = i.idDispositivo',
       ).andWhere('d.idTipoDispositivo <> :panel', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       });
@@ -2784,7 +2784,7 @@ export class ReportesService {
         .innerJoin(
           Dispositivos,
           'd',
-          'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+          'd.id = i.idDispositivo',
         )
         .andWhere('d.idTipoDispositivo <> :panel', {
           panel: EnumTipoDispositivo.PANEL_ALARMA,

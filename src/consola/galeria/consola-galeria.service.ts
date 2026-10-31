@@ -320,7 +320,7 @@ export class ConsolaGaleriaService {
     qb.leftJoin(
       TrackcamConfig,
       'tcGal',
-      'tcGal.idDispositivo = d.id AND tcGal.idCliente = d.idCliente',
+      'tcGal.idDispositivo = d.id',
     )
       .addSelect('tcGal.canal1Activo', 'canal1Activo')
       .addSelect('tcGal.canal2Activo', 'canal2Activo')

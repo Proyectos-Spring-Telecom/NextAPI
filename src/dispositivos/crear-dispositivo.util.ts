@@ -121,7 +121,8 @@ export async function validarFksDispositivo(
 export async function crearDispositivoBase(
   manager: EntityManager,
   params: {
-    idCliente: number;
+    /** NULL = almacén; con cliente = reservado a él (fase B). */
+    idCliente: number | null;
     /** Quien da de alta (historial del recurso). */
     idUsuario: number | null;
     idTipoDispositivo: number;
@@ -133,7 +134,7 @@ export async function crearDispositivoBase(
     idModelo?: number | null;
   },
 ): Promise<Dispositivos> {
-  await assertClienteExiste(manager, params.idCliente);
+  if (params.idCliente != null) await assertClienteExiste(manager, params.idCliente);
   await validarFksDispositivo(manager, {
     idTipoDispositivo: params.idTipoDispositivo,
     idMarca: params.idMarca,
@@ -157,7 +158,7 @@ export async function crearDispositivoBase(
   }
 
   const dispositivo = manager.create(Dispositivos, {
-    idCliente: params.idCliente,
+    idCliente: params.idCliente ?? null,
     idTipoDispositivo: params.idTipoDispositivo,
     numeroSerie: params.numeroSerie,
     imei: params.imei ?? null,
@@ -178,7 +179,7 @@ export async function crearDispositivoBase(
       estatusAnterior: null,
       estatusNuevo: EstatusEnum.ACTIVO,
       idClienteAnterior: null,
-      idClienteNuevo: params.idCliente,
+      idClienteNuevo: params.idCliente ?? null,
     },
     { idUsuario: params.idUsuario, origen: 'api' },
   );

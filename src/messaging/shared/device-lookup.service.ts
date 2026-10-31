@@ -10,7 +10,8 @@ import { Instalaciones } from '../../entities/Instalaciones';
 export interface DeviceResolved {
   /** IMEI como string (bigint BD; evita redondeo JS) */
   imei: string;
-  idCliente: number;
+  /** Cliente de la instalación activa; null si el equipo no está instalado. */
+  idCliente: number | null;
   idTipoDispositivo: number;
   /** Instalación activa del dispositivo; null si no hay (geocerca no aplica). */
   idInstalacion: number | null;
@@ -76,11 +77,11 @@ export class DeviceLookupService {
       .leftJoin(
         Instalaciones,
         'i',
-        'i.idDispositivo = d.id AND i.idCliente = d.idCliente AND i.estatus = :instActivo',
+        'i.idDispositivo = d.id AND i.estatus = :instActivo',
         { instActivo: EstatusEnum.ACTIVO },
       )
       .select('CAST(d.imei AS CHAR)', 'imei')
-      .addSelect('d.idCliente', 'idCliente')
+      .addSelect('i.idCliente', 'idCliente')
       .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
       .addSelect('i.id', 'idInstalacion')
       .addSelect('d.estatus', 'estatus')
@@ -88,7 +89,7 @@ export class DeviceLookupService {
       .orderBy('i.id', 'DESC')
       .getRawOne<{
         imei: string | null;
-        idCliente: string | number;
+        idCliente: string | number | null;
         idTipoDispositivo: string | number;
         idInstalacion: string | number | null;
         estatus: string | number;
@@ -109,7 +110,7 @@ export class DeviceLookupService {
 
     const resolved: DeviceResolved = {
       imei,
-      idCliente: Number(row.idCliente),
+      idCliente: row.idCliente != null ? Number(row.idCliente) : null,
       idTipoDispositivo: Number(row.idTipoDispositivo),
       idInstalacion:
         idInstalacion != null && Number.isFinite(idInstalacion)
@@ -142,11 +143,11 @@ export class DeviceLookupService {
       .leftJoin(
         Instalaciones,
         'i',
-        'i.idDispositivo = d.id AND i.idCliente = d.idCliente AND i.estatus = :instActivo',
+        'i.idDispositivo = d.id AND i.estatus = :instActivo',
         { instActivo: EstatusEnum.ACTIVO },
       )
       .select('CAST(d.imei AS CHAR)', 'imei')
-      .addSelect('d.idCliente', 'idCliente')
+      .addSelect('i.idCliente', 'idCliente')
       .addSelect('d.idTipoDispositivo', 'idTipoDispositivo')
       .addSelect('i.id', 'idInstalacion')
       .addSelect('d.estatus', 'estatus')
@@ -154,7 +155,7 @@ export class DeviceLookupService {
       .orderBy('i.id', 'DESC')
       .getRawOne<{
         imei: string | null;
-        idCliente: string | number;
+        idCliente: string | number | null;
         idTipoDispositivo: string | number;
         idInstalacion: string | number | null;
         estatus: string | number;
@@ -175,7 +176,7 @@ export class DeviceLookupService {
 
     const resolved: DeviceResolved = {
       imei,
-      idCliente: Number(row.idCliente),
+      idCliente: row.idCliente != null ? Number(row.idCliente) : null,
       idTipoDispositivo: Number(row.idTipoDispositivo),
       idInstalacion:
         idInstalacion != null && Number.isFinite(idInstalacion)

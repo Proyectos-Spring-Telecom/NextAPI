@@ -59,7 +59,7 @@ function build(
   const ds = { createQueryRunner: () => qr };
   const service = new OrdenesServicioService(
     {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
-    usuarios as never, instalaciones as never, {} as never, ds as never, bitacora as never,
+    usuarios as never, instalaciones as never, {} as never, ds as never, bitacora as never, { emitir: jest.fn() } as never,
   );
   return { service, qr, instalaciones, updates };
 }

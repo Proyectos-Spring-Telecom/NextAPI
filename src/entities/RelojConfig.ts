@@ -11,14 +11,10 @@ import { Dispositivos } from './Dispositivos';
 
 /** Configuración de relojes FA100S (1:1 con Dispositivos). DDL: deploy/sql/Relojes.sql. */
 @applySchema
-@Index('FK_RelojConfig_Dispositivo', ['idCliente', 'idDispositivo'])
 @Entity('RelojConfig')
 export class RelojConfig {
   @PrimaryColumn('bigint', { name: 'IdDispositivo' })
   idDispositivo: number;
-
-  @Column('bigint', { name: 'IdCliente' })
-  idCliente: number;
 
   @Column('int', {
     name: 'IntervaloReporteSegundos',
@@ -66,9 +62,6 @@ export class RelojConfig {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdDispositivo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos;
 }

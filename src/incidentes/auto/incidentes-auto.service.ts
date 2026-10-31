@@ -224,12 +224,12 @@ export class IncidentesAutoService {
             ...snapshotPosicion(posicion),
             alerta: ALERTA_INSERVIBLE,
             idDispositivo: Number(equipo.id),
-            idClienteDispositivo: Number(equipo.idCliente),
+            idClienteDispositivo: equipo.idCliente != null ? Number(equipo.idCliente) : null,
           },
           idUsuario: null,
           descripcion:
             `Equipo inservible transmitiendo (posible robo o vandalismo): serie ${equipo.numeroSerie}, ` +
-            `IMEI ${imei}, cliente del equipo ${equipo.idCliente}.`,
+            `IMEI ${imei}, cliente del equipo ${equipo.idCliente ?? 'almacén'}.`,
           fechaInicio: posicion.fechaHora,
           fechaCierre: null,
           estatus: EstatusIncidente.ABIERTO,

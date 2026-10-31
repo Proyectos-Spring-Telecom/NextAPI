@@ -25,12 +25,15 @@ export class UpdateSimsDto {
   numeroTelefono?: string;
 
   @ApiPropertyOptional({
-    description: 'ID del cliente/tenant propietario. Omitir = no modificar.',
+    description:
+      'Reserva a un cliente (disponible o inactiva) o `null` para regresarla al almacén (solo operación). ' +
+      'Una SIM instalada no cambia de cliente. Omitir = no modificar.',
     example: 11,
+    nullable: true,
   })
   @IsOptional()
   @IsInt()
-  idCliente?: number;
+  idCliente?: number | null;
 
   @ApiPropertyOptional({
     description: 'ID de la compañía telefónica (CatTelefonia). Omitir = no modificar.',

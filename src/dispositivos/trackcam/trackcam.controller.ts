@@ -24,6 +24,7 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { TrackcamService } from './trackcam.service';
+import { EnumRoles } from 'src/common/estatus.enum';
 import { CreateTrackcamDto } from './dto/create-trackcam.dto';
 import { UpdateTrackcamDto } from './dto/update-trackcam.dto';
 import { UpdateDispositivoEstatusDto } from '../dto/update-dispositivo-estatus.dto';
@@ -40,12 +41,24 @@ import {
 export class TrackcamController {
   constructor(private readonly trackcamService: TrackcamService) {}
 
+  @Post('registro/sincronizar')
+  @Roles(EnumRoles.SA, EnumRoles.DEV)
+  @ApiOperation({
+    summary: 'Reenviar el registro de todas las TrackCam al gateway',
+    description:
+      'Emite `trackcam.updated` por cada TrackCam con el cliente actual de su equipo (0 = almacén). ' +
+      'Para resincronizar el gateway después de un saneamiento o un corte. Roles 1–2.',
+  })
+  sincronizarRegistro() {
+    return this.trackcamService.sincronizarRegistro();
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Crear Trackcam (dashcam GPS)',
     description:
       'Crea el dispositivo (datos comunes) y `TrackcamConfig` (reporteo, canales y alarmas) en una transacción. ' +
-      'Requiere `idCliente`. El tipo se asigna como TRACKCAM. ' +
+      'Sin `idCliente` entra al almacén (solo operación: roles 1–5 y 8); con él queda reservado a ese cliente. El tipo se asigna como TRACKCAM. En almacén se registra en el gateway con `tenantId` 0. ' +
       'No incluye servidores, parámetros JT ni media.',
   })
   @ApiResponse({ status: 201, description: 'Trackcam creado correctamente' })

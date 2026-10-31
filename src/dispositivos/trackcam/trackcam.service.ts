@@ -25,20 +25,25 @@ import {
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { MotorActivosService, sinEstatus } from 'src/motor-activos/motor-activos.service';
+import { MotorActivosService, sinEstatus, sinEstatusNiCliente } from 'src/motor-activos/motor-activos.service';
 import {
   crearDispositivoBase,
   obtenerTipoTrackcam,
   validarFksDispositivo,
 } from '../crear-dispositivo.util';
 import {
-  buildTrackcamWebhookData,
   mapTrackcamPlano,
   pickTrackcamConfig,
   RELACIONES_DETALLE_TRACKCAM,
 } from '../map-relaciones.util';
-import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
+import { RegistroTrackcamService } from 'src/motor-activos/registro-trackcam.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
+
+/** Cliente del equipo (la configuración no tiene cliente propio; NULL = almacén). */
+function clienteEquipo(entity: TrackcamConfig): number | null {
+  const id = entity.idDispositivo2?.idCliente;
+  return id != null ? Number(id) : null;
+}
 
 @Injectable()
 export class TrackcamService {
@@ -50,7 +55,7 @@ export class TrackcamService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
-    private readonly webhookEmitter: WebhookEmitterService,
+    private readonly registroTrackcam: RegistroTrackcamService,
     private readonly motor: MotorActivosService,
   ) { }
 
@@ -59,13 +64,13 @@ export class TrackcamService {
     idUser: number,
     alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
-    const idCliente = dto.idCliente;
+    const idCliente = dto.idCliente ?? null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
       // El cliente destino debe estar en el alcance de quien crea (403).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+      await this.tenantFilter.assertClienteDestinoOAlmacen(alcance, idCliente);
       const tipo = await obtenerTipoTrackcam(queryRunner.manager);
       const dispositivo = await crearDispositivoBase(queryRunner.manager, {
         idCliente,
@@ -81,7 +86,6 @@ export class TrackcamService {
 
       const config = queryRunner.manager.create(TrackcamConfig, {
         idDispositivo: dispositivo.id,
-        idCliente,
         ...pickTrackcamConfig(dto),
       } as Partial<TrackcamConfig>);
       const saved = await queryRunner.manager.save(config);
@@ -99,7 +103,6 @@ export class TrackcamService {
 
       await this.emitTrackcamWebhook(
         WebhookEvent.TRACKCAM_CREATED,
-        idCliente,
         Number(saved.idDispositivo),
       );
 
@@ -143,7 +146,7 @@ export class TrackcamService {
       }
       const where: FindOptionsWhere<TrackcamConfig> = {
         ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
+          ? { idDispositivo2: { idCliente: tenant.idCliente } }
           : {}),
       };
       const data = await this.repository.find({
@@ -177,16 +180,13 @@ export class TrackcamService {
       }
       const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<TrackcamConfig> = {
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
-        ...(incluirInservibles
-          ? {}
-          : {
-            idDispositivo2: {
-              estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
-            },
-          }),
+        // Un solo filtro sobre el equipo: cliente (alcance) y estatus.
+        idDispositivo2: {
+          ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+          ...(incluirInservibles
+            ? {}
+            : { estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE) }),
+        },
       };
       const [data, total] = await this.repository.findAndCount({
         where,
@@ -219,7 +219,7 @@ export class TrackcamService {
         throw new NotFoundException('Trackcam no encontrado');
       }
       // Fuera del alcance del usuario responde igual que si no existiera (404).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Trackcam');
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Trackcam');
       return { data: mapTrackcamPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -239,12 +239,13 @@ export class TrackcamService {
       // registro: administración y clientes padre editan lo de sus clientes hijos.
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Trackcam no encontrado');
       }
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Trackcam');
-      const idClienteRecurso = Number(entity.idCliente);
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Trackcam');
+      const idClienteRecurso = clienteEquipo(entity);
 
       Object.assign(entity, pickTrackcamConfig(dto));
       await this.repository.save(entity);
@@ -259,7 +260,7 @@ export class TrackcamService {
 
       if (hayCamposDispositivo) {
         const dispositivo = await this.dispositivosRepo.findOne({
-          where: { id, idCliente: idClienteRecurso },
+          where: { id },
         });
         if (!dispositivo) {
           throw new NotFoundException('Dispositivo del Trackcam no encontrado');
@@ -296,7 +297,7 @@ export class TrackcamService {
         if (dto.camara !== undefined) dispositivo.camara = dto.camara;
         if (dto.idMarca !== undefined) dispositivo.idMarca = dto.idMarca;
         if (dto.idModelo !== undefined) dispositivo.idModelo = dto.idModelo;
-        await this.dispositivosRepo.save(sinEstatus(dispositivo));
+        await this.dispositivosRepo.save(sinEstatusNiCliente(dispositivo));
       }
 
       await this.bitacoraLogger.logToBitacora(
@@ -309,10 +310,8 @@ export class TrackcamService {
         EstatusEnumBitcora.SUCCESS,
       );
 
-      // El webhook va con el cliente del registro (el gateway lo busca por él).
       await this.emitTrackcamWebhook(
         WebhookEvent.TRACKCAM_UPDATED,
-        idClienteRecurso,
         id,
       );
 
@@ -347,6 +346,7 @@ export class TrackcamService {
     try {
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Trackcam no encontrado');
@@ -359,7 +359,7 @@ export class TrackcamService {
       }
 
       // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(dispositivo.idCliente), 'Recurso');
+      await this.tenantFilter.assertClienteVisible(alcance, dispositivo.idCliente, 'Recurso');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;
@@ -378,7 +378,7 @@ export class TrackcamService {
           estatusAnterior,
           estatus,
           idCliente,
-          idClienteRecurso: entity.idCliente,
+          idClienteRecurso: clienteEquipo(entity),
         },
         idUser,
         EnumModulos.DISPOSITIVOS,
@@ -387,7 +387,6 @@ export class TrackcamService {
 
       await this.emitTrackcamWebhook(
         WebhookEvent.TRACKCAM_UPDATED,
-        Number(entity.idCliente),
         id,
       );
 
@@ -415,23 +414,17 @@ export class TrackcamService {
     }
   }
 
-  private async emitTrackcamWebhook(
-    event: WebhookEvent,
-    idCliente: number,
-    idDispositivo: number,
-  ): Promise<void> {
-    const entity = await this.repository.findOne({
-      where: { idDispositivo, idCliente },
-      relations: RELACIONES_DETALLE_TRACKCAM,
-    });
-    if (!entity) {
-      return;
-    }
-    this.webhookEmitter.emit(
-      event,
-      idCliente,
-      idDispositivo,
-      buildTrackcamWebhookData(entity),
-    );
+  /** Reenvía el registro de todas las TrackCam (después del saneamiento de la fase B o de un corte). */
+  async sincronizarRegistro(): Promise<{ data: { emitidas: number } }> {
+    const ids = (await this.repository.find({ select: { idDispositivo: true } })).map((t) => Number(t.idDispositivo));
+    await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, ids);
+    return { data: { emitidas: ids.length } };
   }
+
+  /** Registro de la cámara en el gateway (springTrackCam); ver RegistroTrackcamService. */
+  private async emitTrackcamWebhook(event: WebhookEvent, idDispositivo: number): Promise<void> {
+    await this.registroTrackcam.emitir(event, [idDispositivo]);
+  }
+
+
 }

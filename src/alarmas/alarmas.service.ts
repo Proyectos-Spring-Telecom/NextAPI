@@ -28,7 +28,7 @@ import {
 } from './alarmas-mapper';
 
 const SQL_PANELES_BASE = `
-SELECT p.IdDispositivo, p.CuentaSia, p.Nombre, p.IdCliente, p.UltimoHeartbeat, p.Estatus,
+SELECT p.IdDispositivo, p.CuentaSia, p.Nombre, d.IdCliente, p.UltimoHeartbeat, p.Estatus,
        c.Id AS ClienteId, c.Nombre AS ClienteNombre,
        c.ApellidoPaterno AS ClienteApellidoPaterno,
        c.ApellidoMaterno AS ClienteApellidoMaterno,
@@ -36,10 +36,11 @@ SELECT p.IdDispositivo, p.CuentaSia, p.Nombre, p.IdCliente, p.UltimoHeartbeat, p
        i.NombreRepresentante, i.TelefonoRepresentante, i.CorreoRepresentante,
        i.Lat, i.Lng
   FROM PanelAlarma p
-  LEFT JOIN Clientes c ON c.Id = p.IdCliente
+  -- El cliente es el del equipo (la configuración no tiene cliente; NULL = almacén).
+  JOIN Dispositivos d ON d.Id = p.IdDispositivo
+  LEFT JOIN Clientes c ON c.Id = d.IdCliente
   LEFT JOIN Instalaciones inst
          ON inst.IdDispositivo = p.IdDispositivo
-        AND inst.IdCliente = p.IdCliente
         AND inst.Estatus = 1
   LEFT JOIN Inmuebles i
          ON i.IdProducto = inst.IdProducto
@@ -82,8 +83,9 @@ export class AlarmasService {
       rol,
       idClienteToken,
       queryIdCliente,
-      'p',
+      'd',
       idUsuario,
+      'p.IdDispositivo',
     );
     const rows = await this.dataSource.query(
       `${SQL_PANELES_BASE} ${sql} ORDER BY p.Nombre ASC`,
@@ -132,8 +134,9 @@ export class AlarmasService {
       rol,
       idClienteToken,
       queryIdCliente,
-      'p',
+      'd',
       idUsuario,
+      'p.IdDispositivo',
     );
     const paneles = await this.dataSource.query(
       `${SQL_PANELES_BASE} ${sql} ORDER BY p.Nombre ASC`,

@@ -31,7 +31,12 @@ import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
 import { BajaInstalacionDto } from './dto/baja-instalacion.dto';
 import { CorregirVigenteDesdeDto } from './dto/corregir-vigente-desde.dto';
+import { CorregirClienteInstalacionDto } from './dto/corregir-cliente.dto';
+import { Clientes } from 'src/entities/Clientes';
+import { OrdenesServicio } from 'src/entities/OrdenesServicio';
 import { CorreccionesInstalacion } from 'src/entities/CorreccionesInstalacion';
+import { RegistroTrackcamService } from 'src/motor-activos/registro-trackcam.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 import { FilterInstalacionesPaginadoDto } from './dto/filter-instalaciones-paginado.dto';
 import {
   ApiCrudResponse,
@@ -92,6 +97,11 @@ import {
 export interface OrigenOperacion {
   origen: OrigenMovimiento;
   idOrdenServicio?: number | null;
+  /**
+   * TrackCams que cambiaron de cliente dentro de la transacción del llamador:
+   * su registro en el gateway lo emite el llamador después de su commit.
+   */
+  trackcamPendientes?: number[];
 }
 
 @Injectable()
@@ -113,6 +123,7 @@ export class InstalacionesService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly motor: MotorActivosService,
+    private readonly registroTrackcam: RegistroTrackcamService,
   ) {}
 
   private contexto(
@@ -128,6 +139,42 @@ export class InstalacionesService {
       idInstalacion,
       motivo: motivo ?? null,
     };
+  }
+
+  /**
+   * Dispositivo y SIM que entran a una instalación toman su cliente (del almacén
+   * o reservados a él) antes de escribir la versión activa. Devuelve el cliente
+   * que tenía cada uno, para el movimiento.
+   */
+  private async tomarComponentes(
+    manager: EntityManager,
+    c: { idDispositivo: number | null; idSim: number | null },
+    idCliente: number,
+  ): Promise<Map<'dispositivo' | 'sim', number | null>> {
+    const antes = new Map<'dispositivo' | 'sim', number | null>();
+    if (c.idDispositivo != null) {
+      antes.set('dispositivo', await this.motor.tomarParaInstalar(manager, 'dispositivo', Number(c.idDispositivo), idCliente));
+    }
+    if (c.idSim != null) {
+      antes.set('sim', await this.motor.tomarParaInstalar(manager, 'sim', Number(c.idSim), idCliente));
+    }
+    return antes;
+  }
+
+  /**
+   * Instalar o desinstalar le cambia el cliente al equipo: el registro de una
+   * TrackCam en el gateway se actualiza (tenant). Con transacción propia, al
+   * terminar; dentro de la del llamador, lo emite él después de su commit.
+   */
+  private async avisarRegistroTrackcam(
+    propia: boolean,
+    origen: OrigenOperacion | undefined,
+    ids: Array<number | null | undefined>,
+  ): Promise<void> {
+    const lista = ids.filter((x): x is number => x != null).map(Number);
+    if (!lista.length) return;
+    if (propia) await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, lista);
+    else origen?.trackcamPendientes?.push(...lista);
   }
 
   /** Componentes de una versión de instalación, para moverlos con el motor. */
@@ -193,15 +240,24 @@ export class InstalacionesService {
     return dispositivo;
   }
 
+  /** Del almacén (sin cliente) o reservado a este cliente (fase B); instalado en otro → 400. */
   private async validarDispositivoDisponibleParaAsignar(
     idDispositivo: number,
     idCliente: number,
-    excludeInstalacionId?: number,
+    excludeInstalacionId: number | undefined,
+    almacenPermitido: boolean,
   ): Promise<Dispositivos> {
-    const dispositivo = await this.validarDispositivoPerteneceCliente(
-      idDispositivo,
-      idCliente,
-    );
+    const dispositivo = await this.dispositivosRepo.findOne({ where: { id: idDispositivo } });
+    if (!dispositivo) {
+      throw new BadRequestException('IdDispositivo no existe');
+    }
+    if (dispositivo.idCliente != null && Number(dispositivo.idCliente) !== Number(idCliente)) {
+      throw new BadRequestException('El dispositivo está reservado o instalado en otro cliente');
+    }
+    // El almacén es de la operación: un usuario de cliente solo instala lo reservado a él.
+    if (dispositivo.idCliente == null && !almacenPermitido) {
+      throw new BadRequestException('IdDispositivo no existe o no pertenece al cliente');
+    }
     if (Number(dispositivo.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
       throw new BadRequestException(
         'El dispositivo debe estar en estatus activo (disponible)',
@@ -209,7 +265,6 @@ export class InstalacionesService {
     }
     await this.validarDispositivoSinInstalacionActiva(
       idDispositivo,
-      idCliente,
       excludeInstalacionId,
     );
     return dispositivo;
@@ -230,12 +285,23 @@ export class InstalacionesService {
     return sim;
   }
 
+  /** Del almacén (sin cliente) o reservada a este cliente (fase B); instalada en otro → 400. */
   private async validarSimDisponibleParaAsignar(
     idSim: number,
     idCliente: number,
-    excludeInstalacionId?: number,
+    excludeInstalacionId: number | undefined,
+    almacenPermitido: boolean,
   ): Promise<Sims> {
-    const sim = await this.validarSimPerteneceCliente(idSim, idCliente);
+    const sim = await this.simsRepo.findOne({ where: { id: idSim } });
+    if (!sim) {
+      throw new BadRequestException('IdSim no existe');
+    }
+    if (sim.idCliente != null && Number(sim.idCliente) !== Number(idCliente)) {
+      throw new BadRequestException('La SIM está reservada o instalada en otro cliente');
+    }
+    if (sim.idCliente == null && !almacenPermitido) {
+      throw new BadRequestException('IdSim no existe o no pertenece al cliente');
+    }
     if (Number(sim.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
       throw new BadRequestException(
         'El SIM debe estar en estatus activo (disponible)',
@@ -243,7 +309,6 @@ export class InstalacionesService {
     }
     await this.validarSimSinInstalacionActiva(
       idSim,
-      idCliente,
       excludeInstalacionId,
     );
     return sim;
@@ -251,13 +316,12 @@ export class InstalacionesService {
 
   private async validarDispositivoSinInstalacionActiva(
     idDispositivo: number,
-    idCliente: number,
     excludeId?: number,
   ): Promise<void> {
+    // En cualquier cliente: el equipo solo puede estar en una instalación activa.
     const qb = this.repository
       .createQueryBuilder('i')
-      .where('i.idCliente = :idCliente', { idCliente })
-      .andWhere('i.idDispositivo = :idDispositivo', { idDispositivo })
+      .where('i.idDispositivo = :idDispositivo', { idDispositivo })
       .andWhere('i.estatus = :estatus', { estatus: EstatusEnum.ACTIVO });
     if (excludeId !== undefined) {
       qb.andWhere('i.id != :excludeId', { excludeId });
@@ -271,13 +335,12 @@ export class InstalacionesService {
 
   private async validarSimSinInstalacionActiva(
     idSim: number,
-    idCliente: number,
     excludeId?: number,
   ): Promise<void> {
+    // En cualquier cliente: la SIM solo puede estar en una instalación activa.
     const qb = this.repository
       .createQueryBuilder('i')
-      .where('i.idCliente = :idCliente', { idCliente })
-      .andWhere('i.idSim = :idSim', { idSim })
+      .where('i.idSim = :idSim', { idSim })
       .andWhere('i.estatus = :estatus', { estatus: EstatusEnum.ACTIVO });
     if (excludeId !== undefined) {
       qb.andWhere('i.id != :excludeId', { excludeId });
@@ -499,20 +562,27 @@ export class InstalacionesService {
         idCliente,
         qr.manager,
       );
+      // Sin alcance (llamada interna) o rol de operación: puede tomar del almacén.
+      const almacen = !alcance || this.tenantFilter.esRolSinFiltro(alcance.rol);
       if (dto.idDispositivo != null) {
         await this.validarDispositivoDisponibleParaAsignar(
           dto.idDispositivo,
           idCliente,
+          undefined,
+          almacen,
         );
       }
       if (dto.idSim != null) {
-        await this.validarSimDisponibleParaAsignar(dto.idSim, idCliente);
+        await this.validarSimDisponibleParaAsignar(dto.idSim, idCliente, undefined, almacen);
       }
       await this.validarEstatusEnCatalogo(EnumEstatusInstalacion.ACTIVA);
 
       const ahora = nowMexicoCityAsUtcDate();
       const idDispositivo = dto.idDispositivo ?? null;
       const idSim = dto.idSim ?? null;
+
+      // Equipo y SIM toman el cliente de la instalación antes del INSERT (FK sobre DispositivoActivo / SimActivo).
+      const clienteAntes = await this.tomarComponentes(qr.manager, { idDispositivo, idSim }, idCliente);
 
       const saved = await qr.manager.save(
         qr.manager.create(Instalaciones, {
@@ -533,7 +603,14 @@ export class InstalacionesService {
       for (const c of this.componentes({ idProducto: dto.idProducto, idDispositivo, idSim })) {
         await this.motor.mover(
           qr.manager,
-          { ...c, idCliente, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
+          {
+            ...c,
+            idCliente,
+            idClienteAnterior: c.tipo === 'producto' ? idCliente : (clienteAntes.get(c.tipo) ?? null),
+            esperado: EstatusRecurso.DISPONIBLE,
+            nuevo: EstatusRecurso.INSTALADO,
+            accion: 'instalacion',
+          },
           ctx,
         );
       }
@@ -547,6 +624,7 @@ export class InstalacionesService {
       if (propia) {
         await qr.commitTransaction();
       }
+      await this.avisarRegistroTrackcam(propia, origen, [idDispositivo]);
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
@@ -1108,6 +1186,7 @@ export class InstalacionesService {
             idDispositivo,
             idCliente,
             id,
+            this.tenantFilter.esRolSinFiltro(rol),
           );
         }
       } else if (idDispositivo != null) {
@@ -1126,7 +1205,7 @@ export class InstalacionesService {
           );
         }
         if (idSim != null) {
-          await this.validarSimDisponibleParaAsignar(idSim, idCliente, id);
+          await this.validarSimDisponibleParaAsignar(idSim, idCliente, id, this.tenantFilter.esRolSinFiltro(rol));
         }
       } else if (idSim != null) {
         await this.validarSimPerteneceCliente(idSim, idCliente);
@@ -1165,6 +1244,13 @@ export class InstalacionesService {
         { estatus: EstatusEnum.INACTIVO },
       );
 
+      // Lo que entra toma el cliente de la instalación antes del INSERT.
+      const clienteAntes = await this.tomarComponentes(
+        qr.manager,
+        { idDispositivo: cambiaDispositivo ? idDispositivo : null, idSim: cambiaSim ? idSim : null },
+        idCliente,
+      );
+
       const nueva = await qr.manager.save(
         qr.manager.create(Instalaciones, {
           idCliente,
@@ -1195,7 +1281,14 @@ export class InstalacionesService {
 
       // El componente que sale: instalado (2) → el estatus indicado; el que entra: disponible (1) → instalado.
       const ctx = this.contexto(idUser, Number(nueva.id), origen, dto.comentario);
-      const movimientos: Array<{ tipo: TipoRecurso; id: number; esperado: number; nuevo: number }> = [];
+      const movimientos: Array<{
+        tipo: TipoRecurso;
+        id: number;
+        esperado: number;
+        nuevo: number;
+        idClienteAnterior?: number | null;
+        idClienteNuevo?: number | null;
+      }> = [];
       if (cambiaProducto && estatusProductoSaliente != null) {
         movimientos.push(
           { tipo: 'producto', id: idProductoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusProductoSaliente },
@@ -1204,18 +1297,19 @@ export class InstalacionesService {
       }
       if (cambiaDispositivo) {
         if (idDispositivoAnterior != null && estatusDispositivoSaliente != null) {
-          movimientos.push({ tipo: 'dispositivo', id: idDispositivoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusDispositivoSaliente });
+          // El que sale regresa al almacén.
+          movimientos.push({ tipo: 'dispositivo', id: idDispositivoAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusDispositivoSaliente, idClienteNuevo: null });
         }
         if (idDispositivo != null) {
-          movimientos.push({ tipo: 'dispositivo', id: idDispositivo, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO });
+          movimientos.push({ tipo: 'dispositivo', id: idDispositivo, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, idClienteAnterior: clienteAntes.get('dispositivo') ?? null });
         }
       }
       if (cambiaSim) {
         if (idSimAnterior != null && estatusSimSaliente != null) {
-          movimientos.push({ tipo: 'sim', id: idSimAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusSimSaliente });
+          movimientos.push({ tipo: 'sim', id: idSimAnterior, esperado: EstatusRecurso.INSTALADO, nuevo: estatusSimSaliente, idClienteNuevo: null });
         }
         if (idSim != null) {
-          movimientos.push({ tipo: 'sim', id: idSim, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO });
+          movimientos.push({ tipo: 'sim', id: idSim, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, idClienteAnterior: clienteAntes.get('sim') ?? null });
         }
       }
       for (const m of movimientos) {
@@ -1225,6 +1319,7 @@ export class InstalacionesService {
       if (propia) {
         await qr.commitTransaction();
       }
+      await this.avisarRegistroTrackcam(propia, origen, [cambiaDispositivo ? idDispositivoAnterior : null, cambiaDispositivo ? idDispositivo : null]);
 
       await this.bitacoraLogger.logToBitacora(
         'Instalaciones',
@@ -1271,6 +1366,158 @@ export class InstalacionesService {
         await qr.release();
       }
     }
+  }
+
+  /**
+   * Corregir instalación capturada en el cliente equivocado (fase B,
+   * docs/motor-activos.md §2). Roles 1–4, con motivo. En una transacción:
+   * - archiva el periodo en el cliente actual (baja con el motivo) y desactiva
+   *   la fila: lo transmitido hasta ahora se queda con ese cliente;
+   * - su producto regresa a activo (1);
+   * - dispositivo y SIM siguen instalados y pasan al cliente correcto;
+   * - abre una instalación nueva en el cliente correcto, con su producto.
+   * Queda en CorreccionesInstalacion y en el historial de cada recurso.
+   */
+  async corregirCliente(
+    id: number,
+    dto: CorregirClienteInstalacionDto,
+    idUser: number,
+  ): Promise<ApiCrudResponse & { data: ApiData & { idInstalacionAnterior: number } }> {
+    const motivo = dto.motivo.trim();
+    if (!motivo) throw new BadRequestException('El motivo es obligatorio.');
+    const destino = Number(dto.idCliente);
+    const trackcam: number[] = [];
+
+    const resultado = await this.dataSource.transaction(async (manager) => {
+      const actual = await manager.findOne(Instalaciones, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!actual) throw new NotFoundException('No se encontró la instalación solicitada.');
+      if (Number(actual.estatus) !== EstatusEnum.ACTIVO) {
+        throw new BadRequestException('Solo se corrige el cliente de una instalación activa.');
+      }
+      const origenCliente = Number(actual.idCliente);
+      if (origenCliente === destino) {
+        throw new BadRequestException('La instalación ya está en ese cliente.');
+      }
+      if (!(await manager.exists(Clientes, { where: { id: destino } }))) {
+        throw new BadRequestException('IdCliente no existe');
+      }
+      await this.validarProductoDisponibleParaAsignar(dto.idProducto, destino, manager);
+      // Una orden de servicio abierta sobre esta instalación ya no podría cerrarse.
+      const abierta = await manager.findOne(OrdenesServicio, {
+        where: { idInstalacion: Number(actual.id), estatus: In(['programada', 'borrador']) },
+        select: { id: true },
+      });
+      if (abierta) {
+        throw new BadRequestException(
+          `La instalación tiene la orden de servicio ${Number(abierta.id)} abierta: ciérrela o cancélela antes de corregir el cliente.`,
+        );
+      }
+
+      const ahora = nowMexicoCityAsUtcDate();
+      const idDispositivo = actual.idDispositivo != null ? Number(actual.idDispositivo) : null;
+      const idSim = actual.idSim != null ? Number(actual.idSim) : null;
+      const nota = `Corrección de cliente (error de captura) al cliente ${destino}: ${motivo}`;
+
+      // 1. Cierra el periodo en el cliente actual.
+      await manager.save(
+        manager.create(HistoricoInstalaciones, {
+          idCliente: origenCliente,
+          idProducto: Number(actual.idProducto),
+          idDispositivo,
+          idSim,
+          estatusInstalacion: EnumEstatusInstalacion.INACTIVO,
+          idInstalacionOriginal: Number(actual.id),
+          vigenteDesde: actual.vigenteDesde,
+          vigenteHasta: ahora,
+          idHistoricoInstalacion: actual.idHistoricoInstalacion != null ? Number(actual.idHistoricoInstalacion) : null,
+          idUsuario: idUser,
+          accion: EnumAccionHistoricoInstalacion.BAJA,
+          comentario: nota.slice(0, 2000),
+          fhArchivado: ahora,
+        }),
+      );
+      await manager.update(
+        Instalaciones,
+        { id: actual.id, idCliente: origenCliente },
+        { estatusInstalacion: EnumEstatusInstalacion.INACTIVO, estatus: EstatusEnum.INACTIVO, idUsuario: idUser },
+      );
+      await this.eliminarGeocercasDeInstalacion(manager, Number(actual.id), origenCliente);
+
+      const ctxAnterior = this.contexto(idUser, Number(actual.id), undefined, nota);
+      await this.motor.mover(
+        manager,
+        { tipo: 'producto', id: Number(actual.idProducto), idCliente: origenCliente, esperado: EstatusRecurso.INSTALADO, nuevo: 1, accion: 'baja' },
+        ctxAnterior,
+      );
+
+      // 2. Equipo y SIM pasan al cliente correcto sin dejar de estar instalados.
+      for (const c of [
+        ...(idDispositivo != null ? [{ tipo: 'dispositivo' as const, id: idDispositivo }] : []),
+        ...(idSim != null ? [{ tipo: 'sim' as const, id: idSim }] : []),
+      ]) {
+        await this.motor.mover(
+          manager,
+          {
+            ...c,
+            idCliente: origenCliente,
+            idClienteNuevo: destino,
+            esperado: EstatusRecurso.INSTALADO,
+            nuevo: EstatusRecurso.INSTALADO,
+            accion: 'traspaso',
+          },
+          ctxAnterior,
+        );
+      }
+
+      // 3. La instalación en el cliente correcto (cadena nueva: lo anterior es del otro cliente).
+      const nueva = await manager.save(
+        manager.create(Instalaciones, {
+          idCliente: destino,
+          idProducto: dto.idProducto,
+          idDispositivo,
+          idSim,
+          estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
+          idHistoricoInstalacion: null,
+          vigenteDesde: ahora,
+          idUsuario: idUser,
+          estatus: EstatusEnum.ACTIVO,
+        }),
+      );
+      await this.motor.mover(
+        manager,
+        { tipo: 'producto', id: Number(dto.idProducto), idCliente: destino, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
+        this.contexto(idUser, Number(nueva.id), undefined, nota),
+      );
+      await this.asignarInstalacionUsuariosPorDefecto(manager, Number(nueva.id), destino);
+      await manager.insert(CorreccionesInstalacion, {
+        idInstalacion: Number(nueva.id),
+        fecha: ahora,
+        campo: 'IdCliente',
+        valorAnterior: `${origenCliente} (instalación ${actual.id})`,
+        valorNuevo: String(destino),
+        motivo: motivo.slice(0, 500),
+        idUsuario: idUser,
+        origen: 'api',
+      });
+      if (idDispositivo != null) trackcam.push(idDispositivo);
+      return { anterior: Number(actual.id), nueva: Number(nueva.id), origenCliente };
+    });
+
+    await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, trackcam);
+    await this.bitacoraLogger.logToBitacora(
+      'Instalaciones',
+      `Se corrigió el cliente de la instalación ID: ${id} (cliente ${resultado.origenCliente} → ${destino}); nueva ID: ${resultado.nueva}`,
+      'UPDATE',
+      { id, dto, ...resultado },
+      idUser,
+      EnumModulos.INSTALACIONES,
+      EstatusEnumBitcora.SUCCESS,
+    );
+    return {
+      status: 'success',
+      message: 'Se corrigió el cliente de la instalación.',
+      data: { id: resultado.nueva, nombre: `Instalación ${resultado.nueva}`, idInstalacionAnterior: resultado.anterior },
+    };
   }
 
   /**
@@ -1494,11 +1741,14 @@ export class InstalacionesService {
         await this.assertComponentesDisponiblesParaActivar(
           qr.manager,
           componentes,
+          this.tenantFilter.esRolSinFiltro(rol),
         );
 
         // Versión nueva enlazada a la baja archivada (una baja anterior al
         // motor se archiva aquí): el periodo dado de baja no queda abierto.
         const baja = await this.archivarBajaAnterior(qr.manager, actual, idUser);
+        // Equipo y SIM toman el cliente antes de activar la fila (FK sobre DispositivoActivo / SimActivo).
+        const clienteAntes = await this.tomarComponentes(qr.manager, componentes, idCliente);
         await qr.manager.update(
           Instalaciones,
           { id: actual.id, idCliente },
@@ -1513,7 +1763,14 @@ export class InstalacionesService {
         for (const c of this.componentes(componentes)) {
           await this.motor.mover(
             qr.manager,
-            { ...c, idCliente, esperado: EstatusRecurso.DISPONIBLE, nuevo: EstatusRecurso.INSTALADO, accion: 'reactivacion' },
+            {
+              ...c,
+              idCliente,
+              idClienteAnterior: c.tipo === 'producto' ? idCliente : (clienteAntes.get(c.tipo) ?? null),
+              esperado: EstatusRecurso.DISPONIBLE,
+              nuevo: EstatusRecurso.INSTALADO,
+              accion: 'reactivacion',
+            },
             ctx,
           );
         }
@@ -1521,6 +1778,7 @@ export class InstalacionesService {
         if (propia) {
           await qr.commitTransaction();
         }
+        await this.avisarRegistroTrackcam(propia, origen, [componentes.idDispositivo]);
 
         await this.bitacoraLogger.logToBitacora(
           'Instalaciones',
@@ -1591,6 +1849,8 @@ export class InstalacionesService {
             esperado: EstatusRecurso.INSTALADO,
             nuevo: estatusSalidaPorBaja(c.tipo, dto.estatusInstalacion),
             accion: 'baja',
+            // Equipo y SIM regresan al almacén; el producto se queda con su cliente.
+            ...(c.tipo === 'producto' ? {} : { idClienteNuevo: null }),
           },
           ctx,
         );
@@ -1604,6 +1864,7 @@ export class InstalacionesService {
       if (propia) {
         await qr.commitTransaction();
       }
+      await this.avisarRegistroTrackcam(propia, origen, [componentes.idDispositivo]);
 
       const etiqueta =
         dto.estatusInstalacion === EnumEstatusInstalacion.INACTIVO
@@ -1735,6 +1996,9 @@ export class InstalacionesService {
             tipo: 'dispositivo',
             id: componentes.idDispositivo,
             idCliente,
+            // Ya salió de la instalación: está en el almacén.
+            idClienteAnterior: null,
+            idClienteNuevo: null,
             esperado: EstatusRecurso.POR_REVISAR,
             nuevo: EstatusRecurso.INSERVIBLE,
             accion: 'baja',
@@ -1771,6 +2035,8 @@ export class InstalacionesService {
       idDispositivo: number | null;
       idSim: number | null;
     },
+    /** Rol de operación: puede reactivar con equipo o SIM del almacén. */
+    almacenPermitido: boolean,
   ): Promise<void> {
     const producto = await manager.findOne(Productos, {
       where: {
@@ -1790,15 +2056,17 @@ export class InstalacionesService {
     }
 
     if (instalacion.idDispositivo != null) {
+      // Del almacén o reservado al cliente (fase B).
       const dispositivo = await manager.findOne(Dispositivos, {
-        where: {
-          id: instalacion.idDispositivo,
-          idCliente: instalacion.idCliente,
-        },
+        where: { id: instalacion.idDispositivo },
       });
-      if (!dispositivo) {
+      if (
+        !dispositivo ||
+        (dispositivo.idCliente != null && Number(dispositivo.idCliente) !== Number(instalacion.idCliente)) ||
+        (dispositivo.idCliente == null && !almacenPermitido)
+      ) {
         throw new BadRequestException(
-          'No se puede activar la instalación: el dispositivo vinculado no existe o no pertenece al cliente.',
+          'No se puede activar la instalación: el dispositivo vinculado no existe o está reservado o instalado en otro cliente.',
         );
       }
       if (
@@ -1811,15 +2079,17 @@ export class InstalacionesService {
     }
 
     if (instalacion.idSim != null) {
+      // Del almacén o reservado al cliente (fase B).
       const sim = await manager.findOne(Sims, {
-        where: {
-          id: instalacion.idSim,
-          idCliente: instalacion.idCliente,
-        },
+        where: { id: instalacion.idSim },
       });
-      if (!sim) {
+      if (
+        !sim ||
+        (sim.idCliente != null && Number(sim.idCliente) !== Number(instalacion.idCliente)) ||
+        (sim.idCliente == null && !almacenPermitido)
+      ) {
         throw new BadRequestException(
-          'No se puede activar la instalación: el SIM vinculado no existe o no pertenece al cliente.',
+          'No se puede activar la instalación: la SIM vinculada no existe o está reservada o instalada en otro cliente.',
         );
       }
       if (Number(sim.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {

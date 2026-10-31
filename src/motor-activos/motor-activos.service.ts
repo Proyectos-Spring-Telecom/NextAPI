@@ -6,6 +6,8 @@ import { Sims } from 'src/entities/Sims';
 import { Productos } from 'src/entities/Productos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { CatEstatusRecurso } from 'src/entities/CatEstatusRecurso';
+import { RegistroTrackcamService } from './registro-trackcam.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 import { MovimientosRecurso } from 'src/entities/MovimientosRecurso';
 import { fechaPared, fechaParedComoDate, nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import { UltimaPosicion } from 'src/entities/UltimaPosicion';
@@ -40,6 +42,13 @@ export interface Movimiento {
   esperado: number;
   nuevo: number;
   accion: AccionMovimiento;
+  /** Cliente antes del movimiento, si no es `idCliente` (p. ej. venía del almacén). */
+  idClienteAnterior?: number | null;
+  /**
+   * Cliente después del movimiento (dispositivo y SIM, fase B). `null` = regresa
+   * al almacén; sin valor = no cambia. El producto conserva su cliente.
+   */
+  idClienteNuevo?: number | null;
 }
 
 const ENTIDAD = {
@@ -102,14 +111,16 @@ export class MotorActivosService {
     private readonly movimientosRepo: Repository<MovimientosRecurso>,
     @InjectRepository(CatEstatusRecurso)
     private readonly catalogoRepo: Repository<CatEstatusRecurso>,
+    private readonly registroTrackcam: RegistroTrackcamService,
   ) {}
 
   /** Cambia el estatus dentro de la transacción del llamador. */
   async mover(manager: EntityManager, m: Movimiento, ctx: ContextoMovimiento): Promise<void> {
+    const cambiaCliente = m.idClienteNuevo !== undefined && m.tipo !== 'producto';
     const resultado = await manager
       .createQueryBuilder()
       .update(ENTIDAD[m.tipo])
-      .set({ estatus: m.nuevo })
+      .set(cambiaCliente ? { estatus: m.nuevo, idCliente: m.idClienteNuevo } : { estatus: m.nuevo })
       .where('id = :id AND estatus = :esperado', { id: m.id, esperado: m.esperado })
       .execute();
     if (!resultado.affected) {
@@ -138,11 +149,44 @@ export class MotorActivosService {
         accion: m.accion,
         estatusAnterior: m.esperado,
         estatusNuevo: m.nuevo,
-        idClienteAnterior: m.idCliente,
-        idClienteNuevo: m.idCliente,
+        idClienteAnterior: m.idClienteAnterior !== undefined ? m.idClienteAnterior : m.idCliente,
+        idClienteNuevo: cambiaCliente ? (m.idClienteNuevo ?? null) : m.idCliente,
       },
       ctx,
     );
+  }
+
+  /**
+   * Antes de crear o activar una instalación: el dispositivo o SIM disponible
+   * (1) del almacén o reservado a ese cliente toma el cliente de la
+   * instalación (la FK compuesta sobre DispositivoActivo / SimActivo lo exige
+   * al insertar). Condicional: si otro proceso lo tomó → 409. Devuelve el
+   * cliente que tenía (NULL = almacén), para el movimiento de la instalación.
+   */
+  async tomarParaInstalar(
+    manager: EntityManager,
+    tipo: 'dispositivo' | 'sim',
+    id: number,
+    idCliente: number,
+  ): Promise<number | null> {
+    const actual = await manager.findOne(ENTIDAD[tipo], { where: { id }, select: { id: true, estatus: true, idCliente: true } });
+    if (!actual) throw new ConflictException(`${ETIQUETA[tipo]} ${id} no existe.`);
+    const anterior = actual.idCliente != null ? Number(actual.idCliente) : null;
+    const resultado = await manager
+      .createQueryBuilder()
+      .update(ENTIDAD[tipo])
+      .set({ idCliente })
+      .where('id = :id AND estatus = :disponible', { id, disponible: EstatusRecurso.DISPONIBLE })
+      .andWhere(anterior == null ? 'idCliente IS NULL' : 'idCliente = :anterior', { anterior })
+      .andWhere('(idCliente IS NULL OR idCliente = :idCliente)', { idCliente })
+      .execute();
+    if (!resultado.affected) {
+      throw new ConflictException(
+        `${ETIQUETA[tipo]} ${id} ya no está disponible para este cliente (estatus ${actual.estatus}, ` +
+          `cliente ${anterior ?? 'almacén'}); pudo cambiar mientras se procesaba. Vuelva a cargar e intente de nuevo.`,
+      );
+    }
+    return anterior;
   }
 
   /**
@@ -156,6 +200,12 @@ export class MotorActivosService {
     quien: { idUsuario: number; rol: number; motivo?: string | null },
   ): Promise<void> {
     assertTransicionManual(tipo, Number(recurso.estatus), Number(nuevo), quien);
+    // Una reserva solo vale en disponible o inactivo: por revisar, laboratorio o
+    // inservible regresan al almacén (fase B). El producto conserva su cliente.
+    const sueltaReserva =
+      tipo !== 'producto' &&
+      recurso.idCliente != null &&
+      ![EstatusRecurso.INACTIVO, EstatusRecurso.DISPONIBLE].includes(Number(nuevo));
     await this.dataSource.transaction((manager) =>
       this.mover(
         manager,
@@ -166,10 +216,14 @@ export class MotorActivosService {
           esperado: Number(recurso.estatus),
           nuevo: Number(nuevo),
           accion: 'estatus',
+          ...(sueltaReserva ? { idClienteNuevo: null } : {}),
         },
         { idUsuario: quien.idUsuario, origen: 'api', motivo: quien.motivo },
       ),
     );
+    if (sueltaReserva && tipo === 'dispositivo') {
+      await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, [Number(recurso.id)]);
+    }
   }
 
   /** Catálogo con las transiciones a mano y los destinos al salir de una instalación. */
@@ -304,5 +358,16 @@ export class MotorActivosService {
  */
 export function sinEstatus<T extends { estatus?: unknown }>(entidad: T): T {
   delete entidad.estatus;
+  return entidad;
+}
+
+/**
+ * Como sinEstatus, para dispositivos y SIM: también quita `idCliente`, que
+ * desde la fase B lo cambian el motor (instalar, desinstalar) y la reserva; un
+ * `save()` con el valor leído al inicio lo podría revertir.
+ */
+export function sinEstatusNiCliente<T extends { estatus?: unknown; idCliente?: unknown }>(entidad: T): T {
+  delete entidad.estatus;
+  delete entidad.idCliente;
   return entidad;
 }

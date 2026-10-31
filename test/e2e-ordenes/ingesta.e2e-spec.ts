@@ -86,7 +86,8 @@ describe('Ingesta por estatus del equipo', () => {
     await new Promise((r) => setTimeout(r, 500));
     expect(incidentes(cond)).toBe(1);
     const raiz = sql('SELECT Id FROM Clientes WHERE IdPadre IS NULL ORDER BY Id LIMIT 1');
-    expect(sql(`SELECT CONCAT(IdCliente, '|', JSON_EXTRACT(DatosOrigen, '$.idClienteDispositivo')) FROM Incidentes WHERE ${cond}`)).toBe(`${raiz}|${C.idClienteNext}`);
+    // El equipo dado por inservible ya no tiene reserva (fase B): está en el almacén.
+    expect(sql(`SELECT CONCAT(IdCliente, '|', JSON_EXTRACT(DatosOrigen, '$.idClienteDispositivo')) FROM Incidentes WHERE ${cond}`)).toBe(`${raiz}|null`);
   });
 
   it('un número de serie desconocido sigue yendo a huérfanos', async () => {

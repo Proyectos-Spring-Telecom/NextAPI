@@ -22,7 +22,8 @@ export function mapSimPlano(item: Sims) {
     descripcionPlanTelefonia: plan?.descripcion ?? null,
     datosPlanTelefonia: plan?.datos ?? null,
     costoMensualPlanTelefonia: plan?.costoMensual ?? null,
-    idCliente: Number(item.idCliente),
+    // NULL = almacén (fase B).
+    idCliente: item.idCliente != null ? Number(item.idCliente) : null,
     nombreCliente: nombreCliente(cliente),
     notas: item.notas,
     fechaCreacion: item.fechaCreacion,

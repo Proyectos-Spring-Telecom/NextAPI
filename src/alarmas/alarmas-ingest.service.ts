@@ -307,12 +307,16 @@ export class AlarmasIngestService {
     }
 
     const idPanel = panel ? Number(panel.idDispositivo) : null;
-    const idCliente =
-      idClienteBody != null
-        ? Number(idClienteBody)
-        : panel
-          ? Number(panel.idCliente)
-          : null;
+    // El cliente del evento es el de la instalación activa del panel: un panel
+    // en almacén o solo reservado a un cliente no le genera eventos (NULL).
+    let idCliente: number | null = idClienteBody != null ? Number(idClienteBody) : null;
+    if (idClienteBody == null && idPanel != null) {
+      const filas: Array<{ IdCliente: string | number }> = await this.dataSource.query(
+        'SELECT IdCliente FROM Instalaciones WHERE IdDispositivo = ? AND Estatus = 1 LIMIT 1',
+        [idPanel],
+      );
+      idCliente = filas[0] ? Number(filas[0].IdCliente) : null;
+    }
 
     return { idPanel, idCliente, panel };
   }

@@ -10,13 +10,16 @@ import {
 } from 'class-validator';
 
 export class CreateDispositivosDto {
-  @ApiProperty({
-    description: 'ID del cliente/tenant propietario. Obligatorio.',
+  @ApiPropertyOptional({
+    description:
+      'Cliente al que se reserva. Sin él (o null) el equipo entra al almacén; solo operación (roles sin filtro de cliente) ' +
+      'da de alta en almacén. Al instalarse toma el cliente de la instalación.',
     example: 1,
+    nullable: true,
   })
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  idCliente!: number;
+  idCliente?: number | null;
 
   @ApiProperty({
     description:

@@ -5,7 +5,6 @@ import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
-import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { SimsController } from './sims.controller';
@@ -19,7 +18,6 @@ import { SimsService } from './sims.service';
       CatPlanesTelefonia,
       Clientes,
       Instalaciones,
-      HistoricoInstalaciones,
     ]),
     BitacoraModule,
     TenantFilterModule,

@@ -36,8 +36,6 @@ describe('SimsService: detalle y alta con alcance', () => {
       vacio,
       vacio,
       vacio,
-      vacio,
-      vacio,
       bitacora as never,
       tenant, {} as never,
     );

@@ -31,8 +31,9 @@ export class Dispositivos {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'Id' })
   id: number;
 
-  @Column('bigint', { name: 'IdCliente' })
-  idCliente: number;
+  /** NULL = almacén; con cliente sin instalar = reservado; instalado = el de la instalación (fase B). */
+  @Column('bigint', { name: 'IdCliente', nullable: true })
+  idCliente: number | null;
 
   @Column('bigint', { name: 'IdTipoDispositivo' })
   idTipoDispositivo: number;

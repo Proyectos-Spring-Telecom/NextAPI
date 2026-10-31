@@ -447,3 +447,18 @@ Desde la fase E ([motor-activos.md](motor-activos.md) §15):
 - **Incidentes:**
   - un equipo sin instalación (almacén, taller) ya no le abre incidentes a ningún cliente;
   - un **equipo inservible que transmite** abre un incidente para monitoreo (en el cliente raíz), con la descripción "Equipo inservible transmitiendo (posible robo o vandalismo)" y el cliente dueño del equipo.
+
+
+## 21. Almacén: equipo y SIM sin cliente (fase B)
+
+Desde la fase B ([motor-activos.md](motor-activos.md) §16):
+
+- **`idCliente` de un dispositivo o SIM puede ser `null` = almacén.** Con cliente y sin instalar = reservado a ese cliente. Instalado = el cliente de su instalación. Mostrar "Almacén" cuando venga `null`.
+- **Alta** (`POST /dispositivos`, `/dispositivos/trackcam`, `/dispositivos/relojes`, `/dispositivos/paneles`, `/sims`): `idCliente` ya es opcional; sin él entra al almacén (solo roles 1–5 y 8; el cliente debe indicarlo → 403).
+- **Editar** (`PATCH /dispositivos/:id`, `/sims/:id`): `idCliente` con un id lo reserva (solo disponible o inactivo); `null` lo regresa al almacén (solo operación). Un equipo o SIM instalado no cambia de cliente → 400. La SIM ya no se "traspasa" a una SIM nueva: la respuesta siempre trae el mismo `id`.
+- **Instalar** (`POST /instalaciones`, cambio de componente): el equipo y la SIM pueden venir del almacén o estar reservados al cliente. Reservado a otro cliente → 400. El selector `GET /dispositivos/list?idCliente=X` (y `/sims/list?idCliente=X`) ya trae, para operación, lo reservado a X **y** lo del almacén.
+- **Al desinstalar** (baja o cambio), el equipo y la SIM regresan al almacén (`idCliente` null) en "por revisar".
+- **Corregir instalación** (roles 1–4): `PATCH /instalaciones/:id/corregir-cliente` con `{ idCliente, idProducto, motivo }`. El vehículo se da de alta antes en el cliente correcto. Responde `data.id` = instalación nueva y `data.idInstalacionAnterior`. Propuesta: acción "Corregir cliente" en el detalle, con selector de cliente y de vehículo.
+- Las configuraciones de panel, TrackCam y reloj ya no traen cliente propio: `idCliente` en sus respuestas es el del equipo.
+- Pasar un equipo o SIM reservado a por revisar, laboratorio o inservible lo regresa al almacén.
+- Un usuario de cliente (6, 7, 9) solo instala lo reservado a su cliente; el almacén es de operación.

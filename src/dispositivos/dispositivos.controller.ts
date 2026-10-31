@@ -46,7 +46,8 @@ export class DispositivosController {
     summary: 'Crear dispositivo',
     description:
       'Alta de rastreador, AVL o teléfono (datos comunes en `Dispositivos`). ' +
-      'Requiere `idCliente` e `idTipoDispositivo`. ' +
+      'Requiere `idTipoDispositivo`. ' +
+      'Sin `idCliente` entra al almacén (solo operación: roles 1–5 y 8); con él queda reservado a ese cliente. ' +
       'Los paneles de alarma se crean en POST /dispositivos/paneles porque necesitan datos extra. ' +
       'Los Trackcam se crean en POST /dispositivos/trackcam porque necesitan TrackcamConfig.',
   })
@@ -67,7 +68,7 @@ export class DispositivosController {
     description:
       'Lista plana de dispositivos disponibles (`estatus = 1`). ' +
       'Incluye todos los tipos (rastreador, AVL, teléfono, panel). ' +
-      'Opcionalmente filtra por `idTipoDispositivo` y `idCliente`.',
+      'Opcionalmente filtra por `idTipoDispositivo` y `idCliente`. Con `idCliente`, operación (roles 1–5 y 8) recibe también los del almacén: es el selector para instalar en ese cliente.',
   })
   @ApiQuery({
     name: 'idTipoDispositivo',
@@ -204,7 +205,8 @@ export class DispositivosController {
   @ApiOperation({
     summary: 'Actualizar dispositivo',
     description:
-      'Actualización parcial. Tipo, marca, modelo, eco y cámara se pueden cambiar siempre. Cliente, IMEI y número de serie solo si el dispositivo no está ni ha estado en una instalación; al cambiar el cliente se mueve también su configuración de panel / TrackCam.',
+      'Actualización parcial. Tipo, marca, modelo, eco y cámara se pueden cambiar siempre. IMEI y número de serie solo si el dispositivo no está ni ha estado en una instalación. ' +
+      '`idCliente`: un id lo reserva a ese cliente (disponible o inactivo); `null` lo regresa al almacén (solo operación). Un equipo instalado no cambia de cliente: el suyo es el de la instalación.',
   })
   @ApiParam({ name: 'id', description: 'ID del dispositivo' })
   @ApiResponse({ status: 200, description: 'Dispositivo actualizado' })

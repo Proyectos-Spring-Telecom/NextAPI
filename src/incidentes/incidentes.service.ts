@@ -118,7 +118,7 @@ export class IncidentesService {
         .innerJoin(
           Dispositivos,
           'd',
-          'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+          'd.id = i.idDispositivo',
         )
         .leftJoin(
           Productos,
@@ -228,7 +228,7 @@ export class IncidentesService {
       .innerJoin(
         Dispositivos,
         'd',
-        'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
+        'd.id = i.idDispositivo',
       )
       .select('d.id', 'idDispositivo')
       .addSelect('CAST(d.imei AS CHAR)', 'imei')

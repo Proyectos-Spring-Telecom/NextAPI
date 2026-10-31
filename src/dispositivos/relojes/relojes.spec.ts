@@ -62,13 +62,14 @@ describe('Relojes', () => {
   it('mapRelojPlano junta dispositivo y configuración', () => {
     const plano = mapRelojPlano({
       idDispositivo: 42,
-      idCliente: 1,
       intervaloReporteSegundos: 300,
       intervaloGpsSegundos: 600,
       deteccionCaida: 1,
       llamadaPorCaida: 0,
       sensibilidadCaida: 5,
+      idDispositivo2: { id: 42, idCliente: 1 },
     } as RelojConfig);
+    // El cliente es el del equipo: la configuración no tiene cliente propio.
     expect(plano).toMatchObject({
       id: 42,
       idCliente: 1,
@@ -103,20 +104,20 @@ describe('RelojesService: alcance por cliente', () => {
   };
 
   it('detalle de un cliente hijo: lo ve; de un cliente ajeno: 404', async () => {
-    const { svc } = servicio({ idDispositivo: 5, idCliente: 11 });
+    const { svc } = servicio({ idDispositivo: 5, idDispositivo2: { idCliente: 11 } } as never);
     await expect(svc.findOne(5, padre)).resolves.toMatchObject({ data: { id: 5 } });
-    const ajeno = servicio({ idDispositivo: 6, idCliente: 99 });
+    const ajeno = servicio({ idDispositivo: 6, idDispositivo2: { idCliente: 99 } } as never);
     await expect(ajeno.svc.findOne(6, padre)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('editar busca por id (no por el cliente del token) y valida el cliente del reloj', async () => {
-    const { svc, repository } = servicio({ idDispositivo: 5, idCliente: 11 });
+    const { svc, repository } = servicio({ idDispositivo: 5, idDispositivo2: { idCliente: 11 } } as never);
     await expect(svc.update(5, { intervaloGpsSegundos: 600 }, 10, 1, padre)).resolves.toMatchObject({
       status: 'success',
     });
-    expect(repository.findOne).toHaveBeenCalledWith({ where: { idDispositivo: 5 } });
+    expect(repository.findOne).toHaveBeenCalledWith({ where: { idDispositivo: 5 }, relations: { idDispositivo2: true } });
 
-    const ajeno = servicio({ idDispositivo: 6, idCliente: 99 });
+    const ajeno = servicio({ idDispositivo: 6, idDispositivo2: { idCliente: 99 } } as never);
     await expect(ajeno.svc.update(6, { intervaloGpsSegundos: 600 }, 10, 1, padre)).rejects.toBeInstanceOf(
       NotFoundException,
     );

@@ -339,4 +339,23 @@ export class TenantFilterService {
       throw new ForbiddenException('El cliente está fuera de tu alcance');
     }
   }
+  /** Roles sin filtro de cliente (la operación): ven y usan el almacén. */
+  esRolSinFiltro(rol: number): boolean {
+    return ROLES_SIN_FILTRO.has(Number(rol));
+  }
+
+  /**
+   * Alta o reserva de un equipo o SIM: con cliente, igual que assertClienteDestino;
+   * sin cliente (almacén) solo los roles sin filtro de cliente (la operación).
+   */
+  async assertClienteDestinoOAlmacen(user: UsuarioAlcance, idCliente: number | null | undefined): Promise<void> {
+    if (idCliente == null) {
+      if (!ROLES_SIN_FILTRO.has(Number(user.rol))) {
+        throw new ForbiddenException('Indica el cliente: solo operación da de alta en el almacén');
+      }
+      return;
+    }
+    await this.assertClienteDestino(user, idCliente);
+  }
+
 }

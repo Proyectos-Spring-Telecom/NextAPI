@@ -12,14 +12,10 @@ import { Dispositivos } from './Dispositivos';
 @applySchema
 @Index('UQ_PanelAlarma_CuentaSia', ['cuentaSia'], { unique: true })
 @Index('IX_PanelAlarma_UltimoHeartbeat', ['ultimoHeartbeat'])
-@Index('FK_PanelAlarma_Dispositivo', ['idCliente', 'idDispositivo'])
 @Entity('PanelAlarma')
 export class PanelAlarma {
   @PrimaryColumn('bigint', { name: 'IdDispositivo' })
   idDispositivo: number;
-
-  @Column('bigint', { name: 'IdCliente' })
-  idCliente: number;
 
   @Column('varchar', { name: 'CuentaSia', length: 20 })
   cuentaSia: string;
@@ -67,9 +63,6 @@ export class PanelAlarma {
     onDelete: 'CASCADE',
     onUpdate: 'NO ACTION',
   })
-  @JoinColumn([
-    { name: 'IdCliente', referencedColumnName: 'idCliente' },
-    { name: 'IdDispositivo', referencedColumnName: 'id' },
-  ])
+  @JoinColumn([{ name: 'IdDispositivo', referencedColumnName: 'id' }])
   idDispositivo2: Dispositivos;
 }

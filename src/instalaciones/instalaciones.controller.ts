@@ -22,6 +22,7 @@ import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
 import { BajaInstalacionDto } from './dto/baja-instalacion.dto';
 import { CorregirVigenteDesdeDto } from './dto/corregir-vigente-desde.dto';
+import { CorregirClienteInstalacionDto } from './dto/corregir-cliente.dto';
 import { FilterInstalacionesPaginadoDto } from './dto/filter-instalaciones-paginado.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
@@ -231,6 +232,32 @@ export class InstalacionesController {
       req.user.rol,
       req.user.userId,
     );
+  }
+
+  @Patch(':id/corregir-cliente')
+  @Roles(EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO)
+  @ApiOperation({
+    summary: 'Corregir instalación capturada en el cliente equivocado',
+    description:
+      'Roles 1–4, con motivo. Cierra el periodo en el cliente actual (lo transmitido hasta ahora se queda con ese ' +
+      'cliente) y regresa su vehículo a activo; el dispositivo y la SIM siguen instalados y pasan al cliente correcto, ' +
+      'en una instalación nueva con el vehículo indicado (`idProducto`, disponible en ese cliente; se da de alta antes). ' +
+      'Las geocercas y asignaciones de usuarios de la instalación anterior no se trasladan. Queda en ' +
+      '`CorreccionesInstalacion` y en el historial de cada recurso. Responde el id de la instalación nueva.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la instalación (activa)' })
+  @ApiBody({ type: CorregirClienteInstalacionDto })
+  @ApiResponse({ status: 200, description: '`data.id` = instalación nueva; `data.idInstalacionAnterior` = la corregida' })
+  @ApiResponse({ status: 400, description: 'Instalación inactiva, mismo cliente, cliente o vehículo inválido, sin motivo' })
+  @ApiResponse({ status: 403, description: 'Solo roles 1–4' })
+  @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
+  @ApiResponse({ status: 409, description: 'Un componente cambió mientras se procesaba' })
+  async corregirCliente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorregirClienteInstalacionDto,
+    @Request() req,
+  ) {
+    return this.instalacionesService.corregirCliente(id, dto, req.user.userId);
   }
 
   @Patch(':id/vigente-desde')

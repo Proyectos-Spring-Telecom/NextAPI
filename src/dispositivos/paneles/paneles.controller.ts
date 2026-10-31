@@ -46,7 +46,7 @@ export class PanelesController {
     description:
       'Crea el dispositivo (datos comunes) y el detalle exclusivo de panel ' +
       '(cuenta SIA, IP, cifrado, etc.) en una transacción. ' +
-      'Requiere `idCliente`. El tipo se asigna como panel. `aesKey` no se devuelve en GET.',
+      'Sin `idCliente` entra al almacén (solo operación: roles 1–5 y 8); con él queda reservado a ese cliente. El tipo se asigna como panel. `aesKey` no se devuelve en GET.',
   })
   @ApiResponse({ status: 201, description: 'Panel creado correctamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })

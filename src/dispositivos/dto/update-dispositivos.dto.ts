@@ -12,12 +12,14 @@ import {
 export class UpdateDispositivosDto {
   @ApiPropertyOptional({
     description:
-      'Cliente propietario. Solo se puede cambiar si el dispositivo no está ni ha estado en una instalación.',
+      'Reserva a un cliente (disponible o inactivo) o `null` para regresarlo al almacén (solo operación). ' +
+      'Un equipo instalado no cambia de cliente: el suyo es el de la instalación.',
     example: 11,
+    nullable: true,
   })
   @IsOptional()
   @IsInt()
-  idCliente?: number;
+  idCliente?: number | null;
 
   @ApiPropertyOptional({
     description: 'ID del tipo de dispositivo (CatTipoDispositivo)',

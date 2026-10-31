@@ -50,6 +50,8 @@ import {
   pruebasLasValidaElOperador,
   requiereInstalacionExistente,
 } from './ordenes-servicio.reglas';
+import { RegistroTrackcamService } from 'src/motor-activos/registro-trackcam.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
 export interface UsuarioToken {
   userId: number;
@@ -94,6 +96,7 @@ export class OrdenesServicioService {
     private readonly s3Service: S3Service,
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
+    private readonly registroTrackcam: RegistroTrackcamService,
   ) {}
 
   /** Catálogo de opciones por sección + monitoristas activos. */
@@ -520,7 +523,9 @@ export class OrdenesServicioService {
       }
       await this.validarMonitorista(Number(orden.idMonitorista));
 
-      const resultado = await this.aplicarMovimiento(orden, folio, user, qr);
+      // Equipos que cambiaron de cliente: su registro en el gateway va después del commit.
+      const trackcamPendientes: number[] = [];
+      const resultado = await this.aplicarMovimiento(orden, folio, user, qr, trackcamPendientes);
       await qr.manager.update(
         OrdenesServicio,
         { id: orden.id },
@@ -535,6 +540,7 @@ export class OrdenesServicioService {
         },
       );
       await qr.commitTransaction();
+      await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, trackcamPendientes);
 
       await this.bitacora(
         `Se cerró la orden de servicio ${folio} (${orden.tipoServicio}) → instalación ${resultado.idInstalacionResultado}`,
@@ -560,6 +566,7 @@ export class OrdenesServicioService {
     folio: string,
     user: UsuarioToken,
     qr: QueryRunner,
+    trackcamPendientes: number[],
   ): Promise<{
     idInstalacion: number;
     idInstalacionResultado: number;
@@ -573,7 +580,7 @@ export class OrdenesServicioService {
     const tipo = orden.tipoServicio as TipoServicio;
     const idCliente = Number(orden.idCliente);
     // Historial de los recursos: el movimiento sale de esta orden.
-    const origen = { origen: 'orden' as const, idOrdenServicio: Number(orden.id) };
+    const origen = { origen: 'orden' as const, idOrdenServicio: Number(orden.id), trackcamPendientes };
 
     if (tipo === 'instalacion') {
       // Alta autorizada sobre un vehículo con equipo de Next: primero la baja

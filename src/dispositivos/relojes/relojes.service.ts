@@ -25,7 +25,7 @@ import {
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { MotorActivosService, sinEstatus } from 'src/motor-activos/motor-activos.service';
+import { MotorActivosService, sinEstatus, sinEstatusNiCliente } from 'src/motor-activos/motor-activos.service';
 import {
   crearDispositivoBase,
   obtenerTipoReloj,
@@ -36,6 +36,12 @@ import {
   pickRelojConfig,
   RELACIONES_DETALLE_RELOJ,
 } from '../map-relaciones.util';
+
+/** Cliente del equipo (la configuración no tiene cliente propio; NULL = almacén). */
+function clienteEquipo(entity: RelojConfig): number | null {
+  const id = entity.idDispositivo2?.idCliente;
+  return id != null ? Number(id) : null;
+}
 
 @Injectable()
 export class RelojesService {
@@ -55,13 +61,13 @@ export class RelojesService {
     idUser: number,
     alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
-    const idCliente = dto.idCliente;
+    const idCliente = dto.idCliente ?? null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
       // El cliente destino debe estar en el alcance de quien crea (403).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+      await this.tenantFilter.assertClienteDestinoOAlmacen(alcance, idCliente);
       const tipo = await obtenerTipoReloj(queryRunner.manager);
       const dispositivo = await crearDispositivoBase(queryRunner.manager, {
         idCliente,
@@ -77,7 +83,6 @@ export class RelojesService {
 
       const config = queryRunner.manager.create(RelojConfig, {
         idDispositivo: dispositivo.id,
-        idCliente,
         ...pickRelojConfig(dto),
       } as Partial<RelojConfig>);
       const saved = await queryRunner.manager.save(config);
@@ -134,7 +139,7 @@ export class RelojesService {
       }
       const where: FindOptionsWhere<RelojConfig> = {
         ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
+          ? { idDispositivo2: { idCliente: tenant.idCliente } }
           : {}),
       };
       const data = await this.repository.find({
@@ -168,16 +173,13 @@ export class RelojesService {
       }
       const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<RelojConfig> = {
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
-        ...(incluirInservibles
-          ? {}
-          : {
-            idDispositivo2: {
-              estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
-            },
-          }),
+        // Un solo filtro sobre el equipo: cliente (alcance) y estatus.
+        idDispositivo2: {
+          ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+          ...(incluirInservibles
+            ? {}
+            : { estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE) }),
+        },
       };
       const [data, total] = await this.repository.findAndCount({
         where,
@@ -210,7 +212,7 @@ export class RelojesService {
         throw new NotFoundException('Reloj no encontrado');
       }
       // Fuera del alcance del usuario responde igual que si no existiera (404).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Reloj');
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Reloj');
       return { data: mapRelojPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -230,12 +232,13 @@ export class RelojesService {
       // registro: administración y clientes padre editan lo de sus clientes hijos.
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Reloj no encontrado');
       }
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Reloj');
-      const idClienteRecurso = Number(entity.idCliente);
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Reloj');
+      const idClienteRecurso = clienteEquipo(entity);
 
       Object.assign(entity, pickRelojConfig(dto));
       await this.repository.save(entity);
@@ -249,7 +252,7 @@ export class RelojesService {
 
       if (hayCamposDispositivo) {
         const dispositivo = await this.dispositivosRepo.findOne({
-          where: { id, idCliente: idClienteRecurso },
+          where: { id },
         });
         if (!dispositivo) {
           throw new NotFoundException('Dispositivo del reloj no encontrado');
@@ -285,7 +288,7 @@ export class RelojesService {
         if (dto.eco !== undefined) dispositivo.eco = dto.eco;
         if (dto.idMarca !== undefined) dispositivo.idMarca = dto.idMarca;
         if (dto.idModelo !== undefined) dispositivo.idModelo = dto.idModelo;
-        await this.dispositivosRepo.save(sinEstatus(dispositivo));
+        await this.dispositivosRepo.save(sinEstatusNiCliente(dispositivo));
       }
 
       await this.bitacoraLogger.logToBitacora(
@@ -330,6 +333,7 @@ export class RelojesService {
     try {
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Reloj no encontrado');
@@ -342,7 +346,7 @@ export class RelojesService {
       }
 
       // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(dispositivo.idCliente), 'Recurso');
+      await this.tenantFilter.assertClienteVisible(alcance, dispositivo.idCliente, 'Recurso');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;
@@ -361,7 +365,7 @@ export class RelojesService {
           estatusAnterior,
           estatus,
           idCliente,
-          idClienteRecurso: entity.idCliente,
+          idClienteRecurso: clienteEquipo(entity),
         },
         idUser,
         EnumModulos.DISPOSITIVOS,

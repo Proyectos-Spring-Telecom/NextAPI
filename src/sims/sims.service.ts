@@ -9,13 +9,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository, IsNull } from 'typeorm';
 import { Sims } from 'src/entities/Sims';
 import { CatTelefonia } from 'src/entities/CatTelefonia';
 import { CatPlanesTelefonia } from 'src/entities/CatPlanesTelefonia';
 import { Clientes } from 'src/entities/Clientes';
-import { Instalaciones } from 'src/entities/Instalaciones';
-import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateSimsDto } from './dto/create-sims.dto';
 import { UpdateSimsDto } from './dto/update-sims.dto';
@@ -32,7 +30,6 @@ import {
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { MotorActivosService, registrarMovimiento } from 'src/motor-activos/motor-activos.service';
-import { nowMexicoCityMysql } from 'src/utils/datetime-mexico.util';
 import { mapSimPlano, RELACIONES_SIM_LISTADO } from './map-sims.util';
 
 /** trim(); cadena vacía → null; undefined se conserva (no modificar). */
@@ -54,10 +51,6 @@ export class SimsService {
   constructor(
     @InjectRepository(Sims)
     private readonly repository: Repository<Sims>,
-    @InjectRepository(Instalaciones)
-    private readonly instalacionesRepo: Repository<Instalaciones>,
-    @InjectRepository(HistoricoInstalaciones)
-    private readonly historicoInstalacionesRepo: Repository<HistoricoInstalaciones>,
     @InjectRepository(CatTelefonia)
     private readonly catTelefoniaRepo: Repository<CatTelefonia>,
     @InjectRepository(CatPlanesTelefonia)
@@ -70,11 +63,11 @@ export class SimsService {
   ) { }
 
   private async validarFks(dto: {
-    idCliente?: number;
+    idCliente?: number | null;
     idTelefonia?: number;
     idPlanTelefonia?: number;
   }): Promise<void> {
-    if (dto.idCliente !== undefined) {
+    if (dto.idCliente != null) {
       const cliente = await this.clientesRepo.findOne({
         where: { id: dto.idCliente },
       });
@@ -124,8 +117,9 @@ export class SimsService {
     alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
     try {
-      // El cliente destino debe estar en el alcance de quien crea (403).
-      await this.tenantFilter.assertClienteDestino(alcance, dto.idCliente);
+      // El cliente destino debe estar en el alcance de quien crea (403); sin
+      // cliente entra al almacén (solo operación).
+      await this.tenantFilter.assertClienteDestinoOAlmacen(alcance, dto.idCliente);
       await this.validarFks({
         idCliente: dto.idCliente,
         idTelefonia: dto.idTelefonia,
@@ -138,7 +132,7 @@ export class SimsService {
         numeroTelefono: dto.numeroTelefono ?? null,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
-        idCliente: dto.idCliente,
+        idCliente: dto.idCliente ?? null,
         notas: dto.notas ?? null,
         estatus: EnumEstatusRecurso.DISPONIBLE,
       });
@@ -155,7 +149,7 @@ export class SimsService {
             estatusAnterior: null,
             estatusNuevo: EnumEstatusRecurso.DISPONIBLE,
             idClienteAnterior: null,
-            idClienteNuevo: dto.idCliente,
+            idClienteNuevo: dto.idCliente ?? null,
           },
           { idUsuario: idUser, origen: 'api' },
         );
@@ -231,8 +225,10 @@ export class SimsService {
         estatus: EnumEstatusRecurso.DISPONIBLE,
         ...(idClienteWhere !== undefined ? { idCliente: idClienteWhere } : {}),
       };
+      // Para instalar en un cliente: las reservadas a él y, para operación, las del almacén (fase B).
+      const conAlmacen = idClienteFiltro != null && tenant.idCliente === undefined;
       const data = await this.repository.find({
-        where,
+        where: conAlmacen ? [where, { estatus: EnumEstatusRecurso.DISPONIBLE, idCliente: IsNull() }] : where,
         order: { id: 'ASC' },
       });
       const dataNormalizada = data.map((item) => ({
@@ -312,7 +308,7 @@ export class SimsService {
         throw new NotFoundException('SIM no encontrado');
       }
       // Fuera del alcance del usuario responde igual que si no existiera (404).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'SIM');
+      await this.tenantFilter.assertClienteVisible(alcance, entity.idCliente, 'SIM');
       return { data: mapSimPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -321,113 +317,6 @@ export class SimsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  /**
-   * Cambiar Sims.IdCliente rompe las FK compuestas (IdCliente, IdSim) de Instalaciones/HistoricoInstalaciones.
-   * 'libre' = sin referencias (update directo) · 'historial' = requiere traspaso.
-   */
-  private async evaluarCambioCliente(
-    id: number,
-    idClienteActual: number,
-  ): Promise<'libre' | 'historial'> {
-    const activa = await this.instalacionesRepo.findOne({
-      select: { id: true },
-      where: {
-        idSim: id,
-        idCliente: idClienteActual,
-        estatus: EstatusEnum.ACTIVO,
-      },
-    });
-    if (activa) {
-      throw new ConflictException(
-        `El SIM está asignado a la instalación ${Number(activa.id)}. Retíralo de la instalación antes de cambiar el cliente.`,
-      );
-    }
-
-    const [enInstalaciones, enHistorico] = await Promise.all([
-      this.instalacionesRepo.exists({
-        where: { idSim: id, idCliente: idClienteActual },
-      }),
-      this.historicoInstalacionesRepo.exists({
-        where: { idSim: id, idCliente: idClienteActual },
-      }),
-    ]);
-    return enInstalaciones || enHistorico ? 'historial' : 'libre';
-  }
-
-  /**
-   * El registro viejo conserva IdCliente/NumeroTelefono/IdTelefonia/IdPlanTelefonia para que el
-   * historial siga mostrando el SIM como estaba; el IMEI se libera antes de insertar el nuevo (UQ_Sims_IMEI).
-   */
-  private async traspasar(
-    entity: Sims,
-    idClienteNuevo: number,
-    idUser: number,
-    valores: Pick<
-      Sims,
-      'imei' | 'numeroTelefono' | 'idTelefonia' | 'idPlanTelefonia' | 'notas'
-    >,
-  ): Promise<Sims> {
-    return this.repository.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(Sims);
-      const idAnterior = Number(entity.id);
-
-      await repo.update(idAnterior, {
-        imei: null,
-        estatus: EnumEstatusRecurso.INACTIVO,
-      });
-
-      const nuevo = await repo.save(
-        repo.create({
-          idCliente: idClienteNuevo,
-          imei: valores.imei,
-          numeroTelefono: valores.numeroTelefono,
-          idTelefonia: valores.idTelefonia,
-          idPlanTelefonia: valores.idPlanTelefonia,
-          notas: valores.notas,
-          estatus: EnumEstatusRecurso.DISPONIBLE,
-        }),
-      );
-
-      const marca =
-        `[Traspasado al cliente ${idClienteNuevo} el ${nowMexicoCityMysql().slice(0, 16)}` +
-        ` · nuevo SIM ${Number(nuevo.id)} · ICC ${entity.imei ?? '-'}] `;
-      await repo.update(idAnterior, {
-        notas: `${marca}${entity.notas ?? ''}`.slice(0, 500),
-      });
-
-      // Historial: la SIM vieja queda inactiva en su cliente; la nueva nace en el destino.
-      const ctx = { idUsuario: idUser, origen: 'api' as const };
-      await registrarMovimiento(
-        manager,
-        {
-          tipo: 'sim',
-          id: idAnterior,
-          accion: 'traspaso',
-          estatusAnterior: Number(entity.estatus),
-          estatusNuevo: EnumEstatusRecurso.INACTIVO,
-          idClienteAnterior: Number(entity.idCliente),
-          idClienteNuevo: Number(entity.idCliente),
-        },
-        { ...ctx, motivo: `Traspasada al cliente ${idClienteNuevo} como SIM ${Number(nuevo.id)}` },
-      );
-      await registrarMovimiento(
-        manager,
-        {
-          tipo: 'sim',
-          id: Number(nuevo.id),
-          accion: 'traspaso',
-          estatusAnterior: null,
-          estatusNuevo: EnumEstatusRecurso.DISPONIBLE,
-          idClienteAnterior: Number(entity.idCliente),
-          idClienteNuevo,
-        },
-        { ...ctx, motivo: `Viene de la SIM ${idAnterior}` },
-      );
-
-      return nuevo;
-    });
   }
 
   private async assertPlanDeTelefonia(
@@ -468,24 +357,29 @@ export class SimsService {
         throw new NotFoundException('SIM no encontrado');
       }
 
-      const cambiaCliente =
-        dto.idCliente !== undefined &&
-        Number(dto.idCliente) !== Number(entity.idCliente);
+      // idCliente: null = regresarla al almacén; un id = reservarla a ese cliente (fase B).
+      const idClienteAnterior = entity.idCliente != null ? Number(entity.idCliente) : null;
+      const destino = dto.idCliente === undefined ? undefined : dto.idCliente === null ? null : Number(dto.idCliente);
+      const cambiaCliente = destino !== undefined && destino !== idClienteAnterior;
       if (cambiaCliente) {
-        if (!this.tenantFilter.clienteVisibleEnScope(scope, dto.idCliente)) {
+        if (destino == null) {
+          if (scope !== 'all') throw new ForbiddenException('Solo operación regresa una SIM al almacén');
+        } else if (!this.tenantFilter.clienteVisibleEnScope(scope, destino)) {
           throw new ForbiddenException('No tienes acceso a ese cliente');
         }
-        // Solo se traspasa una SIM del almacén: instalada, por revisar, en
-        // laboratorio o inservible no cambia de cliente (motor de activos §1).
-        if (![EnumEstatusRecurso.INACTIVO, EnumEstatusRecurso.DISPONIBLE].includes(Number(entity.estatus))) {
+        // Instalada, su cliente es el de la instalación; reservar exige una SIM disponible o inactiva.
+        if (Number(entity.estatus) === EnumEstatusRecurso.ASIGNADO) {
           throw new BadRequestException(
-            'Solo se cambia de cliente una SIM disponible (1) o inactiva (0).',
+            'La SIM está instalada: su cliente es el de la instalación. Se cambia al desinstalarla o con "corregir instalación".',
           );
+        }
+        if (destino != null && ![EnumEstatusRecurso.INACTIVO, EnumEstatusRecurso.DISPONIBLE].includes(Number(entity.estatus))) {
+          throw new BadRequestException('Solo se reserva a un cliente una SIM disponible (1) o inactiva (0).');
         }
       }
 
       await this.validarFks({
-        idCliente: cambiaCliente ? dto.idCliente : undefined,
+        idCliente: cambiaCliente ? destino : undefined,
         idTelefonia: dto.idTelefonia,
         idPlanTelefonia: dto.idPlanTelefonia,
       });
@@ -497,54 +391,10 @@ export class SimsService {
         );
       }
 
-      const cambioCliente = cambiaCliente
-        ? await this.evaluarCambioCliente(id, Number(entity.idCliente))
-        : null;
 
       const imei = normalizarTexto(dto.imei);
       const numeroTelefono = normalizarTexto(dto.numeroTelefono);
       const notas = normalizarTexto(dto.notas);
-
-      if (cambioCliente === 'historial') {
-        const idClienteAnterior = Number(entity.idCliente);
-        const idClienteNuevo = Number(dto.idCliente);
-        const imeiFinal = imei !== undefined ? imei : entity.imei;
-        if (imeiFinal) {
-          await this.assertImeiDisponible(imeiFinal, id);
-        }
-
-        const nuevo = await this.traspasar(entity, idClienteNuevo, idUser, {
-          imei: imeiFinal,
-          numeroTelefono:
-            numeroTelefono !== undefined ? numeroTelefono : entity.numeroTelefono,
-          idTelefonia: dto.idTelefonia ?? entity.idTelefonia,
-          idPlanTelefonia: dto.idPlanTelefonia ?? entity.idPlanTelefonia,
-          notas: notas !== undefined ? notas : entity.notas,
-        });
-        const idNuevo = Number(nuevo.id);
-
-        await this.bitacoraLogger.logToBitacora(
-          'Sims',
-          `Se traspasó el SIM ID: ${id} al cliente ${idClienteNuevo} (nuevo SIM ID: ${idNuevo})`,
-          'UPDATE',
-          { id, idNuevo, idClienteAnterior, idClienteNuevo, dto },
-          idUser,
-          EnumModulos.SIMS,
-          EstatusEnumBitcora.SUCCESS,
-        );
-
-        const data = {
-          id: idNuevo,
-          nombre: nuevo.numeroTelefono ?? nuevo.imei ?? `SIM ${idNuevo}`,
-          idAnterior: id,
-          traspaso: true,
-        };
-        return {
-          status: 'success',
-          message: 'SIM traspasado al nuevo cliente correctamente',
-          data,
-        };
-      }
 
       if (imei) {
         await this.assertImeiDisponible(imei, id);
@@ -554,7 +404,7 @@ export class SimsService {
       if (imei !== undefined) updateData.imei = imei;
       if (numeroTelefono !== undefined)
         updateData.numeroTelefono = numeroTelefono;
-      if (cambiaCliente) updateData.idCliente = dto.idCliente;
+      if (cambiaCliente) updateData.idCliente = destino;
       if (dto.idTelefonia !== undefined) updateData.idTelefonia = dto.idTelefonia;
       if (dto.idPlanTelefonia !== undefined)
         updateData.idPlanTelefonia = dto.idPlanTelefonia;
@@ -573,7 +423,17 @@ export class SimsService {
 
       if (cambiaCliente) {
         await this.repository.manager.transaction(async (manager) => {
-          await manager.update(Sims, id, updateData);
+          // Condicional al estatus y cliente leídos: si otro proceso la movió → 409.
+          const r = await manager
+            .createQueryBuilder()
+            .update(Sims)
+            .set(updateData)
+            .where('id = :id AND estatus = :estatus', { id, estatus: Number(entity.estatus) })
+            .andWhere(idClienteAnterior == null ? 'idCliente IS NULL' : 'idCliente = :anterior', { anterior: idClienteAnterior })
+            .execute();
+          if (!r.affected) {
+            throw new ConflictException('La SIM cambió mientras se procesaba. Vuelva a cargar e intente de nuevo.');
+          }
           await registrarMovimiento(
             manager,
             {
@@ -582,8 +442,8 @@ export class SimsService {
               accion: 'traspaso',
               estatusAnterior: Number(entity.estatus),
               estatusNuevo: Number(entity.estatus),
-              idClienteAnterior: Number(entity.idCliente),
-              idClienteNuevo: Number(dto.idCliente),
+              idClienteAnterior,
+              idClienteNuevo: destino ?? null,
             },
             { idUsuario: idUser, origen: 'api' },
           );
@@ -659,7 +519,7 @@ export class SimsService {
       }
 
       // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
+      await this.tenantFilter.assertClienteVisible(alcance, entity.idCliente, 'Recurso');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

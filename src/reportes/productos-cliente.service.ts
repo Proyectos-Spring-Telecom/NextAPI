@@ -100,7 +100,7 @@ SELECT inst.Id AS idInstalacion,
   FROM Instalaciones inst
   LEFT JOIN Productos prod ON prod.Id = inst.IdProducto AND prod.IdCliente = inst.IdCliente
   LEFT JOIN CatTipoProducto tp ON tp.Id = prod.IdTipoProducto
-  LEFT JOIN Dispositivos d ON d.Id = inst.IdDispositivo AND d.IdCliente = inst.IdCliente
+  LEFT JOIN Dispositivos d ON d.Id = inst.IdDispositivo
   LEFT JOIN CatTipoDispositivo td ON td.Id = d.IdTipoDispositivo
   LEFT JOIN Vehiculos v ON v.IdProducto = inst.IdProducto AND v.IdCliente = inst.IdCliente
   LEFT JOIN CatMarcas mar ON mar.Id = v.IdMarcaVehiculo
@@ -110,7 +110,6 @@ SELECT inst.Id AS idInstalacion,
   LEFT JOIN Personas per ON per.IdProducto = inst.IdProducto AND per.IdCliente = inst.IdCliente
   LEFT JOIN PanelAlarma p
          ON p.IdDispositivo = inst.IdDispositivo
-        AND p.IdCliente = inst.IdCliente
         AND p.Estatus = 1
  WHERE inst.IdCliente = ?
    AND inst.Estatus = 1

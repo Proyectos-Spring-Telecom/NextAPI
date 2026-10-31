@@ -24,7 +24,7 @@ export function applyDetalleJoins(qb: SelectQueryBuilder<Instalaciones>): void {
   qb.leftJoin(
     TrackcamConfig,
     'tcam',
-    'tcam.idDispositivo = d.id AND tcam.idCliente = d.idCliente',
+    'tcam.idDispositivo = d.id',
   ).leftJoin(CatPlanesTelefonia, 'plan', 'plan.id = s.idPlanTelefonia');
 }
 

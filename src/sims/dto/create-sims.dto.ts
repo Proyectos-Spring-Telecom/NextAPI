@@ -30,13 +30,16 @@ export class CreateSimsDto {
   @MaxLength(20)
   numeroTelefono?: string;
 
-  @ApiProperty({
-    description: 'ID del cliente/tenant propietario del SIM. Obligatorio.',
+  @ApiPropertyOptional({
+    description:
+      'Cliente al que se reserva la SIM. Sin él (o null) entra al almacén; solo operación da de alta en almacén. ' +
+      'Al instalarse toma el cliente de la instalación.',
     example: 11,
+    nullable: true,
   })
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  idCliente!: number;
+  idCliente?: number | null;
 
   @ApiProperty({
     description: 'ID de la compañía telefónica (CatTelefonia). Obligatorio.',

@@ -5,6 +5,8 @@ import { MovimientosRecurso } from 'src/entities/MovimientosRecurso';
 import { MotorActivosController } from './motor-activos.controller';
 import { MotorActivosService } from './motor-activos.service';
 import { TramosInstalacionService } from './tramos-instalacion.service';
+import { RegistroTrackcamService } from './registro-trackcam.service';
+import { WebhookEmitterModule } from 'src/webhook-emitter/webhook-emitter.module';
 
 /**
  * Global: el motor lo usan instalaciones, órdenes y los CRUD de dispositivos, SIM y
@@ -12,9 +14,9 @@ import { TramosInstalacionService } from './tramos-instalacion.service';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([CatEstatusRecurso, MovimientosRecurso])],
+  imports: [TypeOrmModule.forFeature([CatEstatusRecurso, MovimientosRecurso]), WebhookEmitterModule],
   controllers: [MotorActivosController],
-  providers: [MotorActivosService, TramosInstalacionService],
-  exports: [MotorActivosService, TramosInstalacionService],
+  providers: [MotorActivosService, TramosInstalacionService, RegistroTrackcamService],
+  exports: [MotorActivosService, TramosInstalacionService, RegistroTrackcamService],
 })
 export class MotorActivosModule {}

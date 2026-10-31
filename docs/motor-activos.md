@@ -168,7 +168,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 | Fase | Contenido | Depende de |
 |---|---|---|
 | A ✅ | Catálogo de estatus, transiciones, `MovimientosRecurso`, motor sobre los endpoints existentes, baja archivada | — |
-| B | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
+| B ✅ | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
 | C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D ✅ | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
 | E ✅ | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
@@ -301,3 +301,35 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - Sin push por WebSocket: el portal consulta la bandeja.
 
 **Pruebas:** `test/e2e-ordenes/ingesta.e2e-spec.ts` y `vigilancia.e2e-spec.ts`, más unitarias de las reglas de vigilancia.
+
+
+## 16. Fase B implementada (30/10/2026)
+
+**Decisión del 30/10:** sin cliente = almacén general, con **reserva opcional** a un cliente (como hoy: operación puede apartar inventario antes de ir a campo). En el saneamiento lo que no está instalado pasa al almacén.
+
+**Base** (`deploy/sql/MotorActivosFaseB.sql`, una vez; quita columnas que usa el código anterior: compilar, aplicar y reiniciar enseguida):
+- `Dispositivos.IdCliente` y `Sims.IdCliente` admiten NULL.
+- `Instalaciones`: FK simples por `IdDispositivo` / `IdSim`, y compuestas `(IdCliente, DispositivoActivo)` / `(IdCliente, SimActivo)`: el amarre al cliente solo vale para la versión activa.
+- `HistoricoInstalaciones`: FK simples a dispositivo, SIM y producto; su `IdCliente` es el del periodo.
+- `RelojConfig`, `TrackcamConfig`, `PanelAlarma`: sin `IdCliente`; FK simple al dispositivo.
+- `deploy/sql/SaneamientoFaseB.sql`: lo que no tiene instalación activa pasa al almacén (movimiento `traspaso`, origen sistema, con el cliente que tenía); un equipo o SIM en 2 sin instalación pasa a 3.
+
+**Reglas:**
+- Alta: sin `idCliente` entra al almacén (solo roles 1–5 y 8); con él, reservado.
+- Reservar (`PATCH /dispositivos/:id` o `/sims/:id` con `idCliente`): disponible o inactivo; `null` lo regresa al almacén (solo operación). Instalado no cambia de cliente. Ya no hay "traspaso" que clone la SIM: el historial apunta por Id.
+- Instalar: del almacén o reservado a ese cliente, disponible y sin otra instalación activa en ningún cliente. El motor le pone el cliente antes de escribir la versión activa (`tomarParaInstalar`, condicional: 409 si otro proceso lo tomó). Al salir (baja, cambio de componente) regresa al almacén en el mismo movimiento.
+- Visibilidad: lo del almacén solo lo ven los roles sin filtro de cliente; los selectores con `idCliente` traen lo reservado a él más el almacén para operación.
+- La configuración (panel, TrackCam, reloj) es del equipo: los listados y joins van por el dispositivo. El cliente de un evento de panel es el de su instalación activa.
+- TrackCam: el registro en el gateway se reenvía cuando instalar, desinstalar o corregir le cambia el cliente (`tenantId` 0 en almacén). Al cerrar una orden se emite después del commit.
+
+**Corregir instalación:** `PATCH /instalaciones/:id/corregir-cliente` (roles 1–4; `idCliente`, `idProducto` del cliente correcto, `motivo`). Cierra el periodo en el cliente equivocado (baja archivada con el motivo; su vehículo a activo; geocercas fuera), pasa equipo y SIM al cliente correcto sin desinstalarlos y abre una instalación nueva allí. Lo transmitido antes se queda con el cliente original. Queda en `CorreccionesInstalacion` y en el historial de cada recurso.
+
+**Revisión independiente (30/10):**
+- Un usuario de cliente no toma equipo ni SIM del almacén al instalar, cambiar componente o reactivar: solo lo reservado a su cliente; el almacén es de los roles sin filtro (y de las llamadas internas, como el cierre de órdenes).
+- Las ediciones de ficha de dispositivo ya no reescriben `IdCliente` con el valor leído (`sinEstatusNiCliente`).
+- Una reserva se suelta (regresa al almacén) si el equipo o la SIM pasa a por revisar, laboratorio o inservible.
+- El registro de TrackCam también se reenvía al reservar o regresar al almacén a mano; `POST /dispositivos/trackcam/registro/sincronizar` (roles 1–2) reenvía todas, para después del saneamiento.
+- Corregir instalación no procede con una orden de servicio abierta sobre ella.
+- El saneamiento conviene correrlo con poco tráfico: si una instalación entra en medio, la transacción se revierte completa.
+
+**Pruebas:** `test/e2e-ordenes/almacen.e2e-spec.ts` (alta en almacén, selector, instalar/desinstalar, reserva, reactivación, corregir instalación y saneamiento) y la batería completa con el esquema nuevo. También el cambio de equipo, el usuario de cliente con el almacén y la reserva que se suelta.

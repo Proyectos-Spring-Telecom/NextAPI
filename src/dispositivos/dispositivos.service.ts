@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository, IsNull } from 'typeorm';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { PanelAlarma } from 'src/entities/PanelAlarma';
 import { Instalaciones } from 'src/entities/Instalaciones';
@@ -32,7 +32,7 @@ import {
   EnumEstatusProductoDispositivo,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { MotorActivosService, registrarMovimiento, sinEstatus } from 'src/motor-activos/motor-activos.service';
+import { MotorActivosService, registrarMovimiento, sinEstatus, sinEstatusNiCliente } from 'src/motor-activos/motor-activos.service';
 import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import {
   crearDispositivoBase,
@@ -45,6 +45,8 @@ import {
   mapDispositivoPlano,
   RELACIONES_DISPOSITIVO_BASE,
 } from './map-relaciones.util';
+import { RegistroTrackcamService } from 'src/motor-activos/registro-trackcam.service';
+import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
 /** trim(); cadena vacía → null; undefined se conserva (no modificar). */
 function normalizarTexto(
@@ -76,6 +78,7 @@ export class DispositivosService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly motor: MotorActivosService,
+    private readonly registroTrackcam: RegistroTrackcamService,
   ) { }
 
   private async whereTenant(
@@ -124,10 +127,10 @@ export class DispositivosService {
     idUser: number,
     alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
-    const idCliente = dto.idCliente;
+    const idCliente = dto.idCliente ?? null;
     try {
       // El cliente destino debe estar en el alcance de quien crea (403).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+      await this.tenantFilter.assertClienteDestinoOAlmacen(alcance, idCliente);
       const tipoPanel = await obtenerTipoPanelAlarma(
         this.repository.manager,
       ).catch(() => null);
@@ -221,11 +224,12 @@ export class DispositivosService {
       if (sinAcceso) {
         return { data: [] };
       }
+      const disponibles = { ...where, estatus: EnumEstatusProductoDispositivo.ACTIVO };
+      // Para instalar en un cliente: los reservados a él y, para operación, los del almacén (fase B).
+      const tenant = await this.tenantFilter.forTypeOrmIdCliente(rol, idCliente);
+      const conAlmacen = idClienteFiltro != null && !tenant.sinAcceso && tenant.idCliente === undefined;
       const data = await this.repository.find({
-        where: {
-          ...where,
-          estatus: EnumEstatusProductoDispositivo.ACTIVO,
-        },
+        where: conAlmacen ? [disponibles, { ...disponibles, idCliente: IsNull() }] : disponibles,
         relations: [...RELACIONES_DISPOSITIVO_BASE],
         order: { id: 'DESC' },
       });
@@ -325,7 +329,7 @@ export class DispositivosService {
       if (!entity) {
         throw new NotFoundException('Dispositivo no encontrado');
       }
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Dispositivo');
+      await this.tenantFilter.assertClienteVisible(alcance, entity.idCliente, 'Dispositivo');
       return { data: mapDispositivoPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -333,61 +337,62 @@ export class DispositivosService {
     }
   }
 
-  /** Las FK (IdCliente, IdDispositivo) de Instalaciones/HistoricoInstalaciones impiden mover el equipo con historial. */
-  private async assertSinInstalaciones(
-    id: number,
-    idCliente: number,
-  ): Promise<void> {
+  /** IMEI y número de serie amarran posiciones e historial: no se cambian si el equipo ya tuvo instalaciones. */
+  private async assertSinInstalaciones(id: number): Promise<void> {
     const activa = await this.instalacionesRepo.findOne({
       select: { id: true },
-      where: { idDispositivo: id, idCliente, estatus: EstatusEnum.ACTIVO },
+      where: { idDispositivo: id, estatus: EstatusEnum.ACTIVO },
     });
     if (activa) {
       throw new ConflictException(
-        `El dispositivo está en la instalación ${Number(activa.id)}. Retíralo de la instalación antes de cambiar cliente, IMEI o número de serie.`,
+        `El dispositivo está en la instalación ${Number(activa.id)}. Retíralo de la instalación antes de cambiar IMEI o número de serie.`,
       );
     }
 
     const [enInstalaciones, enHistorico] = await Promise.all([
-      this.instalacionesRepo.exists({ where: { idDispositivo: id, idCliente } }),
+      this.instalacionesRepo.exists({ where: { idDispositivo: id } }),
       this.historicoInstalacionesRepo.exists({
-        where: { idDispositivo: id, idCliente },
+        where: { idDispositivo: id },
       }),
     ]);
     if (enInstalaciones || enHistorico) {
       throw new ConflictException(
-        'El dispositivo ya tiene historial de instalaciones; no se puede cambiar cliente, IMEI ni número de serie. Los demás datos sí se pueden actualizar.',
+        'El dispositivo ya tiene historial de instalaciones; no se puede cambiar IMEI ni número de serie. Los demás datos sí se pueden actualizar.',
       );
     }
   }
 
   /**
-   * PanelAlarma, TrackcamConfig y RelojConfig apuntan a (IdCliente, IdDispositivo) con NO ACTION, por eso se
-   * desactivan las FK solo en esta conexión. Los demás campos se guardan antes, con FK activas,
-   * para que el ON UPDATE CASCADE de UltimaPosicion siga al IMEI.
+   * Reserva el equipo a un cliente o lo regresa al almacén (NULL), con su
+   * movimiento `traspaso` (fase B, docs/motor-activos.md §2). Solo fuera de una
+   * instalación: instalado, su cliente es el de la instalación (FK compuesta
+   * sobre DispositivoActivo). Reservar exige un equipo disponible (1) o
+   * inactivo (0); al almacén puede ir en cualquier estatus sin instalar.
    */
   private async cambiarCliente(
     entity: Dispositivos,
-    idClienteAnterior: number,
-    idClienteNuevo: number,
+    idClienteAnterior: number | null,
+    idClienteNuevo: number | null,
     idUser: number,
   ): Promise<void> {
     const id = Number(entity.id);
-    // Solo cambia de cliente un equipo del almacén (motor de activos §1).
-    if (![EstatusRecurso.INACTIVO, EstatusRecurso.DISPONIBLE].includes(Number(entity.estatus))) {
+    const estatus = Number(entity.estatus);
+    if (estatus === EstatusRecurso.INSTALADO) {
       throw new BadRequestException(
-        'Solo se cambia de cliente un dispositivo disponible (1) o inactivo (0).',
+        'El dispositivo está instalado: su cliente es el de la instalación. Se cambia al desinstalarlo o con "corregir instalación".',
       );
     }
-    const qr = this.repository.manager.connection.createQueryRunner();
-    await qr.connect();
-    try {
-      await qr.startTransaction();
-
-      const resultado = await qr.manager.update(
-        Dispositivos,
-        { id, idCliente: idClienteAnterior },
-        {
+    if (idClienteNuevo != null && ![EstatusRecurso.INACTIVO, EstatusRecurso.DISPONIBLE].includes(estatus)) {
+      throw new BadRequestException(
+        'Solo se reserva a un cliente un dispositivo disponible (1) o inactivo (0).',
+      );
+    }
+    await this.repository.manager.transaction(async (manager) => {
+      const resultado = await manager
+        .createQueryBuilder()
+        .update(Dispositivos)
+        .set({
+          idCliente: idClienteNuevo,
           idTipoDispositivo: entity.idTipoDispositivo,
           numeroSerie: entity.numeroSerie,
           imei: entity.imei,
@@ -395,58 +400,27 @@ export class DispositivosService {
           camara: entity.camara,
           idMarca: entity.idMarca,
           idModelo: entity.idModelo,
-        },
-      );
+        })
+        .where('id = :id AND estatus = :estatus', { id, estatus })
+        .andWhere(idClienteAnterior == null ? 'idCliente IS NULL' : 'idCliente = :anterior', { anterior: idClienteAnterior })
+        .execute();
       if (!resultado.affected) {
-        throw new NotFoundException('Dispositivo no encontrado');
+        throw new ConflictException('El dispositivo cambió mientras se procesaba. Vuelva a cargar e intente de nuevo.');
       }
-
-      await qr.query('SET FOREIGN_KEY_CHECKS = 0');
-      await qr.manager.update(
-        Dispositivos,
-        { id, idCliente: idClienteAnterior },
-        { idCliente: idClienteNuevo },
-      );
-      await qr.manager.update(
-        PanelAlarma,
-        { idDispositivo: id, idCliente: idClienteAnterior },
-        { idCliente: idClienteNuevo },
-      );
-      await qr.manager.update(
-        TrackcamConfig,
-        { idDispositivo: id, idCliente: idClienteAnterior },
-        { idCliente: idClienteNuevo },
-      );
-      await qr.manager.update(
-        RelojConfig,
-        { idDispositivo: id, idCliente: idClienteAnterior },
-        { idCliente: idClienteNuevo },
-      );
-      await qr.query('SET FOREIGN_KEY_CHECKS = 1');
       await registrarMovimiento(
-        qr.manager,
+        manager,
         {
           tipo: 'dispositivo',
           id,
           accion: 'traspaso',
-          estatusAnterior: Number(entity.estatus),
-          estatusNuevo: Number(entity.estatus),
+          estatusAnterior: estatus,
+          estatusNuevo: estatus,
           idClienteAnterior,
           idClienteNuevo,
         },
         { idUsuario: idUser, origen: 'api' },
       );
-
-      await qr.commitTransaction();
-    } catch (error) {
-      if (qr.isTransactionActive) {
-        await qr.rollbackTransaction();
-      }
-      throw error;
-    } finally {
-      await qr.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => undefined);
-      await qr.release();
-    }
+    });
   }
 
   async update(
@@ -474,20 +448,25 @@ export class DispositivosService {
         throw new NotFoundException('Dispositivo no encontrado');
       }
 
-      idClienteAnterior = Number(entity.idCliente);
-      const cambiaCliente =
-        dto.idCliente !== undefined &&
-        Number(dto.idCliente) !== idClienteAnterior;
+      idClienteAnterior = entity.idCliente != null ? Number(entity.idCliente) : null;
+      // idCliente: null = regresar al almacén; un id = reservarlo a ese cliente.
+      const destino = dto.idCliente === undefined ? undefined : dto.idCliente === null ? null : Number(dto.idCliente);
+      const cambiaCliente = destino !== undefined && destino !== idClienteAnterior;
       if (cambiaCliente) {
-        idClienteNuevo = Number(dto.idCliente);
-        if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteNuevo)) {
-          throw new ForbiddenException('No tienes acceso a ese cliente');
-        }
-        const existeCliente = await this.clientesRepo.exists({
-          where: { id: idClienteNuevo },
-        });
-        if (!existeCliente) {
-          throw new BadRequestException('IdCliente no existe');
+        idClienteNuevo = destino;
+        if (idClienteNuevo == null) {
+          // El almacén es de la operación: solo los roles sin filtro de cliente.
+          if (scope !== 'all') throw new ForbiddenException('Solo operación regresa un equipo al almacén');
+        } else {
+          if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteNuevo)) {
+            throw new ForbiddenException('No tienes acceso a ese cliente');
+          }
+          const existeCliente = await this.clientesRepo.exists({
+            where: { id: idClienteNuevo },
+          });
+          if (!existeCliente) {
+            throw new BadRequestException('IdCliente no existe');
+          }
         }
       }
 
@@ -504,8 +483,9 @@ export class DispositivosService {
       const cambiaSerie =
         numeroSerie !== undefined && numeroSerie !== entity.numeroSerie;
 
-      if (cambiaCliente || cambiaImei || cambiaSerie) {
-        await this.assertSinInstalaciones(id, idClienteAnterior);
+      // El IMEI y el número de serie amarran las posiciones y el historial: solo sin historia.
+      if (cambiaImei || cambiaSerie) {
+        await this.assertSinInstalaciones(id);
       }
 
       if (cambiaSerie) {
@@ -551,12 +531,14 @@ export class DispositivosService {
       if (dto.idMarca !== undefined) entity.idMarca = dto.idMarca;
       if (dto.idModelo !== undefined) entity.idModelo = dto.idModelo;
 
-      if (cambiaCliente && idClienteNuevo != null) {
+      if (cambiaCliente) {
         await this.cambiarCliente(entity, idClienteAnterior, idClienteNuevo, idUser);
+        // Si es TrackCam, el gateway actualiza su cliente (tenant).
+        await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, [id]);
 
         await this.bitacoraLogger.logToBitacora(
           'Dispositivos',
-          `Se cambió el dispositivo ID: ${id} del cliente ${idClienteAnterior} al cliente ${idClienteNuevo}`,
+          `Se cambió el dispositivo ID: ${id} del cliente ${idClienteAnterior ?? 'almacén'} al ${idClienteNuevo ?? 'almacén'}`,
           'UPDATE',
           { id, idClienteAnterior, idClienteNuevo, dto },
           idUser,
@@ -564,7 +546,7 @@ export class DispositivosService {
           EstatusEnumBitcora.SUCCESS,
         );
       } else {
-        await this.repository.save(sinEstatus(entity));
+        await this.repository.save(sinEstatusNiCliente(entity));
 
         await this.bitacoraLogger.logToBitacora(
           'Dispositivos',
@@ -587,7 +569,7 @@ export class DispositivosService {
         'Dispositivos',
         `Error al actualizar dispositivo ID: ${id}`,
         'UPDATE',
-        idClienteNuevo != null
+        idClienteNuevo !== idClienteAnterior
           ? { id, idClienteAnterior, idClienteNuevo, dto }
           : { id, dto, idCliente: idClienteToken },
         idUser,
@@ -628,7 +610,7 @@ export class DispositivosService {
       }
 
       // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Recurso');
+      await this.tenantFilter.assertClienteVisible(alcance, entity.idCliente, 'Recurso');
 
       const estatusAnterior = Number(entity.estatus);
       const estatus = dto.estatus;

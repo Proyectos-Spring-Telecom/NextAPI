@@ -25,7 +25,7 @@ import {
   EnumModulos,
   EstatusEnum,
 } from 'src/common/estatus.enum';
-import { MotorActivosService, sinEstatus } from 'src/motor-activos/motor-activos.service';
+import { MotorActivosService, sinEstatus, sinEstatusNiCliente } from 'src/motor-activos/motor-activos.service';
 import {
   crearDispositivoBase,
   obtenerTipoPanelAlarma,
@@ -35,6 +35,12 @@ import {
   mapPanelAlarmaPlano,
   RELACIONES_DETALLE_PANEL,
 } from '../map-relaciones.util';
+
+/** Cliente del equipo (la configuración no tiene cliente propio; NULL = almacén). */
+function clienteEquipo(entity: PanelAlarma): number | null {
+  const id = entity.idDispositivo2?.idCliente;
+  return id != null ? Number(id) : null;
+}
 
 @Injectable()
 export class PanelesService {
@@ -59,13 +65,13 @@ export class PanelesService {
     idUser: number,
     alcance: UsuarioAlcance,
   ): Promise<ApiCrudResponse> {
-    const idCliente = dto.idCliente;
+    const idCliente = dto.idCliente ?? null;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
       // El cliente destino debe estar en el alcance de quien crea (403).
-      await this.tenantFilter.assertClienteDestino(alcance, idCliente);
+      await this.tenantFilter.assertClienteDestinoOAlmacen(alcance, idCliente);
       const existeCuenta = await queryRunner.manager.findOne(PanelAlarma, {
         where: { cuentaSia: dto.cuentaSia },
       });
@@ -88,7 +94,6 @@ export class PanelesService {
 
       const panel = queryRunner.manager.create(PanelAlarma, {
         idDispositivo: dispositivo.id,
-        idCliente,
         cuentaSia: dto.cuentaSia,
         nombre: dto.nombre,
         ip: dto.ip ?? null,
@@ -150,7 +155,7 @@ export class PanelesService {
       }
       const where: FindOptionsWhere<PanelAlarma> = {
         ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
+          ? { idDispositivo2: { idCliente: tenant.idCliente } }
           : {}),
       };
       const data = await this.repository.find({
@@ -184,16 +189,13 @@ export class PanelesService {
       }
       const incluirInservibles = obtenerTodos === EstatusEnum.ACTIVO;
       const where: FindOptionsWhere<PanelAlarma> = {
-        ...(tenant.idCliente !== undefined
-          ? { idCliente: tenant.idCliente }
-          : {}),
-        ...(incluirInservibles
-          ? {}
-          : {
-            idDispositivo2: {
-              estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE),
-            },
-          }),
+        // Un solo filtro sobre el equipo: cliente (alcance) y estatus.
+        idDispositivo2: {
+          ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}),
+          ...(incluirInservibles
+            ? {}
+            : { estatus: Not(EnumEstatusProductoDispositivo.INSERVIBLE) }),
+        },
       };
       const [data, total] = await this.repository.findAndCount({
         where,
@@ -226,7 +228,7 @@ export class PanelesService {
         throw new NotFoundException('Panel de alarma no encontrado');
       }
       // Fuera del alcance del usuario responde igual que si no existiera (404).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Panel de alarma');
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Panel de alarma');
       return { data: mapPanelAlarmaPlano(entity) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -246,12 +248,13 @@ export class PanelesService {
       // registro: administración y clientes padre editan lo de sus clientes hijos.
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');
       }
-      await this.tenantFilter.assertClienteVisible(alcance, Number(entity.idCliente), 'Panel de alarma');
-      const idClienteRecurso = Number(entity.idCliente);
+      await this.tenantFilter.assertClienteVisible(alcance, clienteEquipo(entity), 'Panel de alarma');
+      const idClienteRecurso = clienteEquipo(entity);
 
       if (dto.cuentaSia && dto.cuentaSia !== entity.cuentaSia) {
         const existeCuenta = await this.repository.findOne({
@@ -281,7 +284,7 @@ export class PanelesService {
 
       if (hayCamposDispositivo) {
         const dispositivo = await this.dispositivosRepo.findOne({
-          where: { id, idCliente: idClienteRecurso },
+          where: { id },
         });
         if (!dispositivo) {
           throw new NotFoundException('Dispositivo del panel no encontrado');
@@ -322,7 +325,7 @@ export class PanelesService {
         if (dto.camara !== undefined) dispositivo.camara = dto.camara;
         if (dto.idMarca !== undefined) dispositivo.idMarca = dto.idMarca;
         if (dto.idModelo !== undefined) dispositivo.idModelo = dto.idModelo;
-        await this.dispositivosRepo.save(sinEstatus(dispositivo));
+        await this.dispositivosRepo.save(sinEstatusNiCliente(dispositivo));
       }
 
       await this.bitacoraLogger.logToBitacora(
@@ -366,6 +369,7 @@ export class PanelesService {
     try {
       const entity = await this.repository.findOne({
         where: { idDispositivo: id },
+        relations: { idDispositivo2: true },
       });
       if (!entity) {
         throw new NotFoundException('Panel de alarma no encontrado');
@@ -378,7 +382,7 @@ export class PanelesService {
       }
 
       // Solo recursos del alcance del usuario (404 si no); la transición la valida el motor (§1).
-      await this.tenantFilter.assertClienteVisible(alcance, Number(dispositivo.idCliente), 'Recurso');
+      await this.tenantFilter.assertClienteVisible(alcance, dispositivo.idCliente, 'Recurso');
 
       const estatusAnterior = Number(dispositivo.estatus);
       const estatus = dto.estatus;
@@ -397,7 +401,7 @@ export class PanelesService {
           estatusAnterior,
           estatus,
           idCliente,
-          idClienteRecurso: entity.idCliente,
+          idClienteRecurso: clienteEquipo(entity),
         },
         idUser,
         EnumModulos.PANELES,

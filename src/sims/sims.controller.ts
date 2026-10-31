@@ -88,12 +88,12 @@ export class SimsController {
     summary: 'Crear SIM',
     description:
       'Registra un nuevo SIM.\n\n' +
-      '- Obligatorios: `idCliente`, `idTelefonia`, `idPlanTelefonia`.\n' +
+      '- Obligatorios: `idTelefonia`, `idPlanTelefonia`. Sin `idCliente` entra al almacén (solo operación); con él queda reservada.\n' +
       '- Opcionales: `imei`, `numeroTelefono`, `notas`.\n' +
       '- `estatus` se asigna automáticamente como `EnumEstatusRecurso.DISPONIBLE`.\n' +
       '- `IMEI` es único (`UQ_Sims_IMEI`).\n' +
       '- Valida que existan `idCliente`, `idTelefonia` e `idPlanTelefonia`.\n' +
-      '- `idCliente` debe estar en el alcance del token (403 si no).',
+      '- `idCliente`, si se envía, debe estar en el alcance del token (403 si no).',
   })
   @ApiBody({
     type: CreateSimsDto,
@@ -134,7 +134,7 @@ export class SimsController {
     summary: 'Lista completa de SIMs',
     description:
       'Devuelve únicamente los SIMs disponibles (`estatus = EnumEstatusRecurso.DISPONIBLE`). ' +
-      'Opcionalmente filtra por `idCliente`. Si se omite, aplica el alcance del rol del token.',
+      'Opcionalmente filtra por `idCliente` (con él, operación recibe también las del almacén: selector para instalar). Si se omite, aplica el alcance del rol del token.',
   })
   @ApiQuery({
     name: 'idCliente',
@@ -277,13 +277,12 @@ export class SimsController {
     summary: 'Actualizar SIM',
     description:
       'Actualización parcial de un SIM (`application/json`, propiedades en **camelCase**).\n\n' +
-      'Se pueden modificar todos los campos. Si se cambia el cliente y el SIM tiene historial de instalaciones, se hace un traspaso: ' +
-      'el registro anterior queda inactivo con el cliente anterior (conserva el historial) y se crea un SIM nuevo para el cliente nuevo; ' +
-      'la respuesta trae el `id` nuevo. Si el SIM está en una instalación activa responde 409.\n\n' +
+      'Se pueden modificar todos los campos. `idCliente`: un id la reserva a ese cliente (disponible o inactiva); `null` la regresa ' +
+      'al almacén (solo operación). Una SIM instalada no cambia de cliente (400): el suyo es el de la instalación.\n\n' +
       '**Campos opcionales** (omitir = conservar valor actual):\n' +
       '- `imei` — string, máx. 25; único en BD (`UQ_Sims_IMEI`). Cadena vacía = `null`.\n' +
       '- `numeroTelefono` — string, máx. 20. Cadena vacía = `null`.\n' +
-      '- `idCliente` — reasigna el tenant propietario (debe existir y estar en el alcance del token).\n' +
+      '- `idCliente` — reserva (id) o almacén (`null`), ver arriba.\n' +
       '- `idTelefonia` — FK a `CatTelefonia`.\n' +
       '- `idPlanTelefonia` — FK a `CatPlanesTelefonia`; debe pertenecer a la telefonía final.\n' +
       '- `notas` — string, máx. 500. Cadena vacía = `null`.\n\n' +
@@ -336,7 +335,7 @@ export class SimsController {
   })
   @ApiOkResponse({
     description:
-      'SIM actualizado correctamente. En un traspaso, `data.id` es el SIM nuevo, `data.idAnterior` el registro anterior y `data.traspaso = true`.',
+      'SIM actualizado correctamente.',
     examples: {
       actualizacion: {
         summary: 'Actualización normal',
@@ -344,14 +343,6 @@ export class SimsController {
           status: 'success',
           message: 'SIM actualizado correctamente',
           data: { id: 5, nombre: '5598765432' },
-        },
-      },
-      traspaso: {
-        summary: 'Traspaso a otro cliente',
-        value: {
-          status: 'success',
-          message: 'SIM traspasado al nuevo cliente correctamente',
-          data: { id: 18, nombre: '5598765432', idAnterior: 5, traspaso: true },
         },
       },
     },
