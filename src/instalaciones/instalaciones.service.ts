@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -29,9 +30,12 @@ import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
 import { BajaInstalacionDto } from './dto/baja-instalacion.dto';
+import { CorregirVigenteDesdeDto } from './dto/corregir-vigente-desde.dto';
+import { CorreccionesInstalacion } from 'src/entities/CorreccionesInstalacion';
 import { FilterInstalacionesPaginadoDto } from './dto/filter-instalaciones-paginado.dto';
 import {
   ApiCrudResponse,
+  ApiData,
   ApiResponseCommon,
   EstatusEnumBitcora,
 } from 'src/common/ApiResponse';
@@ -67,7 +71,11 @@ import {
   applyDetalleSelectBase,
   mapInstalacionDetallePlana,
 } from './helpers/instalaciones-detalle.helpers';
-import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
+import {
+  fechaPared,
+  fechaParedComoDate,
+  nowMexicoCityAsUtcDate,
+} from 'src/utils/datetime-mexico.util';
 import {
   type ContextoMovimiento,
   MotorActivosService,
@@ -1008,7 +1016,8 @@ export class InstalacionesService {
           ? { idCliente: tenant.idCliente }
           : {}),
       };
-      const actual = await qr.manager.findOne(Instalaciones, { where });
+      // Bloqueada: una corrección de fecha o un cambio simultáneo espera a esta transacción.
+      const actual = await qr.manager.findOne(Instalaciones, { where, lock: { mode: 'pessimistic_write' } });
       if (!actual) {
         throw new NotFoundException('Instalación no encontrada');
       }
@@ -1265,6 +1274,150 @@ export class InstalacionesService {
   }
 
   /**
+   * Fecha real de instalación (docs/motor-activos.md §3): mueve `VigenteDesde`
+   * de la versión vigente hacia atrás, para las instalaciones dadas de alta en
+   * Next después de que el equipo ya transmitía. Roles 1–4, con motivo. No se
+   * puede traslapar con la versión anterior de la misma instalación ni con otro
+   * periodo del mismo dispositivo o SIM. Queda en CorreccionesInstalacion.
+   */
+  async corregirVigenteDesde(
+    id: number,
+    dto: CorregirVigenteDesdeDto,
+    idUser: number,
+  ): Promise<ApiCrudResponse & { data: ApiData & { vigenteDesde: string; vigenteDesdeAnterior: string } }> {
+    const nuevo = fechaParedComoDate(dto.vigenteDesde);
+    const motivo = dto.motivo.trim();
+    if (!motivo) {
+      throw new BadRequestException('El motivo es obligatorio.');
+    }
+    if (nuevo.getTime() > nowMexicoCityAsUtcDate().getTime()) {
+      throw new BadRequestException('La fecha de instalación no puede ser futura.');
+    }
+
+    const anterior = await this.dataSource.transaction(async (manager) => {
+      const actual = await manager.findOne(Instalaciones, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!actual) {
+        throw new NotFoundException('No se encontró la instalación solicitada.');
+      }
+      if (Number(actual.estatus) !== EstatusEnum.ACTIVO) {
+        throw new BadRequestException(
+          'Solo se corrige la fecha de una instalación activa.',
+        );
+      }
+      const desde = new Date(actual.vigenteDesde);
+      if (nuevo.getTime() >= desde.getTime()) {
+        throw new BadRequestException(
+          `La fecha de instalación solo se corrige hacia atrás: hoy es ${fechaPared(desde)}.`,
+        );
+      }
+
+      if (actual.idHistoricoInstalacion != null) {
+        const previa = await manager.findOne(HistoricoInstalaciones, {
+          where: { id: Number(actual.idHistoricoInstalacion) },
+        });
+        const finPrevia = previa?.vigenteHasta ?? previa?.fhArchivado ?? null;
+        if (finPrevia && nuevo.getTime() < new Date(finPrevia).getTime()) {
+          throw new BadRequestException(
+            `Se traslapa con la versión anterior de la instalación, vigente hasta ${fechaPared(new Date(finPrevia))}.`,
+          );
+        }
+      }
+
+      for (const [columna, valor, etiqueta] of [
+        ['IdDispositivo', actual.idDispositivo, 'del dispositivo'],
+        ['IdSim', actual.idSim, 'de la SIM'],
+      ] as const) {
+        if (valor == null) continue;
+        const choque = await this.periodoQueSeTraslapa(manager, columna, Number(valor), Number(actual.id), nuevo, desde);
+        if (choque) {
+          throw new BadRequestException(
+            `Se traslapa con otro periodo ${etiqueta} (instalación ${choque.idInstalacion}, ` +
+              `${choque.desde} a ${choque.hasta}).`,
+          );
+        }
+      }
+
+      const resultado = await manager
+        .createQueryBuilder()
+        .update(Instalaciones)
+        .set({ vigenteDesde: nuevo })
+        .where('id = :id AND vigenteDesde = :desde', { id, desde })
+        .execute();
+      if (!resultado.affected) {
+        throw new ConflictException(
+          'La instalación cambió mientras se procesaba la corrección. Vuelva a cargar e intente de nuevo.',
+        );
+      }
+      await manager.insert(CorreccionesInstalacion, {
+        idInstalacion: id,
+        fecha: nowMexicoCityAsUtcDate(),
+        campo: 'VigenteDesde',
+        valorAnterior: fechaPared(desde),
+        valorNuevo: fechaPared(nuevo),
+        motivo: motivo.slice(0, 500),
+        idUsuario: idUser,
+        origen: 'api',
+      });
+      return fechaPared(desde);
+    });
+
+    await this.bitacoraLogger.logToBitacora(
+      'Instalaciones',
+      `Se corrigió la fecha de instalación ID: ${id} de ${anterior} a ${fechaPared(nuevo)}`,
+      'UPDATE',
+      { id, dto },
+      idUser,
+      EnumModulos.INSTALACIONES,
+      EstatusEnumBitcora.SUCCESS,
+    );
+
+    return {
+      status: 'success',
+      message: 'La fecha de instalación se corrigió correctamente.',
+      data: { id, nombre: `Instalación ${id}`, vigenteDesde: fechaPared(nuevo), vigenteDesdeAnterior: anterior },
+    };
+  }
+
+  /**
+   * Otro periodo del mismo dispositivo o SIM que se cruce con
+   * [nuevo, desdeActual): versiones archivadas y otras instalaciones (una baja
+   * anterior al motor no tiene archivo: su periodo termina en FechaActualizacion).
+   */
+  private async periodoQueSeTraslapa(
+    manager: EntityManager,
+    columna: 'IdDispositivo' | 'IdSim',
+    idRecurso: number,
+    idInstalacion: number,
+    nuevo: Date,
+    desdeActual: Date,
+  ): Promise<{ idInstalacion: number; desde: string; hasta: string } | null> {
+    const filas: Array<{ idInstalacion: string; desde: Date; hasta: Date }> = await manager.query(
+      `SELECT * FROM (
+         SELECT h.IdInstalacionOriginal AS idInstalacion, h.VigenteDesde AS desde,
+                COALESCE(h.VigenteHasta, h.FHArchivado) AS hasta
+           FROM HistoricoInstalaciones h
+          WHERE h.${columna} = ? AND NOT (h.IdInstalacionOriginal <=> ?)
+         UNION ALL
+         SELECT i.Id, i.VigenteDesde,
+                IF(i.Estatus = 1, ?, COALESCE(i.FechaActualizacion, i.VigenteDesde))
+           FROM Instalaciones i
+          WHERE i.${columna} = ? AND i.Id <> ?
+       ) t
+       WHERE t.desde < ? AND t.hasta > ?
+       ORDER BY t.hasta DESC
+       LIMIT 1`,
+      [idRecurso, idInstalacion, desdeActual, idRecurso, idInstalacion, desdeActual, nuevo],
+    );
+    const f = filas[0];
+    return f
+      ? { idInstalacion: Number(f.idInstalacion), desde: fechaPared(new Date(f.desde)), hasta: fechaPared(new Date(f.hasta)) }
+      : null;
+  }
+
+  /**
    * PATCH estatus (solo 0, 1, 5), por el motor de activos:
    * - 0 / 5 (baja): archiva el periodo en HistoricoInstalaciones (Accion "Baja",
    *   VigenteHasta = ahora) y deja la fila con Estatus = 0. Los componentes salen
@@ -1315,7 +1468,8 @@ export class InstalacionesService {
       await qr.startTransaction();
     }
     try {
-      const actual = await qr.manager.findOne(Instalaciones, { where });
+      // Bloqueada: una corrección de fecha o un cambio simultáneo espera a esta transacción.
+      const actual = await qr.manager.findOne(Instalaciones, { where, lock: { mode: 'pessimistic_write' } });
       if (!actual) {
         throw new NotFoundException('No se encontró la instalación solicitada.');
       }
@@ -1342,10 +1496,9 @@ export class InstalacionesService {
           componentes,
         );
 
-        // Versión nueva enlazada a la baja archivada. Una baja anterior al motor
-        // no tiene archivo: se conserva VigenteDesde (como antes) y el
-        // saneamiento (§9) reconstruye ese periodo.
-        const baja = await this.bajaArchivada(qr.manager, actual);
+        // Versión nueva enlazada a la baja archivada (una baja anterior al
+        // motor se archiva aquí): el periodo dado de baja no queda abierto.
+        const baja = await this.archivarBajaAnterior(qr.manager, actual, idUser);
         await qr.manager.update(
           Instalaciones,
           { id: actual.id, idCliente },
@@ -1353,7 +1506,8 @@ export class InstalacionesService {
             estatusInstalacion: EnumEstatusInstalacion.ACTIVA,
             estatus: EstatusEnum.ACTIVO,
             idUsuario: idUser,
-            ...(baja ? { vigenteDesde: ahora, idHistoricoInstalacion: Number(baja.id) } : {}),
+            vigenteDesde: ahora,
+            idHistoricoInstalacion: Number(baja.id),
           },
         );
         for (const c of this.componentes(componentes)) {
@@ -1517,6 +1671,38 @@ export class InstalacionesService {
       : null;
   }
 
+  /**
+   * Baja archivada de una instalación inactiva. Una baja anterior al motor no
+   * tiene archivo: se archiva su periodo, que termina en la última escritura de
+   * la fila (`FechaActualizacion`), antes de volver a escribirla.
+   */
+  private async archivarBajaAnterior(
+    manager: EntityManager,
+    inst: Instalaciones,
+    idUser: number,
+  ): Promise<HistoricoInstalaciones> {
+    const baja = await this.bajaArchivada(manager, inst);
+    if (baja) return baja;
+    const fin = inst.fechaActualizacion ?? inst.vigenteDesde;
+    return manager.save(
+      manager.create(HistoricoInstalaciones, {
+        idCliente: Number(inst.idCliente),
+        idProducto: Number(inst.idProducto),
+        idDispositivo: inst.idDispositivo != null ? Number(inst.idDispositivo) : null,
+        idSim: inst.idSim != null ? Number(inst.idSim) : null,
+        estatusInstalacion: Number(inst.estatusInstalacion),
+        idInstalacionOriginal: Number(inst.id),
+        vigenteDesde: inst.vigenteDesde,
+        vigenteHasta: fin,
+        idHistoricoInstalacion: inst.idHistoricoInstalacion != null ? Number(inst.idHistoricoInstalacion) : null,
+        idUsuario: idUser,
+        accion: EnumAccionHistoricoInstalacion.BAJA,
+        comentario: 'Baja anterior al motor de activos: periodo archivado al volver a escribir la instalación',
+        fhArchivado: fin,
+      }),
+    );
+  }
+
   private async corregirBajaAInservible(
     qr: QueryRunner,
     propia: boolean,
@@ -1528,19 +1714,18 @@ export class InstalacionesService {
   ): Promise<ApiCrudResponse> {
     const idCliente = componentes.idCliente;
     const id = Number(actual.id);
+    // Antes de escribir la fila: una baja anterior al motor toma su fin de FechaActualizacion.
+    const baja = await this.archivarBajaAnterior(qr.manager, actual, idUser);
     await qr.manager.update(
       Instalaciones,
       { id, idCliente },
       { estatusInstalacion: EnumEstatusInstalacion.INSERVIBLE, idUsuario: idUser },
     );
-    const baja = await this.bajaArchivada(qr.manager, actual);
-    if (baja) {
-      await qr.manager.update(
-        HistoricoInstalaciones,
-        { id: baja.id, idCliente },
-        { estatusInstalacion: EnumEstatusInstalacion.INSERVIBLE },
-      );
-    }
+    await qr.manager.update(
+      HistoricoInstalaciones,
+      { id: baja.id, idCliente },
+      { estatusInstalacion: EnumEstatusInstalacion.INSERVIBLE },
+    );
     if (componentes.idDispositivo != null) {
       const disp = await qr.manager.findOne(Dispositivos, { where: { id: componentes.idDispositivo } });
       if (Number(disp?.estatus) === EstatusRecurso.POR_REVISAR) {

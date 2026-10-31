@@ -42,3 +42,4 @@ Para agregar un escenario: un `describe` nuevo en `flujo-ordenes.e2e-spec.ts` us
 | `reglas-flujo.e2e-spec.ts` | Reglas del flujo contra MySQL real y la comparación del esquema |
 | `acceso.e2e-spec.ts` | Quién ve qué: fugas F1–F5 del diagnóstico y CRUD C1–C7 |
 | `activos.e2e-spec.ts` | Motor de activos, fase A: transiciones de estatus, historial de vida, baja archivada, reactivación, concurrencia y origen de la orden |
+| `vigencia.e2e-spec.ts` | Motor de activos, fase D: fecha real de instalación (solo hacia atrás, traslapes, roles, evidencia) y posiciones recortadas a la vigencia en histórico, distancia, monitoreo, consola e incidentes |

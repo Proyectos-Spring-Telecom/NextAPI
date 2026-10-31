@@ -7,6 +7,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UltimaPosicion } from 'src/entities/UltimaPosicion';
+import { Dispositivos } from 'src/entities/Dispositivos';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { EstatusEnum } from 'src/common/estatus.enum';
 import { formatFechaPosicion } from 'src/monitoreo/helpers/monitoreo-historico.helpers';
 import {
   ConsolaAlcanceService,
@@ -125,7 +128,10 @@ export class ConsolaSinTransmisionService {
     }
   }
 
-  /** Última posición por IMEI (índice único `UQ_UltimaPosicion_Imei`). */
+  /**
+   * Última posición por IMEI (índice único `UQ_UltimaPosicion_Imei`), solo si
+   * es de la instalación vigente del equipo.
+   */
   private async cargarUltimasPosiciones(imeis: string[]): Promise<
     Map<
       string,
@@ -164,6 +170,15 @@ export class ConsolaSinTransmisionService {
         .addSelect('up.lng', 'lng')
         .addSelect('up.estado', 'estado')
         .addSelect('up.ignicion', 'ignicion')
+        // Una última posición anterior a la instalación vigente es de otra
+        // vigencia (§6): para esta unidad cuenta como "nunca transmitió".
+        .innerJoin(Dispositivos, 'd', 'd.imei = up.imei')
+        .innerJoin(
+          Instalaciones,
+          'i',
+          'i.idDispositivo = d.id AND i.estatus = :activa AND up.fechaHora >= i.vigenteDesde',
+          { activa: EstatusEnum.ACTIVO },
+        )
         .where('up.imei IN (:...lote)', { lote })
         .getRawMany<Record<string, unknown>>();
 

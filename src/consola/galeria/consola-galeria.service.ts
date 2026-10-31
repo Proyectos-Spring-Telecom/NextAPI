@@ -49,6 +49,14 @@ import {
   validarRangoGaleria,
 } from './consola-galeria.helpers';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
+import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.service';
+import {
+  condicionTramos,
+  condicionTramosPosicional,
+  instalacionPorTramos,
+  recortarTramos,
+  type TramoEnPeriodo,
+} from 'src/motor-activos/tramos-instalacion';
 
 /** Foto con su canal resuelto según el tipo de equipo (TrackCam / AVL). */
 export type FotoGaleriaEtiquetada = FotoGaleriaItem & CanalFotoResuelto;
@@ -205,7 +213,22 @@ export class ConsolaGaleriaService {
     private readonly tenantFilter: TenantFilterService,
     private readonly dataSource: DataSource,
     private readonly alcance: ConsolaAlcanceService,
+    private readonly tramos: TramosInstalacionService,
   ) {}
+
+  /**
+   * Tramos de vigencia de las unidades del alcance recortados al periodo
+   * (§6): cada foto se atribuye a la instalación en la que estaba el equipo,
+   * incluido un equipo anterior de la misma unidad, y nunca a un cliente previo.
+   */
+  private async tramosDelAlcance(
+    alcance: InstalacionGaleriaItem[],
+    fechaInicio: string,
+    fechaFinal: string,
+  ): Promise<TramoEnPeriodo[]> {
+    const porInstalacion = await this.tramos.tramosDe(alcance.map((i) => i.idInstalacion));
+    return recortarTramos([...porInstalacion.values()].flat(), fechaInicio, fechaFinal);
+  }
 
   /** Tipo de equipo y canales de una unidad, para copiar en cada respuesta. */
   private equipo(inst: EquipoGaleria): EquipoGaleria {
@@ -548,17 +571,22 @@ export class ConsolaGaleriaService {
         return { data: { ...base, totalCapturas: 0, totalUnidades: 0, unidades: [] } };
       }
 
-      const porImei = new Map(alcance.map((i) => [i.imei, i]));
-      const rows = await this.baseConsultaFotos([...porImei.keys()], fechaInicio, fechaFinal)
-        .select('CAST(p.imei AS CHAR)', 'imei')
+      const porInstalacion = new Map(alcance.map((i) => [i.idInstalacion, i]));
+      const tramos = await this.tramosDelAlcance(alcance, fechaInicio, fechaFinal);
+      if (!tramos.length) {
+        return { data: { ...base, totalCapturas: 0, totalUnidades: 0, unidades: [] } };
+      }
+      const dueno = instalacionPorTramos('p', tramos);
+      const rows = await this.baseConsultaFotos(tramos)
+        .select(dueno.sql, 'idInstalacion')
         .addSelect('COUNT(*)', 'totalCapturas')
         .addSelect('MAX(p.fechaHora)', 'ultimaCaptura')
-        .groupBy('p.imei')
-        .getRawMany<{ imei: string; totalCapturas: string | number; ultimaCaptura: unknown }>();
+        .groupBy('idInstalacion')
+        .getRawMany<{ idInstalacion: unknown; totalCapturas: string | number; ultimaCaptura: unknown }>();
 
       const unidades: UnidadGaleriaResumenItem[] = [];
       for (const row of rows) {
-        const inst = porImei.get(String(row.imei ?? '').trim());
+        const inst = porInstalacion.get(Number(row.idInstalacion));
         const totalCapturas = Number(row.totalCapturas);
         if (!inst || !totalCapturas) continue;
         unidades.push({
@@ -624,20 +652,23 @@ export class ConsolaGaleriaService {
 
       if (!alcance.length) return vacio;
 
-      const porImei = new Map(alcance.map((i) => [i.imei, i]));
-      const imeis = [...porImei.keys()];
+      const porInstalacion = new Map(alcance.map((i) => [i.idInstalacion, i]));
+      const tramos = await this.tramosDelAlcance(alcance, fechaInicio, fechaFinal);
+      if (!tramos.length) return vacio;
+      const dueno = instalacionPorTramos('p', tramos);
 
       const total = Number(
         (
-          await this.baseConsultaFotos(imeis, fechaInicio, fechaFinal)
+          await this.baseConsultaFotos(tramos)
             .select('COUNT(*)', 'total')
             .getRawOne<{ total: string | number }>()
         )?.total ?? 0,
       );
       if (!total) return vacio;
 
-      const rows = await this.baseConsultaFotos(imeis, fechaInicio, fechaFinal)
+      const rows = await this.baseConsultaFotos(tramos)
         .select('p.id', 'idPosicion')
+        .addSelect(dueno.sql, 'idInstalacion')
         .addSelect('CAST(p.imei AS CHAR)', 'imei')
         .addSelect('p.fechaHora', 'fechaHora')
         .addSelect('p.lat', 'lat')
@@ -659,7 +690,7 @@ export class ConsolaGaleriaService {
 
       const data: CapturaGaleriaItem[] = [];
       for (const row of rows) {
-        const inst = porImei.get(String(row.imei ?? '').trim());
+        const inst = porInstalacion.get(Number(row.idInstalacion));
         if (!inst) continue;
         const lat = Number(row.lat);
         const lng = Number(row.lng);
@@ -668,7 +699,8 @@ export class ConsolaGaleriaService {
           idPosicion: Number(row.idPosicion),
           idInstalacion: inst.idInstalacion,
           etiqueta: inst.etiqueta,
-          imei: inst.imei,
+          // El equipo que tomó la foto (puede ser uno anterior de la unidad).
+          imei: String(row.imei ?? '').trim() || inst.imei,
           placas: inst.placas,
           economico: inst.economico,
           descripcion: inst.descripcion,
@@ -695,25 +727,18 @@ export class ConsolaGaleriaService {
   }
 
   /**
-   * Posiciones del periodo con al menos una foto existente en `Fotos`.
-   * Filtra por `IMEI IN + FechaHora BETWEEN` (usa `IX_Posiciones_Imei_Fecha`).
+   * Posiciones con al menos una foto existente en `Fotos`, dentro de los
+   * tramos ya recortados al periodo (usa `IX_Posiciones_Imei_Fecha`).
    */
-  private baseConsultaFotos(
-    imeis: string[],
-    fechaInicio: string,
-    fechaFinal: string,
-  ): SelectQueryBuilder<Posiciones> {
+  private baseConsultaFotos(tramos: TramoEnPeriodo[]): SelectQueryBuilder<Posiciones> {
+    const enTramos = condicionTramos('p', tramos);
     return this.posicionesRepo
       .createQueryBuilder('p')
       .leftJoin(Fotos, 'f0', 'f0.id = p.idFoto')
       .leftJoin(Fotos, 'f1', 'f1.id = p.idFoto1')
       .leftJoin(Fotos, 'f2', 'f2.id = p.idFoto2')
       .leftJoin(Fotos, 'f3', 'f3.id = p.idFoto3')
-      .where('p.imei IN (:...imeis)', { imeis })
-      .andWhere('p.fechaHora BETWEEN :fechaInicio AND :fechaFinal', {
-        fechaInicio,
-        fechaFinal,
-      })
+      .where(enTramos.sql, enTramos.params)
       .andWhere(
         '(f0.ruta IS NOT NULL OR f1.ruta IS NOT NULL OR f2.ruta IS NOT NULL OR f3.ruta IS NOT NULL)',
       );
@@ -768,8 +793,7 @@ export class ConsolaGaleriaService {
       if (!resuelto) {
         throw new NotFoundException(MSG_IMEI_NO_ENCONTRADO);
       }
-      const { unidad: u, idCliente, idDispositivo, vigenteDesdeInst } =
-        resuelto;
+      const u = resuelto.unidad;
       // Misma forma de respuesta que antes del refactor (sin idCliente/nombreCliente).
       const unidad: UnidadFotosImei = {
         idInstalacion: u.idInstalacion,
@@ -786,18 +810,14 @@ export class ConsolaGaleriaService {
         canalesActivos: u.canalesActivos,
       };
 
-      // No mostrar fotos de un cliente anterior: inicio ≥ primera vigencia
-      // del dispositivo en este cliente (histórico o Instalaciones.VigenteDesde).
-      const vigenciaCliente =
-        await this.alcance.primeraVigenciaDispositivoEnCliente(
-          idCliente,
-          idDispositivo,
-          vigenteDesdeInst,
-        );
-      let inicioEfectivo = fechaInicio;
-      if (vigenciaCliente && vigenciaCliente > fechaInicio) {
-        inicioEfectivo = vigenciaCliente;
-      }
+      // Solo fotos de cuando el equipo estuvo instalado en esta unidad: ni de
+      // un cliente anterior ni de otra unidad (tramos de vigencia, §6).
+      const tramos = await this.alcance.tramosImeiEnInstalacion(
+        u.idInstalacion,
+        imei,
+        fechaInicio,
+        fechaFinal,
+      );
 
       const vacio = (): FotosImeiResult => ({
         unidad,
@@ -807,13 +827,9 @@ export class ConsolaGaleriaService {
         paginated: { total: 0, page, limit, totalPages: 0 },
       });
 
-      if (inicioEfectivo > fechaFinal) return vacio();
+      if (!tramos.length) return vacio();
 
-      const { sqlUnion, paramsRango } = this.sqlUnionFotosImei(
-        imei,
-        inicioEfectivo,
-        fechaFinal,
-      );
+      const { sqlUnion, paramsRango } = this.sqlUnionFotosImei(tramos);
 
       const countRows = await this.dataSource.query(
         `SELECT COUNT(*) AS total FROM (${sqlUnion}) t`,
@@ -871,14 +887,13 @@ export class ConsolaGaleriaService {
   }
 
   /**
-   * UNION ALL de los 4 slots de foto. Parámetros con `?` (imei, desde, hasta × 4).
+   * UNION ALL de los 4 slots de foto, recortado a los tramos (parámetros `?`).
    * Usa el índice `IX_Posiciones_Imei_Fecha`.
    */
   private sqlUnionFotosImei(
-    imei: string,
-    fechaInicio: string,
-    fechaFinal: string,
+    tramos: TramoEnPeriodo[],
   ): { sqlUnion: string; paramsRango: unknown[] } {
+    const enTramos = condicionTramosPosicional('p', tramos);
     const partes: string[] = [];
     const paramsRango: unknown[] = [];
     for (const { columna, canal } of SLOTS_FOTO_IMEI) {
@@ -887,9 +902,9 @@ export class ConsolaGaleriaService {
                p.FechaHora AS fechaHora, p.Lat AS lat, p.Lng AS lng, p.Velocidad AS velocidad
         FROM Posiciones p
         INNER JOIN Fotos f ON f.Id = p.${columna} AND f.Ruta IS NOT NULL AND f.Ruta <> ''
-        WHERE p.Imei = ? AND p.FechaHora BETWEEN ? AND ?
+        WHERE ${enTramos.sql}
       `);
-      paramsRango.push(imei, fechaInicio, fechaFinal);
+      paramsRango.push(...enTramos.params);
     }
     return { sqlUnion: partes.join(' UNION ALL '), paramsRango };
   }

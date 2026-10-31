@@ -170,7 +170,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 | A ✅ | Catálogo de estatus, transiciones, `MovimientosRecurso`, motor sobre los endpoints existentes, baja archivada | — |
 | B | Equipo sin cliente en almacén, FK simples en histórico y configuración, corregir instalación | A |
 | C | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
-| D | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
+| D ✅ | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
 | E | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
 | F | Canal de comandos y números de emergencia del reloj | kit de sockets |
 
@@ -236,3 +236,38 @@ Cada fase cierra con unitarias, la batería, una revisión independiente, la doc
 Queda la ruta `sims/:id/historial`, que depende de registrar `MotorActivosModule` antes que `SimsModule` porque existe `sims/:page/:limit`. Está anotado en `app.module.ts` y lo cubre la batería.
 
 **Pruebas:** `test/e2e-ordenes/activos.e2e-spec.ts` cubre el catálogo, el alta, el ciclo completo, la baja, la reactivación, el inservible, la concurrencia, el permiso del historial y el origen "orden". Usa la misma infraestructura que órdenes (`npm run test:e2e-ordenes`).
+
+
+## 14. Fase D implementada (30/10/2026)
+
+**Base:**
+- `deploy/sql/MotorActivosFaseD.sql` crea `CorreccionesInstalacion` (evidencia de correcciones que no abren versión: campo, valor anterior y nuevo, motivo, usuario, origen).
+- `deploy/sql/SaneamientoFaseD.sql` corrige `VigenteDesde` de las migradas. Se corre **antes** de desplegar el código: si no, el recorte oculta recorridos reales.
+
+**Lo que mostró producción (30/10):** de las instalaciones activas con posiciones anteriores a su `VigenteDesde`, casi todas tienen de 1 a 6 posiciones minutos antes del alta: es la prueba del instalador. Pocas tienen horas (p. ej. #1000214 con 368 posiciones 18 h antes, #1000094 con 172 posiciones 8 h antes) y dos tienen versión anterior (#1000031 y #1000036).
+
+**Saneamiento:**
+- Primero archiva las bajas anteriores al motor.
+- Lleva `VigenteDesde` a la primera posición del equipo **solo** si la instalación no tiene versión anterior, su dispositivo y su SIM no tienen otro periodo (ni histórico ni otra instalación) y la primera posición es de a lo más 2 días antes del alta (más atrás puede ser almacén o banco de pruebas).
+- Cada corrección queda en `CorreccionesInstalacion` con `Origen = sistema`. Es idempotente.
+- Lista las que se movieron más de 30 min y las activas que quedan con posiciones previas, para revisarlas a mano con el endpoint.
+
+**Tramos** (`src/motor-activos/tramos-instalacion.ts`, puras; `TramosInstalacionService`, carga):
+- Cada versión de la instalación aporta `(IMEI, desde, hasta)`: la vigente (abierta) y la cadena archivada por `IdHistoricoInstalacion`, en lote (una consulta por nivel).
+- Dada de baja con el motor: su último periodo es la baja archivada. Una baja anterior al motor la archiva el saneamiento (fin = `FechaActualizacion`, antes de que otra escritura la mueva); la reactivación y la corrección a inservible la archivan también si quedara alguna.
+- Solo versiones del mismo cliente que la instalación: lo transmitido se queda con el cliente donde se generó.
+- Intervalos semiabiertos `[desde, hasta)`: en el segundo de un cambio la posición es de la versión que empieza. La condición SQL es `(Imei = ? AND FechaHora >= ? AND FechaHora < ?) OR …`, sin `CAST`, para usar `IX_Posiciones_Imei_Fecha`.
+
+**Dónde se aplica:**
+- Histórico de monitoreo: cada equipo que tuvo la unidad, solo en su tramo. Antes solo el equipo actual y sin recorte.
+- Reportes (posiciones, última posición, paso por POI, velocidad, distancia, salidas de geocerca por cliente y por instalación): una candidata por tramo, también de las instalaciones dadas de baja. Distancia da un recorrido por equipo; la posición previa de geocercas no sale del tramo; un tramo de otro producto lleva la etiqueta de ese producto.
+- Consola (transmisiones, galería, resumen): tramos en lugar del límite inferior único; cada foto se atribuye a la instalación dueña en esa fecha.
+- Última posición (monitoreo, consola, sin transmisión, productos del cliente, dashboard): se ignora si es anterior al `VigenteDesde` actual.
+- Dashboard (alertas y excesos de 7 días): desde el `VigenteDesde` actual. Un equipo que salió de la unidad dentro de la ventana no se cuenta; los roles globales cuentan toda la flota.
+- Incidentes: una posición fuera de todo tramo → 400; el cliente del incidente es el de la instalación dueña de la posición.
+
+**Endpoint:** `PATCH /instalaciones/:id/vigente-desde` (roles 1–4, motivo obligatorio): solo hacia atrás, no futura, solo activas; sin traslape con la versión anterior ni con otro periodo del mismo dispositivo o SIM. Bloquea la fila y escribe condicional a la fecha leída (409 si cambió); el cambio de componente y la baja también bloquean la fila.
+
+**Pendiente (fase E):** los incidentes automáticos todavía toman el cliente actual del dispositivo; un equipo que transmite sin instalación (almacén, taller) puede abrirle un incidente a ese cliente. La ingesta por estatus (§7) lo resuelve.
+
+**Pruebas:** `test/e2e-ordenes/vigencia.e2e-spec.ts` (corrección, traslapes, roles, cambio de equipo en histórico y distancia, última posición, consola, incidentes y el script de saneamiento) y unitarias de tramos.

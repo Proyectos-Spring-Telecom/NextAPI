@@ -240,6 +240,11 @@ export class ProductosClienteService {
               up.Estado AS estado, up.Velocidad AS velocidad,
               up.Ignicion AS ignicion, up.FechaHora AS fechaHora
          FROM UltimaPosicion up
+         -- Una última posición anterior a la instalación vigente es de otra
+         -- vigencia (docs/motor-activos.md §6): se trata como sin posición.
+         JOIN Dispositivos d ON d.Imei = up.Imei
+         JOIN Instalaciones i ON i.IdDispositivo = d.Id AND i.Estatus = 1
+                             AND up.FechaHora >= i.VigenteDesde
         WHERE up.Imei IN (${marcas(imeis)})`,
       imeis,
     )) as Record<string, unknown>[];

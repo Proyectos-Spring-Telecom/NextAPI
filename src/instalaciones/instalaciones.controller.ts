@@ -21,11 +21,13 @@ import { InstalacionesService } from './instalaciones.service';
 import { CreateInstalacionesDto } from './dto/create-instalaciones.dto';
 import { UpdateInstalacionesDto } from './dto/update-instalaciones.dto';
 import { BajaInstalacionDto } from './dto/baja-instalacion.dto';
+import { CorregirVigenteDesdeDto } from './dto/corregir-vigente-desde.dto';
 import { FilterInstalacionesPaginadoDto } from './dto/filter-instalaciones-paginado.dto';
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { EnumRoles } from 'src/common/estatus.enum';
 
 @ApiTags('Instalaciones')
 @ApiBearerAuth('bearer-token')
@@ -199,16 +201,14 @@ export class InstalacionesController {
   @ApiOperation({
     summary: 'Cambiar estatus de instalación',
     description:
-      'Solo se permiten **0**, **1** y **5**.\n' +
-      '- **0 (inactivo) / 5 (inservible):** `EstatusInstalacion` = valor enviado, ' +
-      '`Estatus` de fila = 0 (así `SimActivo` y `DispositivoActivo` quedan nulos), ' +
-      'y producto/dispositivo/SIM pasan a disponible (1). ' +
-      'Además se **eliminan permanentemente** las geocercas asociadas a la instalación ' +
-      '(y sus `UsuariosGeocerca`).\n' +
-      '- **1 (activa):** todos los componentes vinculados deben estar en disponible (1); ' +
-      'luego la instalación queda activa (`Estatus` = 1, columnas activas llenas) y ' +
-      'los componentes pasan a asignado (2).\n' +
-      'No archiva ni elimina la instalación.',
+      'Solo se permiten **0**, **1** y **5**, por el motor de activos (docs/motor-activos.md §13).\n' +
+      '- **0 (inactivo) / 5 (inservible):** archiva el periodo en `HistoricoInstalaciones` (`Accion = Baja`, ' +
+      '`VigenteHasta`), deja la fila con `Estatus` = 0 y saca los componentes: el dispositivo a por revisar (3), ' +
+      'o inservible (5) si la baja es 5; la SIM a por revisar (3); el producto a activo (1). ' +
+      'Elimina las geocercas de la instalación (y sus `UsuariosGeocerca`). Una baja 0 se puede corregir a 5.\n' +
+      '- **1 (reactivar):** los componentes deben estar disponibles (1, ya revisados); pasan a instalado (2) ' +
+      'y se abre una versión nueva (`VigenteDesde` = ahora).\n' +
+      'Una instalación activa no se reactiva y una dada de baja no se vuelve a dar de baja (400).',
   })
   @ApiParam({ name: 'id', description: 'ID de la instalación vigente' })
   @ApiBody({ type: BajaInstalacionDto })
@@ -216,7 +216,8 @@ export class InstalacionesController {
     status: 200,
     description: 'Estatus actualizado correctamente',
   })
-  @ApiResponse({ status: 400, description: 'Estatus inválido o componentes no disponibles' })
+  @ApiResponse({ status: 400, description: 'Estatus inválido, componentes no disponibles o la instalación ya está en ese estado' })
+  @ApiResponse({ status: 409, description: 'Un componente cambió de estatus mientras se procesaba' })
   @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
   async baja(
     @Param('id', ParseIntPipe) id: number,
@@ -230,6 +231,33 @@ export class InstalacionesController {
       req.user.rol,
       req.user.userId,
     );
+  }
+
+  @Patch(':id/vigente-desde')
+  @Roles(EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO)
+  @ApiOperation({
+    summary: 'Corregir la fecha real de instalación',
+    description:
+      'Mueve `VigenteDesde` de la versión vigente **hacia atrás**, para una instalación dada de alta en Next ' +
+      'después de que el equipo ya transmitía. Roles 1–4, con motivo. Solo instalaciones activas. ' +
+      'Se rechaza si se traslapa con la versión anterior de la misma instalación o con otro periodo del ' +
+      'mismo dispositivo o SIM. Queda en `CorreccionesInstalacion` y en bitácora. ' +
+      'El histórico, los reportes y la consola recortan las posiciones a la vigencia: con la fecha corregida ' +
+      'aparecen los recorridos anteriores al alta.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la instalación' })
+  @ApiBody({ type: CorregirVigenteDesdeDto })
+  @ApiResponse({ status: 200, description: 'Fecha corregida; `data.vigenteDesdeAnterior` trae la anterior' })
+  @ApiResponse({ status: 400, description: 'Fecha futura o posterior a la actual, traslape, instalación inactiva o sin motivo' })
+  @ApiResponse({ status: 403, description: 'Solo roles 1–4' })
+  @ApiResponse({ status: 404, description: 'Instalación no encontrada' })
+  @ApiResponse({ status: 409, description: 'La instalación cambió mientras se procesaba' })
+  async corregirVigenteDesde(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorregirVigenteDesdeDto,
+    @Request() req,
+  ) {
+    return this.instalacionesService.corregirVigenteDesde(id, dto, req.user.userId);
   }
 
   @Patch(':id')

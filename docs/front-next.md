@@ -414,3 +414,18 @@ Desde la fase A ([motor-activos.md](motor-activos.md) §13), todo cambio de esta
   - Cada fila trae `accion` (alta, instalacion, cambio, baja, reactivacion, estatus), estatus anterior y nuevo, cliente, instalación, orden, `motivo`, usuario y `origen` (api, orden, sistema).
   - Propuesta: una pestaña "Historial" en el detalle del dispositivo y de la SIM.
 - **409**: si otro usuario o una orden movió el recurso al mismo tiempo. Mostrar "cambió mientras se procesaba; vuelva a cargar".
+
+## 19. Posiciones por vigencia y fecha real de instalación (fase D)
+
+Desde la fase D ([motor-activos.md](motor-activos.md) §14), **cada instalación muestra solo lo que transmitió cada equipo mientras estuvo instalado en ella**. Los campos de las respuestas no cambian; cambia qué filas traen y, en distancia, cuántos recorridos hay por unidad.
+
+- **Histórico** (`GET /monitoreo/:idInstalacion/historico`), **reportes** (posiciones, última posición, paso por POI, velocidad, distancia, salidas de geocerca), **consola** (transmisiones, galería, sin transmisión), **dashboard** y **productos del cliente**:
+  - lo transmitido antes de `VigenteDesde` o después de que el equipo salió ya no aparece;
+  - tras un cambio de equipo, la unidad trae **los dos equipos**, cada uno en su tramo. En distancia hay un recorrido por equipo (mismo `idInstalacion`, distinto `imei`), y en galería cada foto trae el `imei` del equipo que la tomó.
+  - los reportes del cliente incluyen las unidades **dadas de baja** por lo que transmitieron mientras estuvieron instaladas; `totalRecorridos` cuenta recorridos (equipo por unidad), no unidades.
+- **Última posición** (monitoreo, consola, sin transmisión, dashboard): si la última posición del equipo es anterior a su instalación actual (venía de otro vehículo o del taller), la unidad aparece **sin posición** hasta que transmita instalada.
+- **Incidentes** (`POST /incidentes` con `idPosicion`): una posición de cuando el equipo no estaba instalado → 400; el incidente queda con el cliente de la instalación dueña de esa posición.
+- **Corregir la fecha de instalación**: `PATCH /instalaciones/:id/vigente-desde` con `{ vigenteDesde: 'YYYY-MM-DD HH:mm:ss', motivo }` (hora de México). Roles 1–4.
+  - Solo hacia atrás, no futura y solo instalaciones activas. Si se traslapa con la versión anterior de la instalación o con otro periodo del mismo equipo o SIM → 400 con el periodo que choca.
+  - Responde `data.vigenteDesde` y `data.vigenteDesdeAnterior`. Al corregirla aparecen los recorridos anteriores al alta.
+  - Propuesta: botón "Corregir fecha de instalación" en el detalle, con fecha, hora y motivo obligatorio.

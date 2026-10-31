@@ -92,6 +92,17 @@ const ROLES_CLIENTES_DISPOSITIVOS: readonly number[] = [
   EnumRoles.TECNICO,
 ];
 
+/**
+ * Solo posiciones de la vigencia actual del equipo (docs/motor-activos.md §6):
+ * lo que transmitió antes de la instalación vigente es de otra unidad o de otro
+ * cliente. Basta el tramo vigente para la ventana de días del tablero; un
+ * equipo que salió de la unidad dentro de esa ventana no se cuenta.
+ */
+const SQL_VIGENCIA_ACTUAL = `
+  JOIN Dispositivos dVig ON dVig.Imei = p.Imei
+  JOIN Instalaciones iVig ON iVig.IdDispositivo = dVig.Id AND iVig.Estatus = 1
+                         AND p.FechaHora >= iVig.VigenteDesde`;
+
 /** Valores de UltimaPosicion.Estado que ya genera el sistema. */
 const ESTADO_MOVIMIENTO = 1;
 const ESTADO_DETENIDO_30 = 4;
@@ -483,7 +494,7 @@ export class DashboardService {
       .leftJoin(CatTipoDispositivo, 'td', 'td.id = d.idTipoDispositivo')
       .leftJoin('d.idModelo2', 'modDisp')
       .leftJoin('i.idSim2', 's')
-      .leftJoin('d.ultimaPosicion', 'up')
+      .leftJoin('d.ultimaPosicion', 'up', 'up.fechaHora >= i.vigenteDesde')
       .leftJoin(
         PanelAlarma,
         'pa',
@@ -598,12 +609,13 @@ export class DashboardService {
         const lote = imeis.slice(i, i + LOTE_IMEIS);
         const rows: Record<string, unknown>[] =
           await this.posicionesRepo.query(
-            `SELECT DATE_FORMAT(FechaHora, '%Y-%m-%d') AS fecha, COUNT(*) AS total
-               FROM Posiciones
-              WHERE Imei IN (${lote.map(() => '?').join(', ')})
-                AND FechaHora >= ? AND FechaHora <= ?
-                AND Estado IN (${estados})
-              GROUP BY DATE_FORMAT(FechaHora, '%Y-%m-%d')`,
+            `SELECT DATE_FORMAT(p.FechaHora, '%Y-%m-%d') AS fecha, COUNT(*) AS total
+               FROM Posiciones p
+               ${SQL_VIGENCIA_ACTUAL}
+              WHERE p.Imei IN (${lote.map(() => '?').join(', ')})
+                AND p.FechaHora >= ? AND p.FechaHora <= ?
+                AND p.Estado IN (${estados})
+              GROUP BY DATE_FORMAT(p.FechaHora, '%Y-%m-%d')`,
             [...lote, desde, ahora, ...ESTADOS_ALERTA],
           );
         acumular(rows);
@@ -643,14 +655,15 @@ export class DashboardService {
         const lote = imeis.slice(i, i + LOTE_IMEIS);
         const rows: Record<string, unknown>[] =
           await this.posicionesRepo.query(
-            `SELECT CAST(Imei AS CHAR) AS imei,
-                    DATE_FORMAT(FechaHora, '%Y-%m-%d') AS fecha,
+            `SELECT CAST(p.Imei AS CHAR) AS imei,
+                    DATE_FORMAT(p.FechaHora, '%Y-%m-%d') AS fecha,
                     COUNT(*) AS reportes,
-                    MAX(Velocidad) AS velocidadMax
-               FROM Posiciones
-              WHERE Imei IN (${lote.map(() => '?').join(', ')})
-                AND Velocidad > ? AND FechaHora >= ? AND FechaHora <= ?
-              GROUP BY Imei, DATE_FORMAT(FechaHora, '%Y-%m-%d')`,
+                    MAX(p.Velocidad) AS velocidadMax
+               FROM Posiciones p
+               ${SQL_VIGENCIA_ACTUAL}
+              WHERE p.Imei IN (${lote.map(() => '?').join(', ')})
+                AND p.Velocidad > ? AND p.FechaHora >= ? AND p.FechaHora <= ?
+              GROUP BY p.Imei, DATE_FORMAT(p.FechaHora, '%Y-%m-%d')`,
             [...lote, VELOCIDAD_EXCESO, desde, ahora],
           );
         filas.push(...rows);

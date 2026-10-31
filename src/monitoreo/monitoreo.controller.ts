@@ -205,7 +205,7 @@ export class MonitoreoController {
   @ApiOperation({
     summary: 'Histórico de posiciones por instalación',
     description: [
-      'Resuelve el IMEI del dispositivo de la instalación y consulta `Posiciones` entre `fechaInicio` y `fechaFinal` (inclusive).',
+      'Consulta `Posiciones` entre `fechaInicio` y `fechaFinal` (inclusive) **recortadas a la vigencia** de la instalación: cada equipo que tuvo (versión vigente y cadena de `HistoricoInstalaciones`) solo mientras estuvo instalado en ella. Lo transmitido antes de `VigenteDesde` o después de que el equipo salió no aparece; si la fecha de alta es posterior a la instalación física, se corrige con `PATCH /instalaciones/:id/vigente-desde`.',
       'Las fechas del query se interpretan como **hora de pared** (`YYYY-MM-DD HH:mm:ss`), alineadas a `Posiciones.FechaHora` (sin conversión UTC).',
       'Solo instalaciones del alcance del usuario: cliente según el rol (1–5 y 8 todas, 6 su árbol) y, para 7/9, las asignadas en `UsuariosInstalaciones`; fuera de alcance → 404.',
       '**No aplica** a instalaciones de tipo inmueble / panel (3).',

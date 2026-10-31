@@ -125,6 +125,9 @@ describe('Ciclo de vida de un equipo', () => {
   });
 
   it('el reporte de la instalación dada de baja ya no tiene un tramo abierto', async () => {
+    // La prueba instala y da de baja en el mismo segundo; un tramo de duración
+    // cero no contiene posiciones (intervalo semiabierto): se le da una hora.
+    e.mysql.sql('Next', `UPDATE HistoricoInstalaciones SET VigenteDesde = VigenteDesde - INTERVAL 1 HOUR WHERE IdInstalacionOriginal = ${s.inst} AND Accion = 'Baja'`);
     const r = ok(
       await op('POST', '/reportes/salidas-geocerca-instalacion', {
         idInstalacion: s.inst,

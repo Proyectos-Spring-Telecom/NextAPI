@@ -35,9 +35,15 @@ async function instalar(c: typeof A, i: number, placa: string): Promise<number> 
     await a.operacion('POST', '/instalaciones', { idCliente: c.idClienteNext, idProducto: Number(veh.data.id), idDispositivo: eq.idDispositivo, idSim: eq.idSim }),
     'instalación',
   );
-  // Una posición del equipo, para que el histórico tenga qué mostrar.
-  e.mysql.sql('Next', `INSERT INTO Posiciones (Imei, Lat, Lng, Estado, FechaHora, Velocidad, Direccion) VALUES (${eq.imei}, 18.95, -99.23, 0, NOW() - INTERVAL 5 MINUTE, 0, 0)`);
-  return Number(r.data?.id ?? r.id);
+  const id = Number(r.data?.id ?? r.id);
+  // Una posición del equipo ya instalado (las anteriores a VigenteDesde no son de
+  // la instalación), para que el histórico tenga qué mostrar.
+  e.mysql.sql(
+    'Next',
+    `INSERT INTO Posiciones (Imei, Lat, Lng, Estado, FechaHora, Velocidad, Direccion)
+       SELECT ${eq.imei}, 18.95, -99.23, 0, VigenteDesde + INTERVAL 1 MINUTE, 0, 0 FROM Instalaciones WHERE Id = ${id}`,
+  );
+  return id;
 }
 
 beforeAll(async () => {

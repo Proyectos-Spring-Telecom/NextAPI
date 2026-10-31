@@ -58,6 +58,8 @@ import {
   TrackcamGatewayPhotoResponse,
   TrackcamGatewayVideoResponse,
 } from './trackcam-gateway.client';
+import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.service';
+import { condicionTramos, recortarTramos } from 'src/motor-activos/tramos-instalacion';
 
 type TrackcamInstalacionDevice = {
   idInstalacion: number;
@@ -134,6 +136,7 @@ export class MonitoreoService {
     private readonly usuariosRepo: Repository<Usuarios>,
     private readonly tenantFilter: TenantFilterService,
     private readonly trackcamGateway: TrackcamGatewayClient,
+    private readonly tramos: TramosInstalacionService,
   ) { }
 
   /**
@@ -210,7 +213,8 @@ export class MonitoreoService {
       .innerJoin(
         Instalaciones,
         'i',
-        'i.idDispositivo = d.id AND i.estatus = :instActivo',
+        // Una última posición anterior a la instalación es de otra vigencia (§6).
+        'i.idDispositivo = d.id AND i.estatus = :instActivo AND up.fechaHora >= i.vigenteDesde',
         { instActivo: EstatusEnum.ACTIVO },
       )
       .select([
@@ -557,7 +561,7 @@ export class MonitoreoService {
 
   /**
    * Histórico de posiciones por instalación + rango de fechas.
-   * Resuelve IMEI del dispositivo y lee `Posiciones` (sin filtro por cliente).
+   * Lee `Posiciones` de cada equipo de la instalación recortadas a su tramo de vigencia.
    */
   async reporteHistorico(
     idInstalacion: number,
@@ -565,9 +569,9 @@ export class MonitoreoService {
     fechaFinalRaw: string,
     alcance: UsuarioAlcance,
   ): Promise<HistoricoMonitoreoResponse> {
-    // Solo instalaciones del alcance del usuario (cliente según rol; 7/9 las asignadas).
-    // El recorte por vigencia de la instalación va con el motor de activos
-    // (docs/diagnostico-modelo.md §2: hay instalaciones migradas con VigenteDesde posterior).
+    // Solo instalaciones del alcance del usuario (cliente según rol; 7/9 las asignadas),
+    // y solo lo que transmitió cada equipo mientras estuvo instalado en ella
+    // (tramos de vigencia, docs/motor-activos.md §6).
     await this.tenantFilter.assertInstalacionVisible(alcance, idInstalacion);
     try {
       let fechaInicio: string;
@@ -607,6 +611,16 @@ export class MonitoreoService {
       }
 
       const ctx = mapContextoDesdeRow(ctxRow);
+
+      const tramos = recortarTramos(
+        await this.tramos.tramosDeInstalacion(idInstalacion),
+        fechaInicio,
+        fechaFinal,
+      );
+      if (!tramos.length) {
+        return { totalDistancia: 0, posiciones: [] };
+      }
+      const enTramos = condicionTramos('p', tramos);
 
       const posicionesRows = await this.posicionesRepo
         .createQueryBuilder('p')
@@ -657,9 +671,7 @@ export class MonitoreoService {
           'vid2.ruta AS rutaVideo2',
           'vid3.ruta AS rutaVideo3',
         ])
-        .where('p.imei = :imei', { imei })
-        .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
-        .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+        .where(enTramos.sql, enTramos.params)
         .orderBy('p.fechaHora', 'DESC')
         .addOrderBy('p.id', 'DESC')
         .getRawMany<Record<string, unknown>>();

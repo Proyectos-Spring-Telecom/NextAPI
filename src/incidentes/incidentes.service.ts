@@ -6,7 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
+import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
+import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.service';
+import { posicionEnTramos } from 'src/motor-activos/tramos-instalacion';
+import { fechaPared } from 'src/utils/datetime-mexico.util';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import {
   ApiCrudResponse,
@@ -88,6 +92,7 @@ export class IncidentesService {
     private readonly dataSource: DataSource,
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
+    private readonly tramos: TramosInstalacionService,
   ) {}
 
   /**
@@ -309,27 +314,93 @@ export class IncidentesService {
     return entity;
   }
 
-  private async idClienteDesdeImei(imeiRaw: string): Promise<number> {
-    const imei = imeiToString(imeiRaw);
+  /**
+   * Cliente dueño de una posición: el de la instalación en la que estaba el
+   * equipo cuando la generó (tramos de vigencia, docs/motor-activos.md §6). Lo
+   * que transmitió sin estar instalado, o con otro cliente, no se puede usar
+   * como origen de un incidente de este.
+   */
+  private async idClienteDePosicion(posicion: Posiciones): Promise<number> {
+    const imei = imeiToString(posicion.imei);
     if (!imei) {
       throw new BadRequestException(
         'La posición no tiene IMEI válido para resolver el cliente',
       );
     }
 
-    const row = await this.dispositivosRepo
+    const dispositivo = await this.dispositivosRepo
       .createQueryBuilder('d')
-      .select('d.idCliente', 'idCliente')
-      .where('CAST(d.imei AS CHAR) = :imei', { imei })
-      .getRawOne<{ idCliente: string | number }>();
-
-    const idCliente = Number(row?.idCliente);
-    if (!Number.isFinite(idCliente) || idCliente < 1) {
+      .select('d.id', 'id')
+      .where('d.imei = :imei', { imei })
+      .getRawOne<{ id: string | number }>();
+    const idDispositivo = Number(dispositivo?.id);
+    if (!Number.isFinite(idDispositivo) || idDispositivo < 1) {
       throw new BadRequestException(
         'La posición no tiene un dispositivo asociado',
       );
     }
-    return idCliente;
+
+    const candidatas = await this.instalacionesConDispositivo(idDispositivo);
+    const tramos = [...(await this.tramos.tramosDe(candidatas)).values()].flat();
+    const fechaHora = fechaPared(new Date(posicion.fechaHora));
+    const tramo = tramos.find((t) => posicionEnTramos([t], imei, fechaHora));
+    if (!tramo) {
+      throw new BadRequestException(
+        'La posición no corresponde a una instalación del equipo: se generó cuando no estaba instalado.',
+      );
+    }
+    const inst = await this.instalacionesRepo.findOne({
+      where: { id: tramo.idInstalacion },
+      select: { id: true, idCliente: true },
+    });
+    return Number(inst!.idCliente);
+  }
+
+  /**
+   * Instalaciones (vigentes o dadas de baja) que tuvieron el dispositivo en
+   * alguna versión: la fila actual o su cadena en HistoricoInstalaciones. Un
+   * cambio de componente borra la fila anterior, así que la cadena se sigue
+   * hacia adelante hasta la fila que la enlaza.
+   */
+  private async instalacionesConDispositivo(idDispositivo: number): Promise<number[]> {
+    const manager = this.dataSource.manager;
+    const ids = new Set<number>(
+      (
+        await manager.find(Instalaciones, {
+          where: { idDispositivo },
+          select: { id: true },
+        })
+      ).map((i) => Number(i.id)),
+    );
+    let frontera = (
+      await manager.find(HistoricoInstalaciones, {
+        where: { idDispositivo },
+        select: { id: true, idInstalacionOriginal: true },
+      })
+    );
+    const visitados = new Set<number>();
+    while (frontera.length) {
+      const hist = frontera.map((h) => Number(h.id)).filter((h) => !visitados.has(h));
+      if (!hist.length) break;
+      hist.forEach((h) => visitados.add(h));
+      // Una baja archivada conserva la fila original.
+      const originales = frontera
+        .map((h) => (h.idInstalacionOriginal != null ? Number(h.idInstalacionOriginal) : null))
+        .filter((o): o is number => o != null);
+      const filas = await manager.find(Instalaciones, {
+        where: [
+          { idHistoricoInstalacion: In(hist) },
+          ...(originales.length ? [{ id: In(originales) }] : []),
+        ],
+        select: { id: true },
+      });
+      filas.forEach((f) => ids.add(Number(f.id)));
+      frontera = await manager.find(HistoricoInstalaciones, {
+        where: { idHistoricoInstalacion: In(hist) },
+        select: { id: true, idInstalacionOriginal: true },
+      });
+    }
+    return [...ids];
   }
 
   private async resolverOrigen(dto: CreateIncidenteDto): Promise<{
@@ -365,7 +436,7 @@ export class IncidentesService {
       const idPosicion = Number(posicion.id);
       return {
         tipoOrigen,
-        idCliente: await this.idClienteDesdeImei(posicion.imei),
+        idCliente: await this.idClienteDePosicion(posicion),
         idPosicion,
         idPosicionOrigen: idPosicion,
         idEventoAlarma: null,

@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
-import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 import {
@@ -17,7 +16,8 @@ import {
   applyPaginadoTodosTiposProducto,
   mapInstalacionPaginadaPlana,
 } from 'src/instalaciones/helpers/instalaciones-paginado.helpers';
-import { formatFechaPosicion } from 'src/monitoreo/helpers/monitoreo-historico.helpers';
+import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.service';
+import { recortarTramos, type TramoEnPeriodo } from 'src/motor-activos/tramos-instalacion';
 import {
   canalesActivosDesdeFila,
   etiquetaInstalacion,
@@ -52,12 +52,11 @@ export type UnidadImeiResuelta = {
   unidad: UnidadConsolaPorImei;
   idCliente: number;
   idDispositivo: number;
-  vigenteDesdeInst: string | null;
 };
 
 /**
- * Alcance de Consola por IMEI: misma resolución de unidad + vigencia
- * que usa la galería (roles, paneles, UsuariosInstalaciones).
+ * Alcance de Consola por IMEI: misma resolución de unidad + tramos de
+ * vigencia que usa la galería (roles, paneles, UsuariosInstalaciones).
  */
 @Injectable()
 export class ConsolaAlcanceService {
@@ -65,7 +64,7 @@ export class ConsolaAlcanceService {
     @InjectRepository(Instalaciones)
     private readonly instalacionesRepo: Repository<Instalaciones>,
     private readonly tenantFilter: TenantFilterService,
-    private readonly dataSource: DataSource,
+    private readonly tramos: TramosInstalacionService,
   ) {}
 
   /** Roles que solo ven las unidades asignadas a ellos. */
@@ -104,18 +103,10 @@ export class ConsolaAlcanceService {
     const idDispositivo = Number(plano.idDispositivo);
     if (!Number.isFinite(idDispositivo) || idDispositivo < 1) return null;
 
-    const vigenteRaw = formatFechaPosicion(
-      (plano.vigenteDesde ?? row.vigenteDesde) as string | Date | null,
-    );
-    const vigenteDesdeInst = vigenteRaw
-      ? vigenteRaw.replace('T', ' ')
-      : null;
-
     return {
       unidad: mapped.unidad,
       idCliente: mapped.unidad.idCliente,
       idDispositivo,
-      vigenteDesdeInst,
     };
   }
 
@@ -159,25 +150,22 @@ export class ConsolaAlcanceService {
   }
 
   /**
-   * Primera vigencia del dispositivo en el cliente: MIN(Historico.VigenteDesde);
-   * si no hay histórico, `Instalaciones.VigenteDesde`. Formato `YYYY-MM-DD HH:mm:ss`.
+   * Tramos del IMEI en la instalación (docs/motor-activos.md §6), recortados a
+   * `[inicio, fin]`: solo lo que el equipo transmitió mientras estuvo instalado
+   * en ella, no con un cliente anterior ni en otra unidad.
    */
-  async primeraVigenciaDispositivoEnCliente(
-    idCliente: number,
-    idDispositivo: number,
-    vigenteDesdeInst: string | null,
-  ): Promise<string | null> {
-    const row = await this.dataSource
-      .getRepository(HistoricoInstalaciones)
-      .createQueryBuilder('h')
-      .select('MIN(h.vigenteDesde)', 'desde')
-      .where('h.idCliente = :idCliente', { idCliente })
-      .andWhere('h.idDispositivo = :idDispositivo', { idDispositivo })
-      .getRawOne<{ desde: string | Date | null }>();
-
-    const desdeHist = formatFechaPosicion(row?.desde ?? null);
-    if (desdeHist) return desdeHist.replace('T', ' ');
-    return vigenteDesdeInst;
+  async tramosImeiEnInstalacion(
+    idInstalacion: number,
+    imei: string,
+    inicio: string,
+    fin: string,
+  ): Promise<TramoEnPeriodo[]> {
+    const tramos = await this.tramos.tramosDeInstalacion(idInstalacion);
+    return recortarTramos(
+      tramos.filter((t) => t.imei === imei),
+      inicio,
+      fin,
+    );
   }
 
   /**

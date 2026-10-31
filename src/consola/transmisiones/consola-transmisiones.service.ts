@@ -15,8 +15,13 @@ import {
   UnidadConsolaPorImei,
 } from '../shared/consola-alcance.service';
 import { TransmisionesImeiDto } from './dto/transmisiones-imei.dto';
+import { condicionTramos } from 'src/motor-activos/tramos-instalacion';
 
 const CANTIDAD_DEFAULT = 50;
+
+/** Sin periodo: las últimas N dentro de toda la vigencia. */
+const SIN_LIMITE_INICIO = '1000-01-01 00:00:00';
+const SIN_LIMITE_FIN = '9999-12-31 23:59:59';
 
 /** Cabecera de unidad en transmisiones (subset del alcance + cliente). */
 export type UnidadTransmisionesImei = {
@@ -102,15 +107,20 @@ export class ConsolaTransmisionesService {
         throw new NotFoundException(MSG_IMEI_NO_ENCONTRADO);
       }
 
-      const { unidad: u, idCliente, idDispositivo, vigenteDesdeInst } =
-        resuelto;
-      const unidad = this.mapUnidad(u);
+      const unidad = this.mapUnidad(resuelto.unidad);
 
-      const vigencia = await this.alcance.primeraVigenciaDispositivoEnCliente(
-        idCliente,
-        idDispositivo,
-        vigenteDesdeInst,
+      // Solo lo que transmitió el equipo instalado en esta unidad: ni de un
+      // cliente anterior ni de otra unidad (tramos de vigencia, §6).
+      const tramos = await this.alcance.tramosImeiEnInstalacion(
+        resuelto.unidad.idInstalacion,
+        imei,
+        SIN_LIMITE_INICIO,
+        SIN_LIMITE_FIN,
       );
+      if (!tramos.length) {
+        return { unidad, cantidadSolicitada: cantidad, total: 0, data: [] };
+      }
+      const enTramos = condicionTramos('p', tramos);
 
       const qb = this.posicionesRepo
         .createQueryBuilder('p')
@@ -126,15 +136,10 @@ export class ConsolaTransmisionesService {
         .addSelect('p.bateria', 'bateria')
         .addSelect('p.gps', 'gps')
         .addSelect('p.gsm', 'gsm')
-        .where('p.imei = :imei', { imei })
+        .where(enTramos.sql, enTramos.params)
         .orderBy('p.fechaHora', 'DESC')
         .addOrderBy('p.id', 'DESC')
         .limit(cantidad);
-
-      // No mostrar posiciones de un cliente anterior del equipo.
-      if (vigencia) {
-        qb.andWhere('p.fechaHora >= :vigencia', { vigencia });
-      }
 
       const rows = await qb.getRawMany<Record<string, unknown>>();
       const data: TransmisionItem[] = rows.map((row) => {

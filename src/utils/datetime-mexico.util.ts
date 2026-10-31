@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 const TZ_MEXICO = 'America/Mexico_City';
 
 /**
@@ -51,4 +53,23 @@ export function isoUtcToMexicoCityAsUtcDate(iso: string): Date {
  */
 export function nowMexicoCityAsUtcDate(): Date {
   return new Date(nowMexicoCityMysql().replace(' ', 'T') + 'Z');
+}
+
+/**
+ * Hora de pared de México (`YYYY-MM-DD HH:mm[:ss]`, con espacio o `T`) como
+ * Date en la misma convención que nowMexicoCityAsUtcDate.
+ */
+export function fechaParedComoDate(texto: string): Date {
+  const m = texto.trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?$/);
+  const fecha = m ? new Date(`${m[1]}T${m[2]}${m[3] ?? ':00'}Z`) : new Date(NaN);
+  // Sin desbordes: 2026-02-30 no es 2026-03-02.
+  if (!m || !Number.isFinite(fecha.getTime()) || fecha.toISOString().slice(0, 10) !== m[1]) {
+    throw new BadRequestException(`Fecha inválida: ${texto}`);
+  }
+  return fecha;
+}
+
+/** Inverso de fechaParedComoDate: `YYYY-MM-DD HH:mm:ss`. */
+export function fechaPared(fecha: Date): string {
+  return fecha.toISOString().slice(0, 19).replace('T', ' ');
 }

@@ -12,7 +12,7 @@ import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { TrackcamConfig } from 'src/entities/TrackcamConfig';
 
 /**
- * GPS: Instalación → Dispositivo → UltimaPosicion.
+ * GPS: Instalación → Dispositivo → UltimaPosicion (solo si es de esta vigencia).
  * Paneles: PanelAlarma + UltimoEventoAlarma (sin telemetría UltimaPosicion).
  */
 export function applyMonitoreoListJoins(
@@ -24,7 +24,8 @@ export function applyMonitoreoListJoins(
     .leftJoin(CatTipoDispositivo, 'td', 'td.id = d.idTipoDispositivo')
     .leftJoin('d.idMarca2', 'marDisp')
     .leftJoin('d.idModelo2', 'modDisp')
-    .leftJoin('d.ultimaPosicion', 'up')
+    // Una última posición anterior a la instalación es de otra vigencia (§6).
+    .leftJoin('d.ultimaPosicion', 'up', 'up.fechaHora >= i.vigenteDesde')
     .leftJoin(
       TrackcamConfig,
       'tc',

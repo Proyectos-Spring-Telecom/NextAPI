@@ -7,6 +7,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.service';
+import {
+  condicionTramos,
+  enTramoRecortado,
+  recortarTramos,
+  type TramoEnPeriodo,
+} from 'src/motor-activos/tramos-instalacion';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Posiciones } from 'src/entities/Posiciones';
@@ -27,7 +34,6 @@ import {
 } from 'src/common/tenant-filter/tenant-filter.service';
 import type { Paginated } from 'src/common/ApiResponse';
 import {
-  EnumAccionHistoricoInstalacion,
   EnumTipoDispositivo,
   EnumTipoProducto,
   EstatusEnum,
@@ -59,7 +65,6 @@ import {
   type SalidaGeocercaDetectada,
 } from './helpers/salidas-geocerca.helpers';
 import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto';
-import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
 import { redondearKm } from 'src/utils/recorrido.utils';
 
@@ -472,12 +477,14 @@ export type RecorridoSalidaGeocercaResult = {
   };
 };
 
-type InstalacionCandidata = {
+type InstalacionCandidataBase = {
   idInstalacion: number;
   idDispositivo: number;
   imei: string;
   numeroSerie: string | null;
-} & ProductoPlanoPasoPoi;
+};
+
+type InstalacionCandidata = InstalacionCandidataBase & ProductoPlanoPasoPoi;
 
 type InstalacionCandidataVehiculo = {
   idInstalacion: number;
@@ -499,6 +506,58 @@ type PoiNorm = {
   lng: number;
   radioMetros: number;
 };
+
+/** Candidata de una instalación en uno de sus tramos de vigencia (§6). */
+type CandidataEnTramo<T> = T & { tramo: TramoEnPeriodo };
+
+/** Candidata dueña de la posición `(imei, fechaHora)`; null si cae fuera de todo tramo. */
+function ubicarCandidata<T extends { imei: string; tramo: TramoEnPeriodo }>(
+  candidatas: readonly T[],
+  imei: string,
+  fechaHora: unknown,
+): T | null {
+  const fecha = formatFechaPosicion(fechaHora as string | Date | null | undefined)?.replace('T', ' ');
+  if (!fecha) return null;
+  return (
+    candidatas.find(
+      (c) => c.imei === imei && enTramoRecortado(c.tramo, fecha),
+    ) ?? null
+  );
+}
+
+function productoDe(c: object): number | null {
+  const id = (c as { idProducto?: unknown }).idProducto;
+  return id == null ? null : Number(id);
+}
+
+/**
+ * La candidata con la etiqueta de otro producto: nombre, placas y económico de
+ * ese producto; el resto de los datos del producto actual, vacíos.
+ */
+function conProducto<T extends object>(
+  c: T,
+  idProducto: number,
+  e: { nombre: string | null; placa: string | null; eco: string | null } | undefined,
+): T {
+  const salida = { ...c } as Record<string, unknown>;
+  for (const k of Object.keys(productoPlanoVacio())) {
+    if (k in salida) salida[k] = null;
+  }
+  const valores: Record<string, unknown> = {
+    idProducto,
+    nombreProducto: e?.nombre ?? null,
+    placaVehiculo: e?.placa ?? null,
+    ecoVehiculo: e?.eco ?? null,
+    placas: e?.placa ?? null,
+    economico: e?.eco ?? null,
+    modelo: null,
+    imagen: null,
+  };
+  for (const [k, v] of Object.entries(valores)) {
+    if (k in salida) salida[k] = v;
+  }
+  return salida as T;
+}
 
 function num(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -653,10 +712,67 @@ export class ReportesService {
     private readonly geocercasRepo: Repository<Geocercas>,
     @InjectRepository(Clientes)
     private readonly clientesRepo: Repository<Clientes>,
-    @InjectRepository(HistoricoInstalaciones)
-    private readonly historicoInstalacionesRepo: Repository<HistoricoInstalaciones>,
     private readonly tenantFilter: TenantFilterService,
+    private readonly tramos: TramosInstalacionService,
   ) {}
+
+  /**
+   * Expande las candidatas (instalaciones con su equipo actual) a una por tramo
+   * de vigencia dentro del periodo (docs/motor-activos.md §6): cada equipo que
+   * tuvo la instalación, solo mientras estuvo instalado en ella.
+   */
+  private async candidatasPorTramo<T extends InstalacionCandidataBase>(
+    candidatos: readonly T[],
+    fechaInicio: string,
+    fechaFinal: string,
+  ): Promise<Array<CandidataEnTramo<T>>> {
+    if (!candidatos.length) return [];
+    const porInstalacion = await this.tramos.tramosDe(candidatos.map((c) => c.idInstalacion));
+    const recortados = candidatos.flatMap((c) =>
+      recortarTramos(porInstalacion.get(c.idInstalacion) ?? [], fechaInicio, fechaFinal).map((tramo) => ({ c, tramo })),
+    );
+    // Número de serie de los equipos anteriores (el actual ya viene en la candidata).
+    const otros = [
+      ...new Set(recortados.filter(({ c, tramo }) => tramo.idDispositivo !== c.idDispositivo).map(({ tramo }) => tramo.idDispositivo)),
+    ];
+    const series = new Map<number, string | null>();
+    if (otros.length) {
+      const filas = await this.instalacionesRepo.manager
+        .getRepository(Dispositivos)
+        .find({ where: { id: In(otros) }, select: { id: true, numeroSerie: true } });
+      filas.forEach((d) => series.set(Number(d.id), d.numeroSerie ?? null));
+    }
+    // Tramos de otro producto (cambio de vehículo con el mismo equipo): su
+    // etiqueta es la de ese producto, no la del actual.
+    const otrosProductos = [
+      ...new Set(
+        recortados
+          .filter(({ c, tramo }) => tramo.idProducto != null && tramo.idProducto !== productoDe(c))
+          .map(({ tramo }) => tramo.idProducto as number),
+      ),
+    ];
+    const etiquetas = new Map<number, { nombre: string | null; placa: string | null; eco: string | null }>();
+    if (otrosProductos.length) {
+      const filas = await this.instalacionesRepo.manager
+        .getRepository(Productos)
+        .createQueryBuilder('prod')
+        .leftJoin(Vehiculos, 'v', 'v.idProducto = prod.id AND v.idCliente = prod.idCliente')
+        .select(['prod.id AS id', 'prod.nombre AS nombre', 'v.placa AS placa', 'v.numeroEconomico AS eco'])
+        .where('prod.id IN (:...ids)', { ids: otrosProductos })
+        .getRawMany<Record<string, unknown>>();
+      filas.forEach((r) => etiquetas.set(Number(r.id), { nombre: str(r.nombre), placa: str(r.placa), eco: str(r.eco) }));
+    }
+    return recortados.map(({ c, tramo }) => {
+      const otroProducto = tramo.idProducto != null && tramo.idProducto !== productoDe(c);
+      return {
+        ...(otroProducto ? conProducto(c, tramo.idProducto as number, etiquetas.get(tramo.idProducto as number)) : c),
+        idDispositivo: tramo.idDispositivo,
+        imei: tramo.imei,
+        numeroSerie: tramo.idDispositivo === c.idDispositivo ? c.numeroSerie : (series.get(tramo.idDispositivo) ?? null),
+        tramo,
+      };
+    });
+  }
 
   async pasoPorPuntoInteres(
     dto: PasoPorPoiDto,
@@ -1073,19 +1189,22 @@ export class ReportesService {
         fechaFinal,
       });
 
-      const byImeiCand = new Map(
-        candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
+      const candPorInstalacion = new Map(
+        candidatos.map((c) => [c.idInstalacion, c]),
       );
 
-      const porImei = new Map<string, ReportePosicionItem[]>();
+      // Un recorrido por instalación y equipo: tras un cambio de dispositivo, la
+      // misma instalación aporta un recorrido por cada equipo que tuvo (§6).
+      const porRecorrido = new Map<string, ReportePosicionItem[]>();
       for (const p of posiciones) {
         const imei = imeiToString(p.imei) ?? p.imei ?? '';
         if (!imei) continue;
-        const list = porImei.get(imei);
+        const clave = `${p.idInstalacion}|${imei}`;
+        const list = porRecorrido.get(clave);
         if (list) {
           list.push(p);
         } else {
-          porImei.set(imei, [p]);
+          porRecorrido.set(clave, [p]);
         }
       }
 
@@ -1093,9 +1212,15 @@ export class ReportesService {
       let totalDistancia = 0;
       let totalPosiciones = 0;
 
-      for (const [imei, pts] of porImei) {
-        const cand = byImeiCand.get(imei);
-        if (!cand) continue;
+      for (const pts of porRecorrido.values()) {
+        const base = candPorInstalacion.get(pts[0].idInstalacion);
+        if (!base) continue;
+        const cand = {
+          ...base,
+          idDispositivo: pts[0].idDispositivo,
+          imei: imeiToString(pts[0].imei) ?? base.imei,
+          numeroSerie: pts[0].numeroSerie,
+        };
 
         const distancia = calcularDistanciaHistoricoMonitoreo(
           pts.map((p) => ({
@@ -2036,7 +2161,7 @@ export class ReportesService {
         'p.estado AS estado',
         'p.ignicion AS ignicion',
       ])
-      .where('CAST(p.imei AS CHAR) = :imei', { imei })
+      .where('p.imei = :imei', { imei })
       .andWhere('p.fechaHora >= :desde', { desde })
       .andWhere('p.fechaHora <= :hasta', { hasta });
     if (cursor) {
@@ -2078,7 +2203,7 @@ export class ReportesService {
           'p.estado AS estado',
           'p.ignicion AS ignicion',
         ])
-        .where('CAST(p.imei AS CHAR) = :imei', { imei: tramo.imei })
+        .where('p.imei = :imei', { imei: tramo.imei })
         .andWhere('p.fechaHora >= :desde', { desde: desdeT })
         .andWhere('p.fechaHora <= :hasta', { hasta: hastaT })
         .andWhere('p.lat BETWEEN -90 AND 90')
@@ -2122,16 +2247,10 @@ export class ReportesService {
   }
 
   /**
-   * Dispositivos asociados a UNA instalación durante el periodo.
-   *
-   * El sistema conserva las asociaciones en dos niveles (ver
-   * `InstalacionesService.update`): la fila vigente de `Instalaciones`
-   * (dispositivo actual, `VigenteDesde`) y la cadena de
-   * `HistoricoInstalaciones` enlazada por `IdHistoricoInstalacion`
-   * (versiones anteriores con `VigenteDesde`/`VigenteHasta` e
-   * `IdInstalacionOriginal`). Cada versión aporta un tramo; solo se
-   * consultan posiciones del IMEI de cada tramo dentro de su vigencia
-   * intersectada con el periodo — nunca otros dispositivos del cliente.
+   * Dispositivos asociados a UNA instalación durante el periodo: sus tramos de
+   * vigencia (TramosInstalacionService, docs/motor-activos.md §6) recortados al
+   * periodo. Solo se consultan posiciones del IMEI de cada tramo dentro de su
+   * vigencia, nunca otros dispositivos del cliente.
    */
   private async resolverDispositivosEnPeriodo(args: {
     instalacionRaw: Instalaciones;
@@ -2141,97 +2260,12 @@ export class ReportesService {
   }): Promise<DispositivoEnPeriodoItem[]> {
     const { instalacionRaw, idCliente, fechaInicio, fechaFinal } = args;
 
-    const aPared = (v: Date | string | null | undefined): string | null => {
-      const f = formatFechaPosicion(v as string | Date | null | undefined);
-      return f ? f.replace('T', ' ') : null;
-    };
-
-    type Version = {
-      idDispositivo: number | null;
-      idProducto: number | null;
-      vigenteDesde: Date | string | null;
-      vigenteHasta: Date | string | null;
-    };
-    // Dada de baja con el motor de activos: su último periodo está archivado
-    // (Accion "Baja", con VigenteHasta) y la fila ya no aporta un tramo abierto.
-    const eslabon =
-      instalacionRaw.idHistoricoInstalacion != null
-        ? Number(instalacionRaw.idHistoricoInstalacion)
-        : null;
-    const bajaArchivada =
-      Number(instalacionRaw.estatus) !== EstatusEnum.ACTIVO
-        ? await this.historicoInstalacionesRepo.findOne({
-            where: { idInstalacionOriginal: Number(instalacionRaw.id), idCliente },
-            order: { id: 'DESC' },
-          })
-        : null;
-    const desdeBaja =
-      bajaArchivada?.accion === EnumAccionHistoricoInstalacion.BAJA &&
-      Number(bajaArchivada.id) > (eslabon ?? 0);
-
-    const versiones: Version[] = desdeBaja
-      ? []
-      : [
-          {
-            idDispositivo:
-              instalacionRaw.idDispositivo != null
-                ? Number(instalacionRaw.idDispositivo)
-                : null,
-            idProducto:
-              instalacionRaw.idProducto != null
-                ? Number(instalacionRaw.idProducto)
-                : null,
-            vigenteDesde: instalacionRaw.vigenteDesde ?? null,
-            vigenteHasta: null,
-          },
-        ];
-
-    const visitados = new Set<number>();
-    let cursor: number | null = desdeBaja ? Number(bajaArchivada!.id) : eslabon;
-    while (cursor != null && !visitados.has(cursor)) {
-      visitados.add(cursor);
-      const hist = await this.historicoInstalacionesRepo.findOne({
-        where: { id: cursor, idCliente },
-      });
-      if (!hist) break;
-      versiones.push({
-        idDispositivo:
-          hist.idDispositivo != null ? Number(hist.idDispositivo) : null,
-        idProducto: hist.idProducto != null ? Number(hist.idProducto) : null,
-        vigenteDesde: hist.vigenteDesde ?? null,
-        vigenteHasta: hist.vigenteHasta ?? null,
-      });
-      cursor =
-        hist.idHistoricoInstalacion != null
-          ? Number(hist.idHistoricoInstalacion)
-          : null;
-    }
-
     type Tramo = DispositivoEnPeriodoItem & { idTipoDispositivo: number | null };
-    const tramosBase: Array<{
-      idDispositivo: number;
-      idProducto: number | null;
-      vigenteDesde: string | null;
-      vigenteHasta: string | null;
-      desde: string;
-      hasta: string;
-    }> = [];
-    for (const v of versiones) {
-      if (v.idDispositivo == null) continue;
-      const vigDesde = aPared(v.vigenteDesde);
-      const vigHasta = aPared(v.vigenteHasta);
-      const desde = vigDesde && vigDesde > fechaInicio ? vigDesde : fechaInicio;
-      const hasta = vigHasta && vigHasta < fechaFinal ? vigHasta : fechaFinal;
-      if (desde > hasta) continue;
-      tramosBase.push({
-        idDispositivo: v.idDispositivo,
-        idProducto: v.idProducto,
-        vigenteDesde: vigDesde,
-        vigenteHasta: vigHasta,
-        desde,
-        hasta,
-      });
-    }
+    const tramosBase = recortarTramos(
+      await this.tramos.tramosDeInstalacion(Number(instalacionRaw.id)),
+      fechaInicio,
+      fechaFinal,
+    );
     if (!tramosBase.length) return [];
 
     // Una sola consulta por los dispositivos de los tramos (no del cliente).
@@ -2247,8 +2281,8 @@ export class ReportesService {
         'd.numeroSerie AS numeroSerie',
         'd.idTipoDispositivo AS idTipoDispositivo',
       ])
+      // Sin filtrar por cliente: el equipo de un tramo pasado puede estar hoy en otro.
       .where('d.id IN (:...ids)', { ids: idsDispositivo })
-      .andWhere('d.idCliente = :idCliente', { idCliente })
       .getRawMany<Record<string, unknown>>();
     const dispById = new Map(
       dispRows.map((r) => [
@@ -2351,11 +2385,22 @@ export class ReportesService {
         ecoVehiculo: tramo.economico,
       };
 
-      const posiciones = await this.consultarPosicionesCronologicas({
-        candidatos: [candidatoTramo],
-        fechaInicio: tramo.desde,
-        fechaFinal: tramo.hasta,
-      });
+      const posiciones = await this.consultarPosicionesCronologicas([
+        {
+          ...candidatoTramo,
+          tramo: {
+            idInstalacion,
+            idDispositivo: tramo.idDispositivo,
+            idProducto: tramo.idProducto,
+            imei: tramo.imei,
+            desde: tramo.desde,
+            hasta: tramo.hasta,
+            vigenteDesde: tramo.vigenteDesde ?? tramo.desde,
+            vigenteHasta: tramo.vigenteHasta,
+            hastaExclusivo: tramo.vigenteHasta != null && tramo.hasta === tramo.vigenteHasta,
+          },
+        },
+      ]);
       const serie = posiciones.map((p) => p.row);
       if (!serie.length) continue;
 
@@ -2428,31 +2473,31 @@ export class ReportesService {
     const { fechaInicio, fechaFinal } = args;
     if (!candidatos.length) return [];
 
-    const posiciones = await this.consultarPosicionesCronologicas({
-      candidatos,
-      fechaInicio,
-      fechaFinal,
-    });
-    const porImei = new Map<string, PosicionCronologicaGeocerca[]>();
+    // Una candidata por tramo de vigencia (§6): cada equipo que tuvo la
+    // instalación, solo mientras estuvo instalado.
+    const porTramo = await this.candidatasPorTramo(candidatos, fechaInicio, fechaFinal);
+    const posiciones = await this.consultarPosicionesCronologicas(porTramo);
+    const porCandidata = new Map<CandidataEnTramo<InstalacionCandidata>, PosicionCronologicaGeocerca[]>();
     for (const p of posiciones) {
-      const list = porImei.get(p.imei);
+      const list = porCandidata.get(p.cand);
       if (list) list.push(p.row);
-      else porImei.set(p.imei, [p.row]);
+      else porCandidata.set(p.cand, [p.row]);
     }
 
     const salidas: SalidaGeocercaItem[] = [];
-    for (const cand of candidatos) {
-      const imei = imeiToString(cand.imei) ?? cand.imei;
-      const serie = porImei.get(imei) ?? [];
+    for (const cand of porTramo) {
+      const imei = cand.imei;
+      const serie = porCandidata.get(cand) ?? [];
       if (!serie.length) continue;
 
       const geocercas = porInstalacion.get(cand.idInstalacion) ?? [];
-      // Última posición previa al periodo (1 query indexada por IMEI y solo
-      // para dispositivos con posiciones en el periodo): permite confirmar
-      // la salida si la primera posición ya está fuera.
+      // Última posición previa al periodo, dentro de la vigencia del tramo
+      // (1 query indexada por IMEI y solo para equipos con posiciones en el
+      // periodo): permite confirmar la salida si la primera ya está fuera.
       const posicionAnterior = await this.consultarPosicionAnterior(
         imei,
-        fechaInicio,
+        cand.tramo.desde,
+        cand.tramo.vigenteDesde,
       );
 
       for (const geocerca of geocercas) {
@@ -2529,20 +2574,12 @@ export class ReportesService {
   }
 
   /** Posiciones del periodo en orden cronológico (ASC fechaHora, ASC id). */
-  private async consultarPosicionesCronologicas(args: {
-    candidatos: InstalacionCandidata[];
-    fechaInicio: string;
-    fechaFinal: string;
-  }): Promise<Array<{ imei: string; row: PosicionCronologicaGeocerca }>> {
-    const { candidatos, fechaInicio, fechaFinal } = args;
-    const imeis = [
-      ...new Set(
-        candidatos
-          .map((c) => imeiToString(c.imei) ?? c.imei)
-          .filter((imei) => imei !== ''),
-      ),
-    ];
-    if (!imeis.length) return [];
+  /** Posiciones de candidatas ya expandidas por tramo, con la candidata dueña de cada una. */
+  private async consultarPosicionesCronologicas<T extends InstalacionCandidata>(
+    porTramo: Array<CandidataEnTramo<T>>,
+  ): Promise<Array<{ imei: string; cand: CandidataEnTramo<T>; row: PosicionCronologicaGeocerca }>> {
+    if (!porTramo.length) return [];
+    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(Posiciones)
@@ -2554,22 +2591,24 @@ export class ReportesService {
         'p.lng AS lng',
         'p.fechaHora AS fechaHora',
       ])
-      .where('p.imei IN (:...imeis)', { imeis })
-      .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
-      .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+      .where(enTramos.sql, enTramos.params)
       .orderBy('p.fechaHora', 'ASC')
       .addOrderBy('p.id', 'ASC')
       .getRawMany<Record<string, unknown>>();
 
     const result: Array<{
       imei: string;
+      cand: CandidataEnTramo<T>;
       row: PosicionCronologicaGeocerca;
     }> = [];
     for (const row of rows) {
       const imei = imeiToString(row.imei);
       if (!imei) continue;
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
+      if (!cand) continue;
       result.push({
         imei,
+        cand,
         row: {
           id: Number(row.id),
           lat: Number(row.lat),
@@ -2602,9 +2641,11 @@ export class ReportesService {
         'p.lng AS lng',
         'p.fechaHora AS fechaHora',
       ])
-      .where('CAST(p.imei AS CHAR) = :imei', { imei })
+      .where('p.imei = :imei', { imei })
       .andWhere('p.fechaHora < :fechaInicio', { fechaInicio });
-    if (fechaMinima && fechaMinima < fechaInicio) {
+    if (fechaMinima) {
+      // El tramo empieza dentro del periodo: no hay posición previa en esta vigencia.
+      if (fechaMinima >= fechaInicio) return null;
       qb.andWhere('p.fechaHora >= :fechaMinima', { fechaMinima });
     }
     const row = await qb
@@ -2798,11 +2839,9 @@ export class ReportesService {
   ): Promise<InstalacionCandidata[]> {
     const qb = this.instalacionesRepo
       .createQueryBuilder('i')
-      .innerJoin(
-        Dispositivos,
-        'd',
-        'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
-      )
+      // Equipo actual (puede no haber, o estar ya en otro cliente): los
+      // equipos que cuentan salen de los tramos de vigencia (§6).
+      .leftJoin(Dispositivos, 'd', 'd.id = i.idDispositivo')
       .leftJoin(
         Productos,
         'prod',
@@ -2873,11 +2912,10 @@ export class ReportesService {
         'per.nombre AS nombrePersona',
         'per.telefono AS telefonoPersona',
       ])
+      // También las dadas de baja: lo que transmitieron mientras estuvieron
+      // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
       .where('i.idCliente = :idCliente', { idCliente })
-      .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
-      .andWhere('i.idDispositivo IS NOT NULL')
-      .andWhere('d.imei IS NOT NULL')
-      .andWhere('d.idTipoDispositivo <> :panel', {
+      .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       });
 
@@ -2894,7 +2932,7 @@ export class ReportesService {
         numeroSerie: str(row.numeroSerie),
         ...mapProductoPlano(row),
       }))
-      .filter((r) => r.imei !== '' && Number.isFinite(r.idInstalacion));
+      .filter((r) => Number.isFinite(r.idInstalacion));
   }
 
   /** Solo instalaciones de productos vehículo (con fila en `Vehiculos`). */
@@ -2904,11 +2942,9 @@ export class ReportesService {
   ): Promise<InstalacionCandidataVehiculo[]> {
     const qb = this.instalacionesRepo
       .createQueryBuilder('i')
-      .innerJoin(
-        Dispositivos,
-        'd',
-        'd.id = i.idDispositivo AND d.idCliente = i.idCliente',
-      )
+      // Equipo actual (puede no haber, o estar ya en otro cliente): los
+      // equipos que cuentan salen de los tramos de vigencia (§6).
+      .leftJoin(Dispositivos, 'd', 'd.id = i.idDispositivo')
       .innerJoin(
         Productos,
         'prod',
@@ -2932,11 +2968,10 @@ export class ReportesService {
         'modVeh.nombre AS modelo',
         'v.foto AS imagen',
       ])
+      // También las dadas de baja: lo que transmitieron mientras estuvieron
+      // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
       .where('i.idCliente = :idCliente', { idCliente })
-      .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
-      .andWhere('i.idDispositivo IS NOT NULL')
-      .andWhere('d.imei IS NOT NULL')
-      .andWhere('d.idTipoDispositivo <> :panel', {
+      .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       })
       .andWhere('prod.idTipoProducto = :tipoVehiculo', {
@@ -2961,7 +2996,7 @@ export class ReportesService {
         modelo: str(row.modelo),
         imagen: str(row.imagen),
       }))
-      .filter((r) => r.imei !== '' && Number.isFinite(r.idInstalacion));
+      .filter((r) => Number.isFinite(r.idInstalacion));
   }
 
   private async consultarPosicionesPorRadio(args: {
@@ -2975,8 +3010,9 @@ export class ReportesService {
     const { candidatos, lat, lng, radioMetros, fechaInicio, fechaFinal } =
       args;
 
-    const byImei = new Map(candidatos.map((c) => [c.imei, c]));
-    const imeis = [...byImei.keys()];
+    const porTramo = await this.candidatasPorTramo(candidatos, fechaInicio, fechaFinal);
+    if (!porTramo.length) return [];
+    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
 
     const metrosPorGradoLat = 111_320;
     const cosLat = Math.cos((lat * Math.PI) / 180);
@@ -3019,9 +3055,7 @@ export class ReportesService {
         'p.fuentePosicion AS fuentePosicion',
         'p.radioM AS radioM',
       ])
-      .where('p.imei IN (:...imeis)', { imeis })
-      .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
-      .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+      .where(enTramos.sql, enTramos.params)
       .andWhere('p.lat BETWEEN :latMin AND :latMax', {
         latMin: lat - deltaLat,
         latMax: lat + deltaLat,
@@ -3045,7 +3079,7 @@ export class ReportesService {
     const result: PosicionPasoPoiItem[] = [];
     for (const row of rows) {
       const imei = String(row.imei ?? '').trim();
-      const cand = byImei.get(imei);
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
       if (!cand) continue;
 
       result.push({
@@ -3096,11 +3130,9 @@ export class ReportesService {
     fechaFinal: string;
   }): Promise<ReportePosicionItem[]> {
     const { candidatos, fechaInicio, fechaFinal } = args;
-    const byImei = new Map(
-      candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
-    );
-    const imeis = [...byImei.keys()].filter((imei) => imei !== '');
-    if (!imeis.length) return [];
+    const porTramo = await this.candidatasPorTramo(candidatos, fechaInicio, fechaFinal);
+    if (!porTramo.length) return [];
+    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(Posiciones)
@@ -3137,9 +3169,7 @@ export class ReportesService {
         'p.fuentePosicion AS fuentePosicion',
         'p.radioM AS radioM',
       ])
-      .where('p.imei IN (:...imeis)', { imeis })
-      .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
-      .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+      .where(enTramos.sql, enTramos.params)
       .orderBy('p.fechaHora', 'DESC')
       .addOrderBy('p.id', 'DESC')
       .getRawMany<Record<string, unknown>>();
@@ -3148,7 +3178,7 @@ export class ReportesService {
     for (const row of rows) {
       const imei = imeiToString(row.imei);
       if (!imei) continue;
-      const cand = byImei.get(imei);
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
       if (!cand) continue;
 
       result.push({
@@ -3203,11 +3233,9 @@ export class ReportesService {
     fechaFinal: string;
   }): Promise<ReportePosicionItem[]> {
     const { candidatos, fechaInicio, fechaFinal } = args;
-    const byImei = new Map(
-      candidatos.map((c) => [imeiToString(c.imei) ?? c.imei, c]),
-    );
-    const imeis = [...byImei.keys()].filter((imei) => imei !== '');
-    if (!imeis.length) return [];
+    const porTramo = await this.candidatasPorTramo(candidatos, fechaInicio, fechaFinal);
+    if (!porTramo.length) return [];
+    const enTramos = condicionTramos('up', porTramo.map((c) => c.tramo));
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(UltimaPosicion)
@@ -3244,9 +3272,7 @@ export class ReportesService {
         'up.fuentePosicion AS fuentePosicion',
         'up.radioM AS radioM',
       ])
-      .where('up.imei IN (:...imeis)', { imeis })
-      .andWhere('up.fechaHora >= :fechaInicio', { fechaInicio })
-      .andWhere('up.fechaHora <= :fechaFinal', { fechaFinal })
+      .where(enTramos.sql, enTramos.params)
       .orderBy('up.fechaHora', 'DESC')
       .addOrderBy('up.id', 'DESC')
       .getRawMany<Record<string, unknown>>();
@@ -3255,7 +3281,7 @@ export class ReportesService {
     for (const row of rows) {
       const imei = imeiToString(row.imei);
       if (!imei) continue;
-      const cand = byImei.get(imei);
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
       if (!cand) continue;
 
       result.push({
@@ -3311,8 +3337,9 @@ export class ReportesService {
     fechaFinal: string;
   }): Promise<VelocidadItem[]> {
     const { candidatos, velocidadMin, fechaInicio, fechaFinal } = args;
-    const byImei = new Map(candidatos.map((c) => [c.imei, c]));
-    const imeis = [...byImei.keys()];
+    const porTramo = await this.candidatasPorTramo(candidatos, fechaInicio, fechaFinal);
+    if (!porTramo.length) return [];
+    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
 
     const rows = await this.instalacionesRepo.manager
       .getRepository(Posiciones)
@@ -3327,9 +3354,7 @@ export class ReportesService {
         'p.velocidad AS velocidad',
         'p.ignicion AS ignicion',
       ])
-      .where('p.imei IN (:...imeis)', { imeis })
-      .andWhere('p.fechaHora >= :fechaInicio', { fechaInicio })
-      .andWhere('p.fechaHora <= :fechaFinal', { fechaFinal })
+      .where(enTramos.sql, enTramos.params)
       .andWhere('p.velocidad >= :velocidadMin', { velocidadMin })
       .orderBy('p.fechaHora', 'DESC')
       .addOrderBy('p.id', 'DESC')
@@ -3338,7 +3363,7 @@ export class ReportesService {
     const result: VelocidadItem[] = [];
     for (const row of rows) {
       const imei = String(row.imei ?? '').trim();
-      const cand = byImei.get(imei);
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
       if (!cand) continue;
 
       result.push({

@@ -4,7 +4,6 @@ import { Instalaciones } from 'src/entities/Instalaciones';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
 import { Geocercas } from 'src/entities/Geocercas';
 import { Clientes } from 'src/entities/Clientes';
-import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { ReportesController } from './reportes.controller';
 import { ReportesService } from './reportes.service';
@@ -18,7 +17,6 @@ import { ProductosClienteService } from './productos-cliente.service';
       Instalaciones,
       Geocercas,
       Clientes,
-      HistoricoInstalaciones,
     ]),
     TenantFilterModule,
   ],
