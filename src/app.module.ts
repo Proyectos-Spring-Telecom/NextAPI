@@ -24,6 +24,7 @@ import { ProductosModule } from './productos/productos.module';
 import { AlarmasModule } from './alarmas/alarmas.module';
 import { MonitoreoModule } from './monitoreo/monitoreo.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { ComandosModule } from './comandos/comandos.module';
 import { WebhookEmitterModule } from './webhook-emitter/webhook-emitter.module';
 import { PuntosInteresModule } from './puntos-interes/puntos-interes.module';
 import { GeocercasModule } from './geocercas/geocercas.module';
@@ -121,6 +122,7 @@ import * as jwt from 'jsonwebtoken';
         // Vigilancia de transmisión (docs/motor-activos.md §7b).
         VIGILANCIA_TRANSMISION_ENABLED: Joi.boolean().default(true),
         VIGILANCIA_PROVEEDOR_MIN: Joi.number().integer().min(1).default(3),
+        COMANDOS_VIGENCIA_HORAS: Joi.number().integer().min(1).default(72),
         RABBITMQ_ENABLED: Joi.boolean().default(false),
         RABBITMQ_HOST: Joi.string().default('127.0.0.1'),
         RABBITMQ_PORT: Joi.number().default(5672),
@@ -241,6 +243,8 @@ import * as jwt from 'jsonwebtoken';
     VigilanciaTransmisionModule,
 
     MessagingModule,
+
+    ComandosModule,
 
     WebhookEmitterModule,
   ],

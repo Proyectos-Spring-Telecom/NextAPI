@@ -31,6 +31,15 @@ export interface RabbitMqRuntimeConfig {
     alarms: RabbitMqQueueDefinition;
     dlq: string;
   };
+  /** Comandos de Next a los equipos (docs/motor-activos.md §8). */
+  comandos: {
+    /** Exchange topic de salida: `<protocolo>.cmd` → cola `commands.<protocolo>` que consume el socket. */
+    exchange: string;
+    protocolos: string[];
+    /** Confirmaciones del socket (`<protocolo>.cmd.ack` en el exchange de telemetría). */
+    acks: RabbitMqQueueDefinition;
+    dlq: string;
+  };
 }
 
 function dlqArgs(dlx: string, failedRoutingKey: string) {
@@ -138,6 +147,21 @@ export function readRabbitMqConfig(config: ConfigService): RabbitMqRuntimeConfig
       },
       dlq:
         config.get<string>('RABBITMQ_QUEUE_AVL_DLQ') ?? 'telemetry.avl.dlq',
+    },
+    comandos: {
+      exchange: config.get<string>('RABBITMQ_EXCHANGE_COMANDOS') ?? 'commands',
+      protocolos: ['fa100s'],
+      acks: {
+        queue:
+          config.get<string>('RABBITMQ_QUEUE_COMANDOS_ACKS') ??
+          'telemetry.commands.acks',
+        bindings: ['*.cmd.ack'],
+        prefetch: prefetch(config, 'RABBITMQ_PREFETCH_COMANDOS', defaultPrefetch),
+        dlqRoutingKey: 'telemetry.commands.failed',
+      },
+      dlq:
+        config.get<string>('RABBITMQ_QUEUE_COMANDOS_DLQ') ??
+        'telemetry.commands.dlq',
     },
   };
 }

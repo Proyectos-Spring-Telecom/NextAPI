@@ -48,3 +48,4 @@ Para agregar un escenario: un `describe` nuevo en `flujo-ordenes.e2e-spec.ts` us
 | `almacen.e2e-spec.ts` | Motor de activos, fase B: equipo y SIM sin cliente en almacén, reserva, cliente al instalar y al salir, selector con almacén, corregir instalación de cliente y el saneamiento |
 | `clases.e2e-spec.ts` | Motor de activos, fase C: una instalación activa por clase y vehículo (GPS + TrackCam), cambio de equipo de la misma clase, estatus del vehículo con varias instalaciones, histórico del vehículo por fuente |
 | `geocercas-vehiculo.e2e-spec.ts` | Motor de activos, fase C: la geocerca es del vehículo; sobrevive al cambio de equipo, marca Estado 8 con el equipo nuevo y la evalúa el reporte de salidas |
+| `reloj-comandos.e2e-spec.ts` | Motor de activos, fase F: números de emergencia y configuración del reloj → comandos (SOS, CENTER, PHB, FALLDOWN, LSSET, UPLOAD), pendientes sin RabbitMQ, confirmaciones del socket que no retroceden y validaciones |

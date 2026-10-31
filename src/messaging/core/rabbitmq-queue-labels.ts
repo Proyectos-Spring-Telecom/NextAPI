@@ -4,4 +4,5 @@ export const QUEUE_LABEL = {
   axproHeartbeats: 'axpro:heartbeat',
   avlEvents: 'avl:events',
   avlAlarms: 'avl:alarms',
+  comandosAcks: 'comandos:acks',
 } as const;

@@ -5,7 +5,8 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import amqp, { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
+import amqp, { Channel, ChannelModel, ConfirmChannel, ConsumeMessage } from 'amqplib';
+import { ComandosAcksConsumer } from '../comandos/comandos-acks.consumer';
 import { AvlEventsConsumer } from '../avl/avl-events.consumer';
 import { AxproEventsConsumer } from '../axpro/axpro-events.consumer';
 import { AxproHeartbeatsConsumer } from '../axpro/axpro-heartbeats.consumer';
@@ -45,6 +46,8 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
   private dbGate = new DbAvailabilityGate(this.logger);
   /** Canales cerrados: un mensaje en espera de MySQL deja de intentar (el broker lo reentrega). */
   private readonly closedChannels = new WeakSet<Channel>();
+  private comandosChannel: ConfirmChannel | null = null;
+  private readonly comandosDevueltos = new Set<string>();
 
   constructor(
     private readonly config: ConfigService,
@@ -52,6 +55,7 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     private readonly axproEventsConsumer: AxproEventsConsumer,
     private readonly axproHeartbeatsConsumer: AxproHeartbeatsConsumer,
     private readonly avlEventsConsumer: AvlEventsConsumer,
+    private readonly comandosAcksConsumer: ComandosAcksConsumer,
   ) {}
 
   async onModuleInit() {
@@ -172,6 +176,32 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     }, intervalMs);
   }
 
+  /**
+   * Publica un comando en `commands` con routing key `<protocolo>.cmd` y espera
+   * la confirmación del broker. Sin conexión o con RabbitMQ apagado → error:
+   * el comando se queda pendiente y ComandosService lo reintenta.
+   */
+  async publicarComando(protocolo: string, messageId: string, cuerpo: Record<string, unknown>): Promise<void> {
+    const ch = this.comandosChannel;
+    if (!ch || !this.cfg?.enabled) throw new Error('RabbitMQ no disponible para publicar comandos');
+    ch.publish(this.cfg.comandos.exchange, `${protocolo}.cmd`, Buffer.from(JSON.stringify(cuerpo)), {
+      contentType: 'application/json',
+      deliveryMode: 2,
+      messageId,
+      headers: { protocol: protocolo, kind: 'command' },
+      mandatory: true,
+    });
+    await ch.waitForConfirms();
+    if (this.comandosDevueltos.delete(messageId)) {
+      throw new Error(`sin cola para ${protocolo}.cmd (¿socket sin desplegar o binding faltante?)`);
+    }
+  }
+
+  /** ¿Se pueden publicar comandos ahora? (el relay no intenta si no). */
+  comandosDisponible(): boolean {
+    return this.comandosChannel != null && !!this.cfg?.enabled;
+  }
+
   private async runWatchdog(thresholdMinutes: number) {
     if (this.stopping || !this.cfg?.enabled) {
       return;
@@ -255,6 +285,10 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     for (const ch of channels) {
       await ch.close().catch(() => undefined);
     }
+    if (this.comandosChannel) {
+      await this.comandosChannel.close().catch(() => undefined);
+      this.comandosChannel = null;
+    }
     if (this.connection) {
       await this.connection.close().catch(() => undefined);
       this.connection = null;
@@ -300,17 +334,23 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
     const axproHbCh = await this.connection.createChannel();
     const avlEventsCh = await this.connection.createChannel();
     const avlAlarmsCh = await this.connection.createChannel();
+    const comandosAcksCh = await this.connection.createChannel();
+    // Publicación de comandos con confirmación del broker (ComandosService).
+    const comandosPubCh = await this.connection.createConfirmChannel();
 
     this.bindChannelEvents(axproEventsCh, 'axpro-events');
     this.bindChannelEvents(axproHbCh, 'axpro-heartbeats');
     this.bindChannelEvents(avlEventsCh, 'avl-events');
     this.bindChannelEvents(avlAlarmsCh, 'avl-alarms');
+    this.bindChannelEvents(comandosAcksCh, 'comandos-acks');
+    this.bindChannelEvents(comandosPubCh, 'comandos-publicacion');
 
     for (const ch of [
       axproEventsCh,
       axproHbCh,
       avlEventsCh,
       avlAlarmsCh,
+      comandosAcksCh,
     ]) {
       await ch.assertExchange(cfg.exchange, 'topic', { durable: true });
       await ch.assertExchange(cfg.dlx, 'topic', { durable: true });
@@ -333,6 +373,23 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.dlx,
       cfg.avl.events.dlqRoutingKey,
     );
+
+    // Comandos: Next declara el exchange y la cola de cada protocolo; el socket solo consume.
+    await comandosAcksCh.assertExchange(cfg.comandos.exchange, 'topic', { durable: true });
+    for (const protocolo of cfg.comandos.protocolos) {
+      const cola = `commands.${protocolo}`;
+      await comandosAcksCh.assertQueue(cola, { durable: true });
+      await comandosAcksCh.bindQueue(cola, cfg.comandos.exchange, `${protocolo}.cmd`);
+    }
+    await this.setupQueue(comandosAcksCh, cfg.exchange, cfg.dlx, cfg.comandos.acks);
+    await comandosAcksCh.assertQueue(cfg.comandos.dlq, { durable: true });
+    await comandosAcksCh.bindQueue(cfg.comandos.dlq, cfg.dlx, cfg.comandos.acks.dlqRoutingKey);
+    // Con `mandatory`, un comando sin cola (no está declarada o no hay binding) regresa
+    // aquí antes de su confirmación: publicarComando lo trata como no publicado.
+    comandosPubCh.on('return', (msg) => {
+      if (msg.properties.messageId) this.comandosDevueltos.add(String(msg.properties.messageId));
+    });
+    this.comandosChannel = comandosPubCh;
 
     await this.registerConsumer(
       axproEventsCh,
@@ -357,6 +414,12 @@ export class RabbitMqConnectionService implements OnModuleInit, OnModuleDestroy 
       cfg.avl.alarms,
       QUEUE_LABEL.avlAlarms,
       (m) => this.avlEventsConsumer.consume(m, 'alarm'),
+    );
+    await this.registerConsumer(
+      comandosAcksCh,
+      cfg.comandos.acks,
+      QUEUE_LABEL.comandosAcks,
+      (m) => this.comandosAcksConsumer.consume(m),
     );
 
     this.logger.log(

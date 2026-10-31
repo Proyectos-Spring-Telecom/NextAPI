@@ -172,7 +172,7 @@ Hoy la cola va en un solo sentido (sockets → Next). La configuración que se c
 | C ✅ | Varias instalaciones por vehículo (por clase), geocercas y asignaciones por vehículo | A |
 | D ✅ | Corregir `VigenteDesde` (74 migradas) y recorte por vigencia en histórico y reportes | A, saneamiento |
 | E ✅ | Ingesta por estatus, panel de equipos sin instalación y vigilancia de transmisión (§7b) | A |
-| F | Canal de comandos y números de emergencia del reloj | kit de sockets |
+| F ✅ | Canal de comandos y números de emergencia del reloj | kit de sockets |
 
 Cada fase cierra con unitarias, la batería, una revisión independiente, la documentación al día (incluidas `front-next.md` y `app-instaladores.md`) y comandos de despliegue.
 
@@ -363,3 +363,29 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - Integración CRM: las unidades siguen contándose por instalación (un GPS y una TrackCam son dos servicios); el listado trae `clase`.
 
 **Pruebas:** `test/e2e-ordenes/clases.e2e-spec.ts` y `geocercas-vehiculo.e2e-spec.ts`. Incluye el cambio de vehículo con otra instalación que se queda.
+
+
+## 18. Fase F implementada (30/10/2026)
+
+**Base:** `deploy/sql/MotorActivosFaseF.sql` (se puede repetir): `ComandosDispositivo` (cada comando y su recorrido) y `NumerosEmergenciaReloj` (de la persona: si cambia el reloj, se le vuelven a mandar al nuevo).
+
+**Canal** (NextAPI ↔ sockets por RabbitMQ):
+- NextAPI guarda el comando (`pendiente`) y lo publica en el exchange `commands` con routing `<protocolo>.cmd`; declara el exchange y la cola `commands.<protocolo>` (hoy `commands.fa100s`). Sin RabbitMQ se queda pendiente y se reintenta cada minuto; vence a las `COMANDOS_VIGENCIA_HORAS` (72).
+- El socket (kit `CommandInbox`, opcional por socket) consume sin declarar, guarda en su SQLite antes de confirmar al broker, entrega al equipo cuando está conectado (sobrevive reinicios) y responde por su outbox en `telemetry` con `<protocolo>.cmd.ack`: `recibido`, `enviado`, `confirmado` (el equipo respondió con la misma palabra), `vencido`, `fallido`.
+- NextAPI consume las confirmaciones (`telemetry.commands.acks`, DLQ `telemetry.commands.dlq`): el estatus avanza y nunca retrocede; una confirmación de otro equipo se ignora.
+
+**Reloj FA100S** (`springFA100S`, con `FA100S_COMMANDS_ENABLED=true`):
+- `PUT /instalaciones/:id/reloj/numeros-emergencia` (roles 1–6): SOS (3), centro y agenda (15, en `PHB`/`PHB2`/`PHB3`; nombres en Unicode, hasta 10 caracteres).
+- `POST /instalaciones/:id/reloj/configuracion` (roles 1–5): intervalo (`UPLOAD`), caída (`FALLDOWN` detección y llamada) y sensibilidad (`LSSET` v+6). Solo los campos enviados; se guardan en `RelojConfig`.
+- `GET /instalaciones/:id/reloj/comandos`: los últimos 100 con su estatus.
+- **Nada se manda solo:** ni al desplegar ni al instalar. Cada envío lo pide alguien desde el portal.
+
+**Por validar con un reloj real** (el protocolo del proveedor no lo documenta): que un bloque de agenda vacío (`PHB2` sin contactos) y un lugar SOS vacío (`SOS,a,,`) borren esos lugares, y cómo borrar el centro (hoy `centro: null` solo lo borra en Next). Si el reloj no responde a esos, el comando queda `enviado` y el socket lo reintenta hasta marcarlo `fallido`.
+
+**Revisión independiente (30/10):**
+- Las confirmaciones se escriben con una sola actualización condicional a los estatus desde los que avanzan: dos que llegan juntas o el vencimiento del relay no se pisan, y `confirmado` no se pierde.
+- Un comando sin cola (socket sin desplegar, binding faltante) regresa del broker (`mandatory`) y se queda pendiente en lugar de marcarse publicado.
+- Sin RabbitMQ el relay no intenta ni reescribe lo pendiente cada minuto; el lugar de cada número SOS se conserva.
+- En el socket: el perfil automático de `UPLOAD` ya no pisa el intervalo que mande Next; un comando `enviado` sin respuesta se reintenta al siguiente reporte del reloj (hasta 3 veces, luego `fallido`) y vence en su vigencia; la respuesta exacta (`PHB2`, `SOS3`) confirma su comando; el buzón se recupera si se cierra el canal o la cola aún no existe.
+
+**Pruebas:** `test/e2e-ordenes/reloj-comandos.e2e-spec.ts`, unitarias de los comandos y del recorrido; en el kit y en FA100S, sus suites (`kit/commands/commands.spec.ts`, `src/comandos.spec.ts`).

@@ -475,3 +475,12 @@ Desde la fase C ([motor-activos.md](motor-activos.md) §17):
 - **Geocercas:** se dan de alta por vehículo (`idProducto` en `POST /geocercas` y `PATCH /geocercas/:id`). `idInstalacion` sigue aceptándose pero está obsoleto. Las respuestas traen `idProducto`; `idInstalacion` es la instalación activa principal del vehículo (GPS antes que TrackCam), o null.
   - Ya no se borran al cambiar de equipo ni al dar de baja la instalación.
 - **Asignación de usuarios 7/9:** sigue por instalación; para que un operador vea la TrackCam del vehículo hay que asignársela también.
+
+
+## 23. Reloj: números de emergencia y configuración (fase F)
+
+Desde la fase F ([motor-activos.md](motor-activos.md) §18), Next le manda al reloj FA100S su configuración. En el detalle de una instalación de reloj (`clase = RELOJ`):
+
+- **Números de emergencia** (roles 1–6): `GET` / `PUT /instalaciones/:id/reloj/numeros-emergencia` con `{ sos: [hasta 3], centro, agenda: [{ nombre (hasta 10), telefono }] (hasta 15) }`. Lo que no se envía no cambia. Son de la persona: si se cambia el reloj, volver a guardarlos para mandarlos al nuevo.
+- **Configuración** (roles 1–5): `POST /instalaciones/:id/reloj/configuracion` con los campos a cambiar: `intervaloReporteSegundos`, `deteccionCaida`, `llamadaPorCaida`, `sensibilidadCaida` (1–6; mayor = menos sensible).
+- **Estatus de lo enviado:** `GET /instalaciones/:id/reloj/comandos`. `pendiente` y `publicado` = todavía en Next/cola; `recibido` = en el socket; `enviado` = ya se escribió al reloj; `confirmado` = el reloj lo aplicó; `vencido` = el reloj no se conectó a tiempo (72 h). Mostrar el último de cada tipo con su estatus; si el reloj está apagado, se le entrega al conectarse.
