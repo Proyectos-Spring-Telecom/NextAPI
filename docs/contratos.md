@@ -364,7 +364,7 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 | Propiedad | Valor |
 |-----------|-------|
 | Exchange / routing key | `telemetry` / `jimi.position` (enruta a `telemetry.avl.events`) |
-| Usuario AMQP | `avl` (vhost `/`) |
+| Usuario AMQP | `avl` (vhost `/`), compartido; pendiente de usuario propio (§12.7) |
 | `content_type` / `delivery_mode` | `application/json` / `2` |
 | `message_id` | `eventId` |
 | Headers | `protocol=jimi`, `kind=position`, `deviceId=<IMEI>` |
@@ -487,6 +487,26 @@ Los sockets no filtran equipos (salvo TrackCam, que tiene registro propio): **Ne
 - El mensaje **se confirma** (no va a la DLQ). Un fallo al escribir la tabla solo se registra en log; no frena la cola.
 - Log: `warn` solo la primera vez que aparece un equipo (`Equipo sin alta: …`); las repeticiones van en `debug`.
 - Al darlo de alta, deja de registrarse (su `UltimaVez` se queda fija). `DELETE` lo quita de la lista; si sigue transmitiendo sin alta, vuelve a aparecer.
+
+### 12.7 Usuarios del broker y topes
+
+Cada pieza entra con su propio usuario y solo puede lo que necesita (`deploy/rabbitmq/endurecer-broker.sh`, idempotente, con `sudo` en springfieldDev):
+
+| Usuario | configure | write | read | Quién |
+|---------|-----------|-------|------|-------|
+| `backend` | `^telemetry.*` | `^telemetry.*` | `^telemetry.*` | NextAPI: declara toda la topología |
+| `sock_trackcam` · `sock_trackgas` · `sock_panel` · `sock_fa100s` · `sock_s18` | `^$` | `^telemetry$` | `^telemetry\.commands\.<protocolo>$` (`jt808`, `jimi`, `axpro`, `fa100s`, `s18`) | Cada socket: publica telemetría y acks; solo lee su cola de comandos |
+| `sentinela` (tag `monitoring`) | `^$` | `^$` | `^$` | Vigía de springfieldDev: lee el API de administración local (15672) |
+
+- Los sockets no declaran nada: `checkExchange` y `checkQueue` son pasivos y el broker no pide permiso para ellos.
+- `gw_panel` se retira con `--retirar gw_panel` en cuanto el Panel entra con `sock_panel`. `avl` sigue mientras lo use el Server_Socket .NET (§12.2, entra por 5672 sin TLS desde fuera); al pasarlo a su propio usuario (write `^telemetry$`, como los sockets) y a 5671, se retira con `--retirar avl` y se cierra 5672 a todo lo que no sea 127.0.0.1. `--retirar` no borra un usuario con conexiones abiertas.
+
+| Política | Colas | Tope | Al llenarse |
+|----------|-------|------|-------------|
+| `dlq-tope` | `^telemetry\..+\.dlq$` | 50 000 mensajes o 100 MB | `drop-head`: se pierde lo más viejo |
+| `comandos-tope` | `^telemetry\.commands\.(jt808\|jimi\|axpro\|fa100s\|s18)$` | 10 000 | `reject-publish`: NextAPI recibe el rechazo (confirmaciones) y el comando sigue `pendiente` |
+
+Las colas de ingesta (`avl.*`, `axpro.*`, `commands.acks`) no tienen tope: perder datos es peor que acumularlos. Las vigila el vigía (`~/ops/vigia/vigia.sh`, cada 2 min): sin consumidor o más de 2 000 por procesar → alta; comandos sin recoger > 1 000 → media; mensajes nuevos en una DLQ → media (a lo más cada 30 min); DLQ al 80 % del tope → alta.
 
 ## 13. Alarmas (panel SIA / AX PRO)
 
