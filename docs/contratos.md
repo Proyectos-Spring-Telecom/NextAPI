@@ -372,7 +372,7 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 | Propiedad | Valor |
 |-----------|-------|
 | Exchange / routing key | `telemetry` / `jimi.position` (enruta a `telemetry.avl.events`) |
-| Usuario AMQP | `avl` (vhost `/`), compartido; pendiente de usuario propio (§12.7) |
+| Usuario AMQP | `sock_sion` (vhost `/`), por 5671 con TLS a `mq.springtelecom.mx` (§12.7); `avl` retirado el 2026-11-02 |
 | `content_type` / `delivery_mode` | `application/json` / `2` |
 | `message_id` | `eventId` |
 | Headers | `protocol=jimi`, `kind=position`, `deviceId=<IMEI>` |
@@ -508,7 +508,7 @@ Cada pieza entra con su propio usuario y solo puede lo que necesita (`deploy/rab
 | `sentinela` (tag `monitoring`) | `^$` | `^$` | `^$` | Vigía de springfieldDev: lee el API de administración local (15672) |
 
 - Los sockets no declaran nada: `checkExchange` y `checkQueue` son pasivos y el broker no pide permiso para ellos.
-- `gw_panel` se retira con `--retirar gw_panel` en cuanto el Panel entra con `sock_panel`. `avl` sigue mientras lo use el Server_Socket .NET (§12.2, entra por 5672 sin TLS desde fuera); al pasarlo a su propio usuario (write `^telemetry$`, como los sockets) y a 5671, se retira con `--retirar avl` y se cierra 5672 a todo lo que no sea 127.0.0.1. `--retirar` no borra un usuario con conexiones abiertas.
+- Retirados el 2026-11-02: `gw_panel` (el Panel entra con `sock_panel`) y `avl` (el Server_Socket entra con `sock_sion` por 5671). El 5672 quedó cerrado en el firewall: solo NextAPI lo usa por 127.0.0.1. Todo cliente externo entra por 5671 con TLS (`mq.springtelecom.mx`, certificado comodín `*.springtelecom.mx`). `--retirar` no borra un usuario con conexiones abiertas.
 
 | Política | Colas | Tope | Al llenarse |
 |----------|-------|------|-------------|

@@ -57,7 +57,7 @@ Fecha de consolidación: 2026-10-03
 | **NextAPI** | API de negocio, persistencia, listados, sockets, proxy foto/video, consumers AMQP, webhooks salientes |
 | **springTrackCam** | Gateway JT808 (TCP cámara), captura HTTP foto/video, publica AMQP `jt808.*` |
 | **springTrackGas** | Gateway Concox VL802, publica AMQP `jimi.*` |
-| **Server_Socket** (.NET, SionDev) | Inserta la posición en SQL Server (SionDev) y después publica `jimi.position` al exchange `telemetry` (usuario AMQP `avl`) |
+| **Server_Socket** (.NET, SionDev) | Inserta la posición en SQL Server (SionDev) y después publica `jimi.position` al exchange `telemetry` (usuario AMQP `sock_sion`, 5671 TLS) |
 | **springFA100S** | Gateway de relojes FA100S, publica AMQP `fa100s.*` |
 | **SpringPanel / SIA** | Ingest HMAC de paneles de alarma (`/alarmas/ingest`) |
 | **AX PRO** | Eventos y heartbeats de panel vía colas `telemetry.axpro.*` |
