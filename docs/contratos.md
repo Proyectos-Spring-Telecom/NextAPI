@@ -504,6 +504,7 @@ Cada pieza entra con su propio usuario y solo puede lo que necesita (`deploy/rab
 |---------|-----------|-------|------|-------|
 | `backend` | `^telemetry.*` | `^telemetry.*` | `^telemetry.*` | NextAPI: declara toda la topología |
 | `sock_trackcam` · `sock_trackgas` · `sock_panel` · `sock_fa100s` · `sock_s18` | `^$` | `^telemetry$` | `^telemetry\.commands\.<protocolo>$` (`jt808`, `jimi`, `axpro`, `fa100s`, `s18`) | Cada socket: publica telemetría y acks; solo lee su cola de comandos |
+| `sock_sion` | `^$` | `^telemetry$` | `^$` | Server_Socket de Sion (.NET): publica `jimi.position` por 5671 con TLS; reemplaza a `avl` |
 | `sentinela` (tag `monitoring`) | `^$` | `^$` | `^$` | Vigía de springfieldDev: lee el API de administración local (15672) |
 
 - Los sockets no declaran nada: `checkExchange` y `checkQueue` son pasivos y el broker no pide permiso para ellos.

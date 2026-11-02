@@ -5,9 +5,12 @@
 #   sudo bash endurecer-broker.sh --conexiones    → quién está conectado (usuario, IP, puerto)
 #   sudo bash endurecer-broker.sh --retirar avl gw_panel
 #                                                 → borra usuarios viejos, solo si ya nadie los usa
+#   sudo bash endurecer-broker.sh --solo sock_sion
+#                                                 → crea o actualiza solo ese usuario (su contraseña en
+#                                                   el .env); no toca a los demás ni las políticas
 #
 # Contraseñas: ~/rabbitmq-usuarios.env (600) con SOCK_TRACKCAM=…, SOCK_TRACKGAS=…,
-# SOCK_PANEL=…, SOCK_FA100S=…, SOCK_S18=…, SENTINELA=…. Se borra al terminar.
+# SOCK_PANEL=…, SOCK_FA100S=…, SOCK_S18=…, SOCK_SION=…, SENTINELA=…. Se borra al terminar.
 # Nunca se imprimen. Idempotente: una segunda corrida deja todo igual.
 set -euo pipefail
 VH=/
@@ -32,6 +35,9 @@ if [[ ${1:-} == --retirar ]]; then
   exit 0
 fi
 
+SOLO=
+if [[ ${1:-} == --solo ]]; then SOLO=${2:?Falta el usuario}; fi
+
 [[ -r $CRED ]] || { echo "Falta $CRED"; exit 1; }
 # shellcheck disable=SC1090
 source "$CRED"
@@ -41,6 +47,7 @@ source "$CRED"
 # exchange de telemetría (datos y acks de comandos). read: solo su cola de comandos.
 usuario() {
   local u=$1 pass=$2 conf=$3 write=$4 read=$5 tags=${6:-}
+  [[ -z $SOLO || $SOLO == "$u" ]] || return 0
   [[ -n $pass ]] || { echo "Sin contraseña para $u"; exit 1; }
   if $CTL list_users | awk '{print $1}' | grep -qx "$u"; then
     $CTL change_password "$u" "$pass" >/dev/null
@@ -58,8 +65,17 @@ usuario sock_trackgas "${SOCK_TRACKGAS:-}" '^$' '^telemetry$' '^telemetry\.comma
 usuario sock_panel    "${SOCK_PANEL:-}"    '^$' '^telemetry$' '^telemetry\.commands\.axpro$'
 usuario sock_fa100s   "${SOCK_FA100S:-}"   '^$' '^telemetry$' '^telemetry\.commands\.fa100s$'
 usuario sock_s18      "${SOCK_S18:-}"      '^$' '^telemetry$' '^telemetry\.commands\.s18$'
+# Server_Socket de Sion (.NET, fuera de nuestros servidores): solo publica
+# jimi.position; no recibe comandos. Entra por 5671 con TLS (reemplaza a avl).
+usuario sock_sion     "${SOCK_SION:-}"     '^$' '^telemetry$' '^$'
 # Solo lectura del API de administración (vigía): sin permisos AMQP.
 usuario sentinela     "${SENTINELA:-}"     '^$' '^$' '^$' monitoring
+
+if [[ -n $SOLO ]]; then
+  shred -u "$CRED" 2>/dev/null || rm -f "$CRED"
+  echo "Contraseñas borradas de $CRED"
+  exit 0
+fi
 
 # Topes. Una sola política aplica por cola: los patrones no se enciman.
 # DLQ: guarda lo más reciente (drop-head); el vigía avisa antes de llegar.
