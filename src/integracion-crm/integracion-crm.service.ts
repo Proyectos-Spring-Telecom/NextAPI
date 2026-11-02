@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { ClientesService } from 'src/clientes/clientes.service';
 import { CreateClienteDto } from 'src/clientes/dto/create-cliente.dto';
+import { Instalaciones } from 'src/entities/Instalaciones';
+import { fechaPared } from 'src/utils/datetime-mexico.util';
 import { InstalacionesService } from 'src/instalaciones/instalaciones.service';
 import { FechaInstalacionCrmDto } from './dto/fecha-instalacion-crm.dto';
 
@@ -94,17 +96,20 @@ export class IntegracionCrmService {
   /**
    * Unidades activas de los clientes indicados. `ordenFolio`: la orden de
    * servicio (alta o cambio de equipo) que dejó la instalación vigente; con ella,
-   * `instalada` es la fecha real y el CRM no la corrige a mano.
+   * `instalada` es la fecha real y el CRM no la corrige a mano. `instalada` es
+   * la del equipo: si la versión vigente viene de un cambio de SIM, la del
+   * inicio del mismo equipo en el vehículo (inicioMismoEquipo).
    */
-  unidades(idsCliente: number[]) {
-    if (!idsCliente.length) return Promise.resolve([]);
-    return this.dataSource.query(
+  async unidades(idsCliente: number[]) {
+    if (!idsCliente.length) return [];
+    const filas = await this.dataSource.query(
       `SELECT i.Id AS idInstalacion, i.IdCliente AS idClienteNext,
               p.Nombre AS producto, tp.Nombre AS tipoProducto,
               i.IdProducto AS idProducto, v.Placa AS placa, v.NumeroEconomico AS economico,
               CAST(d.Imei AS CHAR) AS imei, d.NumeroSerie AS serie, td.Nombre AS dispositivo,
               i.Clase AS clase,
               DATE_FORMAT(i.VigenteDesde, '%Y-%m-%d') AS instalada,
+              i.IdHistoricoInstalacion AS idHistorico, i.IdDispositivo AS idDispositivo,
               (SELECT o.Folio FROM OrdenesServicio o
                 WHERE o.IdInstalacionResultado = i.Id AND o.Estatus = 'cerrada'
                   AND o.TipoServicio IN ('instalacion', 'c_equipo')
@@ -118,14 +123,27 @@ export class IntegracionCrmService {
         WHERE i.Estatus = 1 AND i.EstatusInstalacion = 1 AND i.IdCliente IN (?)
         ORDER BY i.VigenteDesde`,
       [idsCliente],
-    ).then((filas: Array<Record<string, unknown>>) =>
-      filas.map((f) => ({
+    ) as Array<Record<string, unknown>>;
+    const salida: Array<Record<string, unknown>> = [];
+    for (const { idHistorico, idDispositivo, ...f } of filas) {
+      let instalada = f.instalada;
+      if (idHistorico != null) {
+        const inicio = await this.instalacionesService.inicioMismoEquipo(this.dataSource.manager, {
+          idHistoricoInstalacion: Number(idHistorico),
+          idDispositivo: idDispositivo == null ? null : Number(idDispositivo),
+          idProducto: Number(f.idProducto),
+        } as never);
+        if (inicio?.vigenteDesde) instalada = fechaPared(new Date(inicio.vigenteDesde)).slice(0, 10);
+      }
+      salida.push({
         ...f,
+        instalada,
         idInstalacion: Number(f.idInstalacion),
         idClienteNext: Number(f.idClienteNext),
         idProducto: Number(f.idProducto),
-      })),
-    );
+      });
+    }
+    return salida;
   }
 
   /**
@@ -157,26 +175,24 @@ export class IntegracionCrmService {
    */
   async fechaInstalacion(id: number, dto: FechaInstalacionCrmDto) {
     const idUsuario = this.usuarioCrm('corrige fechas de instalación');
-    const filas: Array<{ idCliente: string; estatus: number; dia: string }> = await this.dataSource.query(
-      `SELECT IdCliente AS idCliente, Estatus AS estatus, DATE_FORMAT(VigenteDesde, '%Y-%m-%d') AS dia
-         FROM Instalaciones WHERE Id = ?`,
-      [id],
-    );
-    const inst = filas[0];
+    const inst = await this.dataSource.manager.findOne(Instalaciones, { where: { id } });
     if (!inst || Number(inst.idCliente) !== dto.idClienteNext) {
       throw new NotFoundException('La instalación no es de ese cliente en Next');
     }
     if (Number(inst.estatus) !== 1) {
       throw new BadRequestException('Solo se corrige la fecha de una instalación activa.');
     }
-    if (dto.fecha === inst.dia) {
-      return { status: 'success', message: 'La instalación ya tiene esa fecha.', data: { id, vigenteDesde: inst.dia, sinCambio: true } };
+    // La fecha del equipo: tras un cambio de SIM, el inicio del mismo equipo.
+    const inicio = await this.instalacionesService.inicioMismoEquipo(this.dataSource.manager, inst);
+    const dia = fechaPared(new Date(inicio?.vigenteDesde ?? inst.vigenteDesde)).slice(0, 10);
+    if (dto.fecha === dia) {
+      return { status: 'success', message: 'La instalación ya tiene esa fecha.', data: { id, vigenteDesde: dia, sinCambio: true } };
     }
-    if (dto.fecha > inst.dia) {
-      throw new BadRequestException(`La fecha de instalación solo se corrige hacia atrás: en Next es ${inst.dia}.`);
+    if (dto.fecha > dia) {
+      throw new BadRequestException(`La fecha de instalación solo se corrige hacia atrás: en Next es ${dia}.`);
     }
     const quien = dto.usuario?.trim() ? ` (${dto.usuario.trim()})` : '';
-    const r = await this.instalacionesService.corregirVigenteDesde(
+    const r = await this.instalacionesService.corregirInicioEquipo(
       id,
       { vigenteDesde: `${dto.fecha} 00:00:00`, motivo: `CRM${quien}: ${dto.motivo.trim()}`.slice(0, 500) },
       idUsuario,

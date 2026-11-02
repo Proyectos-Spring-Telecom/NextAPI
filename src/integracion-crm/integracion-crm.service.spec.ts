@@ -5,12 +5,13 @@ jest.mock('src/instalaciones/instalaciones.service', () => ({ InstalacionesServi
 
 import { IntegracionCrmService } from './integracion-crm.service';
 
-function build(filas: unknown[] = [], idUsuario?: string) {
-  const ds = { query: jest.fn(async () => filas) };
+function build(filas: unknown[] = [], idUsuario?: string, inicio: { vigenteDesde: Date } | null = null) {
+  const ds = { query: jest.fn(async () => filas), manager: { findOne: jest.fn(async () => filas[0] ?? null) } };
   const clientes = { createCliente: jest.fn(async () => ({ status: 'success', data: { id: 90 } })) };
   const config = { get: () => idUsuario };
   const instalaciones = {
-    corregirVigenteDesde: jest.fn(async () => ({ status: 'success', message: 'ok', data: { id: 7, vigenteDesde: '2021-03-12 00:00:00' } })),
+    inicioMismoEquipo: jest.fn(async () => inicio),
+    corregirInicioEquipo: jest.fn(async () => ({ status: 'success', message: 'ok', data: { id: 7, vigenteDesde: '2021-03-12 00:00:00' } })),
   };
   return {
     service: new IntegracionCrmService(ds as never, clientes as never, config as never, instalaciones as never),
@@ -46,12 +47,13 @@ describe('IntegracionCrmService', () => {
 
   describe('fecha de instalación desde el CRM', () => {
     const fecha = (f: string, idClienteNext = 4) => ({ idClienteNext, fecha: f, motivo: 'Fecha del contrato', usuario: 'Ana' });
-    const inst = [{ idCliente: '4', estatus: 1, dia: '2024-05-10' }];
+    // Next guarda la hora de pared de México en los campos UTC del Date.
+    const inst = [{ id: 7, idCliente: '4', estatus: 1, vigenteDesde: new Date('2024-05-10T15:00:00Z') }];
 
     it('hacia atrás: la corrige con las reglas de Next, a las 00:00, origen crm y quién en el motivo', async () => {
       const { service, instalaciones } = build(inst, '33');
       const r = await service.fechaInstalacion(7, fecha('2021-03-12'));
-      expect(instalaciones.corregirVigenteDesde).toHaveBeenCalledWith(
+      expect(instalaciones.corregirInicioEquipo).toHaveBeenCalledWith(
         7,
         { vigenteDesde: '2021-03-12 00:00:00', motivo: 'CRM (Ana): Fecha del contrato' },
         33,
@@ -69,7 +71,11 @@ describe('IntegracionCrmService', () => {
         build([{ ...inst[0], estatus: 0 }], '33').service.fechaInstalacion(7, fecha('2021-03-12')),
       ).rejects.toBeInstanceOf(BadRequestException);
       await expect(build(inst).service.fechaInstalacion(7, fecha('2021-03-12'))).rejects.toBeInstanceOf(ServiceUnavailableException);
-      expect(instalaciones.corregirVigenteDesde).not.toHaveBeenCalled();
+      // Tras un cambio de SIM, el día que cuenta es el del inicio del mismo equipo.
+      const conSim = build(inst, '33', { vigenteDesde: new Date('2020-02-01T00:00:00Z') });
+      expect((await conSim.service.fechaInstalacion(7, fecha('2020-02-01'))).data).toMatchObject({ sinCambio: true });
+      await expect(conSim.service.fechaInstalacion(7, fecha('2021-03-12'))).rejects.toBeInstanceOf(BadRequestException);
+      expect(instalaciones.corregirInicioEquipo).not.toHaveBeenCalled();
     });
   });
 

@@ -31,7 +31,7 @@ const sinContrato = async () =>
 beforeAll(async () => {
   await e.iniciar();
   a = new Actores(e);
-  C = await clienteListo(e, a, 'COB010101AA1', 3);
+  C = await clienteListo(e, a, 'COB010101AA1', 4);
   sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (5, 'TRACKCAM', 'TrackCam', 1, 'TRACKCAM')`);
   sql(`UPDATE CatTipoDispositivo SET Clase = 'TRACKCAM' WHERE Id = 5`);
   sql(`UPDATE Dispositivos SET IdTipoDispositivo = 5 WHERE Id = ${C.inventario[1].idDispositivo}`);
@@ -131,6 +131,31 @@ describe('Fecha real de instalación: del CRM a Next', () => {
     const r = ok(await a.crm('PUT', `/postventa/clientes/${C.idCliente}/fecha-real`, { fecha: '2026-10-10' }), 'para todas');
     expect(r.fechaReal.aplicadas).toBe(2);
     expect(r.fechaReal.rechazadas).toEqual([expect.objectContaining({ idInstalacion: s.cam1, motivo: expect.stringContaining('solo se corrige hacia atrás') })]);
+  });
+
+  it('tras un cambio de SIM la fecha es la del equipo y se corrige en su primera versión', async () => {
+    const cambio = ok(
+      await op('PATCH', `/instalaciones/${s.gps2}`, {
+        idSim: C.inventario[3].idSim,
+        estatusInstalacionAnterior: 3,
+        estatusSimAnterior: 3,
+        comentario: 'Cambio de SIM',
+      }),
+      'cambio de SIM',
+    );
+    s.gps2b = Number(cambio.data.id);
+    expect(s.gps2b).not.toBe(s.gps2);
+    const unidad = async () =>
+      (ok(await a.crm('GET', `/postventa/clientes/${C.idCliente}`), 'ficha').unidades as Array<{ idInstalacion: number; instalada: string }>).find(
+        (u) => u.idInstalacion === s.gps2b,
+      )!;
+    // La versión nueva empieza hoy, pero el equipo está en el vehículo desde el 10.
+    expect((await unidad()).instalada).toBe('2026-10-10');
+    const r = ok(await a.crm('PUT', `/postventa/clientes/${C.idCliente}/fecha-real`, { fecha: '2026-10-02', idInstalacion: s.gps2b }), 'fecha tras SIM');
+    expect(r.fechaReal).toMatchObject({ aplicadas: 1, rechazadas: [] });
+    expect(sql(`SELECT DATE_FORMAT(VigenteDesde, '%Y-%m-%d %H:%i') FROM HistoricoInstalaciones WHERE IdInstalacionOriginal = ${s.gps2} ORDER BY Id DESC LIMIT 1`)).toBe('2026-10-02 00:00');
+    expect(sql(`SELECT Campo FROM CorreccionesInstalacion WHERE IdInstalacion = ${s.gps2b}`)).toBe('VigenteDesdeEquipo');
+    expect((await unidad()).instalada).toBe('2026-10-02');
   });
 
   it('Next no acepta la fecha de una instalación de otro cliente', async () => {

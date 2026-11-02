@@ -1709,6 +1709,142 @@ export class InstalacionesService {
   }
 
   /**
+   * Inicio del equipo en el vehículo: la versión más antigua de la cadena
+   * (IdHistoricoInstalacion) que sigue siendo el mismo equipo en el mismo
+   * vehículo. Un cambio de SIM abre una versión nueva pero no reinicia la edad
+   * del equipo; un cambio de equipo sí (ahí se corta la cadena). null = la
+   * versión vigente ya es el inicio.
+   */
+  async inicioMismoEquipo(
+    manager: EntityManager,
+    inst: Pick<Instalaciones, 'idHistoricoInstalacion' | 'idDispositivo' | 'idProducto'>,
+  ): Promise<HistoricoInstalaciones | null> {
+    if (inst.idDispositivo == null) return null;
+    let inicio: HistoricoInstalaciones | null = null;
+    let cursor = inst.idHistoricoInstalacion != null ? Number(inst.idHistoricoInstalacion) : null;
+    const vistos = new Set<number>();
+    while (cursor != null && !vistos.has(cursor) && vistos.size < 100) {
+      vistos.add(cursor);
+      const h = await manager.findOne(HistoricoInstalaciones, { where: { id: cursor } });
+      if (
+        !h ||
+        h.vigenteDesde == null ||
+        Number(h.idDispositivo) !== Number(inst.idDispositivo) ||
+        Number(h.idProducto) !== Number(inst.idProducto)
+      )
+        break;
+      inicio = h;
+      cursor = h.idHistoricoInstalacion != null ? Number(h.idHistoricoInstalacion) : null;
+    }
+    return inicio;
+  }
+
+  /**
+   * Fecha real de instalación del equipo (la que usa el CRM para garantía y
+   * vida útil). Si la versión vigente viene de un cambio que no fue de equipo
+   * (p. ej. de SIM), corrige el inicio de la primera versión con el mismo
+   * equipo; si no, la vigente (corregirVigenteDesde). Mismas reglas: solo hacia
+   * atrás y sin traslaparse con la versión anterior ni con otro periodo del
+   * dispositivo o la SIM de esa versión. Evidencia en CorreccionesInstalacion
+   * de la instalación vigente (Campo `VigenteDesdeEquipo`).
+   */
+  async corregirInicioEquipo(
+    id: number,
+    dto: CorregirVigenteDesdeDto,
+    idUser: number,
+    origen: 'api' | 'crm' = 'api',
+  ): Promise<ApiCrudResponse & { data: ApiData & { vigenteDesde: string; vigenteDesdeAnterior: string } }> {
+    const inicio = await this.dataSource.transaction(async (manager) => {
+      const actual = await manager.findOne(Instalaciones, { where: { id } });
+      return actual ? this.inicioMismoEquipo(manager, actual) : null;
+    });
+    if (!inicio) return this.corregirVigenteDesde(id, dto, idUser, origen);
+
+    const nuevo = fechaParedComoDate(dto.vigenteDesde);
+    const motivo = dto.motivo.trim();
+    if (!motivo) throw new BadRequestException('El motivo es obligatorio.');
+    if (nuevo.getTime() > nowMexicoCityAsUtcDate().getTime()) {
+      throw new BadRequestException('La fecha de instalación no puede ser futura.');
+    }
+    const anterior = await this.dataSource.transaction(async (manager) => {
+      const actual = await manager.findOne(Instalaciones, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!actual) throw new NotFoundException('No se encontró la instalación solicitada.');
+      if (Number(actual.estatus) !== EstatusEnum.ACTIVO) {
+        throw new BadRequestException('Solo se corrige la fecha de una instalación activa.');
+      }
+      const h = await this.inicioMismoEquipo(manager, actual);
+      if (!h || Number(h.id) !== Number(inicio.id)) {
+        throw new ConflictException(
+          'La instalación cambió mientras se procesaba la corrección. Vuelva a cargar e intente de nuevo.',
+        );
+      }
+      const desde = new Date(h.vigenteDesde!);
+      if (nuevo.getTime() >= desde.getTime()) {
+        throw new BadRequestException(`La fecha de instalación solo se corrige hacia atrás: hoy es ${fechaPared(desde)}.`);
+      }
+      if (h.idHistoricoInstalacion != null) {
+        const previa = await manager.findOne(HistoricoInstalaciones, { where: { id: Number(h.idHistoricoInstalacion) } });
+        const finPrevia = previa?.vigenteHasta ?? previa?.fhArchivado ?? null;
+        if (finPrevia && nuevo.getTime() < new Date(finPrevia).getTime()) {
+          throw new BadRequestException(
+            `Se traslapa con la versión anterior de la instalación, vigente hasta ${fechaPared(new Date(finPrevia))}.`,
+          );
+        }
+      }
+      const original = Number(h.idInstalacionOriginal ?? 0);
+      for (const [columna, valor, etiqueta] of [
+        ['IdDispositivo', h.idDispositivo, 'del dispositivo'],
+        ['IdSim', h.idSim, 'de la SIM'],
+      ] as const) {
+        if (valor == null) continue;
+        const choque = await this.periodoQueSeTraslapa(manager, columna, Number(valor), original, nuevo, desde);
+        if (choque) {
+          throw new BadRequestException(
+            `Se traslapa con otro periodo ${etiqueta} (instalación ${choque.idInstalacion}, ${choque.desde} a ${choque.hasta}).`,
+          );
+        }
+      }
+      const r = await manager
+        .createQueryBuilder()
+        .update(HistoricoInstalaciones)
+        .set({ vigenteDesde: nuevo })
+        .where('id = :hid AND vigenteDesde = :desde', { hid: Number(h.id), desde })
+        .execute();
+      if (!r.affected) {
+        throw new ConflictException(
+          'La instalación cambió mientras se procesaba la corrección. Vuelva a cargar e intente de nuevo.',
+        );
+      }
+      await manager.insert(CorreccionesInstalacion, {
+        idInstalacion: id,
+        fecha: nowMexicoCityAsUtcDate(),
+        campo: 'VigenteDesdeEquipo',
+        valorAnterior: fechaPared(desde),
+        valorNuevo: fechaPared(nuevo),
+        motivo: `${motivo} (inicio del equipo: versión archivada #${h.id})`.slice(0, 500),
+        idUsuario: idUser,
+        origen,
+      });
+      return fechaPared(desde);
+    });
+
+    await this.bitacoraLogger.logToBitacora(
+      'Instalaciones',
+      `Se corrigió la fecha de instalación del equipo de la instalación ID: ${id} (versión archivada #${inicio.id}) de ${anterior} a ${fechaPared(nuevo)}`,
+      'UPDATE',
+      { id, dto },
+      idUser,
+      EnumModulos.INSTALACIONES,
+      EstatusEnumBitcora.SUCCESS,
+    );
+    return {
+      status: 'success',
+      message: 'La fecha de instalación del equipo se corrigió correctamente.',
+      data: { id, nombre: `Instalación ${id}`, vigenteDesde: fechaPared(nuevo), vigenteDesdeAnterior: anterior },
+    };
+  }
+
+  /**
    * Otro periodo del mismo dispositivo o SIM que se cruce con
    * [nuevo, desdeActual): versiones archivadas y otras instalaciones (una baja
    * anterior al motor no tiene archivo: su periodo termina en FechaActualizacion).
