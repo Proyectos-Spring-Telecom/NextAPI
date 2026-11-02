@@ -1610,6 +1610,7 @@ export class InstalacionesService {
     id: number,
     dto: CorregirVigenteDesdeDto,
     idUser: number,
+    origen: 'api' | 'crm' = 'api',
   ): Promise<ApiCrudResponse & { data: ApiData & { vigenteDesde: string; vigenteDesdeAnterior: string } }> {
     const nuevo = fechaParedComoDate(dto.vigenteDesde);
     const motivo = dto.motivo.trim();
@@ -1685,7 +1686,7 @@ export class InstalacionesService {
         valorNuevo: fechaPared(nuevo),
         motivo: motivo.slice(0, 500),
         idUsuario: idUser,
-        origen: 'api',
+        origen,
       });
       return fechaPared(desde);
     });

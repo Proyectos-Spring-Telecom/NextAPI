@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { CreateClienteDto } from 'src/clientes/dto/create-cliente.dto';
 import { CrmHmacGuard } from 'src/ordenes-servicio/crm-hmac.guard';
+import { FechaInstalacionCrmDto } from './dto/fecha-instalacion-crm.dto';
 import { IntegracionCrmService } from './integracion-crm.service';
 
 /** Lista de enteros separados por coma (`?clientes=1,2,3`); vacío o ausente = undefined. */
@@ -57,6 +58,23 @@ export class IntegracionCrmController {
   @ApiQuery({ name: 'clientes', example: '12,33' })
   unidades(@Query('clientes') clientes?: string) {
     return this.service.unidades(ids(clientes) ?? []);
+  }
+
+  @Get('unidades/resumen')
+  @ApiOperation({ summary: 'Equipos activos de todos los clientes: cliente, vehículo y clase (para contar según el contrato)' })
+  resumen() {
+    return this.service.resumen();
+  }
+
+  @Patch('instalaciones/:id/fecha-instalacion')
+  @ApiOperation({
+    summary: 'Fecha real de instalación desde el CRM',
+    description:
+      'Corrige `VigenteDesde` con las reglas de PATCH /instalaciones/:id/vigente-desde (solo hacia atrás, sin traslapes) a las 00:00 del día; ' +
+      'el mismo día → `sinCambio: true`. Evidencia en CorreccionesInstalacion con origen `crm`. Requiere CRM_ID_USUARIO.',
+  })
+  fechaInstalacion(@Param('id', ParseIntPipe) id: number, @Body() dto: FechaInstalacionCrmDto) {
+    return this.service.fechaInstalacion(id, dto);
   }
 
   @Get('unidades/conteo')

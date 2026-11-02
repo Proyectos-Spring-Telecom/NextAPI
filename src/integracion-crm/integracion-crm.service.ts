@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { ClientesService } from 'src/clientes/clientes.service';
 import { CreateClienteDto } from 'src/clientes/dto/create-cliente.dto';
+import { InstalacionesService } from 'src/instalaciones/instalaciones.service';
+import { FechaInstalacionCrmDto } from './dto/fecha-instalacion-crm.dto';
 
 /**
  * Lo que el CRM consulta de Next (docs/ordenes-servicio.md §14): antes lo leía
@@ -20,7 +23,17 @@ export class IntegracionCrmService {
     private readonly dataSource: DataSource,
     private readonly clientesService: ClientesService,
     private readonly config: ConfigService,
+    private readonly instalacionesService: InstalacionesService,
   ) {}
+
+  /** Usuario de Next con el que actúa el CRM (bitácora y evidencia). */
+  private usuarioCrm(para: string): number {
+    const idUsuario = Number(this.config.get<string>('CRM_ID_USUARIO'));
+    if (!idUsuario) {
+      throw new ServiceUnavailableException(`Falta CRM_ID_USUARIO: usuario de Next con el que el CRM ${para}`);
+    }
+    return idUsuario;
+  }
 
   /** Clientes (sin la cuenta raíz) con sus unidades activas. */
   clientes() {
@@ -58,10 +71,7 @@ export class IntegracionCrmService {
    * para que el CRM lo ligue en lugar de duplicarlo.
    */
   async crearCliente(dto: CreateClienteDto) {
-    const idUsuario = Number(this.config.get<string>('CRM_ID_USUARIO'));
-    if (!idUsuario) {
-      throw new ServiceUnavailableException('Falta CRM_ID_USUARIO: usuario de Next con el que el CRM da de alta clientes');
-    }
+    const idUsuario = this.usuarioCrm('da de alta clientes');
     const existente: Array<{ id: string }> = await this.dataSource.query('SELECT Id AS id FROM Clientes WHERE RFC = ? LIMIT 1', [dto.rfc]);
     if (existente.length) {
       throw new ConflictException({ message: `Ya existe un cliente con RFC ${dto.rfc}`, idCliente: Number(existente[0].id) });
@@ -91,7 +101,7 @@ export class IntegracionCrmService {
     return this.dataSource.query(
       `SELECT i.Id AS idInstalacion, i.IdCliente AS idClienteNext,
               p.Nombre AS producto, tp.Nombre AS tipoProducto,
-              v.Placa AS placa, v.NumeroEconomico AS economico,
+              i.IdProducto AS idProducto, v.Placa AS placa, v.NumeroEconomico AS economico,
               CAST(d.Imei AS CHAR) AS imei, d.NumeroSerie AS serie, td.Nombre AS dispositivo,
               i.Clase AS clase,
               DATE_FORMAT(i.VigenteDesde, '%Y-%m-%d') AS instalada,
@@ -109,8 +119,70 @@ export class IntegracionCrmService {
         ORDER BY i.VigenteDesde`,
       [idsCliente],
     ).then((filas: Array<Record<string, unknown>>) =>
-      filas.map((f) => ({ ...f, idInstalacion: Number(f.idInstalacion), idClienteNext: Number(f.idClienteNext) })),
+      filas.map((f) => ({
+        ...f,
+        idInstalacion: Number(f.idInstalacion),
+        idClienteNext: Number(f.idClienteNext),
+        idProducto: Number(f.idProducto),
+      })),
     );
+  }
+
+  /**
+   * Una fila por equipo activo de todos los clientes: el vehículo (`idProducto`)
+   * y la clase (AVL, TRACKCAM, PANEL, RELOJ). Con esto el CRM cuenta según cada
+   * contrato: vehículos distintos o equipos, solo de las clases que cubre.
+   */
+  resumen() {
+    return this.dataSource
+      .query(
+        `SELECT IdCliente AS idClienteNext, IdProducto AS idProducto, Clase AS clase
+           FROM Instalaciones WHERE Estatus = 1 AND EstatusInstalacion = 1`,
+      )
+      .then((filas: Array<{ idClienteNext: string; idProducto: string; clase: string | null }>) =>
+        filas.map((f) => ({
+          idClienteNext: Number(f.idClienteNext),
+          idProducto: Number(f.idProducto),
+          clase: f.clase || 'AVL',
+        })),
+      );
+  }
+
+  /**
+   * Fecha real de instalación capturada en el CRM (equipos migrados o dados de
+   * alta en Next después de instalarse). Se guarda en Next como `VigenteDesde`
+   * con las mismas reglas que la consola: solo hacia atrás, sin traslaparse con
+   * otro periodo del equipo o la SIM, y queda en CorreccionesInstalacion con
+   * origen `crm`. El mismo día que ya tiene = sin cambio.
+   */
+  async fechaInstalacion(id: number, dto: FechaInstalacionCrmDto) {
+    const idUsuario = this.usuarioCrm('corrige fechas de instalación');
+    const filas: Array<{ idCliente: string; estatus: number; dia: string }> = await this.dataSource.query(
+      `SELECT IdCliente AS idCliente, Estatus AS estatus, DATE_FORMAT(VigenteDesde, '%Y-%m-%d') AS dia
+         FROM Instalaciones WHERE Id = ?`,
+      [id],
+    );
+    const inst = filas[0];
+    if (!inst || Number(inst.idCliente) !== dto.idClienteNext) {
+      throw new NotFoundException('La instalación no es de ese cliente en Next');
+    }
+    if (Number(inst.estatus) !== 1) {
+      throw new BadRequestException('Solo se corrige la fecha de una instalación activa.');
+    }
+    if (dto.fecha === inst.dia) {
+      return { status: 'success', message: 'La instalación ya tiene esa fecha.', data: { id, vigenteDesde: inst.dia, sinCambio: true } };
+    }
+    if (dto.fecha > inst.dia) {
+      throw new BadRequestException(`La fecha de instalación solo se corrige hacia atrás: en Next es ${inst.dia}.`);
+    }
+    const quien = dto.usuario?.trim() ? ` (${dto.usuario.trim()})` : '';
+    const r = await this.instalacionesService.corregirVigenteDesde(
+      id,
+      { vigenteDesde: `${dto.fecha} 00:00:00`, motivo: `CRM${quien}: ${dto.motivo.trim()}`.slice(0, 500) },
+      idUsuario,
+      'crm',
+    );
+    return { ...r, data: { ...r.data, sinCambio: false } };
   }
 
   /** Unidades activas por cliente. */
