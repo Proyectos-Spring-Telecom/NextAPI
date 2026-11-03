@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import PDFDocument from 'pdfkit';
+import sharp from 'sharp';
 import { In, Repository } from 'typeorm';
 import { EnumModulos } from 'src/common/estatus.enum';
 import { CatMotivosOrdenServicio } from 'src/entities/CatMotivosOrdenServicio';
@@ -19,7 +19,8 @@ import { MailService } from 'src/mail/mail.service';
 import { S3Service } from 'src/s3/s3.service';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import { nombreCompleto, puedeCompartir, puedeVer } from './ordenes-servicio.acceso';
-import { ESTATUS_ORDEN, SECCIONES_RESPUESTA, folioDe } from './ordenes-servicio.reglas';
+import { dibujarOrden, type Prueba } from './ordenes-servicio-pdf.dibujo';
+import { ESTATUS_ORDEN, ESTATUS_PRUEBA, folioDe, pruebaRequerida } from './ordenes-servicio.reglas';
 import type { UsuarioToken } from './ordenes-servicio.service';
 
 const NOMBRE_TIPO: Record<string, string> = {
@@ -33,7 +34,6 @@ const NOMBRE_SECCION: Record<string, string> = {
   vehiculo_cuenta_con: 'Vehículo cuenta con',
   funcionamiento_vehiculo: 'Funcionamiento del vehículo',
   fallas_equipo: 'Fallas del equipo',
-  pruebas: 'Pruebas',
 };
 /** Solo se comparte una orden terminada. */
 const ESTATUS_COMPARTIBLES: string[] = [ESTATUS_ORDEN.CERRADA, ESTATUS_ORDEN.NO_CUMPLIDA];
@@ -41,6 +41,17 @@ const ESTATUS_COMPARTIBLES: string[] = [ESTATUS_ORDEN.CERRADA, ESTATUS_ORDEN.NO_
 const VIGENCIA_ENLACE_S = 7 * 24 * 3600;
 /** Notas que el sistema agrega a las observaciones y no son para el cliente. */
 const NOTA_INTERNA = /^Autorización (autorizada|rechazada)/;
+
+const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Fecha guardada como hora de México en UTC → `mar 27 de oct 2026, 14:43`. */
+function fechaLarga(d: Date | string | null | undefined): string {
+  if (!d) return '—';
+  const x = new Date(d);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${DIAS[x.getUTCDay()]} ${x.getUTCDate()} de ${MESES[x.getUTCMonth()]} ${x.getUTCFullYear()}, ${p(x.getUTCHours())}:${p(x.getUTCMinutes())}`;
+}
 
 /** wa.me exige la lada del país: un número de 10 dígitos es de México (52). */
 export function telefonoWhatsapp(telefono?: string): string {
@@ -57,8 +68,9 @@ function fecha(d: Date | string | null | undefined): string {
 }
 
 /**
- * PDF de la orden de servicio (§13): datos, checklist, pruebas con quién las
- * validó, observaciones y firmas. Se guarda en S3 privado y se comparte por
+ * PDF de la orden de servicio (§13): datos y fotos del vehículo, checklist,
+ * fotos del tablero, equipo, pruebas con quién las validó, observaciones y
+ * firmas (dibujo en ordenes-servicio-pdf.dibujo.ts). Se guarda en S3 privado y se comparte por
  * correo (adjunto) o WhatsApp (enlace firmado de 7 días).
  */
 @Injectable()
@@ -186,118 +198,184 @@ export class OrdenesServicioPdfService {
         where: { id: In([orden.idTecnico, orden.idMonitorista].filter((v) => v != null).map(Number)) },
       }),
     ]);
-    const vehiculo = orden.idProducto ? await this.vehiculosRepo.findOne({ where: { idProducto: orden.idProducto } }) : null;
-    const inst = orden.idInstalacionResultado ?? orden.idInstalacion;
-    const instalacion = inst ? await this.instalacionesRepo.findOne({ where: { id: inst } }) : null;
-    const idDispositivo = orden.idDispositivoNuevo ?? instalacion?.idDispositivo ?? null;
-    const idSim = orden.idSimNuevo ?? instalacion?.idSim ?? null;
-    const [dispositivo, sim, motivo] = await Promise.all([
-      idDispositivo ? this.dispositivosRepo.findOne({ where: { id: idDispositivo } }) : null,
-      idSim ? this.simsRepo.findOne({ where: { id: idSim } }) : null,
+    const vehiculo = orden.idProducto
+      ? await this.vehiculosRepo.findOne({
+          where: { idProducto: orden.idProducto },
+          relations: { idMarcaVehiculo2: true, idModeloVehiculo2: true, idCombustible2: true },
+        })
+      : null;
+    const instalacion = (id: number | null | undefined) => (id ? this.instalacionesRepo.findOne({ where: { id } }) : null);
+    // Antes del servicio (la que se cambió o retiró) y después (la que quedó).
+    const [antes, despues] = await Promise.all([
+      instalacion(orden.idInstalacion),
+      instalacion(orden.idInstalacionResultado ?? orden.idInstalacion),
+    ]);
+    const dispositivo = (id: number | null | undefined) =>
+      id ? this.dispositivosRepo.findOne({ where: { id }, relations: { idMarca2: true, idModelo2: true, idTipoDispositivo2: true } }) : null;
+    const sim = (id: number | null | undefined) => (id ? this.simsRepo.findOne({ where: { id }, relations: { idTelefonia2: true } }) : null);
+    const [equipo, equipoAntes, chip, chipAntes, motivo] = await Promise.all([
+      dispositivo(orden.idDispositivoNuevo ?? despues?.idDispositivo),
+      dispositivo(antes?.idDispositivo),
+      sim(orden.idSimNuevo ?? despues?.idSim),
+      sim(antes?.idSim),
       orden.claveMotivo ? this.motivosRepo.findOne({ where: { clave: orden.claveMotivo } }) : null,
     ]);
+
     const nombre = (x?: Parameters<typeof nombreCompleto>[0]) => nombreCompleto(x) ?? '—';
-    const persona = (idU: number | null) => nombre(personas.find((u) => Number(u.id) === Number(idU)));
-    const firmas = await Promise.all(
-      archivos
-        .filter((a) => a.clave.startsWith('firma_'))
-        .map(async (a) => ({ clave: a.clave, imagen: await this.descargar(a.ruta) })),
-    );
+    const usuario = (idU: number | null) => personas.find((u) => Number(u.id) === Number(idU));
+    const tipo = NOMBRE_TIPO[orden.tipoServicio] ?? orden.tipoServicio;
+    const opciones = (seccion: string) => catalogo.filter((o) => o.seccion === seccion).sort((a, b) => a.orden - b.orden);
+    const respuesta = (seccion: string, clave: string) => respuestas.find((r) => r.seccion === seccion && r.clave === clave);
 
-    const doc = new PDFDocument({ size: 'LETTER', margin: 48, info: { Title: `Orden ${this.folio(orden)}` } });
-    const partes: Buffer[] = [];
-    doc.on('data', (c: Buffer) => partes.push(c));
-    const fin = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(partes))));
-
-    const titulo = (t: string) => {
-      doc.moveDown(0.6).font('Helvetica-Bold').fontSize(11).fillColor('#1f3b63').text(t).moveDown(0.2);
-      doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+    // Fotos: las del vehículo vienen de su ficha; las de la orden, de sus archivos.
+    const archivo = (clave: string) => archivos.find((a) => a.clave === clave)?.ruta ?? null;
+    const fotoOrden = (clave: string) => catalogo.find((o) => o.seccion === 'fotos' && o.clave === clave)?.nombre ?? clave;
+    const v = vehiculo;
+    const pendientes = {
+      principal: v?.foto,
+      vehiculo: [
+        ['Fotografía frontal', v?.fotoFrente],
+        ['Fotografía trasera', v?.fotoTrasera],
+        ['Lateral derecha', v?.fotoDerecha],
+        ['Lateral izquierda', v?.fotoIzquierda],
+        ['Fotografía extra', v?.fotoExtra],
+      ],
+      documentos: [
+        ['Tarjeta de circulación', v?.tarjetaCirculacion],
+        ['Póliza de seguro', v?.polizaSeguro],
+        ['Permiso de carga', v?.permisoCarga],
+      ],
+      tablero: ['tablero_inicio', 'tablero_final'].map((c) => [fotoOrden(c), archivo(c)]),
+      fallas: ['falla_extra_1', 'falla_extra_2', 'falla_extra_3'].map((c) => [fotoOrden(c), archivo(c)]),
+      servicio: archivo('equipo_existente') ? [[fotoOrden('equipo_existente'), archivo('equipo_existente')]] : [],
+      firmas: { cliente: archivo('firma_cliente'), tecnico: archivo('firma_tecnico') },
     };
-    const fila = (etiqueta: string, valor: string | number | null | undefined) =>
-      doc.font('Helvetica-Bold').text(`${etiqueta}: `, { continued: true }).font('Helvetica').text(String(valor ?? '—'));
+    const fotos = (lista: Array<Array<string | null | undefined>>) =>
+      Promise.all(lista.map(async ([n, ruta]) => ({ nombre: n ?? '', imagen: await this.imagen(ruta) })));
+    const [principal, fotosVehiculo, documentos, fotosTablero, fotosFallas, fotosServicio, firmaCliente, firmaTecnico] =
+      await Promise.all([
+        this.imagen(pendientes.principal),
+        fotos(pendientes.vehiculo),
+        fotos(pendientes.documentos),
+        fotos(pendientes.tablero),
+        fotos(pendientes.fallas),
+        fotos(pendientes.servicio),
+        this.imagen(pendientes.firmas.cliente, true),
+        this.imagen(pendientes.firmas.tecnico, true),
+      ]);
 
-    doc.font('Helvetica-Bold').fontSize(16).fillColor('#1f3b63').text('Spring Telecom · Orden de servicio');
-    doc.font('Helvetica').fontSize(10).fillColor('#000')
-      .text(`${this.folio(orden)} · ${NOMBRE_TIPO[orden.tipoServicio] ?? orden.tipoServicio} · ${orden.estatus.replace('_', ' ')}`);
+    const casillas = (['vehiculo_cuenta_con', 'funcionamiento_vehiculo', 'fallas_equipo'] as const).map((seccion) => {
+      const ops = opciones(seccion).map((o) => ({ nombre: o.nombre, marcada: Number(respuesta(seccion, o.clave)?.valor) === 1 }));
+      const marcadas = ops.filter((o) => o.marcada).length;
+      return {
+        titulo: seccion === 'fallas_equipo' ? 'Fallas encontradas del equipo' : NOMBRE_SECCION[seccion],
+        resumen: seccion === 'fallas_equipo' ? (marcadas ? `${marcadas} encontradas` : 'Ninguna') : `${marcadas} de ${ops.length}`,
+        opciones: ops,
+      };
+    });
 
-    titulo('Servicio');
-    fila('Cliente', nombre(cliente));
+    const pruebasPdf: Prueba[] = opciones('pruebas').map((o) => {
+      if (!pruebaRequerida(o.clave, respuestas)) return { nombre: o.nombre, resultado: 'no_aplica', detalle: 'El vehículo no tiene inmovilizador' };
+      const p = pruebas.find((x) => x.clave === o.clave);
+      const validada = p?.fechaValidacion ? `Validó ${p.nombreValido ?? '—'} · ${fecha(p.fechaValidacion)}` : undefined;
+      if (p?.estatus === ESTATUS_PRUEBA.CORRECTA) return { nombre: o.nombre, resultado: 'correcta', detalle: validada };
+      if (p?.estatus === ESTATUS_PRUEBA.FALLIDA) return { nombre: o.nombre, resultado: 'fallida', detalle: validada };
+      if (p?.estatus === ESTATUS_PRUEBA.SOLICITADA) return { nombre: o.nombre, resultado: 'pendiente' };
+      if (p?.estatus === ESTATUS_PRUEBA.ANULADA) return { nombre: o.nombre, resultado: 'no_realizada' };
+      // Sin prueba coordinada (etapa 1 o desinstalación): lo que contestó el técnico.
+      return { nombre: o.nombre, resultado: Number(respuesta('pruebas', o.clave)?.valor) === 1 ? 'correcta' : 'no_realizada' };
+    });
+
+    const nombreEquipo = (x: Awaited<ReturnType<typeof dispositivo>>) =>
+      x
+        ? [[x.idMarca2?.nombre, x.idModelo2?.nombre].filter(Boolean).join(' '), x.imei ? `IMEI ${x.imei}` : null, `Serie ${x.numeroSerie}`]
+            .filter(Boolean)
+            .join(' · ')
+        : '—';
+    const nombreSim = (x: Awaited<ReturnType<typeof sim>>) =>
+      x
+        ? [x.idTelefonia2?.nombreTelefonia, x.imei ? `ICCID ${x.imei}` : null, x.numeroTelefono ? `Tel. ${x.numeroTelefono}` : null]
+            .filter(Boolean)
+            .join(' · ')
+        : '—';
+    const filas: Array<[string, string]> = [['Tipo de equipo', equipo?.idTipoDispositivo2?.nombre ?? equipoAntes?.idTipoDispositivo2?.nombre ?? '—']];
+    if (orden.tipoServicio === 'c_equipo') filas.push(['Equipo anterior', nombreEquipo(equipoAntes)], ['Equipo nuevo', nombreEquipo(equipo)]);
+    else if (orden.tipoServicio === 'desinstalacion') filas.push(['Equipo retirado', nombreEquipo(equipoAntes ?? equipo)]);
+    else filas.push(['Dispositivo', nombreEquipo(equipo)]);
+    if (orden.tipoServicio === 'c_sim') filas.push(['SIM anterior', nombreSim(chipAntes)], ['SIM nueva', nombreSim(chip)]);
+    else filas.push(['SIM', nombreSim(orden.tipoServicio === 'desinstalacion' ? (chipAntes ?? chip) : chip)]);
+    const avisos: string[] = [];
     if (orden.tipoProgramado && orden.tipoProgramado !== orden.tipoServicio) {
-      fila('Programado como', NOMBRE_TIPO[orden.tipoProgramado] ?? orden.tipoProgramado);
+      avisos.push(`Se programó como ${NOMBRE_TIPO[orden.tipoProgramado] ?? orden.tipoProgramado} y en campo se hizo ${tipo}.`);
     }
-    fila('Cita', fecha(orden.cita));
-    fila('Inicio en campo', fecha(orden.fechaInicio ?? orden.fechaCaptura));
-    fila('Cierre', fecha(orden.fechaCierre));
-    fila('Técnico', persona(orden.idTecnico));
-    fila('Monitorista', orden.idMonitorista ? persona(orden.idMonitorista) : '—');
-    if (orden.fechaCodigoValidado) fila('Vehículo confirmado con código', fecha(orden.fechaCodigoValidado));
-    if (orden.lat != null && orden.lng != null) fila('Ubicación de captura', `${orden.lat}, ${orden.lng}`);
+    if (orden.autorizacion === 'autorizada') avisos.push(`El equipo existente se retiró con autorización del ${fecha(orden.fechaAutorizacion)}.`);
+    if (orden.claveMotivo) avisos.push(`Motivo: ${motivo?.nombre ?? orden.claveMotivo}.`);
+    if (orden.fechaCodigoValidado) avisos.push(`Vehículo confirmado con código el ${fecha(orden.fechaCodigoValidado)}.`);
 
-    titulo('Vehículo y equipo');
-    fila('Placa', vehiculo?.placa);
-    fila('Número económico', vehiculo?.numeroEconomico);
-    fila('Año / color', [vehiculo?.anio, vehiculo?.color].filter(Boolean).join(' / ') || '—');
-    fila('Número de serie (VIN)', vehiculo?.numeroSerie);
-    fila('Equipo (IMEI / serie)', dispositivo ? `${dispositivo.imei ?? '—'} / ${dispositivo.numeroSerie}` : '—');
-    fila('SIM (ICCID / teléfono)', sim ? `${sim.imei ?? '—'} / ${sim.numeroTelefono ?? '—'}` : '—');
-    if (orden.autorizacion === 'autorizada') {
-      fila('Equipo existente', `retirado con autorización del ${fecha(orden.fechaAutorizacion)}`);
-    }
+    const tecnico = usuario(orden.idTecnico);
+    const nombreCliente = nombre(cliente);
+    return dibujarOrden({
+      folio: this.folio(orden),
+      estatus: orden.estatus,
+      generado: fechaLarga(nowMexicoCityAsUtcDate()),
+      encabezado: {
+        tecnico: nombre(tecnico),
+        correoTecnico: tecnico?.userName ?? null,
+        cliente: nombreCliente,
+        fecha: fechaLarga(orden.fechaInicio ?? orden.fechaCaptura ?? orden.cita),
+        cierre: orden.fechaCierre ? fechaLarga(orden.fechaCierre) : null,
+        ubicacion: orden.lat != null && orden.lng != null ? `${Number(orden.lat).toFixed(5)}, ${Number(orden.lng).toFixed(5)}` : '—',
+        monitorista: orden.idMonitorista ? nombre(usuario(orden.idMonitorista)) : '—',
+        tipos: [tipo],
+      },
+      vehiculo: [
+        ['Cliente', nombreCliente],
+        ['Placa', v?.placa ?? '—'],
+        ['Núm. económico', v?.numeroEconomico ?? '—'],
+        ['Marca', v?.idMarcaVehiculo2?.nombre ?? '—'],
+        ['Modelo', v?.idModeloVehiculo2?.nombre ?? '—'],
+        ['Año', v?.anio ? String(v.anio) : '—'],
+        ['Color', v?.color ?? '—'],
+        ['Combustible', v?.idCombustible2?.nombre ?? '—'],
+        ['Kilometraje', v?.km != null ? `${Number(v.km).toLocaleString('es-MX')} km` : '—'],
+        ['Capacidad', v?.capacidadLitros != null ? `${Number(v.capacidadLitros).toLocaleString('es-MX')} L` : '—'],
+        ['N.º de serie (VIN)', v?.numeroSerie ?? '—'],
+      ],
+      imagenPrincipal: principal,
+      fotosVehiculo,
+      documentos,
+      casillas,
+      fotosTablero,
+      fotosFallas,
+      totalFallas: pendientes.fallas.length,
+      servicio: { titulo: tipo, filas, avisos, fotos: fotosServicio },
+      pruebas: pruebasPdf,
+      observaciones: (orden.observaciones ?? '')
+        .split('\n')
+        .filter((l) => l.trim() && !NOTA_INTERNA.test(l))
+        .join('\n'),
+      firmas: [
+        { nombre: nombreCliente, rol: 'Firma del cliente', imagen: firmaCliente },
+        { nombre: nombre(tecnico), rol: 'Firma del técnico', imagen: firmaTecnico },
+      ],
+    });
+  }
 
-    for (const seccion of SECCIONES_RESPUESTA) {
-      const opciones = catalogo.filter((o) => o.seccion === seccion).sort((a, b) => a.orden - b.orden);
-      if (!opciones.length) continue;
-      titulo(NOMBRE_SECCION[seccion] ?? seccion);
-      for (const o of opciones) {
-        const r = respuestas.find((x) => x.seccion === seccion && x.clave === o.clave);
-        const valor = r == null ? 'sin respuesta' : Number(r.valor) === 1 ? 'Sí' : 'No';
-        const p = seccion === 'pruebas' ? pruebas.find((x) => x.clave === o.clave) : null;
-        const validacion = p?.fechaValidacion ? ` · validó ${p.nombreValido ?? '—'} ${fecha(p.fechaValidacion)}` : '';
-        doc.text(`• ${o.nombre}: ${valor}${validacion}`);
-      }
+  /**
+   * Descarga y reduce una imagen para el PDF (las fotos del teléfono pesan
+   * megas): JPEG de 1000 px, o PNG para las firmas (fondo transparente).
+   */
+  private async imagen(ruta: string | null | undefined, firma = false): Promise<Buffer | null> {
+    if (!ruta) return null;
+    const original = await this.descargar(ruta);
+    if (!original) return null;
+    try {
+      const img = sharp(original).rotate().resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true });
+      return await (firma ? img.png() : img.jpeg({ quality: 72 })).toBuffer();
+    } catch (e) {
+      this.logger.warn(`Imagen no legible ${ruta}: ${(e as Error).message}`);
+      return null;
     }
-
-    if (orden.claveMotivo) {
-      titulo('No cumplida / cancelada');
-      fila('Motivo', motivo?.nombre ?? orden.claveMotivo);
-    }
-    const observaciones = (orden.observaciones ?? '')
-      .split('\n')
-      .filter((l) => l.trim() && !NOTA_INTERNA.test(l))
-      .join('\n');
-    if (observaciones) {
-      titulo('Observaciones');
-      doc.text(observaciones);
-    }
-
-    const fotos = archivos.filter((a) => !a.clave.startsWith('firma_'));
-    if (fotos.length) {
-      titulo('Evidencia fotográfica');
-      doc.text(fotos.map((f) => catalogo.find((o) => o.clave === f.clave)?.nombre ?? f.clave).join(', '));
-      doc.fontSize(8).fillColor('#555').text('Las fotos se consultan en Next, en el detalle de la orden.').fillColor('#000').fontSize(9.5);
-    }
-
-    if (firmas.length) {
-      titulo('Firmas');
-      const y = doc.y;
-      firmas.forEach((f, i) => {
-        const x = 48 + i * 260;
-        if (f.imagen) {
-          try {
-            doc.image(f.imagen, x, y, { fit: [220, 90] });
-          } catch {
-            doc.text('(firma no legible)', x, y);
-          }
-        }
-        doc.text(f.clave === 'firma_cliente' ? 'Cliente' : 'Técnico', x, y + 95, { width: 220, align: 'center' });
-      });
-      doc.y = y + 115;
-      doc.x = 48;
-    }
-
-    doc.moveDown(1).fontSize(7.5).fillColor('#777').text(`Generado el ${fecha(nowMexicoCityAsUtcDate())} · Spring Telecom`);
-    doc.end();
-    return fin;
   }
 
   private async descargar(ruta: string): Promise<Buffer | null> {

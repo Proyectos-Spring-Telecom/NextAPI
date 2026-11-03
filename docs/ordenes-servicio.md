@@ -509,14 +509,15 @@ Reglas:
 
 | Método | Ruta | Uso |
 |--------|------|-----|
-| GET | `/ordenes-servicio/:id/pdf` | El PDF (inline): servicio, cliente, vehículo, equipo y SIM, checklist, pruebas con quién las validó, autorización, motivo, observaciones y firmas |
+| GET | `/ordenes-servicio/:id/pdf` | El PDF (inline), con el diseño del front: encabezado (técnico, cliente, fecha, ubicación, monitorista, tipo), 01 datos y fotos del vehículo y sus documentos, 02 checklist y fotos del tablero y de fallas, 03 equipo y SIM (anterior y nuevo en los cambios; foto del equipo existente), 04 pruebas con resultado y quién las validó, observaciones y firmas con nombre |
 | POST | `/ordenes-servicio/:id/compartir` | `{ telefono? }` → `{ url, vigenciaHoras: 168, whatsapp }`. `whatsapp` es un enlace `wa.me` con el texto y el enlace del PDF; con `telefono` abre ese chat |
 | POST | `/ordenes-servicio/:id/enviar-correo` | `{ correos: [..] }` (1–5) → correo con el PDF adjunto, desde la cuenta SMTP de NextAPI |
 
 - Compartir y enviar solo funcionan con la orden `cerrada` o `no_cumplida`; el PDF se puede ver en cualquier estado.
 - Cada vez que se comparte se genera un PDF nuevo en S3 (`ordenes-servicio/pdf/`, privado) con los datos de ese momento; los anteriores no se borran, para no romper enlaces ya enviados. El enlace dura 7 días (máximo de S3).
 - Roles: ver el PDF, los que leen órdenes (1–5 y el técnico, solo las suyas); compartir y enviar por correo, solo el técnico de la orden y los roles 1–3 (§17).
-- Dependencia nueva: `pdfkit` (`npm install` al desplegar).
+- Dependencias: `pdfkit` y `sharp` (`npm install` al desplegar). Las fotos se reducen a 1000 px (JPEG) para que el PDF pese poco; la fuente es Inter (`src/assets/fonts`, licencia OFL, se copia a `dist` con `nest build`).
+- Dibujo: `ordenes-servicio-pdf.dibujo.ts` (solo pinta); los datos los arma `ordenes-servicio-pdf.service.ts`. Una foto o firma que no se puede descargar sale como "Sin fotografía"/"Sin firma", no rompe el PDF.
 
 ## 14. API para el CRM (`/api/integracion`)
 
