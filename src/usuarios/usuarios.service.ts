@@ -46,6 +46,7 @@ import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import {
   assertEdicionPropia,
   assertJerarquiaUsuarioDestino,
+  assertPuedeAsignarInstalaciones,
   assertPuedeAdministrarUsuarios,
   assertSubconjunto,
   ROLES_PERMISOS_ACOTADOS,
@@ -599,7 +600,8 @@ ORDER BY u.Id DESC`,
     const instalacionesRepo = queryRunner.manager.getRepository(Instalaciones);
 
     try {
-      // Asignar instalaciones es administrar al usuario: mismas reglas que editarlo.
+      // Asignar instalaciones es administrar al usuario: mismas reglas que editarlo,
+      // salvo que el jefe de monitoreo también asigna a usuarios de cliente (9).
       assertPuedeAdministrarUsuarios(actor.rol);
       await this.getUsuarioByID(dto.idUsuario, actor.idCliente, actor.rol);
 
@@ -613,7 +615,7 @@ ORDER BY u.Id DESC`,
       }
       await this.tenantFilter.assertClienteVisible(actor, Number(usuario.idCliente), 'Usuario');
       if (Number(usuario.id) !== Number(actor.userId)) {
-        assertJerarquiaUsuarioDestino(actor.rol, Number(usuario.idRol));
+        assertPuedeAsignarInstalaciones(actor.rol, Number(usuario.idRol));
       }
 
       const instalacionesIdsUnicos = [

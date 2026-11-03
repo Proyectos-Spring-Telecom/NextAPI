@@ -372,6 +372,8 @@ NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-mod
 - **Estatus "asignado" (2)** de dispositivo, SIM o producto ya no se pone a mano (400): lo pone la instalación. Quitar el 2 del selector de estatus.
 - **Usuarios** (30/10):
   - administran usuarios (crear, editar a otros, estatus, asignar instalaciones) los roles 1, 2, 3, **4 (solo monitoristas 5 y operadores 7)** y 6 (solo usuarios 9 de su árbol); los demás reciben 403: ocultar esas acciones;
+  - **(03/11) el jefe de monitoreo (4) también asigna y quita instalaciones a usuarios de cliente (9)** (`POST /usuarios/asignacion/instalaciones`); a esos usuarios no los crea ni los edita: mostrarle solo la asignación de instalaciones;
+  - **un 403 no es sesión vencida:** solo el 401 intenta renovar el token y, si falla, cierra la sesión; el 403 se muestra como aviso con el `message` del API y el usuario sigue en la pantalla;
   - nadie asigna un rol más alto que el suyo;
   - **el jefe de monitoreo y el cliente solo pueden otorgar los permisos y soluciones que ellos mismos tienen** (403 si no): en el formulario, mostrar solo esos;
   - al editarse a sí mismo, nadie cambia su rol, cliente, permisos ni estatus.

@@ -125,7 +125,7 @@ export class UsuariosController {
       'Enviar `[]` desactiva todas las asignaciones.',
       '',
       'Validaciones: cada instalación debe existir, tener `estatus = 1` y pertenecer al mismo `idCliente` del usuario destino.',
-      'Quien asigna debe ser **SA (1)**, **Dev (2)**, **Admin (3)** o **Cliente (6)**, ver al usuario según su alcance de clientes y no asignar a un usuario de rol de mayor jerarquía.',
+      'Quien asigna debe ser **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)** o **Cliente (6)**, ver al usuario según su alcance de clientes y no asignar a un usuario de rol de mayor jerarquía. El jefe de monitoreo asigna a monitoristas (5), operadores (7) y usuarios de cliente (9).',
     ].join('\n'),
   })
   @ApiBody({ type: AsignarUsuarioInstalacionesDto })

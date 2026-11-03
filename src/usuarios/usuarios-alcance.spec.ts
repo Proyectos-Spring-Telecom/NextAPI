@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import {
   assertEdicionPropia,
   assertJerarquiaUsuarioDestino,
+  assertPuedeAsignarInstalaciones,
   assertPuedeAdministrarUsuarios,
   assertSubconjunto,
   difiereConjunto,
@@ -101,6 +102,15 @@ describe('decisiones del 30/10/2026', () => {
     expect(() => assertJerarquiaUsuarioDestino(4, 9)).toThrow(ForbiddenException);
     expect(() => assertPuedeAdministrarUsuarios(4)).not.toThrow();
     expect(() => assertPuedeAdministrarUsuarios(5)).toThrow(ForbiddenException);
+  });
+
+  it('el jefe de monitoreo (4) asigna instalaciones también a usuarios de cliente (9), no a otros roles', () => {
+    expect(() => assertPuedeAsignarInstalaciones(4, 9)).not.toThrow();
+    expect(() => assertPuedeAsignarInstalaciones(4, 7)).not.toThrow();
+    expect(() => assertPuedeAsignarInstalaciones(4, 6)).toThrow(ForbiddenException);
+    expect(() => assertPuedeAsignarInstalaciones(4, 3)).toThrow(ForbiddenException);
+    expect(() => assertPuedeAsignarInstalaciones(6, 9)).not.toThrow();
+    expect(() => assertPuedeAsignarInstalaciones(6, 5)).toThrow(ForbiddenException);
   });
 
   it('solo se otorgan permisos que quien administra tiene', () => {

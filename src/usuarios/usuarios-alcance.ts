@@ -52,6 +52,16 @@ export function assertJerarquiaUsuarioDestino(rolActor: number, rolDestino: numb
 }
 
 /**
+ * Asignar instalaciones (UsuariosInstalaciones): las reglas de administrar al
+ * usuario, salvo que el jefe de monitoreo también asigna a los usuarios de
+ * cliente (9) (decisión del 03/11/2026). No los crea ni los edita.
+ */
+export function assertPuedeAsignarInstalaciones(rolActor: number, rolDestino: number): void {
+  if (Number(rolActor) === EnumRoles.JEFE_MONITOREO && Number(rolDestino) === EnumRoles.USUARIO) return;
+  assertJerarquiaUsuarioDestino(rolActor, rolDestino);
+}
+
+/**
  * Rol que queda en el alta o la edición de otro usuario.
  * - Cliente (6): siempre Usuario (9), se ignora el body (comportamiento previo).
  * - SA (1): cualquiera. Dev (2) y Admin (3): solo un rol >= al suyo (2 → 2..9, 3 → 3..9).
