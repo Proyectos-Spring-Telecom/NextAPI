@@ -19,6 +19,8 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 2 | En vivo: no forzar `streamType: 0` | **Alta**: consumo de SIM | No |
 | 3 | En vivo: corte a los 60 s y fin de sesión (`ended` / 4410) | **Alta** | Sí: sin esto la pantalla se queda congelada |
 | 4 | En vivo: cierre 10 s después de cerrar la pestaña | Media | No |
+| 9 | En vivo: rearmar el decoder con el evento `codec` (cámaras H.265) | **Alta** | Sí: con H.265 sale negro con `Frames: 0` (03/11) |
+| 25 | Socket.IO detrás de `/nextAPI`: namespace `/monitoreo`, `path` `/nextAPI/socket.io` | **Alta** | Sí: `Invalid namespace`, el mapa no recibe posiciones (03/11) |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -145,11 +147,22 @@ Todos requieren el mismo JWT.
 | `GET /gateway/sim-usage?terminalId=\|imei=&from=&to=&groupBy=day\|hour` | Consumo de datos de la SIM por cámara: totales, por tipo (fotos, video, en vivo, señalización) y proyección a 30 días. Sin `terminalId`, devuelve toda la flota |
 | `GET /gateway/config/params?terminalId=\|imei=[&cached=true]` | Parámetros que tiene programados la cámara (heartbeat, intervalos, servidor…). `cached=true` no consulta a la cámara |
 
-## 9. Video H.264 / H.265
+## 9. Video H.264 / H.265 (actualizado 03/11/2026)
 
-- El modal decodifica con **WebCodecs** y elige el códec según `ready.videoCodec`. Hay cámaras que mandan **H.265**, que solo se decodifica en equipos con aceleración por hardware.
-- **Pendiente de prueba:** confirmar en los navegadores del equipo de monitoreo que el sub-stream se ve (Chrome o Edge en Windows con GPU).
-- Si sale negro, el problema es el códec, no la conexión. Se corrige poniendo los canales en H.264 en la app HikDashcam.
+El en vivo puede llegar en **H.264 o H.265** según la cámara y el stream; no se decide desde Next. Hoy la 007775005494 manda **H.265 en el sub-stream** (calidad "Normal"), y H.265 es además el que menos datos gasta. Se queda así: **el front debe ver los dos**.
+
+**Lo que falla hoy** (bundle del 03/11, consola: `attach family=h264 (declarado=h264)` y luego `codec {videoCodec: 'h265'}`, `Frames: 0`):
+- el bridge se arma con `ready.videoCodec`, que llegaba `null` → `resolveFamily` cae en H.264;
+- al llegar el evento `codec` con `h265`, el componente solo actualiza `this.videoCodec` (la etiqueta) y **no rearma el bridge**: los NAL H.265 (`00 00 00 01 40 01…`) nunca se decodifican.
+
+**Qué hacer:**
+1. **`ready.videoCodec`**: desde el 03/11 el gateway manda el códec de esta sesión o, si aún no llega video, el de la sesión anterior de esa cámara, canal y stream (también en `videoCodecEsperado` de `POST /gateway/video/start` y en `intercom.videoCodecEsperado` de `GET /gateway/video/status`). Armar el bridge con eso. Si viene `null` (primera sesión tras reiniciar el gateway), **no asumir H.264**: esperar el evento `codec` antes del `attach`.
+2. **Evento `codec`**: si su `videoCodec` es distinto de la familia armada, **cerrar el decoder, volver a hacer `attach` con la nueva familia y esperar el siguiente keyframe** (en H.265, el AU que trae VPS/SPS/PPS: tipos NAL 32/33/34). Los `0x02` que lleguen mientras tanto se descartan.
+3. Cadenas WebCodecs: H.264 `avc1.*` (ya están); H.265 `hev1.1.6.L120.B0` / `hvc1.1.6.L120.B0` (ya están en `probeCodecString`).
+4. Si `VideoDecoder.isConfigSupported` dice que no a H.265: mostrar "Este equipo no puede reproducir el video de esta cámara (H.265). Usa Chrome o Edge en un equipo con aceleración de video" en lugar del recuadro negro.
+5. No cambiar a calidad "Alta" (stream principal) para esquivar H.265: gasta 3–5 veces más datos.
+
+**Prueba:** cámara 007775005494, canal 1, modo Video, calidad Normal → consola con `codec {videoCodec: 'h265'}`, `attach family=h265` y `Frames` subiendo. Guía técnica completa: repo springTrackCam, `docs/consumo-live-angular.md`.
 
 ## 10. Pantalla de equipos que transmiten sin alta
 
@@ -498,6 +511,16 @@ Desde el 31/10 ([motor-activos.md](motor-activos.md) §19) la consola de configu
 - No hay campos de heartbeat, servidor, APN, fotos por alarma ni odómetro: los mantiene el gateway o la cámara.
 
 ## 25. Tiempo real (Socket.IO): qué escuchar en cada pantalla (31/10/2026)
+
+**Conexión detrás de `/nextAPI` (corregir, 03/11):** en socket.io-client, la ruta de la URL **es el namespace**. Hoy `resolveSocketConfig()` arma `https://springtelecom.mx/nextAPI/monitoreo` → namespace `/nextAPI/monitoreo` → el API responde `Invalid namespace` y el mapa no recibe nada. Debe quedar:
+
+```ts
+const base = new URL(environment.API_SECURITY);            // https://springtelecom.mx/nextAPI/api
+const prefijo = base.pathname.replace(/\/api\/?$/, '');   // /nextAPI
+io(`${base.origin}/monitoreo`, { path: `${prefijo}/socket.io`, auth: { token } });  // igual con /alarmas
+```
+
+En local (sin prefijo) queda `path: '/socket.io'`, igual que hoy.
 
 Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y luego solo escucha. Conectar con el JWT de acceso en `auth.token` (o `Authorization`/`?token=`). Las salas se fijan al conectar: tras crear una instalación nueva o cambiar de rol, reconectar. Contrato: `docs/contratos.md` §11.4.
 
