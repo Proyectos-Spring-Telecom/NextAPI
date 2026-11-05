@@ -81,6 +81,27 @@ const RESULTADO: Record<ResultadoPrueba, { texto: string; color: string }> = {
   no_aplica: { texto: 'No aplica', color: C.tenue },
 };
 
+/** Iconos de Lucide (lucide-static 0.460.0, ISC) en trazos SVG de 24×24. */
+const ICONOS = {
+  tecnico: ['M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2', 'M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0'],
+  cliente: ['M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z', 'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2', 'M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2', 'M10 6h4', 'M10 10h4', 'M10 14h4', 'M10 18h4'],
+  fecha: ['M8 2v4', 'M16 2v4', 'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z', 'M3 10h18'],
+  ubicacion: ['M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0', 'M9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0'],
+  monitorista: ['M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm0 0a9 9 0 1 1 18 0m0 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z', 'M21 16v2a4 4 0 0 1-4 4h-5'],
+  servicio: ['M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'],
+  vehiculo: ['M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2', 'M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0', 'M9 17h6', 'M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0'],
+  revision: ['M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1z', 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2', 'm9 14 2 2 4-4'],
+  equipo: ['M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z', 'M10 9h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z', 'M15 2v2', 'M15 20v2', 'M2 15h2', 'M2 9h2', 'M20 15h2', 'M20 9h2', 'M9 2v2', 'M9 20v2'],
+  pruebas: ['M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2'],
+  firmas: ['M12 20h9', 'M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'],
+  fotos: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z', 'M9 13a3 3 0 1 0 6 0a3 3 0 1 0 -6 0'],
+  documentos: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'],
+  tablero: ['m12 14 4-4', 'M3.34 19a10 10 0 1 1 17.32 0'],
+  observaciones: ['M7.9 20A9 9 0 1 0 4 16.1L2 22Z'],
+  sinFoto: ['M2 2L22 22', 'M10.41 10.41a2 2 0 1 1-2.83-2.83', 'M13.5 13.5L6 21', 'M18 12L21 15', 'M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59', 'M21 15V5a2 2 0 0 0-2-2H9'],
+} as const;
+export type Icono = keyof typeof ICONOS;
+
 const FUENTES = join(__dirname, '..', 'assets', 'fonts');
 const ANCHO = 612;
 const ALTO = 792;
@@ -132,21 +153,32 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
     texto(t, x + 8, yy + 4, { f, t: tam, c: color });
     return w;
   };
-  const seccion = (num: string | null, titulo: string, h: number) => {
-    cabe(28 + h);
+  /** Icono de trazo (estilo Lucide) de `tam` puntos con la esquina superior izquierda en (x, yy). */
+  const icono = (nombre: Icono, x: number, yy: number, tam: number, color = C.marino) => {
+    doc.save().translate(x, yy).scale(tam / 24);
+    doc.lineWidth(2).lineCap('round').lineJoin('round').strokeColor(color);
+    for (const trazo of ICONOS[nombre]) doc.path(trazo).stroke();
+    doc.restore();
+  };
+  /** Título de apartado: número, icono, nombre y una línea hasta el margen. */
+  const seccion = (num: string | null, titulo: string, h: number, ic: Icono) => {
+    cabe(30 + h);
     let x = M;
     if (num) {
-      texto(num, x, y, { f: 'b', t: 12, c: C.vino });
-      doc.moveTo(x + 22, y + 1).lineTo(x + 22, y + 14).lineWidth(0.8).stroke(C.linea);
-      x += 32;
+      texto(num, x, y + 1, { f: 'b', t: 12.5, c: C.vino });
+      doc.moveTo(x + 23, y + 1).lineTo(x + 23, y + 16).lineWidth(0.8).stroke(C.linea);
+      x += 31;
     }
-    texto(titulo, x, y, { f: 'b', t: 12.5, c: C.marino });
-    const fin2 = x + doc.font('b').fontSize(12.5).widthOfString(titulo) + 10;
-    doc.moveTo(fin2, y + 8).lineTo(M + UTIL, y + 8).lineWidth(0.6).stroke(C.linea);
-    y += 26;
+    icono(ic, x, y + 0.5, 15);
+    x += 23;
+    texto(titulo, x, y, { f: 'b', t: 14, c: C.marino });
+    const fin2 = x + doc.font('b').fontSize(14).widthOfString(titulo) + 10;
+    doc.moveTo(fin2, y + 9).lineTo(M + UTIL, y + 9).lineWidth(0.6).stroke(C.linea);
+    y += 30;
   };
-  const subtitulo = (t: string, derecha?: string) => {
-    texto(t, M, y, { f: 'b', t: 10.5, c: C.marino });
+  const subtitulo = (t: string, derecha: string | undefined, ic: Icono) => {
+    icono(ic, M, y + 0.5, 12);
+    texto(t, M + 18, y, { f: 'b', t: 10.5, c: C.marino });
     if (derecha) {
       doc.font('s').fontSize(8);
       const w = doc.widthOfString(derecha) + 16;
@@ -172,11 +204,12 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
     if (!dos) return filas.forEach((f) => renglon([f]));
     for (let i = 0; i < filas.length; i += 2) renglon(filas.slice(i, i + 2));
   };
-  const caja = (titulo: string, cuerpo: string) => {
+  const caja = (titulo: string, cuerpo: string, ic: Icono) => {
     const h = alto(cuerpo, UTIL - 28) + 36;
     cabe(h);
     doc.roundedRect(M, y, UTIL, h, 6).fillAndStroke(C.fondo, C.linea);
-    texto(titulo, M + 14, y + 11, { f: 's', t: 8.5, c: C.marino });
+    icono(ic, M + 14, y + 10.5, 9.5);
+    texto(titulo, M + 28, y + 11, { f: 's', t: 8.5, c: C.marino });
     texto(cuerpo, M + 14, y + 25, { w: UTIL - 28 });
     y += h + 12;
   };
@@ -195,7 +228,8 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
     } else {
       doc.roundedRect(x, yy, w, h, 6).fill(C.fondo);
       doc.roundedRect(x, yy, w, h, 6).dash(3, { space: 3 }).lineWidth(0.7).stroke(C.tenue).undash();
-      texto('Sin fotografía', x, yy + h / 2 - 5, { f: 'm', t: 8.5, c: C.suave, w, align: 'center' });
+      icono('sinFoto', x + w / 2 - 8, yy + h / 2 - 17, 16, C.suave);
+      texto('Sin fotografía', x, yy + h / 2 + 5, { f: 'm', t: 8.5, c: C.suave, w, align: 'center' });
     }
   };
   /** Rejilla de fotos de tres columnas; `extra` ocupa la siguiente celda libre. */
@@ -236,20 +270,21 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
 
   y = 108;
   const e = d.encabezado;
-  const celdas: Array<[string, string, string | null | undefined]> = [
-    ['Técnico', e.tecnico, e.correoTecnico],
-    ['Cliente', e.cliente, null],
-    ['Fecha y hora', e.fecha, e.cierre ? `Cierre: ${e.cierre}` : null],
-    ['Ubicación', e.ubicacion, null],
-    ['Monitorista', e.monitorista, null],
-    ['Tipo(s) de servicio', '', null],
+  const celdas: Array<[string, string, string | null | undefined, Icono]> = [
+    ['Técnico', e.tecnico, e.correoTecnico, 'tecnico'],
+    ['Cliente', e.cliente, null, 'cliente'],
+    ['Fecha y hora', e.fecha, e.cierre ? `Cierre: ${e.cierre}` : null, 'fecha'],
+    ['Ubicación', e.ubicacion, null, 'ubicacion'],
+    ['Monitorista', e.monitorista, null, 'monitorista'],
+    ['Tipo(s) de servicio', '', null, 'servicio'],
   ];
   const wc = (UTIL - 28) / 3;
   doc.roundedRect(M, y, UTIL, 98, 8).fillAndStroke(C.fondo, C.linea);
-  celdas.forEach(([et, v, sub], i) => {
+  celdas.forEach(([et, v, sub, ic], i) => {
     const x = M + 14 + (i % 3) * wc;
     const yy = y + 12 + Math.floor(i / 3) * 46;
-    texto(et, x, yy, { f: 's', t: 8.5, c: C.marino });
+    icono(ic, x, yy + 0.5, 9.5);
+    texto(et, x + 14, yy, { f: 's', t: 8.5, c: C.marino });
     if (et === 'Tipo(s) de servicio') {
       let xx = x;
       for (const t of e.tipos) xx += pastilla(t, xx, yy + 13, C.marino, '#fff', 's', 8) + 4;
@@ -261,7 +296,7 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
   y += 116;
 
   // ── 01 Datos del vehículo ─────────────────────────────────────────────
-  seccion('01', 'Datos del vehículo', 60);
+  seccion('01', 'Datos del vehículo', 60, 'vehiculo');
   datos(d.vehiculo.slice(0, 1), false);
   datos(d.vehiculo.slice(1), true);
   y += 14;
@@ -276,10 +311,10 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
 
   const conFoto = (f: Foto[]) => f.filter((x) => x.imagen).length;
   cabe(130);
-  subtitulo('Fotografías del vehículo', `${conFoto(d.fotosVehiculo)}/${d.fotosVehiculo.length}`);
+  subtitulo('Fotografías del vehículo', `${conFoto(d.fotosVehiculo)}/${d.fotosVehiculo.length}`, 'fotos');
   rejilla(d.fotosVehiculo);
   cabe(130);
-  subtitulo('Documentos del vehículo', `${conFoto(d.documentos)}/${d.documentos.length} opcionales`);
+  subtitulo('Documentos del vehículo', `${conFoto(d.documentos)}/${d.documentos.length} opcionales`, 'documentos');
   rejilla(d.documentos);
 
   // ── 02 Revisión del vehículo ──────────────────────────────────────────
@@ -287,7 +322,7 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
   const wCol = (UTIL - (n - 1) * 12) / n;
   const hOpcion = (t: string) => Math.max(19, alto(t, wCol - 36, 's', 8.8) + 8);
   const hCas = Math.max(...d.casillas.map((c) => c.opciones.reduce((t, o) => t + hOpcion(o.nombre), 0))) + 46;
-  seccion('02', 'Tipo de servicio', hCas);
+  seccion('02', 'Tipo de servicio', hCas, 'revision');
   d.casillas.forEach((c, i) => {
     const x = M + i * (wCol + 12);
     doc.roundedRect(x, y, wCol, hCas, 6).lineWidth(0.6).stroke(C.linea);
@@ -311,7 +346,7 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
   y += hCas + 18;
 
   cabe(130);
-  subtitulo('Fotografías del tablero', `${conFoto(d.fotosTablero)}/${d.fotosTablero.length}`);
+  subtitulo('Fotografías del tablero', `${conFoto(d.fotosTablero)}/${d.fotosTablero.length}`, 'tablero');
   const fallas = d.fotosFallas.filter((f) => f.imagen);
   rejilla(d.fotosTablero, 78, fallas.length ? undefined : (x, yy, w, h) => {
     doc.roundedRect(x, yy, w, h, 6).dash(3, { space: 3 }).lineWidth(0.7).stroke(C.tenue).undash();
@@ -320,21 +355,21 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
   });
   if (fallas.length) {
     cabe(130);
-    subtitulo('Imágenes extras de fallas', `${fallas.length}/${d.totalFallas}`);
+    subtitulo('Imágenes extras de fallas', `${fallas.length}/${d.totalFallas}`, 'fotos');
     rejilla(fallas);
   }
 
   // ── 03 El servicio ────────────────────────────────────────────────────
-  seccion('03', d.servicio.titulo, 60);
+  seccion('03', d.servicio.titulo, 60, 'equipo');
   datos(d.servicio.filas, false);
   y += 12;
-  for (const a of d.servicio.avisos) caja('Nota', a);
+  for (const a of d.servicio.avisos) caja('Nota', a, 'observaciones');
   if (d.servicio.fotos.length) rejilla(d.servicio.fotos);
 
   // ── 04 Pruebas ────────────────────────────────────────────────────────
   if (d.pruebas.length) {
     const hFila = 30;
-    seccion('04', 'Pruebas generadas', 30 + hFila);
+    seccion('04', 'Pruebas generadas', 30 + hFila, 'pruebas');
     const xRes = M + UTIL * 0.66;
     const encab = () => {
       doc.save().roundedRect(M, y, UTIL, 26, 6).clip().rect(M, y, UTIL, 26).fill('#eaf0f9').restore();
@@ -365,12 +400,12 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
     doc.roundedRect(M, inicio, UTIL, y - inicio, 6).lineWidth(0.6).stroke(C.linea);
     y += 14;
   }
-  caja('Observaciones', d.observaciones || 'Sin observaciones');
+  caja('Observaciones', d.observaciones || 'Sin observaciones', 'observaciones');
 
   // ── Firmas ────────────────────────────────────────────────────────────
   if (d.firmas.length) {
     const hFirma = 118;
-    seccion(null, 'Firmas de conformidad', hFirma + 40);
+    seccion(null, 'Firmas de conformidad', hFirma + 40, 'firmas');
     const w = (UTIL - 14) / 2;
     d.firmas.forEach((f, i) => {
       const x = M + i * (w + 14);

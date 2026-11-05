@@ -15,6 +15,8 @@ import { OrdenServicioRespuestas } from 'src/entities/OrdenServicioRespuestas';
 import { Sims } from 'src/entities/Sims';
 import { Usuarios } from 'src/entities/Usuarios';
 import { Vehiculos } from 'src/entities/Vehiculos';
+import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
+import { textoDispositivo, textoSim } from './ordenes-servicio.equipos';
 import { MailService } from 'src/mail/mail.service';
 import { S3Service } from 'src/s3/s3.service';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
@@ -204,7 +206,12 @@ export class OrdenesServicioPdfService {
           relations: { idMarcaVehiculo2: true, idModeloVehiculo2: true, idCombustible2: true },
         })
       : null;
-    const instalacion = (id: number | null | undefined) => (id ? this.instalacionesRepo.findOne({ where: { id } }) : null);
+    // Si un cambio posterior archivó la instalación, su versión en el histórico.
+    const instalacion = async (id: number | null | undefined) =>
+      id
+        ? ((await this.instalacionesRepo.findOne({ where: { id } })) ??
+          (await this.instalacionesRepo.manager.findOne(HistoricoInstalaciones, { where: { idInstalacionOriginal: id }, order: { id: 'DESC' } })))
+        : null;
     // Antes del servicio (la que se cambió o retiró) y después (la que quedó).
     const [antes, despues] = await Promise.all([
       instalacion(orden.idInstalacion),
@@ -286,18 +293,9 @@ export class OrdenesServicioPdfService {
       return { nombre: o.nombre, resultado: Number(respuesta('pruebas', o.clave)?.valor) === 1 ? 'correcta' : 'no_realizada' };
     });
 
-    const nombreEquipo = (x: Awaited<ReturnType<typeof dispositivo>>) =>
-      x
-        ? [[x.idMarca2?.nombre, x.idModelo2?.nombre].filter(Boolean).join(' '), x.imei ? `IMEI ${x.imei}` : null, `Serie ${x.numeroSerie}`]
-            .filter(Boolean)
-            .join(' · ')
-        : '—';
-    const nombreSim = (x: Awaited<ReturnType<typeof sim>>) =>
-      x
-        ? [x.idTelefonia2?.nombreTelefonia, x.imei ? `ICCID ${x.imei}` : null, x.numeroTelefono ? `Tel. ${x.numeroTelefono}` : null]
-            .filter(Boolean)
-            .join(' · ')
-        : '—';
+    // Los mismos textos que el detalle de la orden (ordenes-servicio.equipos.ts).
+    const nombreEquipo = (x: Awaited<ReturnType<typeof dispositivo>>) => textoDispositivo(x) ?? '—';
+    const nombreSim = (x: Awaited<ReturnType<typeof sim>>) => textoSim(x) ?? '—';
     const filas: Array<[string, string]> = [['Tipo de equipo', equipo?.idTipoDispositivo2?.nombre ?? equipoAntes?.idTipoDispositivo2?.nombre ?? '—']];
     if (orden.tipoServicio === 'c_equipo') filas.push(['Equipo anterior', nombreEquipo(equipoAntes)], ['Equipo nuevo', nombreEquipo(equipo)]);
     else if (orden.tipoServicio === 'desinstalacion') filas.push(['Equipo retirado', nombreEquipo(equipoAntes ?? equipo)]);

@@ -37,6 +37,7 @@ import { CreateOrdenServicioDto } from './dto/create-orden-servicio.dto';
 import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
 import { ROLES_MONITOREO, esMonitoreo, puedeEditar, puedeVer } from './ordenes-servicio.acceso';
+import { EquiposDeOrden } from './ordenes-servicio.equipos';
 import { mapOrden } from './ordenes-servicio.map';
 import {
   AUTORIZACION,
@@ -340,12 +341,16 @@ export class OrdenesServicioService {
     if (!orden || !puedeVer(orden, user)) {
       throw new NotFoundException('Orden de servicio no encontrada');
     }
-    const [respuestas, archivos, catalogo, pruebas] = await Promise.all([
+    const [respuestas, archivos, catalogo, pruebas, equipos] = await Promise.all([
       this.respuestasRepo.find({ where: { idOrdenServicio: Number(orden.id) } }),
       this.archivosRepo.find({ where: { idOrdenServicio: Number(orden.id) } }),
       this.catalogoRepo.find({ where: { estatus: EstatusEnum.ACTIVO } }),
       this.dataSource.getRepository(OrdenServicioPruebas).find({ where: { idOrdenServicio: Number(orden.id) } }),
+      new EquiposDeOrden(this.dataSource).describir(orden),
     ]);
+    const conUrl = (lista: typeof equipos.fotosVehiculo) =>
+      Promise.all(lista.map(async (a) => ({ clave: a.clave, nombre: a.nombre, url: await this.urlFirmada(a.ruta) })));
+    const [fotosVehiculo, documentosVehiculo] = await Promise.all([conUrl(equipos.fotosVehiculo), conUrl(equipos.documentosVehiculo)]);
     const archivosConUrl = await Promise.all(
       archivos.map(async (a) => ({
         clave: a.clave,
@@ -368,6 +373,13 @@ export class OrdenesServicioService {
         {
           ...mapOrden(orden),
           ...contexto,
+          // Los ids siguen en la orden; esto es lo que se le muestra a una persona.
+          instalacion: equipos.instalacion,
+          instalacionResultado: equipos.instalacionResultado,
+          dispositivoNuevo: equipos.dispositivoNuevo,
+          simNuevo: equipos.simNuevo,
+          fotosVehiculo,
+          documentosVehiculo,
           respuestas: respuestas.map((r) => ({
             seccion: r.seccion,
             clave: r.clave,

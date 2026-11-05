@@ -190,7 +190,7 @@ Disponible cuando se despliegue la rama `dev-isra` de NextAPI.
 NextAPI ya guarda cada visita del técnico como orden de servicio (contrato en [contratos.md](contratos.md) §14.1). La app de campo las captura; en el front web solo se consultan:
 
 - **Historial de la unidad:** `GET /ordenes-servicio/paginado/:page/:limit?idProducto=<vehículo>`. Usar `idProducto` y no `idInstalacion`, porque un cambio de equipo o de SIM crea una instalación con Id nuevo.
-- **Detalle:** `GET /ordenes-servicio/:id` trae folio, tipo, técnico, monitorista, fecha y lugar, respuestas sí/no por sección, y fotos y firmas con URL firmada (vence a los 5 min; volver a pedir el detalle para renovarla).
+- **Detalle:** `GET /ordenes-servicio/:id` trae folio, tipo, técnico, monitorista, fecha y lugar, respuestas sí/no por sección, y fotos y firmas con URL firmada (vence a los 5 min; volver a pedir el detalle para renovarla). Para la sección "Vehículo e instalación" usar `instalacion`, `instalacionResultado` (`{ tipoEquipo, dispositivo, sim }` en texto), `dispositivoNuevo`, `simNuevo`, `fotosVehiculo` y `documentosVehiculo` (`{ clave, nombre, url }`, solo las registradas) en vez de los ids (`docs/ordenes-servicio.md` §detalle).
 - **Textos de las opciones:** `GET /ordenes-servicio/catalogo` (no escribirlos en el front).
 - **Sugerido:** en el histórico de la instalación, junto a cada cambio de equipo, de SIM o baja, un enlace a su orden (`idHistoricoInstalacion` de la orden = Id del histórico).
 - Roles que leen: 1–5 y 8.

@@ -149,6 +149,17 @@ Solo funciona en `borrador`. Se manda únicamente lo que cambió; `null` borra u
 ### 5.5 `GET /:id`
 Devuelve la orden, `respuestas` (con `valor` booleano) y `archivos` (`clave`, `fechaCreacion`, `url` firmada por 5 min). Si está en borrador, incluye además `faltantesParaCerrar: string[]` con mensajes en español listos para mostrarse en la app.
 
+Además de los ids, el detalle trae el equipo en texto, con los mismos textos que el PDF (`ordenes-servicio.equipos.ts`; pedido de la app el 4/11/2026):
+
+| Campo | Qué es |
+|-------|--------|
+| `instalacion` | La instalación atendida (`idInstalacion` o `idInstalacionProgramada`): `{ idInstalacion, tipoEquipo, dispositivo, sim }`. Si un cambio posterior la archivó, se lee del histórico |
+| `instalacionResultado` | La que quedó al cerrar, con la misma forma; `null` mientras no se cierra |
+| `dispositivoNuevo` / `simNuevo` | Texto del equipo y la SIM nuevos (`null` si no aplica) |
+| `fotosVehiculo` / `documentosVehiculo` | Solo las registradas en la ficha del vehículo: `{ clave, nombre, url }` (URL firmada, 5 min) |
+
+Formato: `dispositivo` = `Suntech ST210 - IMEI 3333 - Serie: 0000009` (`dispositivoNuevo` antepone el tipo: `AVL - …`); `sim` = `Telcel - ICCID 000002 - Tel: 7775642667`. Las claves de fotos son las columnas de `Vehiculos` (`foto`, `fotoFrente`, `fotoTrasera`, `fotoDerecha`, `fotoIzquierda`, `fotoExtra`; documentos `tarjetaCirculacion`, `polizaSeguro`, `permisoCarga`).
+
 ### 5.6 `POST /:id/cerrar`
 Se cierra en una sola transacción, con bloqueo de la fila de la orden:
 1. Valida lo que se necesita para cerrar (§6). Si falta algo, responde **400 `{ "message": "La orden está incompleta", "faltantes": [...] }`**.
@@ -517,7 +528,7 @@ Reglas:
 - Cada vez que se comparte se genera un PDF nuevo en S3 (`ordenes-servicio/pdf/`, privado) con los datos de ese momento; los anteriores no se borran, para no romper enlaces ya enviados. El enlace dura 7 días (máximo de S3).
 - Roles: ver el PDF, los que leen órdenes (1–5 y el técnico, solo las suyas); compartir y enviar por correo, solo el técnico de la orden y los roles 1–3 (§17).
 - Dependencias: `pdfkit` y `sharp` (`npm install` al desplegar). Las fotos se reducen a 1000 px (JPEG) para que el PDF pese poco; la fuente es Inter (`src/assets/fonts`, licencia OFL, se copia a `dist` con `nest build`).
-- Dibujo: `ordenes-servicio-pdf.dibujo.ts` (solo pinta); los datos los arma `ordenes-servicio-pdf.service.ts`. Una foto o firma que no se puede descargar sale como "Sin fotografía"/"Sin firma", no rompe el PDF.
+- Dibujo: `ordenes-servicio-pdf.dibujo.ts` (solo pinta; títulos de apartado con número, icono y línea, e iconos en el encabezado, como la propuesta de diseño; los iconos son trazos de Lucide, ISC, sin dependencia); los datos los arma `ordenes-servicio-pdf.service.ts`. Una foto o firma que no se puede descargar sale como "Sin fotografía"/"Sin firma", no rompe el PDF.
 
 ## 14. API para el CRM (`/api/integracion`)
 

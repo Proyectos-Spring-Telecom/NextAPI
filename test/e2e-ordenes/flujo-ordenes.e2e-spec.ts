@@ -282,6 +282,11 @@ describe('2. Mantenimiento: una revisión que termina en cambio de equipo, con c
     expect(s.idNueva).not.toBe(s.idInstalacion);
     const det2 = ok(await a.app('GET', `/ordenes-servicio/${s.os}`), 'detalle').data[0];
     expect(det2).toMatchObject({ tipoDistinto: true, tipoProgramado: 'revision', tipoServicio: 'c_equipo', codigoValidado: true });
+    // En texto para la app: la atendida ya está archivada y se lee del histórico.
+    expect(det2.instalacion).toMatchObject({ idInstalacion: s.idInstalacion, dispositivo: expect.stringContaining('IMEI ') });
+    expect(det2.instalacion.dispositivo).not.toContain(s.nuevo.imei);
+    expect(det2.instalacionResultado).toMatchObject({ idInstalacion: s.idNueva, dispositivo: expect.stringContaining(`IMEI ${s.nuevo.imei}`) });
+    expect(det2.dispositivoNuevo).toContain(`IMEI ${s.nuevo.imei}`);
     const hist = e.consulta('Next', `SELECT Accion FROM HistoricoInstalaciones WHERE IdInstalacionOriginal = ${s.idInstalacion} OR Id = ${det2.idHistoricoInstalacion ?? 0}`);
     expect(hist.length).toBeGreaterThan(0);
     n.paso('App', 'Pide las pruebas (cada una debe validarla el operador) y cierra', `Instalación #${s.idInstalacion} archivada en el histórico; nueva versión #${s.idNueva} con el equipo ${s.nuevo.imei}`);
