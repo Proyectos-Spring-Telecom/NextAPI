@@ -103,6 +103,8 @@ const ICONOS = {
 export type Icono = keyof typeof ICONOS;
 
 const FUENTES = join(__dirname, '..', 'assets', 'fonts');
+/** Logo de Spring Telecom con "SPRING" en tinta (el original es blanco, para fondo oscuro). */
+const LOGO = join(__dirname, '..', 'assets', 'logo', 'spring-telecom.png');
 const ANCHO = 612;
 const ALTO = 792;
 const M = 42;
@@ -131,15 +133,10 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
     doc.text(t, x, yy, { width: o.w, align: o.align ?? 'left', lineBreak: o.w != null });
   };
   const alto = (t: string, w: number, f = 'r', t2 = 9.5) => doc.font(f).fontSize(t2).heightOfString(t, { width: w });
-  const logo = (x: number, yy: number, grande: boolean) => {
-    const t = grande ? 17 : 10;
-    doc.font('b').fontSize(t).fillColor(C.tinta).text('SPRING', x, yy, { lineBreak: false });
-    const w = doc.widthOfString('SPRING');
-    doc.font('Courier').fontSize(t * 0.62).fillColor(C.azul).text('telecom', x + w + 4, yy + t * 0.33, { lineBreak: false });
-  };
+  const logo = (x: number, yy: number, grande: boolean) => doc.image(LOGO, x, yy, { height: grande ? 13 : 7.5 });
   const nuevaHoja = () => {
     doc.addPage();
-    logo(M, 22, false);
+    logo(M, 24, false);
     texto(`Orden de Servicio · Folio ${d.folio}`, M, 23, { f: 's', t: 9, c: C.marino, w: UTIL, align: 'right' });
     y = 52;
   };
@@ -251,7 +248,7 @@ export function dibujarOrden(d: DatosPdfOrden): Promise<Buffer> {
   };
 
   // ── Hoja 1: encabezado ────────────────────────────────────────────────
-  logo(M, 52, true);
+  logo(M, 61, true);
   texto('Orden de Servicio', M, 34, { f: 'b', t: 19, c: C.marino, w: UTIL, align: 'right' });
   const est = ESTATUS[d.estatus] ?? { texto: d.estatus, color: C.suave, fondo: C.fondo };
   doc.font('s').fontSize(9);
