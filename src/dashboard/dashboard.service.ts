@@ -11,7 +11,6 @@ import {
 } from 'src/common/estatus.enum';
 import { imeiToString } from 'src/common/imei.util';
 import {
-  isTenantForbidden,
   TenantFilterService,
 } from 'src/common/tenant-filter/tenant-filter.service';
 import { calcularOnline } from 'src/alarmas/alarmas-mapper';
@@ -891,16 +890,7 @@ export class DashboardService {
     alias: string,
     columna = 'IdCliente',
   ): FiltroCliente {
-    const filtro = this.tenantFilter.aplicarFiltroListado(
-      alcance,
-      undefined,
-      alias,
-      columna,
-    );
-    if (isTenantForbidden(filtro)) {
-      return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
-    }
-    return filtro;
+    return this.tenantFilter.filtroAlcance(alcance, alias, columna);
   }
 
   private thresholdMs(): number {

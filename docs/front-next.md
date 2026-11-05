@@ -522,6 +522,8 @@ io(`${base.origin}/monitoreo`, { path: `${prefijo}/socket.io`, auth: { token } }
 
 En local (sin prefijo) queda `path: '/socket.io'`, igual que hoy.
 
+**Clientes hijos (5/11/2026).** Next siempre contempla los clientes hijos (`spGetClientes`): los roles 6, 7 y 9 ven su cliente y sus hijos (7 y 9, solo lo asignado), y cualquier listado con `?idCliente=X` trae X y sus hijos. Mostrar el cliente de cada fila (`idCliente` / `nombreCliente`), porque ya no es siempre el que se pidió.
+
 **Sesión y sockets (5/11/2026).** El token dura 1 h y el refresh 8 h (antes ambos 1 h: el refresh llegaba vencido y la sesión se cerraba a la hora). `POST /login/refresh` ya devuelve `expiresIn` como el login.
 - Renovar antes de que venza (por ejemplo a los 55 min, con `expiresIn`) y una sola vez aunque haya varias peticiones o pestañas esperando: el refresh rota y el viejo deja de servir.
 - **Al renovar, actualizar el token de los sockets** (`/monitoreo` y `/alarmas`) antes de que reconecten: `socket.auth = { token: nuevo }`. Hoy reconectan con el token vencido y Next los rechaza (`jwt expired`) en bucle; mientras tanto **no llegan los eventos de paneles** (`evento:nuevo`) ni las actualizaciones del mapa.

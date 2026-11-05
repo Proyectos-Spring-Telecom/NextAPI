@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOperator, In, Repository } from 'typeorm';
 import { Clientes } from 'src/entities/Clientes';
 
 /**
@@ -9,11 +9,11 @@ import { Clientes } from 'src/entities/Clientes';
  */
 const ROLES_SIN_FILTRO = new Set([1, 2, 3, 4, 5, 8]);
 
-/**
- * Rol que ve su cliente + hijos (spGetClientes / getClienteHijosIds).
- * 6
+/*
+ * Los demás roles (6, 7, 9…) ven su cliente y todos sus hijos (`spGetClientes`):
+ * siempre se contemplan los clientes hijos del idCliente que pide el API
+ * (decisión del 5/11/2026). Los 7/9 además se limitan a lo asignado.
  */
-const ROLES_CLIENTE_HIJOS = new Set([6]);
 
 /**
  * Roles que, además de su cliente, solo ven las instalaciones asignadas en
@@ -57,8 +57,7 @@ export class TenantFilterService {
    * Genera un fragmento SQL + params para filtrar por tenant según el rol.
    *
    * - Roles 1, 2, 3, 4, 5, 8 → sin filtro (ven todo).
-   * - Rol 6 → su cliente + hijos (`getClienteHijosIds` / `spGetClientes`).
-   * - Rol 7 (y cualquier otro) → solo su `idCliente`.
+   * - Cualquier otro rol (6, 7, 9…) → su cliente + hijos (`spGetClientes`).
    */
   async build(
     rol: number,
@@ -72,22 +71,14 @@ export class TenantFilterService {
       return { sql: '', params: [], sinAcceso: false };
     }
 
-    if (ROLES_CLIENTE_HIJOS.has(rolNum)) {
-      const ids = await this.getClienteHijosIds(idCliente);
-      if (ids.length === 0) {
-        return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
-      }
-      const placeholders = ids.map(() => '?').join(', ');
-      return {
-        sql: ` AND ${alias}.${columna} IN (${placeholders}) `,
-        params: [...ids],
-        sinAcceso: false,
-      };
+    const ids = await this.getClienteHijosIds(idCliente);
+    if (ids.length === 0) {
+      return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
     }
-
+    const placeholders = ids.map(() => '?').join(', ');
     return {
-      sql: ` AND ${alias}.${columna} = ? `,
-      params: [idCliente],
+      sql: ` AND ${alias}.${columna} IN (${placeholders}) `,
+      params: [...ids],
       sinAcceso: false,
     };
   }
@@ -107,22 +98,14 @@ export class TenantFilterService {
       return { sql: '', params: [], sinAcceso: false };
     }
 
-    if (ROLES_CLIENTE_HIJOS.has(rolNum)) {
-      const ids = await this.getClienteHijosIds(idCliente);
-      if (ids.length === 0) {
-        return { sql: ' WHERE 1 = 0 ', params: [], sinAcceso: true };
-      }
-      const placeholders = ids.map(() => '?').join(', ');
-      return {
-        sql: ` WHERE ${alias}.${columna} IN (${placeholders}) `,
-        params: [...ids],
-        sinAcceso: false,
-      };
+    const ids = await this.getClienteHijosIds(idCliente);
+    if (ids.length === 0) {
+      return { sql: ' WHERE 1 = 0 ', params: [], sinAcceso: true };
     }
-
+    const placeholders = ids.map(() => '?').join(', ');
     return {
-      sql: ` WHERE ${alias}.${columna} = ? `,
-      params: [idCliente],
+      sql: ` WHERE ${alias}.${columna} IN (${placeholders}) `,
+      params: [...ids],
       sinAcceso: false,
     };
   }
@@ -136,9 +119,12 @@ export class TenantFilterService {
       [idCliente],
     );
     const rows = result?.[0] ?? [];
-    return rows
+    const ids: number[] = rows
       .map((row: { Id?: unknown; id?: unknown }) => Number(row.Id ?? row.id))
       .filter((id: number) => Number.isFinite(id) && id > 0);
+    // El propio cliente siempre va, aunque el SP no lo regrese.
+    const propio = Number(idCliente);
+    return Number.isFinite(propio) && propio > 0 && !ids.includes(propio) ? [propio, ...ids] : ids;
   }
 
   /**
@@ -155,56 +141,49 @@ export class TenantFilterService {
       return 'all';
     }
 
-    if (ROLES_CLIENTE_HIJOS.has(rolNum)) {
-      return this.getClienteHijosIds(idClienteToken);
-    }
-
-    const id = Number(idClienteToken);
-    return Number.isFinite(id) && id > 0 ? [id] : [];
+    return this.getClienteHijosIds(idClienteToken);
   }
 
   /**
-   * Aplica `?idCliente` sobre el alcance del rol.
+   * Aplica `?idCliente` sobre el alcance del rol: ese cliente y sus hijos
+   * (`spGetClientes`) que estén en el alcance.
    * Si el query pide un cliente fuera del set → `{ forbidden: true }` (403).
    */
-  aplicarFiltroListado(
+  async aplicarFiltroListado(
     scope: 'all' | number[],
     queryIdCliente: number | undefined,
     alias: string,
     columna: string = 'IdCliente',
-  ): TenantListadoResult {
-    if (scope === 'all') {
-      if (queryIdCliente != null) {
-        return {
-          sql: ` AND ${alias}.${columna} = ? `,
-          params: [queryIdCliente],
-          sinAcceso: false,
-        };
-      }
-      return { sql: '', params: [], sinAcceso: false };
-    }
-
-    if (scope.length === 0) {
+  ): Promise<TenantListadoResult> {
+    if (scope !== 'all' && scope.length === 0) {
       return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
     }
-
+    let ids: number[];
     if (queryIdCliente != null) {
-      if (!scope.includes(Number(queryIdCliente))) {
+      if (!this.clienteVisibleEnScope(scope, queryIdCliente)) {
         return { forbidden: true };
       }
-      return {
-        sql: ` AND ${alias}.${columna} = ? `,
-        params: [queryIdCliente],
-        sinAcceso: false,
-      };
+      ids = (await this.getClienteHijosIds(Number(queryIdCliente))).filter((id) =>
+        this.clienteVisibleEnScope(scope, id),
+      );
+    } else if (scope === 'all') {
+      return { sql: '', params: [], sinAcceso: false };
+    } else {
+      ids = scope;
     }
-
-    const placeholders = scope.map(() => '?').join(', ');
+    const placeholders = ids.map(() => '?').join(', ');
     return {
       sql: ` AND ${alias}.${columna} IN (${placeholders}) `,
-      params: [...scope],
+      params: [...ids],
       sinAcceso: false,
     };
+  }
+
+  /** Fragmento del alcance ya resuelto, sin `?idCliente` (síncrono). */
+  filtroAlcance(scope: 'all' | number[], alias: string, columna: string = 'IdCliente'): TenantFragment {
+    if (scope === 'all') return { sql: '', params: [], sinAcceso: false };
+    if (scope.length === 0) return { sql: ' AND 1 = 0 ', params: [], sinAcceso: true };
+    return { sql: ` AND ${alias}.${columna} IN (${scope.map(() => '?').join(', ')}) `, params: [...scope], sinAcceso: false };
   }
 
   clienteVisibleEnScope(
@@ -237,15 +216,28 @@ export class TenantFilterService {
       return { sinAcceso: false };
     }
 
-    if (ROLES_CLIENTE_HIJOS.has(rolNum)) {
-      const ids = await this.getClienteHijosIds(idCliente);
-      if (ids.length === 0) {
-        return { sinAcceso: true };
-      }
-      return { sinAcceso: false, idCliente: In(ids) };
+    const ids = await this.getClienteHijosIds(idCliente);
+    if (ids.length === 0) {
+      return { sinAcceso: true };
     }
+    return { sinAcceso: false, idCliente: In(ids) };
+  }
 
-    return { sinAcceso: false, idCliente };
+  /**
+   * `?idCliente` de un listado: ese cliente y sus hijos (`spGetClientes`), solo
+   * los que están en el alcance del rol. `null` si el pedido queda fuera.
+   */
+  async clienteConHijosEnAlcance(
+    rol: number,
+    idClienteToken: number,
+    idCliente: number,
+  ): Promise<number | FindOperator<number> | null> {
+    const scope = await this.idsClientePermitidos(rol, idClienteToken);
+    if (!this.clienteVisibleEnScope(scope, idCliente)) return null;
+    const familia = (await this.getClienteHijosIds(idCliente)).filter((id) =>
+      this.clienteVisibleEnScope(scope, id),
+    );
+    return familia.length > 1 ? In(familia) : Number(idCliente);
   }
 
   // ---------------------------------------------------------------------------

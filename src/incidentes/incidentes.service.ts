@@ -521,14 +521,10 @@ export class IncidentesService {
 
     let idClienteWhere = tenant.idCliente;
     if (idClienteFiltro != null) {
-      const scope = await this.tenantFilter.idsClientePermitidos(
-        rol,
-        idClienteToken,
-      );
-      if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteFiltro)) {
-        return null;
-      }
-      idClienteWhere = idClienteFiltro;
+      // El cliente y sus hijos (spGetClientes), dentro del alcance del rol.
+      const familia = await this.tenantFilter.clienteConHijosEnAlcance(rol, idClienteToken, idClienteFiltro);
+      if (familia == null) return null;
+      idClienteWhere = familia;
     }
 
     const estatusWhere = soloAbiertos ? EstatusIncidente.ABIERTO : estatus;

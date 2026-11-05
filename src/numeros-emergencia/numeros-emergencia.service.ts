@@ -224,14 +224,10 @@ export class NumerosEmergenciaService {
 
       let idClienteWhere = tenant.idCliente;
       if (idClienteFiltro != null) {
-        const scope = await this.tenantFilter.idsClientePermitidos(
-          rol,
-          idClienteToken,
-        );
-        if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteFiltro)) {
-          return { data: [] };
-        }
-        idClienteWhere = idClienteFiltro;
+        // El cliente y sus hijos (spGetClientes), dentro del alcance del rol.
+        const familia = await this.tenantFilter.clienteConHijosEnAlcance(rol, idClienteToken, idClienteFiltro);
+        if (familia == null) return { data: [] };
+        idClienteWhere = familia;
       }
 
       const where: FindOptionsWhere<NumerosEmergenciaCliente> = {

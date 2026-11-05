@@ -45,7 +45,7 @@ export class MonitoreoController {
       'No requiere `idCliente` en la ruta; el alcance se resuelve por rol del token.',
       '',
       '**SA, Dev, Admin, JefeMonitoreo, Monitoreo, Técnico (1–5, 8):** todas las instalaciones activas.',
-      '**Cliente (6):** instalaciones de su cliente y descendientes (`spGetClientes`).',
+      '**Cliente (6):** instalaciones de su cliente y descendientes (`spGetClientes`); 7 y 9, las asignadas.',
       '**Operador (7) y Usuario (9):** solo instalaciones asignadas en `UsuariosInstalaciones` (activas).',
       '',
       '**GPS (vehículo 1, activo 2, persona 4):** un solo objeto plano = contexto del producto +',

@@ -161,7 +161,7 @@ export class ClientesController {
   @ApiOperation({
     summary: 'Obtener lista de clientes por ID de cliente',
     description:
-      'Obtiene el cliente indicado y sus hijos (spGetClientes). El cliente debe estar en el alcance del usuario (rol 6: su árbol; roles 7 y 9: su cliente); si no, 404.',
+      'Obtiene el cliente indicado y sus hijos (spGetClientes). El cliente debe estar en el alcance del usuario (roles 6, 7 y 9: su árbol); si no, 404.',
   })
   @ApiParam({
     name: 'cliente',

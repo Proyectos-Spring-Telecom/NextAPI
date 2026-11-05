@@ -469,11 +469,13 @@ export class MonitoreoService {
       if (!this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
         throw new ForbiddenException('Cliente fuera de alcance');
       }
+      // El cliente y sus hijos (spGetClientes): sus usuarios y sus instalaciones.
+      const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
 
       const usuariosOk = await this.usuariosRepo.count({
         where: {
           id: In(idsUsuarios),
-          idCliente,
+          idCliente: In(familia),
         },
       });
       if (usuariosOk !== idsUsuarios.length) {
@@ -491,7 +493,7 @@ export class MonitoreoService {
           { idsUsuarios, uiActivo: EstatusEnum.ACTIVO },
         )
         .select('DISTINCT i.id', 'id')
-        .where('i.idCliente = :idCliente', { idCliente })
+        .where('i.idCliente IN (:...familia)', { familia })
         .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
         .getRawMany<{ id: string | number }>();
 

@@ -289,7 +289,9 @@ export class ConsolaGaleriaService {
     idUsuarioToken: number,
   ): Promise<{ nombreCliente: string | null; instalaciones: InstalacionGaleriaItem[] }> {
     const qb = this.qbInstalacionesGaleria(rol, idUsuarioToken);
-    qb.andWhere('i.idCliente = :idCliente', { idCliente }).orderBy('i.id', 'ASC');
+    // El cliente y sus hijos (spGetClientes); ya se validó que está en el alcance.
+    const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
+    qb.andWhere('i.idCliente IN (:...familia)', { familia }).orderBy('i.id', 'ASC');
 
     const rows = await qb.getRawMany<Record<string, unknown>>();
     let nombreCliente: string | null = null;
@@ -298,7 +300,7 @@ export class ConsolaGaleriaService {
     for (const row of rows) {
       const fila = this.mapFilaInstalacion(row);
       if (!fila) continue;
-      nombreCliente ??= fila.nombreCliente;
+      if (fila.idCliente === Number(idCliente)) nombreCliente ??= fila.nombreCliente;
       instalaciones.push(fila.inst);
     }
     return { nombreCliente, instalaciones };
@@ -402,8 +404,8 @@ export class ConsolaGaleriaService {
   }
 
   /**
-   * Asignaciones activas (UsuariosInstalaciones) de usuarios activos del mismo
-   * cliente. Llena `idsUsuario` de cada unidad y devuelve los usuarios.
+   * Asignaciones activas (UsuariosInstalaciones) de usuarios activos del
+   * cliente o de sus hijos. Llena `idsUsuario` de cada unidad y devuelve los usuarios.
    */
   private async cargarAsignaciones(
     idCliente: number,
@@ -411,14 +413,15 @@ export class ConsolaGaleriaService {
     soloUsuario: number | null,
   ): Promise<UsuarioGaleriaItem[]> {
     if (!instalaciones.length) return [];
+    const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
 
     const qb = this.usuariosInstRepo
       .createQueryBuilder('ui')
       .innerJoin(
         Usuarios,
         'u',
-        'u.id = ui.idUsuario AND u.idCliente = :idCliente AND u.estatus = :activo',
-        { idCliente, activo: EstatusEnum.ACTIVO },
+        'u.id = ui.idUsuario AND u.idCliente IN (:...familia) AND u.estatus = :activo',
+        { familia, activo: EstatusEnum.ACTIVO },
       )
       .select('ui.idInstalacion', 'idInstalacion')
       .addSelect('u.id', 'idUsuario')

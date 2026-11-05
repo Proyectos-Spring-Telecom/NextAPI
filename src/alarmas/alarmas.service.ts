@@ -297,7 +297,7 @@ export class AlarmasService {
       rol,
       idClienteToken,
     );
-    const filtro = this.tenantFilter.aplicarFiltroListado(
+    const filtro = await this.tenantFilter.aplicarFiltroListado(
       scope,
       queryIdCliente,
       alias,

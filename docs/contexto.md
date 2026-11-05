@@ -365,8 +365,8 @@ Patrón NextAPI en catálogos/productos: módulo padre + submódulos + registry 
 ## 10. Multitenancy y auth (resumen)
 
 - Roles globales (1–5, 8): sin filtro de cliente en listados.
-- Rol 6: cliente + hijos (`spGetClientes`).
-- Rol 7 / 9: su `idCliente` (u operadores / usuarios vía `UsuariosInstalaciones` en monitoreo).
+- Los demás roles (6, 7, 9…): su cliente + hijos (`spGetClientes`); 7 / 9 además solo las instalaciones asignadas (`UsuariosInstalaciones`).
+- `?idCliente=X` en un listado: X y sus hijos, dentro del alcance del rol.
 - Excepción: `GET /dispositivos/:id` busca por ID sin validar el `idCliente` del token.
 - Auth: `POST /login`, refresh, `GET /login/me`, NIP, face, recuperación — ver Swagger / [`contratos.md` §5](./contratos.md).
 

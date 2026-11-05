@@ -186,8 +186,9 @@ Filtrado por **`IdRol`** del JWT:
 | Roles     | Comportamiento                                      |
 | --------- | --------------------------------------------------- |
 | **1–5, 8** | Sin filtro de cliente (visualización global)       |
-| **6**      | Cliente del token + hijos (`CALL spGetClientes(?)`) |
-| **Resto**  | Solo `IdCliente` del token                          |
+| **Resto** (6, 7, 9…) | Cliente del token + hijos (`CALL spGetClientes(?)`); 7 y 9 además solo lo asignado |
+
+Siempre se contemplan los clientes hijos (decisión del 5/11/2026): también cuando un listado recibe `?idCliente=X`, trae X y sus hijos dentro del alcance del rol (`clienteConHijosEnAlcance`, `aplicarFiltroListado`).
 
 API del servicio:
 

@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOperator, In, Repository } from 'typeorm';
 import { Operadores } from 'src/entities/Operadores';
 import { Usuarios } from 'src/entities/Usuarios';
 import { Licencias } from 'src/entities/Licencias';
@@ -201,8 +201,8 @@ export class OperadoresService {
         .orderBy('o.id', 'ASC');
 
       if (tenant.idCliente !== undefined) {
-        qb.andWhere('o.idCliente = :idCliente', {
-          idCliente: tenant.idCliente,
+        qb.andWhere('o.idCliente IN (:...idsCliente)', {
+          idsCliente: idsDeTenant(tenant.idCliente),
         });
       }
 
@@ -246,8 +246,8 @@ export class OperadoresService {
         .take(limit);
 
       if (tenant.idCliente !== undefined) {
-        qb.andWhere('o.idCliente = :idCliente', {
-          idCliente: tenant.idCliente,
+        qb.andWhere('o.idCliente IN (:...idsCliente)', {
+          idsCliente: idsDeTenant(tenant.idCliente),
         });
       }
 
@@ -255,8 +255,8 @@ export class OperadoresService {
         .createQueryBuilder('o')
         .select('COUNT(o.id)', 'cnt');
       if (tenant.idCliente !== undefined) {
-        countQb.where('o.idCliente = :idCliente', {
-          idCliente: tenant.idCliente,
+        countQb.where('o.idCliente IN (:...idsCliente)', {
+          idsCliente: idsDeTenant(tenant.idCliente),
         });
       }
       const total = Number((await countQb.getRawOne())?.cnt ?? 0);
@@ -982,4 +982,11 @@ export class OperadoresService {
     }
     return url;
   }
+}
+
+/** `idCliente` del alcance (número o `In([...])`) como lista para `IN (:...)`. */
+function idsDeTenant(v: number | FindOperator<number>): number[] {
+  if (typeof v === 'number') return [v];
+  const valor = (v as unknown as { value?: unknown }).value;
+  return Array.isArray(valor) ? valor.map(Number) : [];
 }

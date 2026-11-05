@@ -423,19 +423,10 @@ export class GeocercasService {
 
       let idClienteWhere = tenant.idCliente;
       if (idClienteFiltro != null) {
-        const scope = await this.tenantFilter.idsClientePermitidos(
-          rol,
-          idClienteToken,
-        );
-        if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteFiltro)) {
-          return { data: [] };
-        }
-        // El cliente y sus hijos (IdPadre), como el mapa; nunca fuera del alcance del rol.
-        const hijos = await this.tenantFilter.getClienteHijosIds(idClienteFiltro);
-        const familia = [...new Set([idClienteFiltro, ...hijos])].filter((id) =>
-          this.tenantFilter.clienteVisibleEnScope(scope, id),
-        );
-        idClienteWhere = familia.length > 1 ? In(familia) : idClienteFiltro;
+        // El cliente y sus hijos (spGetClientes), dentro del alcance del rol.
+        const familia = await this.tenantFilter.clienteConHijosEnAlcance(rol, idClienteToken, idClienteFiltro);
+        if (familia == null) return { data: [] };
+        idClienteWhere = familia;
       }
 
       const where: FindOptionsWhere<Geocercas> = {

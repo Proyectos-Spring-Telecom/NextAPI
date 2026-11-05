@@ -205,20 +205,10 @@ export class SimsService {
 
       let idClienteWhere = tenant.idCliente;
       if (idClienteFiltro != null) {
-        if (tenant.idCliente === undefined) {
-          idClienteWhere = idClienteFiltro;
-        } else if (typeof tenant.idCliente === 'number') {
-          if (Number(tenant.idCliente) !== idClienteFiltro) {
-            return { data: [] };
-          }
-          idClienteWhere = idClienteFiltro;
-        } else {
-          const ids = await this.tenantFilter.getClienteHijosIds(idClienteToken);
-          if (!ids.includes(idClienteFiltro)) {
-            return { data: [] };
-          }
-          idClienteWhere = idClienteFiltro;
-        }
+        // El cliente y sus hijos (spGetClientes), dentro del alcance del rol.
+        const familia = await this.tenantFilter.clienteConHijosEnAlcance(rol, idClienteToken, idClienteFiltro);
+        if (familia == null) return { data: [] };
+        idClienteWhere = familia;
       }
 
       const where: FindOptionsWhere<Sims> = {
