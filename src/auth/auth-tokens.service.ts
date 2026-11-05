@@ -114,7 +114,7 @@ export class AuthTokensService {
 
   signRefreshToken(userId: number): SignedRefreshToken {
     const jwtSecret = process.env.JWT_SECRET;
-    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '8h';
     if (!jwtSecret) {
       this.logger.error('AuthTokens: falta variable JWT_SECRET');
       throw new InternalServerErrorException({
@@ -130,14 +130,14 @@ export class AuthTokensService {
     };
     const token = this.jwtService.sign(payload, {
       secret: jwtSecret,
-      expiresIn: toJwtExpiresIn(refreshExpiresIn, '7d'),
+      expiresIn: toJwtExpiresIn(refreshExpiresIn, '8h'),
     });
 
     const decoded = this.jwtService.decode(token) as { exp?: number } | null;
     const expiresAt =
       decoded?.exp != null
         ? new Date(decoded.exp * 1000)
-        : new Date(Date.now() + durationToMs(refreshExpiresIn, 7 * 24 * 60 * 60 * 1000));
+        : new Date(Date.now() + durationToMs(refreshExpiresIn, 8 * 60 * 60 * 1000));
 
     return { token, jti, expiresAt };
   }

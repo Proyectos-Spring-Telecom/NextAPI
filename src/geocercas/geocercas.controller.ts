@@ -113,7 +113,7 @@ export class GeocercasController {
   @ApiOperation({
     summary: 'Lista de geocercas activas',
     description:
-      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente`.',
+      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente`: trae las del cliente y las de sus hijos (`IdPadre`) dentro del alcance del rol.',
   })
   @ApiQuery({ name: 'idCliente', required: false, type: Number })
   @ApiOkResponse({

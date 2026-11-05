@@ -458,8 +458,10 @@ export class AuthService {
       let decoded: { id?: number; type?: string; jti?: string };
       try {
         decoded = this.authTokensService.verifyRefreshToken(refreshToken);
-      } catch {
-        this.logger.warn('Auth: refresh rechazado — JWT refresh inválido o expirado');
+      } catch (error) {
+        // Distinguir vencido de inválido: un vencido es el front pidiéndolo tarde.
+        const vencido = (error as Error)?.name === 'TokenExpiredError';
+        this.logger.warn(`Auth: refresh rechazado — JWT refresh ${vencido ? 'expirado' : 'inválido'}`);
         throw new UnauthorizedException('Refresh token inválido o expirado');
       }
 
@@ -529,6 +531,8 @@ export class AuthService {
       return {
         token,
         refreshToken: newRefreshToken,
+        // Igual que el login: el front programa el siguiente refresh con esto.
+        expiresIn: jwtExpiresInSeconds(),
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();

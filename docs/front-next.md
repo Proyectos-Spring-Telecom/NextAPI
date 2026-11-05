@@ -522,6 +522,11 @@ io(`${base.origin}/monitoreo`, { path: `${prefijo}/socket.io`, auth: { token } }
 
 En local (sin prefijo) queda `path: '/socket.io'`, igual que hoy.
 
+**Sesión y sockets (5/11/2026).** El token dura 1 h y el refresh 8 h (antes ambos 1 h: el refresh llegaba vencido y la sesión se cerraba a la hora). `POST /login/refresh` ya devuelve `expiresIn` como el login.
+- Renovar antes de que venza (por ejemplo a los 55 min, con `expiresIn`) y una sola vez aunque haya varias peticiones o pestañas esperando: el refresh rota y el viejo deja de servir.
+- **Al renovar, actualizar el token de los sockets** (`/monitoreo` y `/alarmas`) antes de que reconecten: `socket.auth = { token: nuevo }`. Hoy reconectan con el token vencido y Next los rechaza (`jwt expired`) en bucle; mientras tanto **no llegan los eventos de paneles** (`evento:nuevo`) ni las actualizaciones del mapa.
+- Las alertas de paneles no vienen en `GET /monitoreo/consola` ni en `consola:actualizacion` (son de vehículos, por posición). Para verlas en la consola, escuchar `evento:nuevo` de `/alarmas` (severidad 3 = urgente).
+
 Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y luego solo escucha. Conectar con el JWT de acceso en `auth.token` (o `Authorization`/`?token=`). Las salas se fijan al conectar: tras crear una instalación nueva o cambiar de rol, reconectar. Contrato: `docs/contratos.md` §11.4.
 
 | Pantalla | Namespace | Evento | Qué hacer |

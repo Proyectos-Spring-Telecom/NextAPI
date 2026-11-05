@@ -430,7 +430,12 @@ export class GeocercasService {
         if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteFiltro)) {
           return { data: [] };
         }
-        idClienteWhere = idClienteFiltro;
+        // El cliente y sus hijos (IdPadre), como el mapa; nunca fuera del alcance del rol.
+        const hijos = await this.tenantFilter.getClienteHijosIds(idClienteFiltro);
+        const familia = [...new Set([idClienteFiltro, ...hijos])].filter((id) =>
+          this.tenantFilter.clienteVisibleEnScope(scope, id),
+        );
+        idClienteWhere = familia.length > 1 ? In(familia) : idClienteFiltro;
       }
 
       const where: FindOptionsWhere<Geocercas> = {

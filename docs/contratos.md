@@ -99,7 +99,7 @@ Base: `/login` (+ `/auth` para facial) · Tag Swagger Autenticación.
 |----------|-----------------|
 | `POST /login` | Body `{ userName, password }` (query `Nombres` = solución, default `NXT`) → `{ token, refreshToken }` |
 | `POST /login/operador/accesso/nip` | `{ accessToken, refreshToken, expiresIn }` |
-| `POST /login/refresh` | Body `{ refreshToken }` → `{ token, refreshToken }` (rota el refresh) |
+| `POST /login/refresh` | Body `{ refreshToken }` → `{ token, refreshToken, expiresIn }` (rota el refresh; `expiresIn` en segundos, como el login) |
 | `POST /login/logout` | JWT Bearer; revoca refresh |
 | `GET /login/me` | Perfil + permisos |
 | `PATCH /login/verify` | Verificación con código |
@@ -650,7 +650,7 @@ Validadas con Joi en `app.module.ts`.
 | `DB_HOST`, `DB_USER`, `DB_DATABASE` | Sí | MySQL; `DB_DATABASE=Next` |
 | `DB_PORT`, `DB_PASSWORD`, `DB_CONNECTION_LIMIT`, `DB_LOGGING` | No (3306 / '' / 10 / false) | MySQL; las consultas SQL solo se registran con `DB_LOGGING=true` |
 | `LOG_LEVEL` | No (`log`) | `fatal\|error\|warn\|log\|debug\|verbose`; lo que se repite por mensaje de la cola va en `debug` |
-| `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Sí | Access / refresh |
+| `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Sí | Access / refresh. Producción: `1h` / `8h` (decisión del 5/11/2026). El refresh debe durar más que el access: el front lo usa cuando el access vence |
 | `THROTTLE_*_LIMIT` / `THROTTLE_*_TTL_MS` | Sí | Rate limit Auth (login, pin, verify, recuperación, confirmación, refresh, logout) |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `UPLOAD_MAX_SIZE` | Sí | S3 |
 | `HOST`, `SMTP`, `E_MAIL`, `MAIL_PASSWORD` | Sí | Nodemailer |
