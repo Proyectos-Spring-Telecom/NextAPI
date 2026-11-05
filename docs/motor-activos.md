@@ -350,7 +350,7 @@ Los incidentes automáticos toman el cliente de la instalación activa desde la 
 - La asignación de usuarios 7/9 sigue por instalación (decisión del 30/10): un usuario asignado al GPS no ve la TrackCam del mismo vehículo si no se le asigna.
 - Órdenes de servicio: el alta sobre un vehículo con equipo solo pide autorización si es de la misma clase, y la baja autorizada retira solo esa instalación.
 
-**Geocercas por vehículo:** cuelgan del producto; un cambio de equipo, una baja o una segunda instalación ya no las borran. El ingest (Estado 8) y los reportes de salidas usan las del vehículo de la instalación; cada instalación del vehículo las evalúa. La API acepta `idProducto` (`idInstalacion` queda obsoleto y se convierte a su vehículo).
+**Geocercas del cliente para varios vehículos (5/11/2026, `deploy/sql/GeocercasVehiculos.sql`):** la geocerca es del cliente y se liga a uno o varios vehículos en `ProductosGeocerca` (un vehículo, varias geocercas); los vehículos pueden ser del cliente o de sus hijos. `UsuariosGeocerca` ya no se usa y `Geocercas.IdProducto` queda obsoleta (copiada a la tabla nueva). Antes, **por vehículo:** cuelgan del producto; un cambio de equipo, una baja o una segunda instalación ya no las borran. El ingest (Estado 8) y los reportes de salidas usan las del vehículo de la instalación; cada instalación del vehículo las evalúa. La API acepta `idProducto` (`idInstalacion` queda obsoleto y se convierte a su vehículo).
 
 **Histórico del vehículo:** `GET /monitoreo/producto/:idProducto/historico` junta el de cada instalación activa visible, con `fuente` (`avl`, `trackcam`, `reloj`) por punto y `porFuente` con la distancia de cada una. Por defecto el front muestra `avl`.
 

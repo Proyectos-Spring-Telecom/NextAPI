@@ -50,6 +50,7 @@ import { ReporteSalidasGeocercaDto } from './dto/salidas-geocerca.dto';
 import { ReporteSalidasGeocercaInstalacionDto } from './dto/salidas-geocerca-instalacion.dto';
 import { limitarIdsInstalacionPorAsignacion } from './helpers/alcance-instalaciones.helpers';
 import { Geocercas } from 'src/entities/Geocercas';
+import { ProductosGeocerca } from 'src/entities/ProductosGeocerca';
 import { Clientes } from 'src/entities/Clientes';
 import { nombreCliente as nombreClienteRelacion } from 'src/productos/map-relaciones.util';
 import { extractOuterRing } from 'src/messaging/shared/estado-geocerca.util';
@@ -366,7 +367,7 @@ type GeocercaAplicable = {
   id: number;
   nombre: string;
   idInstalacion: number;
-  /** Vehículo de la geocerca: solo se evalúa en los tramos del equipo en ese vehículo (fase C). */
+  /** Vehículo ligado a la geocerca: solo se evalúa en los tramos del equipo en ese vehículo. */
   idProducto: number;
   ring: Array<[number, number]>;
   geometria: unknown;
@@ -1395,8 +1396,8 @@ export class ReportesService {
   /**
    * Salidas de geocerca a partir del historial de `Posiciones`.
    * Solo lectura: no altera posiciones, estado de monitoreo ni genera alertas.
-   * Una geocerca aplica a las instalaciones de su vehículo (`IdProducto`, fase
-   * C; igual que el ingest en tiempo real); sin vehículo no se atribuye.
+   * Una geocerca aplica a las instalaciones de los vehículos ligados a ella
+   * (`ProductosGeocerca`; igual que el ingest en tiempo real); sin vehículos no se atribuye.
    */
   async salidasGeocerca(
     dto: ReporteSalidasGeocercaDto,
@@ -1436,11 +1437,6 @@ export class ReportesService {
       });
       const nombreCliente = nombreClienteRelacion(cliente);
 
-      const geocercasCliente = await this.cargarGeocercasDelCliente(
-        idCliente,
-        this.normalizeIds(dto.idsGeocerca),
-      );
-
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
@@ -1454,6 +1450,11 @@ export class ReportesService {
         idsFiltro !== null && idsFiltro.length === 0
           ? []
           : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+      // Las geocercas que usan los vehículos de las instalaciones candidatas.
+      const geocercasCliente = await this.cargarGeocercasDeVehiculos(
+        candidatos.map((c) => Number(c.idProducto)),
+        this.normalizeIds(dto.idsGeocerca),
+      );
 
       const resumenVacio = {
         totalSalidas: 0,
@@ -1484,20 +1485,19 @@ export class ReportesService {
       }
       const aplicables: GeocercaAplicable[] = [];
       for (const g of geocercasCliente) {
-        if (g.idProducto == null) continue;
-        const instalaciones = instalacionesPorProducto.get(Number(g.idProducto));
-        if (!instalaciones) continue;
         const ring = extractOuterRing(g.geocerca);
         if (!ring) continue;
-        for (const idInstalacion of instalaciones) {
-          aplicables.push({
-            id: Number(g.id),
-            nombre: g.nombre,
-            idInstalacion,
-            idProducto: Number(g.idProducto),
-            ring,
-            geometria: g.geocerca,
-          });
+        for (const idProducto of g.vehiculos) {
+          for (const idInstalacion of instalacionesPorProducto.get(idProducto) ?? []) {
+            aplicables.push({
+              id: Number(g.id),
+              nombre: g.nombre,
+              idInstalacion,
+              idProducto,
+              ring,
+              geometria: g.geocerca,
+            });
+          }
         }
       }
       if (!aplicables.length) {
@@ -1680,39 +1680,23 @@ export class ReportesService {
             nombreProducto: null,
           };
 
-      const idsSolicitados = this.normalizeIds(dto.idsGeocerca);
-      const geocercasCliente = await this.cargarGeocercasDelCliente(
-        idCliente,
-        idsSolicitados,
-      );
-
-      // Explícitas de este cliente pero de otro vehículo (o sin vehículo) no
-      // son aplicables a la instalación seleccionada → 400.
+      // Las geocercas ligadas al vehículo de la instalación; una explícita que no
+      // aplica a ese vehículo → 404.
       const idProductoInstalacion = Number(instalacionRaw.idProducto);
-      const esDelVehiculo = (g: Geocercas) => g.idProducto != null && Number(g.idProducto) === idProductoInstalacion;
-      if (idsSolicitados?.length) {
-        const noAplicables = geocercasCliente.filter((g) => !esDelVehiculo(g));
-        if (noAplicables.length) {
-          throw new BadRequestException(
-            `Las geocercas no son del vehículo de la instalación ${idInstalacion}: ${noAplicables
-              .map((g) => Number(g.id))
-              .join(', ')}`,
-          );
-        }
-      }
+      const geocercasCliente = await this.cargarGeocercasDeVehiculos(
+        [idProductoInstalacion],
+        this.normalizeIds(dto.idsGeocerca),
+      );
 
       const aplicables: GeocercaAplicable[] = [];
       for (const g of geocercasCliente) {
-        if (!esDelVehiculo(g)) {
-          continue;
-        }
         const ring = extractOuterRing(g.geocerca);
         if (!ring) continue;
         aplicables.push({
           id: Number(g.id),
           nombre: g.nombre,
           idInstalacion,
-          idProducto: Number(g.idProducto),
+          idProducto: idProductoInstalacion,
           ring,
           geometria: g.geocerca,
         });
@@ -1788,10 +1772,8 @@ export class ReportesService {
    * reingresos y nuevas salidas, con paginación por cursor.
    *
    * Seguridad: instalación 404 si no existe, 403 si su cliente está fuera
-   * del alcance del token, geocerca 404 si no es del cliente y 400 si no
-   * aplica a la instalación. `UsuariosGeocerca` es solo una asociación
-   * administrativa (los listados de geocercas filtran por cliente, no por
-   * usuario), por lo que no se usa como regla de visibilidad.
+   * del alcance del token y geocerca 404 si no está ligada al vehículo de la
+   * instalación (`ProductosGeocerca`).
    * El evento se verifica re-ejecutando el mismo detector del listado.
    */
   async obtenerRecorridoSalidaGeocerca(
@@ -1896,18 +1878,11 @@ export class ReportesService {
         nombreProducto: cand.nombreProducto,
       };
 
-      const [geocerca] = await this.cargarGeocercasDelCliente(idCliente, [
-        idGeocerca,
-      ]);
-      // La geocerca es del vehículo de la instalación (fase C).
-      if (
-        geocerca.idProducto == null ||
-        Number(geocerca.idProducto) !== Number(instalacionRaw.idProducto)
-      ) {
-        throw new BadRequestException(
-          'La geocerca no es del vehículo de la instalación seleccionada',
-        );
-      }
+      // La geocerca debe estar ligada al vehículo de la instalación (404 si no).
+      const [geocerca] = await this.cargarGeocercasDeVehiculos(
+        [Number(instalacionRaw.idProducto)],
+        [idGeocerca],
+      );
       const ring = extractOuterRing(geocerca.geocerca);
       if (!ring) {
         throw new BadRequestException(
@@ -1918,7 +1893,7 @@ export class ReportesService {
         id: Number(geocerca.id),
         nombre: geocerca.nombre,
         idInstalacion,
-        idProducto: Number(geocerca.idProducto),
+        idProducto: Number(instalacionRaw.idProducto),
         ring,
         geometria: geocerca.geocerca,
       };
@@ -2566,27 +2541,39 @@ export class ReportesService {
   }
 
   /**
-   * Geocercas activas del cliente. Con `ids` explícitos, todos deben existir
-   * y pertenecer al cliente (404 en caso contrario, igual que paso-por-poi).
+   * Geocercas activas ligadas (`ProductosGeocerca`) a alguno de los vehículos,
+   * con los vehículos de cada una en `vehiculos`. Con `ids` explícitos, todos
+   * deben existir, estar activos y aplicar a esos vehículos (404 si no).
    */
-  private async cargarGeocercasDelCliente(
-    idCliente: number,
+  private async cargarGeocercasDeVehiculos(
+    idsProducto: number[],
     ids: number[] | null,
-  ): Promise<Geocercas[]> {
-    if (!ids?.length) {
-      return this.geocercasRepo.find({
-        where: { idCliente, estatus: EstatusEnum.ACTIVO },
-        order: { id: 'ASC' },
-      });
+  ): Promise<Array<Geocercas & { vehiculos: Set<number> }>> {
+    const productos = [...new Set(idsProducto.filter((x) => Number.isFinite(x) && x > 0))];
+    const ligas: Array<{ idGeocerca: string | number; idProducto: string | number }> = productos.length
+      ? await this.geocercasRepo
+          .createQueryBuilder('g')
+          .innerJoin(ProductosGeocerca, 'pg', 'pg.idGeocerca = g.id AND pg.estatus = :activo')
+          .select(['g.id AS idGeocerca', 'pg.idProducto AS idProducto'])
+          .where('g.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+          .andWhere('pg.idProducto IN (:...productos)', { productos })
+          .andWhere(ids?.length ? 'g.id IN (:...ids)' : '1 = 1', { ids: ids ?? [] })
+          .getRawMany()
+      : [];
+    const vehiculosDe = new Map<number, Set<number>>();
+    for (const l of ligas) {
+      const id = Number(l.idGeocerca);
+      vehiculosDe.set(id, (vehiculosDe.get(id) ?? new Set<number>()).add(Number(l.idProducto)));
     }
-    const rows = await this.geocercasRepo.find({
-      where: { id: In(ids), idCliente, estatus: EstatusEnum.ACTIVO },
-    });
-    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+    const filas = vehiculosDe.size
+      ? await this.geocercasRepo.find({ where: { id: In([...vehiculosDe.keys()]) }, order: { id: 'ASC' } })
+      : [];
+    const byId = new Map(filas.map((g) => [Number(g.id), Object.assign(g, { vehiculos: vehiculosDe.get(Number(g.id))! })]));
+    if (!ids?.length) return [...byId.values()];
     const missing = ids.filter((id) => !byId.has(id));
     if (missing.length) {
       throw new NotFoundException(
-        `Geocercas no encontradas, inactivas o no pertenecen al cliente: ${missing.join(', ')}`,
+        `Geocercas no encontradas, inactivas o que no aplican al vehículo: ${missing.join(', ')}`,
       );
     }
     return ids.map((id) => byId.get(id)!);

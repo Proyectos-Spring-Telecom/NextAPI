@@ -363,7 +363,7 @@ Implementado en NextAPI `dev-isra` (commits `2e21da1` y `d8471f1`). Contrato com
 
 **Correcciones pendientes (de §11 y de la revisión del 29/10)**
 - La SIM dice "IMEI" pero el dato es el **ICCID** (`Sims.IMEI` guarda el ICCID): cambiar la etiqueta en la fila, el detalle y el alta de SIM.
-- "Reasignar" en la fila de instalación es del **dispositivo**: usar `PATCH /instalaciones/:id` (cambio con histórico). Ese cambio crea un Id nuevo y **borra las geocercas** de la versión anterior: avisarlo antes de confirmar. No usar la reasignación de cliente de `/dispositivos`.
+- "Reasignar" en la fila de instalación es del **dispositivo**: usar `PATCH /instalaciones/:id` (cambio con histórico). Ese cambio crea un Id nuevo; las geocercas siguen al vehículo y no se pierden. No usar la reasignación de cliente de `/dispositivos`.
 - En Next, estatus 1 de equipo o SIM = disponible en almacén; instalado y operando = 2 (asignado). Revisar las etiquetas que digan "activo".
 
 **Cambios de la remediación (29/10/2026, NextAPI `a77d3ac`, `e941374`, `b9aae64`; desplegado en springfieldDev)**
@@ -487,7 +487,13 @@ Desde la fase C ([motor-activos.md](motor-activos.md) §17):
   - El listado de monitoreo sigue siendo por instalación: un vehículo con GPS y TrackCam aparece dos veces; agrupar por `idProducto` si se quiere una sola fila.
   - Un cambio de equipo (`PATCH /instalaciones/:id`) es de la misma clase; para agregar una TrackCam a un vehículo con GPS, dar de alta otra instalación.
 - **Histórico del vehículo:** `GET /monitoreo/producto/:idProducto/historico?fechaInicio=&fechaFinal=` → `{ porFuente: [{ idInstalacion, fuente, totalDistancia, total }], posiciones: [... con fuente e idInstalacionFuente] }`. Mostrar por defecto `fuente = avl` y dejar alternar a `trackcam`.
-- **Geocercas:** se dan de alta por vehículo (`idProducto` en `POST /geocercas` y `PATCH /geocercas/:id`). `idInstalacion` sigue aceptándose pero está obsoleto. Las respuestas traen `idProducto`; `idInstalacion` es la instalación activa principal del vehículo (GPS antes que TrackCam), o null.
+- **Geocercas (cambió el 5/11/2026, NextAPI `GeocercasVehiculos.sql`):** la geocerca es **del cliente** y se liga a **uno o varios vehículos**; un vehículo puede tener varias.
+  - Alta (`POST /geocercas`): monitoreo y administración (1–5, 8) **deben** mandar `idCliente` (sin él, 400). Un acceso del cliente (6, 7, 9) puede omitirlo: queda en su cliente.
+  - Vehículos: `idsProducto: [..]` en el alta y en `PATCH /geocercas/:id` (lista definitiva; omitir = no cambiar; `[]` = ninguno). Cada vehículo debe ser del cliente de la geocerca o de uno de sus clientes hijos (si no, 400). Solo con vehículos ligados se evalúa la salida (Estado 8) y entra a los reportes.
+  - **`usuariosIds` ya no se pide ni se usa** (se ignora si llega): todos los usuarios del cliente la usan. Quitar ese campo del formulario.
+  - Respuesta: `idsProducto` y `vehiculos: [{ idProducto, idCliente, nombreProducto, placa, numeroEconomico, idInstalacion }]`. `idProducto` e `idInstalacion` siguen (los del primer vehículo) pero están obsoletos; `usuariosGeocerca` ya no viene.
+  - `GET /geocercas/list?idProducto=X`: las que usa ese vehículo (también las de un cliente padre).
+  - Pantalla sugerida: en la geocerca, un selector múltiple de vehículos del cliente y sus hijos; en el detalle del vehículo, sus geocercas.
   - Ya no se borran al cambiar de equipo ni al dar de baja la instalación.
 - **Asignación de usuarios 7/9:** sigue por instalación; para que un operador vea la TrackCam del vehículo hay que asignársela también.
 

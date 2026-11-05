@@ -875,11 +875,12 @@ export class MonitoreoService {
 
     applyMonitoreoListJoins(qb);
     applyMonitoreoListSelect(qb);
-    // Nombres de las geocercas activas del vehículo de la instalación ("A, B"); null si no tiene.
+    // Nombres de las geocercas activas ligadas al vehículo de la instalación ("A, B"); null si no tiene.
     qb.addSelect(
       `(SELECT GROUP_CONCAT(DISTINCT g.Nombre ORDER BY g.Nombre SEPARATOR ', ')
-          FROM Geocercas g
-         WHERE g.IdProducto = i.IdProducto AND g.IdCliente = i.IdCliente AND g.Estatus = 1)`,
+          FROM ProductosGeocerca pg
+          JOIN Geocercas g ON g.Id = pg.IdGeocerca AND g.Estatus = 1
+         WHERE pg.IdProducto = i.IdProducto AND pg.Estatus = 1)`,
       'geocercas',
     );
     return qb;

@@ -10,6 +10,7 @@ import {
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
 import { Productos } from './Productos';
+import { ProductosGeocerca } from './ProductosGeocerca';
 import { UsuariosGeocerca } from './UsuariosGeocerca';
 
 @applySchema
@@ -24,7 +25,7 @@ export class Geocercas {
   @Column('bigint', { name: 'IdCliente' })
   idCliente: number;
 
-  /** Vehículo (producto) al que aplica, no la versión de la instalación (fase C). NULL = no se evalúa. */
+  /** **Obsoleto** (5/11/2026): copiado a `ProductosGeocerca`; el código ya no lo lee ni lo escribe. Se quitará. */
   @Column('bigint', { name: 'IdProducto', nullable: true })
   idProducto: number | null;
 
@@ -78,4 +79,8 @@ export class Geocercas {
 
   @OneToMany(() => UsuariosGeocerca, (ug) => ug.idGeocerca2)
   usuariosGeocerca: UsuariosGeocerca[];
+
+  /** Vehículos que la evalúan (`ProductosGeocerca`). */
+  @OneToMany(() => ProductosGeocerca, (pg) => pg.idGeocerca2)
+  productosGeocerca: ProductosGeocerca[];
 }

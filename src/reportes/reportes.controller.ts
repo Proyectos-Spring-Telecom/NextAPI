@@ -736,9 +736,8 @@ export class ReportesController {
       '',
       '**Limitación:** no existe historial de geometrías de geocercas; el estado por posición usa',
       'la geometría actual almacenada, que puede diferir de la vigente en fechas pasadas si la',
-      'geocerca fue editada. `UsuariosGeocerca` es una asociación administrativa y no otorga',
-      'visibilidad por usuario: la autorización es el alcance de cliente del token + geocerca',
-      'aplicable a la instalación.',
+      'geocerca fue editada. La autorización es el alcance de cliente del token + geocerca',
+      'ligada al vehículo de la instalación (`ProductosGeocerca`; si no, 404).',
     ].join('\n'),
   })
   @ApiBody({

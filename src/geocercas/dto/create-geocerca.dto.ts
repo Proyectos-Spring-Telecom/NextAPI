@@ -14,8 +14,8 @@ import { Type } from 'class-transformer';
 export class CreateGeocercaDto {
   @ApiPropertyOptional({
     description:
-      'ID del cliente propietario. Obligatorio para roles globales/admin. ' +
-      'Roles Cliente (6) y Usuario (9): se ignora y se usa el `idCliente` del token.',
+      'Cliente de la geocerca. Obligatorio para monitoreo y administración (roles 1–5 y 8). ' +
+      'Los accesos del cliente (6, 7, 9…): opcional, por defecto su cliente; puede ser uno de sus clientes hijos.',
     example: 1,
   })
   @IsOptional()
@@ -26,9 +26,9 @@ export class CreateGeocercaDto {
 
   @ApiPropertyOptional({
     description:
-      'Vehículo (producto) al que aplica la geocerca; debe ser del mismo cliente. La geocerca sigue al vehículo ' +
-      'aunque cambie el equipo o tenga varias instalaciones (GPS + TrackCam). Sin vehículo no se evalúa.',
+      '**Obsoleto:** usar `idsProducto`. Equivale a `idsProducto: [idProducto]`.',
     example: 1000210,
+    deprecated: true,
   })
   @IsOptional()
   @Type(() => Number)
@@ -37,7 +37,7 @@ export class CreateGeocercaDto {
   idProducto?: number | null;
 
   @ApiPropertyOptional({
-    description: '**Obsoleto:** usar `idProducto`. Si se envía, la geocerca toma el vehículo de esa instalación.',
+    description: '**Obsoleto:** usar `idsProducto`. Si se envía, liga el vehículo de esa instalación.',
     example: 10,
     deprecated: true,
   })
@@ -89,10 +89,23 @@ export class CreateGeocercaDto {
     type: Number,
     isArray: true,
     description:
-      'IDs de usuarios a vincular en UsuariosGeocerca. ' +
-      'Roles Cliente (6) y Usuario (9): opcional; si se omite o viene vacío se usa el usuario del token. ' +
-      'Resto de roles: obligatorio, al menos un ID.',
-    example: [5, 12],
+      'Vehículos (productos) a los que aplica la geocerca; lista definitiva. ' +
+      'Cada vehículo debe ser del cliente de la geocerca o de uno de sus clientes hijos. ' +
+      'Solo con vehículos ligados se evalúa la salida (Estado 8) y entra a los reportes.',
+    example: [1000210, 1000211],
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  idsProducto?: number[];
+
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description: '**Obsoleto, se ignora** (5/11/2026): la geocerca es del cliente y la usan todos sus usuarios.',
+    deprecated: true,
   })
   @IsOptional()
   @IsArray()

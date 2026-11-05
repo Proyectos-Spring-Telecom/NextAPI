@@ -38,7 +38,12 @@ const ITEM_EXAMPLE = {
   id: 1,
   idCliente: 1,
   nombreCliente: 'Next',
+  idsProducto: [1000210],
+  vehiculos: [
+    { idProducto: 1000210, idCliente: 1, nombreProducto: 'Tractocamión 12', placa: 'ABC1234', numeroEconomico: 'ECO-12', idInstalacion: 10 },
+  ],
   idProducto: 1000210,
+  idInstalacion: 10,
   nombre: 'Zona industrial norte',
   descripcion: 'Perímetro de la planta norte',
   geocerca: {
@@ -56,14 +61,6 @@ const ITEM_EXAMPLE = {
   estatus: EstatusEnum.ACTIVO,
   fechaCreacion: '2026-09-07T18:00:00.000Z',
   fechaActualizacion: '2026-09-07T18:00:00.000Z',
-  usuariosGeocerca: [
-    {
-      id: 1,
-      idUsuario: 5,
-      nombreUsuario: 'Juan Pérez',
-      estatus: 1,
-    },
-  ],
 };
 
 @ApiTags('Geocercas')
@@ -113,9 +110,11 @@ export class GeocercasController {
   @ApiOperation({
     summary: 'Lista de geocercas activas',
     description:
-      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente`: trae las del cliente y las de sus hijos (`IdPadre`) dentro del alcance del rol.',
+      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente`: trae las del cliente y las de sus hijos (`IdPadre`) dentro del alcance del rol. ' +
+      'Query opcional `idProducto`: solo las ligadas a ese vehículo.',
   })
   @ApiQuery({ name: 'idCliente', required: false, type: Number })
+  @ApiQuery({ name: 'idProducto', required: false, type: Number })
   @ApiOkResponse({
     description: 'Lista obtenida',
     schema: { example: { data: [ITEM_EXAMPLE] } },
@@ -124,15 +123,14 @@ export class GeocercasController {
   async findAllList(
     @Request() req,
     @Query('idCliente') idCliente?: string,
+    @Query('idProducto') idProducto?: string,
   ): Promise<ApiResponseCommon> {
-    const filtro =
-      idCliente != null && idCliente !== ''
-        ? Number(idCliente)
-        : undefined;
+    const numero = (v?: string) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
     return this.service.findAllList(
       Number(req.user.idCliente),
       Number(req.user.rol),
-      Number.isFinite(filtro as number) ? filtro : undefined,
+      numero(idCliente),
+      numero(idProducto),
     );
   }
 

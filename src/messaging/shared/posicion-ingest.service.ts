@@ -6,6 +6,7 @@ import { Instalaciones } from 'src/entities/Instalaciones';
 import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import { Fotos } from 'src/entities/Fotos';
 import { Geocercas } from 'src/entities/Geocercas';
+import { ProductosGeocerca } from 'src/entities/ProductosGeocerca';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
 import { UltimaPosicion } from 'src/entities/UltimaPosicion';
@@ -43,7 +44,7 @@ import { FuentePosicion } from 'src/common/fuente-posicion';
  *
  * - position/photo → TelemetryIngestLog + media + Posiciones + WS
  * - alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
- * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocercas del vehículo (IdProducto)
+ * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocercas ligadas al vehículo (ProductosGeocerca)
  * - Tiempo detenido (4/5/6): AVL/TRACKCAM/TRACKGAS si Estado=0 y Velocidad=0
  *
  * Cada protocolo: cola AMQP propia + mapper → este servicio.
@@ -260,9 +261,9 @@ export class PosicionIngestService {
   }
 
   /**
-   * Prioridad 3 Sion: fuera de alguna geocerca del vehículo de la instalación
-   * (`Geocercas.IdProducto`, fase C) → Estado=8. No pisa botón (2/3) ni energía
-   * (10). Geocercas sin vehículo no aplican.
+   * Prioridad 3 Sion: fuera de alguna geocerca ligada al vehículo de la
+   * instalación (`ProductosGeocerca`) → Estado=8. No pisa botón (2/3) ni energía
+   * (10). Geocercas sin vehículos no aplican.
    */
   private async aplicarGeocercaSiCorresponde(
     manager: EntityManager,
@@ -285,7 +286,9 @@ export class PosicionIngestService {
     // Las del vehículo: siguen aunque cambie el equipo, y aplican a cada equipo del vehículo.
     const geocercas = await manager
       .createQueryBuilder(Geocercas, 'g')
-      .innerJoin(Instalaciones, 'i', 'i.idProducto = g.idProducto AND i.idCliente = g.idCliente')
+      // Las geocercas ligadas al vehículo de la instalación (pueden ser de un cliente padre).
+      .innerJoin(ProductosGeocerca, 'pg', 'pg.idGeocerca = g.id AND pg.estatus = :activo')
+      .innerJoin(Instalaciones, 'i', 'i.idProducto = pg.idProducto')
       .where('i.id = :idInstalacion', {
         idInstalacion: Number(idInstalacion),
       })
