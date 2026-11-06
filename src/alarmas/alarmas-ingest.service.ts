@@ -182,6 +182,8 @@ export class AlarmasIngestService {
         }),
       );
       void this.monitoreoGateway.notificarDispositivo(idPanel);
+      // Pánico (PA/PH): abre incidente en Consola o le agrega seguimiento.
+      void this.incidentesAuto.registrarDesdeEventoAlarma(Number(saved.id));
 
       return { accepted: true };
     } catch (error) {

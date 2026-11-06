@@ -295,6 +295,7 @@ Body `{ idCliente, idUsuarios: number[] }` (mín. 1). Devuelve las instalaciones
 | `consola:actualizacion` | Server → room `instalacion:{id}` | Un ítem plano de `UltimaPosicion` (consola) |
 
 | `vigilancia:avisos` | Server → room `operacion` (roles 1–5) | `{ motivo: 'evaluacion' \| 'atencion' \| 'cierre', avisos[], porProveedor? }`. En `evaluacion` y `atencion`, cada aviso es el ítem de `GET /vigilancia-transmision/avisos`; en `cierre`, `{ id, idInstalacion, estatus: 'cerrado', motivoCierre, fechaCierre }`. `porProveedor` solo en `evaluacion` |
+| `consola:incidente` | Server → room `instalacion:{id}` (la del panel) | `{ idIncidente, nuevo, tipoOrigen: 2, idEventoAlarma, idInstalacion, idPanel, idCliente, tipoEvento, zona, nombreDispositivo, descripcion, fechaHora }` al abrirse el incidente de un pánico de panel (`nuevo: true`) o agregarle un seguimiento (`false`) |
 | `incidente:inservible` | Server → room `operacion` | `{ idIncidente, tipo: 'equipo' \| 'panel', idDispositivo, numeroSerie, identificador, idClienteDispositivo, descripcion, fechaInicio }` al abrirse el incidente de un inservible que transmite |
 | `comando:actualizacion` | Server → rooms `comandos-op:{id}` (roles 1–5) y, solo del reloj, `comandos-cliente:{id}` (rol 6): los mismos roles que sus `GET …/comandos`; 7 y 9 no lo reciben | `{ idInstalacion, idDispositivo, comando }`; `comando` = ítem de `GET …/reloj/comandos` o `…/trackcam/comandos`, con cada confirmación del socket (`recibido` → `enviado` → `confirmado` / `fallido` / `vencido`) |
 

@@ -58,6 +58,28 @@ export interface IncidenteInservibleEvento {
   fechaInicio: string;
 }
 
+/**
+ * `consola:incidente`: un panel de alarma abrió un incidente (pánico) o le
+ * agregó un seguimiento. Los paneles no tienen `UltimaPosicion`, así que no
+ * llegan por `consola:actualizacion`.
+ */
+export interface ConsolaIncidenteEvento {
+  idIncidente: number;
+  /** true = incidente nuevo; false = seguimiento en uno abierto. */
+  nuevo: boolean;
+  tipoOrigen: number;
+  idEventoAlarma: number;
+  idInstalacion: number;
+  idPanel: number;
+  idCliente: number;
+  tipoEvento: string;
+  zona: number | null;
+  nombreDispositivo: string | null;
+  descripcion: string | null;
+  /** Hora de México, `YYYY-MM-DD HH:mm:ss`. */
+  fechaHora: string;
+}
+
 /** `comando:actualizacion`: un comando de la instalación cambió de estatus (mismo ítem que `GET …/comandos`). */
 export interface ComandoActualizacionEvento {
   idInstalacion: number;
@@ -228,6 +250,11 @@ export class MonitoreoGateway
   /** Evento: `punto-interes:evento` (room de la instalación). */
   emitPuntoInteres(evento: PuntoInteresEvento) {
     this.safeEmit(evento.idInstalacion, 'punto-interes:evento', evento);
+  }
+
+  /** Evento: `consola:incidente` (room de la instalación del panel). */
+  emitConsolaIncidente(evento: ConsolaIncidenteEvento) {
+    this.safeEmit(evento.idInstalacion, 'consola:incidente', evento);
   }
 
   /** Evento: `incidente:inservible` (room de operación). */

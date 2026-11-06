@@ -31,15 +31,22 @@ const servicio = (ruta: string, nombre: string) => e.servicioNext(require(ruta)[
 const esperar = async (cond: () => boolean) => {
   for (let i = 0; i < 40 && !cond(); i++) await new Promise((r) => setTimeout(r, 100));
 };
-const evento = (cuentaSia: string) =>
+const evento = (
+  cuentaSia: string,
+  sia: { codigoSia: string; tipoEvento: string; severidad: number; esRestauracion?: boolean } = {
+    codigoSia: 'BA',
+    tipoEvento: 'BA',
+    severidad: 1,
+  },
+) =>
   servicio('src/alarmas/alarmas-ingest.service', 'AlarmasIngestService').ingestEvento(
     {
       cuentaSia,
-      codigoSia: 'BA',
-      tipoEvento: 'BA',
-      tipoEventoEtiqueta: 'Alarma de robo',
-      severidad: 1,
-      esRestauracion: false,
+      codigoSia: sia.codigoSia,
+      tipoEvento: sia.tipoEvento,
+      tipoEventoEtiqueta: sia.tipoEvento,
+      severidad: sia.severidad,
+      esRestauracion: sia.esRestauracion ?? false,
       esHeartbeat: false,
       zona: 1,
       codigoUsuario: null,
@@ -84,6 +91,7 @@ beforeAll(async () => {
     ['emitAvisosSinTransmision', 'vigilancia:avisos'],
     ['emitIncidenteInservible', 'incidente:inservible'],
     ['emitComando', 'comando:actualizacion'],
+    ['emitConsolaIncidente', 'consola:incidente'],
   ]) {
     const original = gw[metodo].bind(gw);
     gw[metodo] = (payload: unknown, ...resto: unknown[]) => {
@@ -109,6 +117,14 @@ beforeAll(async () => {
   sql(`INSERT INTO Dispositivos (IdCliente, IdTipoDispositivo, NumeroSerie, Imei, Estatus) VALUES (NULL, 2, 'PNL-TRE-1', NULL, 5)`);
   s.panel = Number(sql(`SELECT Id FROM Dispositivos WHERE NumeroSerie = 'PNL-TRE-1'`));
   sql(`INSERT INTO PanelAlarma (IdDispositivo, CuentaSia, Nombre, Estatus) VALUES (${s.panel}, 'TRE901', 'Panel robado', 5)`);
+
+  // Panel instalado y activo en el cliente (pánico → incidente en Consola).
+  sql(`INSERT INTO Dispositivos (IdCliente, IdTipoDispositivo, NumeroSerie, Imei, Estatus) VALUES (${C.idClienteNext}, 2, 'PNL-TRE-2', NULL, 1)`);
+  s.panelActivo = Number(sql(`SELECT Id FROM Dispositivos WHERE NumeroSerie = 'PNL-TRE-2'`));
+  sql(`INSERT INTO PanelAlarma (IdDispositivo, CuentaSia, Nombre, Estatus) VALUES (${s.panelActivo}, 'TRE902', 'Panel oficina', 1)`);
+  const inmueble = Number(ok(await op('POST', '/productos/vehiculos', { idCliente: C.idClienteNext, placa: 'TRE0P01' }), 'producto del panel').data.id);
+  sql(`INSERT INTO Instalaciones (IdCliente, IdProducto, IdDispositivo, Estatus) VALUES (${C.idClienteNext}, ${inmueble}, ${s.panelActivo}, 1)`);
+  s.instPanel = Number(sql(`SELECT Id FROM Instalaciones WHERE IdDispositivo = ${s.panelActivo} AND Estatus = 1`));
 }, 240000);
 
 afterAll(() => e.detener());
@@ -167,6 +183,57 @@ describe('Panel inservible que transmite', () => {
   it('un panel sin alta sigue yendo a huérfanos', async () => {
     await evento('TRE999');
     expect(Number(sql(`SELECT COUNT(*) FROM TelemetryHuerfanos WHERE DeviceId = 'TRE999'`))).toBeGreaterThan(0);
+  });
+});
+
+describe('Pánico de un panel instalado', () => {
+  const PANICO = { codigoSia: 'PA', tipoEvento: 'panico', severidad: 3 };
+  const incidentes = () =>
+    sql(
+      `SELECT CONCAT(COUNT(*), '|', IFNULL(MAX(TipoOrigen), ''), '|', IFNULL(MAX(IdCliente), ''), '|', IFNULL(MAX(Descripcion), ''))
+         FROM Incidentes WHERE TipoOrigen = 2 AND CAST(JSON_EXTRACT(DatosOrigen, '$.idPanel') AS SIGNED) = ${s.panelActivo}`,
+    );
+  const seguimientos = () =>
+    Number(
+      sql(
+        `SELECT COUNT(*) FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente
+          WHERE i.TipoOrigen = 2 AND CAST(JSON_EXTRACT(i.DatosOrigen, '$.idPanel') AS SIGNED) = ${s.panelActivo}
+            AND si.Medio = 'Alerta automática'`,
+      ),
+    );
+
+  it('una alarma que no es pánico ni una restauración de pánico abren incidente', async () => {
+    await evento('TRE902');
+    await evento('TRE902', { codigoSia: 'PR', tipoEvento: 'restauracion_panico', severidad: 1, esRestauracion: true });
+    await new Promise((r) => setTimeout(r, 800));
+    expect(incidentes()).toBe('0|||');
+    expect(de('consola:incidente')).toHaveLength(0);
+  });
+
+  it('el pánico abre un incidente con origen evento de alarma y lo empuja a la consola', async () => {
+    await evento('TRE902', PANICO);
+    await esperar(() => de('consola:incidente').length === 1);
+    expect(incidentes()).toBe(`1|2|${C.idClienteNext}|Alerta automática: Pánico (panel de alarma)`);
+    expect(de('consola:incidente')).toEqual([
+      expect.objectContaining({ nuevo: true, tipoOrigen: 2, idInstalacion: s.instPanel, idPanel: s.panelActivo, tipoEvento: 'panico' }),
+    ]);
+  });
+
+  it('otro pánico con el incidente abierto entra como seguimiento, sin abrir otro', async () => {
+    await evento('TRE902', { codigoSia: 'PH', tipoEvento: 'panico_asalto', severidad: 3 });
+    await esperar(() => de('consola:incidente').length === 2);
+    expect(incidentes()).toMatch(/^1\|2\|/);
+    expect(seguimientos()).toBe(1);
+    expect(de('consola:incidente')[1]).toEqual(expect.objectContaining({ nuevo: false, tipoEvento: 'panico_asalto' }));
+  });
+
+  it('finalizado el incidente, el siguiente pánico abre uno nuevo', async () => {
+    const id = Number(sql(`SELECT MAX(Id) FROM Incidentes WHERE TipoOrigen = 2 AND CAST(JSON_EXTRACT(DatosOrigen, '$.idPanel') AS SIGNED) = ${s.panelActivo}`));
+    ok(await sa('PATCH', `/incidentes/${id}/finalizar`, { conclusion: 'Falsa alarma' }), 'finalizar');
+    await evento('TRE902', PANICO);
+    await esperar(() => de('consola:incidente').length === 3);
+    expect(incidentes()).toMatch(/^2\|2\|/);
+    expect(de('consola:incidente')[2]).toEqual(expect.objectContaining({ nuevo: true }));
   });
 });
 

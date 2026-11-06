@@ -30,6 +30,13 @@ const ENFRIAMIENTO_INSERVIBLE_MS = 24 * 3_600_000;
 /** Memoria del proceso: no se consulta en cada posición de un inservible ya atendido. */
 const MEMORIA_INSERVIBLE_MS = 10 * 60_000;
 
+/** `TipoEvento` de springPanel que abren incidente: pánico (PA) y pánico asalto (PH). */
+export const TIPOS_EVENTO_PANICO_PANEL = ['panico', 'panico_asalto'] as const;
+const ETIQUETA_PANICO_PANEL: Record<string, string> = {
+  panico: 'Pánico',
+  panico_asalto: 'Pánico asalto',
+};
+
 /** Medio de los seguimientos que agrega el sistema (no un usuario). */
 export const MEDIO_SEGUIMIENTO_ALERTA = 'Alerta automática';
 import { snapshotEventoAlarma, snapshotPosicion } from '../map-datos-origen.util';
@@ -133,6 +140,127 @@ export class IncidentesAutoService {
       );
     } finally {
       this.enCurso.delete(clave);
+    }
+  }
+
+  /**
+   * Pánico de un panel de alarma (SIA PA/PH): mismo trato que una alerta de
+   * vehículo. Un incidente ABIERTO por panel con origen evento de alarma
+   * (`tipoOrigen` 2); si ya hay uno, el pánico nuevo entra como seguimiento.
+   * Lo llama el ingest de alarmas fuera de su transacción y sin esperar.
+   */
+  async registrarDesdeEventoAlarma(idEventoAlarma: number): Promise<void> {
+    if (!Number.isFinite(idEventoAlarma) || idEventoAlarma < 1) return;
+    let clave: string | null = null;
+    try {
+      const evento = await this.incidentesRepo.manager.findOne(EventoAlarma, {
+        where: { id: idEventoAlarma },
+      });
+      if (!evento || Number(evento.esRestauracion) === 1) return;
+      if (!(TIPOS_EVENTO_PANICO_PANEL as readonly string[]).includes(evento.tipoEvento)) return;
+      const idPanel = Number(evento.idPanel);
+      const idCliente = Number(evento.idCliente);
+      // Sin panel o sin instalación activa (almacén): solo evidencia, sin incidente.
+      if (!(idPanel > 0) || !(idCliente > 0)) return;
+
+      clave = `panel:${idPanel}|panico`;
+      if (this.enCurso.has(clave)) {
+        clave = null;
+        return;
+      }
+      this.enCurso.add(clave);
+
+      const instalacion = await this.incidentesRepo.manager.findOne(Instalaciones, {
+        where: { idDispositivo: idPanel, estatus: EstatusEnum.ACTIVO },
+        select: { id: true },
+      });
+      const idInstalacion = Number(instalacion?.id);
+
+      const etiqueta = ETIQUETA_PANICO_PANEL[evento.tipoEvento] ?? 'Pánico';
+      const detalle = [
+        evento.zona != null ? `zona ${evento.zona}` : null,
+        evento.nombreDispositivo?.trim() || null,
+        `evento ${evento.id}`,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      const abierto = await this.incidentesRepo
+        .createQueryBuilder('inc')
+        .select('inc.id', 'id')
+        .where('inc.idCliente = :idCliente', { idCliente })
+        .andWhere('inc.estatus = :abierto', { abierto: EstatusIncidente.ABIERTO })
+        .andWhere('inc.tipoOrigen = :tipo', { tipo: TipoOrigenIncidente.EVENTO_ALARMA })
+        .andWhere("CAST(JSON_EXTRACT(inc.DatosOrigen, '$.idPanel') AS SIGNED) = :idPanel", { idPanel })
+        .andWhere("JSON_UNQUOTE(JSON_EXTRACT(inc.DatosOrigen, '$.tipoEvento')) IN (:...tipos)", {
+          tipos: [...TIPOS_EVENTO_PANICO_PANEL],
+        })
+        .andWhere("JSON_EXTRACT(inc.DatosOrigen, '$.alerta') IS NULL")
+        .orderBy('inc.id', 'DESC')
+        .limit(1)
+        .getRawOne<{ id: string | number }>();
+
+      let idIncidente: number;
+      let descripcion: string | null;
+      const nuevo = abierto == null;
+      if (abierto != null) {
+        idIncidente = Number(abierto.id);
+        descripcion = null;
+        await this.seguimientosRepo.save(
+          this.seguimientosRepo.create({
+            idIncidente,
+            idUsuario: null,
+            fechaHora: evento.recibidoEn,
+            actividad: `Nueva alerta: ${etiqueta} · ${detalle}`,
+            medio: MEDIO_SEGUIMIENTO_ALERTA,
+          }),
+        );
+      } else {
+        const saved = await this.incidentesRepo.save(
+          this.incidentesRepo.create({
+            idCliente,
+            tipoOrigen: TipoOrigenIncidente.EVENTO_ALARMA,
+            idPosicion: null,
+            idPosicionOrigen: null,
+            idEventoAlarma: Number(evento.id),
+            idEventoAlarmaOrigen: Number(evento.id),
+            datosOrigen: snapshotEventoAlarma(evento),
+            idUsuario: null,
+            descripcion: `Alerta automática: ${etiqueta} (panel de alarma)`,
+            fechaInicio: evento.recibidoEn,
+            fechaCierre: null,
+            estatus: EstatusIncidente.ABIERTO,
+          }),
+        );
+        idIncidente = Number(saved.id);
+        descripcion = saved.descripcion;
+      }
+      this.logger.log(
+        `[IncidenteAuto] panel=${idPanel} ${evento.tipoEvento} evento=${evento.id} → ${nuevo ? 'Incidente' : 'seguimiento en Incidente'}=${idIncidente}`,
+      );
+
+      if (idInstalacion > 0) {
+        this.monitoreoGateway?.emitConsolaIncidente({
+          idIncidente,
+          nuevo,
+          tipoOrigen: TipoOrigenIncidente.EVENTO_ALARMA,
+          idEventoAlarma: Number(evento.id),
+          idInstalacion,
+          idPanel,
+          idCliente,
+          tipoEvento: evento.tipoEvento,
+          zona: evento.zona != null ? Number(evento.zona) : null,
+          nombreDispositivo: evento.nombreDispositivo,
+          descripcion,
+          fechaHora: fechaPared(new Date(evento.recibidoEn)),
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[IncidenteAuto] no se pudo crear el incidente del pánico de panel evento=${idEventoAlarma}: ${(error as Error)?.message}`,
+      );
+    } finally {
+      if (clave) this.enCurso.delete(clave);
     }
   }
 
