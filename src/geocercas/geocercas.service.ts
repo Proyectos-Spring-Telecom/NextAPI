@@ -9,10 +9,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import { Geocercas } from 'src/entities/Geocercas';
 import { ProductosGeocerca } from 'src/entities/ProductosGeocerca';
+import { vehiculosLigados } from 'src/productos/vehiculos-ligados.util';
 import { Clientes } from 'src/entities/Clientes';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Productos } from 'src/entities/Productos';
-import { Dispositivos } from 'src/entities/Dispositivos';
 import { Usuarios } from 'src/entities/Usuarios';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
@@ -24,7 +24,6 @@ import {
 import {
   EnumModulos,
   EnumRoles,
-  EnumTipoDispositivo,
   EstatusEnum,
 } from 'src/common/estatus.enum';
 import { CreateGeocercaDto } from './dto/create-geocerca.dto';
@@ -34,13 +33,6 @@ import {
   RELACIONES_GEOCERCA,
 } from './map-geocercas.util';
 
-/** Tipos de rastreo que se prefieren como `idInstalacion` de compatibilidad (GPS antes que TrackCam o reloj). */
-const TIPOS_RASTREO_PREFERIDOS = [
-  EnumTipoDispositivo.RASTREADOR,
-  EnumTipoDispositivo.AVL,
-  EnumTipoDispositivo.TELEFONO,
-  EnumTipoDispositivo.TRACKGAS,
-];
 
 @Injectable()
 export class GeocercasService {
@@ -141,58 +133,9 @@ export class GeocercasService {
       .map((l) => Number(l.idProducto));
   }
 
-  /**
-   * `idInstalacion` de compatibilidad en las respuestas: la instalación activa
-   * del vehículo con equipo de rastreo (GPS antes que TrackCam o reloj).
-   */
-  private async instalacionesVigentes(idsProducto: number[]): Promise<Map<number, number>> {
-    const ids = [...new Set(idsProducto)];
-    if (!ids.length) return new Map();
-    const filas: Array<{ idProducto: unknown; id: unknown }> = await this.instalacionesRepo
-      .createQueryBuilder('i')
-      .leftJoin(Dispositivos, 'd', 'd.id = i.idDispositivo')
-      .select(['i.idProducto AS idProducto', 'i.id AS id'])
-      .where('i.idProducto IN (:...ids) AND i.estatus = :activa', { ids, activa: EstatusEnum.ACTIVO })
-      .orderBy(`CASE WHEN d.idTipoDispositivo IN (${TIPOS_RASTREO_PREFERIDOS.join(',')}) THEN 0 ELSE 1 END`, 'ASC')
-      .addOrderBy('i.id', 'ASC')
-      .getRawMany();
-    const porProducto = new Map<number, number>();
-    for (const f of filas) {
-      const p = Number(f.idProducto);
-      if (!porProducto.has(p)) porProducto.set(p, Number(f.id));
-    }
-    return porProducto;
-  }
-
   private async mapear(items: Geocercas[]) {
-    const ids = [...new Set(items.flatMap((g) => this.vehiculosActivos(g)))];
-    const [vigentes, etiquetas] = await Promise.all([
-      this.instalacionesVigentes(ids),
-      ids.length
-        ? (this.dataSource.query(
-            `SELECT p.Id AS id, p.Nombre AS nombre, p.IdCliente AS idCliente, v.Placa AS placa, v.NumeroEconomico AS economico
-               FROM Productos p LEFT JOIN Vehiculos v ON v.IdProducto = p.Id WHERE p.Id IN (?)`,
-            [ids],
-          ) as Promise<Array<{ id: string; nombre: string | null; idCliente: string; placa: string | null; economico: string | null }>>)
-        : Promise.resolve([]),
-    ]);
-    const etiqueta = new Map(etiquetas.map((e) => [Number(e.id), e]));
-    return items.map((g) =>
-      mapGeocercaPlano(
-        g,
-        this.vehiculosActivos(g).map((idProducto) => {
-          const e = etiqueta.get(idProducto);
-          return {
-            idProducto,
-            idCliente: e ? Number(e.idCliente) : null,
-            nombreProducto: e?.nombre ?? null,
-            placa: e?.placa ?? null,
-            numeroEconomico: e?.economico ?? null,
-            idInstalacion: vigentes.get(idProducto) ?? null,
-          };
-        }),
-      ),
-    );
+    const vehiculos = await vehiculosLigados(this.dataSource.manager, items.flatMap((g) => this.vehiculosActivos(g)));
+    return items.map((g) => mapGeocercaPlano(g, this.vehiculosActivos(g).map((id) => vehiculos.get(id)!)));
   }
 
   /**

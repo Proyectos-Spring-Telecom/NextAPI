@@ -136,7 +136,9 @@ export class ConsolaAlcanceService {
       panel: EnumTipoDispositivo.PANEL_ALARMA,
     });
     if (idClienteFiltro != null) {
-      qb.andWhere('i.idCliente = :idClienteFiltro', { idClienteFiltro });
+      // El cliente y sus hijos (spGetClientes); el alcance ya se aplicó arriba.
+      const familia = await this.tenantFilter.getClienteHijosIds(idClienteFiltro);
+      qb.andWhere('i.idCliente IN (:...familiaFiltro)', { familiaFiltro: familia });
     }
     qb.orderBy('i.id', 'ASC');
 

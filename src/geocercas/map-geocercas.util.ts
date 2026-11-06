@@ -1,25 +1,16 @@
 import { Geocercas } from 'src/entities/Geocercas';
 import { nombreCliente } from 'src/productos/map-relaciones.util';
+import type { VehiculoLigado } from 'src/productos/vehiculos-ligados.util';
 
 export const RELACIONES_GEOCERCA = ['idCliente2', 'productosGeocerca'] as const;
 
-/** Vehículo ligado a la geocerca (`ProductosGeocerca`). */
-export interface VehiculoGeocerca {
-  idProducto: number;
-  idCliente: number | null;
-  nombreProducto: string | null;
-  placa: string | null;
-  numeroEconomico: string | null;
-  /** Instalación activa del vehículo (GPS antes que TrackCam o reloj). */
-  idInstalacion: number | null;
-}
 
 /**
  * La geocerca es del cliente y aplica a los vehículos de `vehiculos`.
  * `idProducto` e `idInstalacion` son de compatibilidad (obsoletos): los del
  * primer vehículo.
  */
-export function mapGeocercaPlano(item: Geocercas, vehiculos: VehiculoGeocerca[] = []) {
+export function mapGeocercaPlano(item: Geocercas, vehiculos: VehiculoLigado[] = []) {
   return {
     id: Number(item.id),
     idCliente: Number(item.idCliente),

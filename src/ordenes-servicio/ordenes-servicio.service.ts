@@ -407,7 +407,12 @@ export class OrdenesServicioService {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const qb = this.ordenesRepo.createQueryBuilder('o');
-    if (filtros.idCliente != null) qb.andWhere('o.idCliente = :idCliente', { idCliente: filtros.idCliente });
+    if (filtros.idCliente != null) {
+      // El cliente y sus hijos (spGetClientes).
+      const [filas]: [Array<{ Id?: unknown; id?: unknown }>] = await this.dataSource.query('CALL spGetClientes(?);', [filtros.idCliente]);
+      const familia = [...new Set([Number(filtros.idCliente), ...(filas ?? []).map((f) => Number(f.Id ?? f.id))])].filter((x) => x > 0);
+      qb.andWhere('o.idCliente IN (:...familiaCliente)', { familiaCliente: familia });
+    }
     if (filtros.idProducto != null) qb.andWhere('o.idProducto = :idProducto', { idProducto: filtros.idProducto });
     if (filtros.idInstalacion != null) {
       qb.andWhere('(o.idInstalacion = :idInst OR o.idInstalacionResultado = :idInst)', {

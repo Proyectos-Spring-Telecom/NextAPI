@@ -494,6 +494,14 @@ Desde la fase C ([motor-activos.md](motor-activos.md) §17):
   - Respuesta: `idsProducto` y `vehiculos: [{ idProducto, idCliente, nombreProducto, placa, numeroEconomico, idInstalacion }]`. `idProducto` e `idInstalacion` siguen (los del primer vehículo) pero están obsoletos; `usuariosGeocerca` ya no viene.
   - `GET /geocercas/list?idProducto=X`: las que usa ese vehículo (también las de un cliente padre).
   - Pantalla sugerida: en la geocerca, un selector múltiple de vehículos del cliente y sus hijos; en el detalle del vehículo, sus geocercas.
+- **Puntos de interés (5/11/2026, `PuntosInteresVehiculos.sql`):** mismo modelo que las geocercas.
+  - Alta (`POST /puntos-interes`): monitoreo y administración deben mandar `idCliente` (sin él, 400); un acceso del cliente puede omitirlo.
+  - `idsProducto: [..]` en el alta y en `PATCH /puntos-interes/:id`: los vehículos (del cliente o de sus hijos) que **avisan llegada y salida** de ese punto. Sin vehículos el punto sigue sirviendo para el mapa y el reporte de paso.
+  - Respuesta: `idsProducto` y `vehiculos` (igual que en geocercas). `GET /puntos-interes/list?idProducto=X`: los que usa ese vehículo (también los del cliente padre).
+  - **En vivo:** socket `/monitoreo`, evento `punto-interes:evento` `{ id, tipo: 'llegada'|'salida', idPuntoInteres, nombrePuntoInteres, idProducto, idInstalacion, idPosicion, fechaHora, lat, lng, distanciaMetros }`. Es un aviso informativo: no cambia el `Estado` de la posición ni abre incidente. Llega al entrar al radio y sale al pasar el radio más un margen (15 m o 20 % del radio), para no repetir avisos por el ruido del GPS.
+  - Historial: `GET /puntos-interes/eventos?idInstalacion=&idPuntoInteres=&fechaInicio=&fechaFinal=` (uno de los dos ids, hora de México).
+  - Reporte de paso por punto (`POST /reportes/paso-por-poi`): acepta puntos del cliente, de sus hijos y de sus padres.
+- **Reportes con clientes hijos (5/11/2026):** paso por punto, velocidad, posiciones, última posición, distancia, salidas de geocerca y productos del cliente, `GET /instalaciones/cliente/:id`, la consola con `idCliente` y las órdenes de servicio con `?idCliente` incluyen a los vehículos de los clientes hijos. Mostrar el cliente o la placa de cada fila.
   - Ya no se borran al cambiar de equipo ni al dar de baja la instalación.
 - **Asignación de usuarios 7/9:** sigue por instalación; para que un operador vea la TrackCam del vehículo hay que asignársela también.
 
@@ -544,6 +552,7 @@ Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y
 | Bandeja "Sin transmisión" (roles 1–5) | `/monitoreo` | `vigilancia:avisos` | `evaluacion`/`atencion`: insertar o reemplazar por `id` (y `porProveedor` si viene); `cierre`: quitar por `id` |
 | Incidentes (roles 1–5) | `/monitoreo` | `incidente:inservible` | Aviso destacado "equipo/panel inservible transmitiendo" con `idIncidente`; abrir el detalle con el `GET` de incidentes |
 | Consola de configuración (reloj §23, TrackCam §24; roles 1–5, y el cliente 6 los del reloj) | `/monitoreo` | `comando:actualizacion` | Reemplazar el comando por `comando.id` en la lista; en TrackCam, al llegar `confirmado` o `fallido`, volver a pedir `GET …/trackcam/parametros` (trae la lectura nueva) |
+| Puntos de interés (llegada / salida) | `/monitoreo` | `punto-interes:evento` | Aviso informativo en el mapa o la consola (§22); el historial con `GET /puntos-interes/eventos` |
 | Paneles | `/alarmas` | `conexion:lista`, `evento:nuevo`, `panel:heartbeat`, `panel:estado` | Ya existente |
 
 Lo que no empuja (consultar al entrar): equipos sin instalación (§20), "sin primera transmisión" y el histórico de cerrados.

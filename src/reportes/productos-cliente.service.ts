@@ -111,7 +111,7 @@ SELECT inst.Id AS idInstalacion,
   LEFT JOIN PanelAlarma p
          ON p.IdDispositivo = inst.IdDispositivo
         AND p.Estatus = 1
- WHERE inst.IdCliente = ?
+ WHERE inst.IdCliente IN (?)
    AND inst.Estatus = 1
 `;
 
@@ -164,7 +164,9 @@ export class ProductosClienteService {
       if (idUsuario === 0) return vacio;
 
       let sql = SQL_PRODUCTOS_CLIENTE;
-      const params: unknown[] = [idCliente];
+      // El cliente y sus hijos (spGetClientes); ya se validó que está en el alcance.
+      const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
+      const params: unknown[] = [familia];
       if (idUsuario != null) {
         sql += SQL_FILTRO_USUARIOS;
         params.push(idUsuario);
@@ -214,8 +216,8 @@ export class ProductosClienteService {
     if (!Number.isInteger(id) || id < 1) return null;
 
     const rows = (await this.dataSource.query(
-      'SELECT Id FROM Usuarios WHERE IdCliente = ? AND Id = ? LIMIT 1',
-      [idCliente, id],
+      'SELECT Id FROM Usuarios WHERE IdCliente IN (?) AND Id = ? LIMIT 1',
+      [await this.tenantFilter.getClienteHijosIds(idCliente), id],
     )) as unknown[];
     return rows.length ? id : 0;
   }
@@ -302,9 +304,9 @@ export class ProductosClienteService {
           `SELECT ui.IdInstalacion AS idRef, u.Id AS id, ${nombre} AS nombre
              FROM UsuariosInstalaciones ui
              JOIN Usuarios u ON u.Id = ui.IdUsuario
-            WHERE ui.Estatus = 1 AND u.Estatus = 1 AND u.IdCliente = ?
+            WHERE ui.Estatus = 1 AND u.Estatus = 1 AND u.IdCliente IN (?)
               AND ui.IdInstalacion IN (${marcas(idsInst)})`,
-          [idCliente, ...idsInst],
+          [await this.tenantFilter.getClienteHijosIds(idCliente), ...idsInst],
         )) as Record<string, unknown>[])
       : [];
 

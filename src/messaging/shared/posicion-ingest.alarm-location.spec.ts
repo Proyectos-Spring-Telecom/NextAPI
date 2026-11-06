@@ -31,7 +31,7 @@ describe('PosicionIngestService.ingestAlarmLocation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new PosicionIngestService(dataSource as never, gateway as never, {} as never);
+    service = new PosicionIngestService(dataSource as never, gateway as never, {} as never, { evaluar: jest.fn() } as never);
   });
 
   it('corrige Lat/Lng de la posición de la alarma, sin insertar otra', async () => {

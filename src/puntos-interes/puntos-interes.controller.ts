@@ -46,6 +46,10 @@ const ITEM_EXAMPLE = {
   estatus: EstatusEnum.ACTIVO,
   fechaCreacion: '2026-09-04T18:00:00.000Z',
   fechaActualizacion: '2026-09-04T18:00:00.000Z',
+  idsProducto: [1000210],
+  vehiculos: [
+    { idProducto: 1000210, idCliente: 1, nombreProducto: 'Tractocamión 12', placa: 'ABC1234', numeroEconomico: 'ECO-12', idInstalacion: 10 },
+  ],
 };
 
 @ApiTags('Puntos de interés')
@@ -90,9 +94,11 @@ export class PuntosInteresController {
   @ApiOperation({
     summary: 'Lista de puntos de interés activos',
     description:
-      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente` (debe estar en alcance).',
+      'Solo `estatus = 1`. Respeta alcance por rol. Query opcional `idCliente`: el cliente y sus hijos dentro del alcance. ' +
+      'Query opcional `idProducto`: los que usa ese vehículo.',
   })
   @ApiQuery({ name: 'idCliente', required: false, type: Number })
+  @ApiQuery({ name: 'idProducto', required: false, type: Number })
   @ApiOkResponse({
     description: 'Lista obtenida',
     schema: { example: { data: [ITEM_EXAMPLE] } },
@@ -101,15 +107,41 @@ export class PuntosInteresController {
   async findAllList(
     @Request() req,
     @Query('idCliente') idCliente?: string,
+    @Query('idProducto') idProducto?: string,
   ): Promise<ApiResponseCommon> {
-    const filtro =
-      idCliente != null && idCliente !== ''
-        ? Number(idCliente)
-        : undefined;
+    const numero = (v?: string) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
     return this.service.findAllList(
       Number(req.user.idCliente),
       Number(req.user.rol),
-      Number.isFinite(filtro as number) ? filtro : undefined,
+      numero(idCliente),
+      numero(idProducto),
+    );
+  }
+
+  @Get('eventos')
+  @ApiOperation({
+    summary: 'Llegadas y salidas de puntos de interés',
+    description:
+      'Las registradas en vivo para los vehículos ligados a cada punto. Indica `idInstalacion` o `idPuntoInteres` ' +
+      '(los dos se pueden combinar) y el periodo (`YYYY-MM-DD HH:mm:ss`, hora de México). Máximo 5000 filas. ' +
+      'Fuera de alcance → 404. Roles 7/9: solo sus instalaciones asignadas.',
+  })
+  @ApiQuery({ name: 'idInstalacion', required: false, type: Number })
+  @ApiQuery({ name: 'idPuntoInteres', required: false, type: Number })
+  @ApiQuery({ name: 'fechaInicio', required: true, example: '2026-11-05 00:00:00' })
+  @ApiQuery({ name: 'fechaFinal', required: true, example: '2026-11-05 23:59:59' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async eventos(
+    @Request() req,
+    @Query('fechaInicio') fechaInicio: string,
+    @Query('fechaFinal') fechaFinal: string,
+    @Query('idInstalacion') idInstalacion?: string,
+    @Query('idPuntoInteres') idPuntoInteres?: string,
+  ): Promise<ApiResponseCommon> {
+    const numero = (v?: string) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+    return this.service.eventos(
+      { idInstalacion: numero(idInstalacion), idPuntoInteres: numero(idPuntoInteres), fechaInicio, fechaFinal },
+      { userId: Number(req.user.userId), idCliente: Number(req.user.idCliente), rol: Number(req.user.rol) },
     );
   }
 

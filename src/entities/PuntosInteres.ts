@@ -4,10 +4,12 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { applySchema } from 'src/common/apply-schema.decorator';
 import { Clientes } from './Clientes';
+import { ProductosPuntoInteres } from './ProductosPuntoInteres';
 
 @applySchema
 @Index('IX_PuntosInteres_IdCliente', ['idCliente'])
@@ -70,4 +72,8 @@ export class PuntosInteres {
   @ManyToOne(() => Clientes, { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' })
   @JoinColumn([{ name: 'IdCliente', referencedColumnName: 'id' }])
   idCliente2: Clientes;
+
+  /** Vehículos que avisan llegada/salida (`ProductosPuntoInteres`). */
+  @OneToMany(() => ProductosPuntoInteres, (pp) => pp.idPuntoInteres2)
+  productosPuntoInteres: ProductosPuntoInteres[];
 }

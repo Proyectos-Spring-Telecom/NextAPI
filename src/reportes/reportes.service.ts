@@ -2307,7 +2307,7 @@ export class ReportesService {
           'v.numeroEconomico AS numeroEconomico',
         ])
         .where('v.idProducto IN (:...ids)', { ids: idsProducto })
-        .andWhere('v.idCliente = :idCliente', { idCliente })
+        .andWhere('v.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
         .getRawMany<Record<string, unknown>>();
       for (const r of vehRows) {
         vehByProducto.set(Number(r.idProducto), {
@@ -2753,7 +2753,7 @@ export class ReportesService {
     const qb = this.instalacionesRepo
       .createQueryBuilder('i')
       .select('DISTINCT i.id', 'id')
-      .where('i.idCliente = :idCliente', { idCliente })
+      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
       .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
       .andWhere('i.idDispositivo IS NOT NULL');
 
@@ -2809,18 +2809,23 @@ export class ReportesService {
       .filter((id) => Number.isFinite(id) && id > 0);
   }
 
+  /** Puntos del cliente, de sus hijos o de sus clientes padre (los vehículos pueden usar los del padre). */
   private async cargarPuntosDelCliente(
     idCliente: number,
     ids: number[],
   ): Promise<PoiNorm[]> {
+    const [hijos, padres] = await Promise.all([
+      this.tenantFilter.getClienteHijosIds(idCliente),
+      this.tenantFilter.getClienteAncestrosIds(idCliente),
+    ]);
     const rows = await this.puntosRepo.find({
-      where: { id: In(ids), idCliente },
+      where: { id: In(ids), idCliente: In([...new Set([...hijos, ...padres])]) },
     });
     const byId = new Map(rows.map((r) => [Number(r.id), r]));
     const missing = ids.filter((id) => !byId.has(id));
     if (missing.length) {
       throw new NotFoundException(
-        `Puntos de interés no encontrados o no pertenecen al cliente: ${missing.join(', ')}`,
+        `Puntos de interés no encontrados o no son del cliente, de sus hijos ni de sus padres: ${missing.join(', ')}`,
       );
     }
 
@@ -2920,7 +2925,7 @@ export class ReportesService {
       ])
       // También las dadas de baja: lo que transmitieron mientras estuvieron
       // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
-      .where('i.idCliente = :idCliente', { idCliente })
+      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
       .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       });
@@ -2976,7 +2981,7 @@ export class ReportesService {
       ])
       // También las dadas de baja: lo que transmitieron mientras estuvieron
       // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
-      .where('i.idCliente = :idCliente', { idCliente })
+      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
       .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       })

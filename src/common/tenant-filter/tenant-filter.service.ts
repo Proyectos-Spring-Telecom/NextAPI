@@ -223,6 +223,22 @@ export class TenantFilterService {
     return { sinAcceso: false, idCliente: In(ids) };
   }
 
+  /** El cliente y sus padres hacia arriba (`IdPadre`), del más cercano al raíz. */
+  async getClienteAncestrosIds(idCliente: number): Promise<number[]> {
+    const ids: number[] = [];
+    let actual: number | null = Number(idCliente);
+    // Tope por si una jerarquía mal capturada tuviera un ciclo.
+    while (actual != null && Number.isFinite(actual) && actual > 0 && !ids.includes(actual) && ids.length < 50) {
+      ids.push(actual);
+      const [fila]: { idPadre: string | null }[] = await this.clienteRepository.query(
+        'SELECT IdPadre AS idPadre FROM Clientes WHERE Id = ?',
+        [actual],
+      );
+      actual = fila?.idPadre != null ? Number(fila.idPadre) : null;
+    }
+    return ids;
+  }
+
   /**
    * `?idCliente` de un listado: ese cliente y sus hijos (`spGetClientes`), solo
    * los que están en el alcance del rol. `null` si el pedido queda fuera.

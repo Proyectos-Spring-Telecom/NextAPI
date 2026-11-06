@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -14,8 +15,8 @@ import { Type } from 'class-transformer';
 export class CreatePuntoInteresDto {
   @ApiPropertyOptional({
     description:
-      'ID del cliente propietario. Obligatorio para roles globales/admin. ' +
-      'Roles Cliente (6) y Usuario (9): se ignora y se usa el `idCliente` del token.',
+      'Cliente del punto. Obligatorio para monitoreo y administración (roles 1–5 y 8). ' +
+      'Los accesos del cliente (6, 7, 9…): opcional, por defecto su cliente; puede ser uno de sus clientes hijos.',
     example: 1,
   })
   @IsOptional()
@@ -79,4 +80,19 @@ export class CreatePuntoInteresDto {
   @IsString()
   @MaxLength(500)
   icono?: string;
+
+  @ApiPropertyOptional({
+    type: Number,
+    isArray: true,
+    description:
+      'Vehículos (productos) que avisan llegada y salida de este punto; lista definitiva (en la edición: omitir = no cambiar, `[]` = ninguno). ' +
+      'Cada vehículo debe ser del cliente del punto o de uno de sus clientes hijos.',
+    example: [1000210],
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  idsProducto?: number[];
 }

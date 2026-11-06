@@ -6,8 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { PuntosInteres } from 'src/entities/PuntosInteres';
+import { EventosPuntoInteres } from 'src/entities/EventosPuntoInteres';
+import { Productos } from 'src/entities/Productos';
+import { ProductosPuntoInteres } from 'src/entities/ProductosPuntoInteres';
+import { vehiculosLigados } from 'src/productos/vehiculos-ligados.util';
+import { parseFechaHistorico } from 'src/monitoreo/helpers/monitoreo-historico.helpers';
 import { Clientes } from 'src/entities/Clientes';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
@@ -39,11 +44,6 @@ export class PuntosInteresService {
     private readonly tenantFilter: TenantFilterService,
   ) {}
 
-  private esRolClienteFijo(rol: number): boolean {
-    const r = Number(rol);
-    return r === EnumRoles.CLIENTE || r === EnumRoles.USUARIO;
-  }
-
   private async assertClienteExiste(idCliente: number): Promise<void> {
     const cliente = await this.clientesRepo.findOne({
       where: { id: idCliente },
@@ -67,28 +67,26 @@ export class PuntosInteresService {
     }
   }
 
+  /**
+   * Cliente del punto nuevo. Monitoreo y administración (alcance global) deben
+   * asignarlo a un cliente; un acceso del cliente lo deja en su cliente (o en
+   * uno de sus hijos, si lo indica).
+   */
   private async resolveIdClienteCreate(
     rol: number,
     idClienteToken: number,
     idClienteDto?: number,
   ): Promise<number> {
-    if (this.esRolClienteFijo(rol)) {
+    const scope = await this.tenantFilter.idsClientePermitidos(rol, idClienteToken);
+    if (idClienteDto == null) {
+      if (scope === 'all') {
+        throw new BadRequestException('idCliente es obligatorio: el punto de interés se asigna a un cliente');
+      }
       return Number(idClienteToken);
     }
-
-    if (idClienteDto == null) {
-      throw new BadRequestException('idCliente es obligatorio');
-    }
-
     await this.assertClienteExiste(idClienteDto);
-    const scope = await this.tenantFilter.idsClientePermitidos(
-      rol,
-      idClienteToken,
-    );
     if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteDto)) {
-      throw new ForbiddenException(
-        'No puedes crear puntos de interés para ese cliente',
-      );
+      throw new ForbiddenException('No puedes crear puntos de interés para ese cliente');
     }
     return Number(idClienteDto);
   }
@@ -99,25 +97,61 @@ export class PuntosInteresService {
     idClienteActual: number,
     idClienteDto?: number,
   ): Promise<number> {
-    if (idClienteDto === undefined) {
+    if (idClienteDto === undefined || Number(idClienteDto) === Number(idClienteActual)) {
       return Number(idClienteActual);
     }
-
-    if (this.esRolClienteFijo(rol)) {
-      return Number(idClienteToken);
-    }
-
     await this.assertClienteExiste(idClienteDto);
-    const scope = await this.tenantFilter.idsClientePermitidos(
-      rol,
-      idClienteToken,
-    );
-    if (!this.tenantFilter.clienteVisibleEnScope(scope, idClienteDto)) {
-      throw new ForbiddenException(
-        'No puedes reasignar el punto de interés a ese cliente',
+    await this.assertClienteEnAlcance(idClienteDto, idClienteToken, rol);
+    return Number(idClienteDto);
+  }
+
+  /** Cada vehículo es del cliente del punto o de uno de sus hijos (`spGetClientes`). */
+  private async assertVehiculosDelCliente(idCliente: number, idsProducto: number[]): Promise<void> {
+    if (!idsProducto.length) return;
+    const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
+    const encontrados = await this.repository.manager.count(Productos, {
+      where: { id: In(idsProducto), idCliente: In(familia) },
+    });
+    if (encontrados !== idsProducto.length) {
+      throw new BadRequestException(
+        'Uno o más vehículos no existen o no son del cliente del punto ni de sus clientes hijos',
       );
     }
-    return Number(idClienteDto);
+  }
+
+  /** Lista definitiva de vehículos del punto: reactivar / crear / desactivar. */
+  private async sincronizarVehiculos(
+    repo: Repository<ProductosPuntoInteres>,
+    idPuntoInteres: number,
+    idsProducto: number[],
+  ): Promise<void> {
+    const nuevos = new Set(idsProducto.map(Number));
+    const existentes = await repo.find({ where: { idPuntoInteres } });
+    const porProducto = new Map(existentes.map((l) => [Number(l.idProducto), l]));
+    for (const idProducto of nuevos) {
+      const liga = porProducto.get(idProducto);
+      if (!liga) {
+        await repo.save(repo.create({ idPuntoInteres, idProducto, estatus: EstatusEnum.ACTIVO }));
+      } else if (Number(liga.estatus) !== EstatusEnum.ACTIVO) {
+        await repo.update(liga.id, { estatus: EstatusEnum.ACTIVO });
+      }
+    }
+    for (const liga of existentes) {
+      if (!nuevos.has(Number(liga.idProducto)) && Number(liga.estatus) === EstatusEnum.ACTIVO) {
+        await repo.update(liga.id, { estatus: EstatusEnum.INACTIVO });
+      }
+    }
+  }
+
+  private vehiculosActivos(p: PuntosInteres): number[] {
+    return (p.productosPuntoInteres ?? [])
+      .filter((l) => Number(l.estatus) === EstatusEnum.ACTIVO)
+      .map((l) => Number(l.idProducto));
+  }
+
+  private async mapear(items: PuntosInteres[]) {
+    const vehiculos = await vehiculosLigados(this.repository.manager, items.flatMap((p) => this.vehiculosActivos(p)));
+    return items.map((p) => mapPuntoInteresPlano(p, this.vehiculosActivos(p).map((id) => vehiculos.get(id)!)));
   }
 
   private async findVisibleOrFail(
@@ -163,6 +197,8 @@ export class PuntosInteresService {
         dto.idCliente,
       );
 
+      const idsProducto = [...new Set((dto.idsProducto ?? []).map(Number))];
+      await this.assertVehiculosDelCliente(idCliente, idsProducto);
       const entity = this.repository.create({
         idCliente,
         nombre: dto.nombre.trim(),
@@ -175,7 +211,11 @@ export class PuntosInteresService {
         estatus: EstatusEnum.ACTIVO,
       });
 
-      const saved = await this.repository.save(entity);
+      const saved = await this.repository.manager.transaction(async (m) => {
+        const punto = await m.getRepository(PuntosInteres).save(entity);
+        await this.sincronizarVehiculos(m.getRepository(ProductosPuntoInteres), Number(punto.id), idsProducto);
+        return punto;
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'PuntosInteres',
@@ -212,6 +252,7 @@ export class PuntosInteresService {
     idClienteToken: number,
     rol: number,
     idClienteFiltro?: number,
+    idProductoFiltro?: number,
   ): Promise<ApiResponseCommon> {
     try {
       const tenant = await this.tenantFilter.forTypeOrmIdCliente(
@@ -237,13 +278,30 @@ export class PuntosInteresService {
           : {}),
       };
 
+      if (idProductoFiltro != null) {
+        // Los que usa ese vehículo, aunque sean de un cliente padre (solo
+        // lectura para quien no ve a ese cliente). El vehículo debe estar en el alcance.
+        const vehiculo = await this.repository.manager.findOne(Productos, {
+          where: { id: idProductoFiltro, ...(tenant.idCliente !== undefined ? { idCliente: tenant.idCliente } : {}) },
+          select: { id: true },
+        });
+        if (!vehiculo) return { data: [] };
+        const ligas = await this.repository.manager.find(ProductosPuntoInteres, {
+          where: { idProducto: idProductoFiltro, estatus: EstatusEnum.ACTIVO },
+          select: { idPuntoInteres: true },
+        });
+        if (!ligas.length) return { data: [] };
+        delete where.idCliente;
+        where.id = In(ligas.map((l) => Number(l.idPuntoInteres)));
+      }
+
       const data = await this.repository.find({
         where,
         relations: [...RELACIONES_PUNTO_INTERES],
         order: { id: 'ASC' },
       });
 
-      return { data: data.map((item) => mapPuntoInteresPlano(item)) };
+      return { data: await this.mapear(data) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
@@ -259,16 +317,19 @@ export class PuntosInteresService {
       await this.assertClienteExiste(idCliente);
       await this.assertClienteEnAlcance(idCliente, idClienteToken, rol);
 
+      // El cliente y sus hijos (spGetClientes), dentro del alcance del rol.
+      const familia = await this.tenantFilter.clienteConHijosEnAlcance(rol, idClienteToken, idCliente);
+      if (familia == null) return { data: [] };
       const data = await this.repository.find({
         where: {
-          idCliente,
+          idCliente: familia,
           estatus: EstatusEnum.ACTIVO,
         },
         relations: [...RELACIONES_PUNTO_INTERES],
         order: { id: 'ASC' },
       });
 
-      return { data: data.map((item) => mapPuntoInteresPlano(item)) };
+      return { data: await this.mapear(data) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
@@ -308,7 +369,7 @@ export class PuntosInteresService {
       });
 
       return {
-        data: data.map((item) => mapPuntoInteresPlano(item)),
+        data: await this.mapear(data),
         paginated: {
           total,
           page,
@@ -322,13 +383,78 @@ export class PuntosInteresService {
     }
   }
 
+  /**
+   * Llegadas y salidas registradas en vivo (`EventosPuntoInteres`), de una
+   * instalación o de un punto visibles para el usuario, en un periodo.
+   */
+  async eventos(
+    filtro: { idInstalacion?: number; idPuntoInteres?: number; fechaInicio: string; fechaFinal: string },
+    user: { userId: number; idCliente: number; rol: number },
+  ): Promise<ApiResponseCommon> {
+    if (filtro.idInstalacion == null && filtro.idPuntoInteres == null) {
+      throw new BadRequestException('Indica idInstalacion o idPuntoInteres');
+    }
+    let desde: string;
+    let hasta: string;
+    try {
+      desde = parseFechaHistorico(filtro.fechaInicio);
+      hasta = parseFechaHistorico(filtro.fechaFinal);
+    } catch {
+      throw new BadRequestException('fechaInicio / fechaFinal tienen un formato inválido');
+    }
+    if (filtro.idInstalacion != null) {
+      await this.tenantFilter.assertInstalacionVisible(user, filtro.idInstalacion);
+    }
+    if (filtro.idPuntoInteres != null) {
+      await this.findVisibleOrFail(filtro.idPuntoInteres, user.idCliente, user.rol);
+    }
+    const qb = this.repository.manager
+      .createQueryBuilder(EventosPuntoInteres, 'e')
+      .innerJoin(PuntosInteres, 'p', 'p.id = e.idPuntoInteres')
+      .select([
+        'e.id AS id',
+        'e.tipo AS tipo',
+        'e.idPuntoInteres AS idPuntoInteres',
+        'p.nombre AS nombrePuntoInteres',
+        'e.idProducto AS idProducto',
+        'e.idInstalacion AS idInstalacion',
+        'e.idPosicion AS idPosicion',
+        "DATE_FORMAT(e.fechaHora, '%Y-%m-%d %H:%i:%s') AS fechaHora",
+      ])
+      .where('e.fechaHora BETWEEN :desde AND :hasta', { desde, hasta })
+      .orderBy('e.fechaHora', 'ASC')
+      .addOrderBy('e.id', 'ASC')
+      .limit(5000);
+    if (filtro.idInstalacion != null) qb.andWhere('e.idInstalacion = :i', { i: filtro.idInstalacion });
+    if (filtro.idPuntoInteres != null) qb.andWhere('e.idPuntoInteres = :p', { p: filtro.idPuntoInteres });
+    // Los 7/9 solo ven lo de sus instalaciones asignadas.
+    const asignadas = await this.tenantFilter.idsInstalacionAsignadas(user);
+    if (asignadas !== 'all') {
+      if (!asignadas.length) return { data: [] };
+      qb.andWhere('e.idInstalacion IN (:...asignadas)', { asignadas });
+    }
+    const filas = await qb.getRawMany<Record<string, unknown>>();
+    return {
+      data: filas.map((f) => ({
+        id: Number(f.id),
+        tipo: f.tipo,
+        idPuntoInteres: Number(f.idPuntoInteres),
+        nombrePuntoInteres: f.nombrePuntoInteres,
+        idProducto: Number(f.idProducto),
+        idInstalacion: Number(f.idInstalacion),
+        idPosicion: Number(f.idPosicion),
+        fechaHora: f.fechaHora,
+      })),
+    };
+  }
+
   async findOne(
     id: number,
     idClienteToken: number,
     rol: number,
   ): Promise<{ data: ReturnType<typeof mapPuntoInteresPlano> }> {
     const entity = await this.findVisibleOrFail(id, idClienteToken, rol);
-    return { data: mapPuntoInteresPlano(entity) };
+    return { data: (await this.mapear([entity]))[0] };
   }
 
   async update(
@@ -366,9 +492,22 @@ export class PuntosInteresService {
       if (dto.icono !== undefined) {
         entity.icono = dto.icono?.trim() || null;
       }
+      // Sin lista nueva se quedan los vehículos; al cambiar de cliente deben
+      // seguir siendo del cliente nuevo o de sus hijos.
+      const enviados = Array.isArray(dto.idsProducto) ? [...new Set(dto.idsProducto.map(Number))] : undefined;
+      if (enviados !== undefined || Number(entity.idCliente) !== idCliente) {
+        await this.assertVehiculosDelCliente(idCliente, enviados ?? this.vehiculosActivos(entity));
+      }
       entity.idCliente = idCliente;
 
-      const saved = await this.repository.save(entity);
+      const { productosPuntoInteres: _ligas, ...datos } = entity;
+      const saved = await this.repository.manager.transaction(async (m) => {
+        const punto = await m.getRepository(PuntosInteres).save(datos as PuntosInteres);
+        if (enviados !== undefined) {
+          await this.sincronizarVehiculos(m.getRepository(ProductosPuntoInteres), Number(punto.id), enviados);
+        }
+        return punto;
+      });
 
       await this.bitacoraLogger.logToBitacora(
         'PuntosInteres',

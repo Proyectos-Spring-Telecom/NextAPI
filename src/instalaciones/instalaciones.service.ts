@@ -843,7 +843,9 @@ export class InstalacionesService {
       applyPaginadoSelectBase(qb);
       applyPaginadoTodosTiposProducto(qb);
 
-      qb.andWhere('i.idCliente = :idCliente', { idCliente })
+      // El cliente y sus hijos (spGetClientes).
+      const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
+      qb.andWhere('i.idCliente IN (:...familia)', { familia })
         .andWhere('i.estatus = :estatusInstalacion', {
           estatusInstalacion: EstatusEnum.ACTIVO,
         })

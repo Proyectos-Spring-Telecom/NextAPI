@@ -31,6 +31,22 @@ export interface AvisosSinTransmisionEvento {
 }
 
 /** `incidente:inservible`: se abrió el incidente de un equipo o panel inservible que transmite. */
+/** `punto-interes:evento`: un vehículo llegó o salió de un punto de interés ligado. */
+export interface PuntoInteresEvento {
+  id: number;
+  tipo: 'llegada' | 'salida';
+  idPuntoInteres: number;
+  nombrePuntoInteres: string;
+  idProducto: number;
+  idInstalacion: number;
+  idPosicion: number;
+  /** Hora de México, `YYYY-MM-DD HH:mm:ss`. */
+  fechaHora: string;
+  lat: number;
+  lng: number;
+  distanciaMetros: number;
+}
+
 export interface IncidenteInservibleEvento {
   idIncidente: number;
   tipo: 'equipo' | 'panel';
@@ -207,6 +223,11 @@ export class MonitoreoGateway
   emitAvisosSinTransmision(evento: AvisosSinTransmisionEvento) {
     if (!evento.avisos.length) return;
     this.safeEmitRoom(ROOM_OPERACION, 'vigilancia:avisos', evento);
+  }
+
+  /** Evento: `punto-interes:evento` (room de la instalación). */
+  emitPuntoInteres(evento: PuntoInteresEvento) {
+    this.safeEmit(evento.idInstalacion, 'punto-interes:evento', evento);
   }
 
   /** Evento: `incidente:inservible` (room de operación). */
