@@ -2,7 +2,7 @@
 
 **Para:** equipo del frontend de Next
 **Fuente:** NextAPI (`dev-isra`) y el gateway SpringTrackCam (dashcams Hikvision AE-DI5052-G40PRO)
-**Actualizado:** 30/10/2026
+**Actualizado:** 06/11/2026
 
 Lista de lo que el front debe cambiar o agregar, en orden de número. La App de instaladores tiene su propia guía: [app-instaladores.md](app-instaladores.md).
 
@@ -19,8 +19,9 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 2 | En vivo: no forzar `streamType: 0` | **Alta**: consumo de SIM | No |
 | 3 | En vivo: corte a los 60 s y fin de sesión (`ended` / 4410) | **Alta** | Sí: sin esto la pantalla se queda congelada |
 | 4 | En vivo: cierre 10 s después de cerrar la pestaña | Media | No |
-| 9 | En vivo: rearmar el decoder con el evento `codec` (cámaras H.265) | **Alta** | Sí: con H.265 sale negro con `Frames: 0` (03/11) |
-| 25 | Socket.IO detrás de `/nextAPI`: namespace `/monitoreo`, `path` `/nextAPI/socket.io` | **Alta** | Sí: `Invalid namespace`, el mapa no recibe posiciones (03/11) |
+| 9 | En vivo H.265: rearmar el decoder con el evento `codec` y **detectar el keyframe con la regla de H.265** | **Alta** | Sí: con H.265 sale negro con `Frames: 0` (visto otra vez el 06/11) |
+| 25 | Socket.IO detrás de `/nextAPI`: namespace `/monitoreo`, `path` `/nextAPI/socket.io` | **Alta** | Sí: `Invalid namespace`, el mapa no recibe posiciones (sigue el 06/11) |
+| 26 | Cambios del 06/11: reportes sin cliente, hora de los seguimientos, pánico del panel en Consola (`consola:incidente`) | **Alta** | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -49,6 +50,7 @@ En el environment de producción (`chunk-BOFSYH63.js` en el build actual):
   `wss://springtelecom.mx/trackcam/gateway/intercom/ws?terminalId=…&token=…`
 - Al quedar en el mismo dominio que la app, no hay CORS entre orígenes ni dependencia del DDNS `spcode.ddns.net`.
 - `spcode.ddns.net/api-springtrackcam` **sigue funcionando** mientras dura la migración.
+- **06/11/2026:** NextAPI ya llama al gateway, al webhook y a BehaviorIQ por `springtelecom.mx`. Solo falta este cambio del environment del front.
 - Swagger: `https://springtelecom.mx/trackcam/docs`.
 
 **Ojo:** `springTrackCamDefaultImei: "8664960749891928"` está fijo en el environment de producción. Si es un valor de pruebas, quitarlo.
@@ -161,6 +163,13 @@ El en vivo puede llegar en **H.264 o H.265** según la cámara y el stream; no s
 3. Cadenas WebCodecs: H.264 `avc1.*` (ya están); H.265 `hev1.1.6.L120.B0` / `hvc1.1.6.L120.B0` (ya están en `probeCodecString`).
 4. Si `VideoDecoder.isConfigSupported` dice que no a H.265: mostrar "Este equipo no puede reproducir el video de esta cámara (H.265). Usa Chrome o Edge en un equipo con aceleración de video" en lugar del recuadro negro.
 5. No cambiar a calidad "Alta" (stream principal) para esquivar H.265: gasta 3–5 veces más datos.
+
+**Lo que sigue fallando (bundle del 06/11):** el rearme ya funciona (`attach family=h265`, `configure ok codec=hev1.1.6.L120.B0`, primer `0x02` con `00 00 00 01 40 01`), pero el modal se queda en `Frames: 0` aunque el gateway entrega un I-frame completo por segundo. En `video-bridge`, el separador de NAL (`P3`) usa la regla de H.264 también para H.265 (`tipo = b & 0x1f`, solo acepta 1–9) y `push()` busca el keyframe como NAL tipo 5. En H.265 el tipo es `(b >> 1) & 0x3f`, así que ningún AU cuenta como keyframe y `decodeAu` descarta todo: nunca se llama a `decode()` y no sale ningún error.
+
+6. **Separar y clasificar los NAL según `family`:**
+   - H.264: `tipo = b & 0x1f`; keyframe = IDR (5); SPS/PPS = 7/8.
+   - H.265: `tipo = (b >> 1) & 0x3f`; keyframe = IRAP (16–21, la cámara manda 19/20); VPS/SPS/PPS = 32/33/34. El AU se manda completo en Annex-B (con VPS/SPS/PPS), sin `description`.
+   - Código de referencia: repo springTrackCam, `docs/consumo-live-angular.md` §6 (`nalTypes` / `isKeyAu`).
 
 **Prueba:** cámara 007775005494, canal 1, modo Video, calidad Normal → consola con `codec {videoCodec: 'h265'}`, `attach family=h265` y `Frames` subiendo. Guía técnica completa: repo springTrackCam, `docs/consumo-live-angular.md`.
 
@@ -526,7 +535,7 @@ Desde el 31/10 ([motor-activos.md](motor-activos.md) §19) la consola de configu
 
 ## 25. Tiempo real (Socket.IO): qué escuchar en cada pantalla (31/10/2026)
 
-**Conexión detrás de `/nextAPI` (corregir, 03/11):** en socket.io-client, la ruta de la URL **es el namespace**. Hoy `resolveSocketConfig()` arma `https://springtelecom.mx/nextAPI/monitoreo` → namespace `/nextAPI/monitoreo` → el API responde `Invalid namespace` y el mapa no recibe nada. Debe quedar:
+**Conexión detrás de `/nextAPI` (corregir, 03/11; el 06/11 la consola sigue mostrando `connect_error Invalid namespace` en `wss://springtelecom.mx/nextAPI/socket.io/`):** en socket.io-client, la ruta de la URL **es el namespace**. Hoy `resolveSocketConfig()` arma `https://springtelecom.mx/nextAPI/monitoreo` → namespace `/nextAPI/monitoreo` → el API responde `Invalid namespace` y el mapa no recibe nada. Debe quedar:
 
 ```ts
 const base = new URL(environment.API_SECURITY);            // https://springtelecom.mx/nextAPI/api
@@ -559,3 +568,29 @@ Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y
 
 Lo que no empuja (consultar al entrar): equipos sin instalación (§20), "sin primera transmisión" y el histórico de cerrados.
 
+## 26. Cambios del 06/11/2026
+
+### Reportes sin cliente
+
+- En **posiciones, última posición, paso por punto de interés, velocidad, distancia y salidas de geocerca**, `idCliente` ya es **opcional**.
+  - Sin `idCliente`, el reporte cubre todos los clientes que puede ver el usuario; la respuesta trae `idCliente: null`.
+  - Con `idCliente`, cubre ese cliente y sus hijos.
+- Cada fila de salidas de geocerca trae su `idCliente` y `nombreCliente`. Mostrar el cliente en la tabla cuando no se eligió uno.
+- `GET /api/instalaciones/cliente/0` regresa las instalaciones de todos los clientes del alcance, para llenar el selector de dispositivos cuando no se elige cliente. Con un cliente, regresa ese cliente y sus hijos.
+
+### Hora de los seguimientos y del cierre de incidentes
+
+- Antes se guardaban **6 horas adelante**:
+  - la `fechaHora` de `POST /api/incidentes/:id/seguimientos`;
+  - los seguimientos "Resultado final" y "Cierre" que se crean al finalizar;
+  - la `fechaCierre` al finalizar y al cambiar el estatus.
+- Ahora se guarda la hora de México tal cual. El front manda la hora que elige el operador, `YYYY-MM-DD HH:mm[:ss]`, sin convertir a UTC.
+- Si el front compensaba el desfase restando 6 h al mostrar, hay que quitarlo.
+- Los incidentes cerrados antes del 06/11 conservan las horas viejas hasta que se corrijan en la base.
+
+### Pánico del panel de alarma en Consola
+
+- Un pánico del panel abre un incidente con `tipoOrigen = 2` (evento de alarma) e `idEventoAlarma`. Detalle en §25.
+- El aviso en vivo llega por `/monitoreo` con el evento **`consola:incidente`**, no por `consola:actualizacion`.
+- Con `nuevo: true`, agregar el incidente al grid. Con `nuevo: false`, refrescar sus seguimientos.
+- Se finaliza y se imprime el PDF igual que los demás incidentes.
