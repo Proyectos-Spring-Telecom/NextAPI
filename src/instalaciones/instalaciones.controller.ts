@@ -107,7 +107,8 @@ export class InstalacionesController {
     description:
       'Param `idCliente`. Solo `Estatus = 1`. Mismo shape plano que el paginado ' +
       '(instalación → cliente → producto+detalle → dispositivo(+panel) → SIM; sin JSON anidados). ' +
-      'El `idCliente` solicitado debe estar dentro del alcance del rol del token.',
+      'El `idCliente` solicitado debe estar dentro del alcance del rol del token. ' +
+      '`0` = todos los clientes del alcance (reportes sin cliente).',
   })
   @ApiParam({
     name: 'idCliente',

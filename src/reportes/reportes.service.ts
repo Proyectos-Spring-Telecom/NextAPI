@@ -175,7 +175,7 @@ export type PasoPorPoiPuntoItem = {
 };
 
 export type PasoPorPoiResult = {
-  idCliente: number;
+  idCliente: number | null;
   fechaInicio: string;
   fechaFinal: string;
   instalacionesEvaluadas: number;
@@ -204,7 +204,7 @@ export type VelocidadItem = {
 };
 
 export type VelocidadResult = {
-  idCliente: number;
+  idCliente: number | null;
   fechaInicio: string;
   fechaFinal: string;
   velocidad: number;
@@ -253,7 +253,7 @@ export type ReportePosicionItem = {
 } & ProductoPlanoPasoPoi;
 
 export type ReportePosicionesResult = {
-  idCliente: number;
+  idCliente: number | null;
   fechaInicio: string;
   fechaFinal: string;
   total: number;
@@ -316,7 +316,7 @@ export type DistanciaFilaItem = {
 };
 
 export type DistanciaResult = {
-  idCliente: number;
+  idCliente: number | null;
   fechaInicio: string;
   fechaFinal: string;
   /** Suma de `totalDistancia` de todos los recorridos (km). */
@@ -330,7 +330,7 @@ export type DistanciaResult = {
 
 /** Evento de salida de geocerca (transición DENTRO → FUERA). */
 export type SalidaGeocercaItem = {
-  idCliente: number;
+  idCliente: number | null;
   nombreCliente: string | null;
   idInstalacion: number;
   idDispositivo: number;
@@ -349,7 +349,7 @@ export type SalidaGeocercaItem = {
 } & SalidaGeocercaDetectada;
 
 export type SalidasGeocercaResult = {
-  idCliente: number;
+  idCliente: number | null;
   nombreCliente: string | null;
   fechaInicio: string;
   fechaFinal: string;
@@ -386,7 +386,7 @@ export type InstalacionSalidaGeocercaItem = {
 };
 
 export type SalidasGeocercaInstalacionResult = {
-  idCliente: number;
+  idCliente: number | null;
   nombreCliente: string | null;
   fechaInicio: string;
   fechaFinal: string;
@@ -482,12 +482,17 @@ export type RecorridoSalidaGeocercaResult = {
 
 type InstalacionCandidataBase = {
   idInstalacion: number;
+  /** Cliente de la instalación (reportes sin cliente: todos los del alcance). */
+  idClienteInstalacion?: number;
   idDispositivo: number;
   imei: string;
   numeroSerie: string | null;
 };
 
 type InstalacionCandidata = InstalacionCandidataBase & ProductoPlanoPasoPoi;
+
+/** Clientes que cubre un reporte: 'all' (rol sin filtro) o lista de ids. */
+type AlcanceReporte = 'all' | number[];
 
 type InstalacionCandidataVehiculo = {
   idInstalacion: number;
@@ -784,8 +789,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: PasoPorPoiResult }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       let fechaInicio: string;
       let fechaFinal: string;
@@ -810,12 +818,12 @@ export class ReportesService {
         );
       }
 
-      const pois = await this.cargarPuntosDelCliente(idCliente, idsPoi);
+      const pois = await this.cargarPuntosDelCliente(alcance, idsPoi);
 
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
         ),
@@ -824,7 +832,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+          : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
 
       const puntos: PasoPorPoiPuntoItem[] = [];
       const dispositivosUnicos = new Set<number>();
@@ -896,8 +904,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: VelocidadResult }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       let fechaInicio: string;
       let fechaFinal: string;
@@ -923,7 +934,7 @@ export class ReportesService {
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
           true,
@@ -933,7 +944,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesVehiculo(idCliente, idsFiltro);
+          : await this.cargarInstalacionesVehiculo(alcance, idsFiltro);
 
       if (!candidatos.length) {
         return {
@@ -978,8 +989,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: ReportePosicionesResult }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       let fechaInicio: string;
       let fechaFinal: string;
@@ -1000,7 +1014,7 @@ export class ReportesService {
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
         ),
@@ -1009,7 +1023,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+          : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
 
       if (!candidatos.length) {
         return {
@@ -1051,8 +1065,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: UltimaPosicionResult }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       let fechaInicio: string;
       let fechaFinal: string;
@@ -1073,7 +1090,7 @@ export class ReportesService {
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
         ),
@@ -1082,7 +1099,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+          : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
 
       if (!candidatos.length) {
         return {
@@ -1129,8 +1146,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: DistanciaResult; paginated?: Paginated }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       // Paginación opcional: sin page ni limit → respuesta completa (compatibilidad).
       const paginar = dto.page != null || dto.limit != null;
@@ -1158,7 +1178,7 @@ export class ReportesService {
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
         ),
@@ -1167,7 +1187,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+          : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
 
       if (!candidatos.length) {
         return this.armarRespuestaDistancia(
@@ -1406,8 +1426,11 @@ export class ReportesService {
     idUsuario: number,
   ): Promise<{ data: SalidasGeocercaResult; paginated?: Paginated }> {
     try {
-      const idCliente = Number(dto.idCliente);
-      await this.assertClienteEnAlcance(rol, idClienteToken, idCliente);
+      const { idCliente, alcance } = await this.resolverAlcanceReporte(
+        rol,
+        idClienteToken,
+        dto.idCliente,
+      );
 
       // Paginación opcional: sin page ni limit → todas las salidas (export / compatibilidad).
       const paginar = dto.page != null || dto.limit != null;
@@ -1432,15 +1455,16 @@ export class ReportesService {
         );
       }
 
-      const cliente = await this.clientesRepo.findOne({
-        where: { id: idCliente },
-      });
-      const nombreCliente = nombreClienteRelacion(cliente);
+      const cliente =
+        idCliente != null
+          ? await this.clientesRepo.findOne({ where: { id: idCliente } })
+          : null;
+      const nombreCliente = cliente ? nombreClienteRelacion(cliente) : null;
 
       const idsFiltro = await this.limitarPorAsignacion(
         { userId: idUsuario, idCliente: idClienteToken, rol },
         await this.resolverIdsInstalacionPorFiltro(
-          idCliente,
+          alcance,
           dto.filtro,
           dto.valores,
         ),
@@ -1449,7 +1473,7 @@ export class ReportesService {
       const candidatos =
         idsFiltro !== null && idsFiltro.length === 0
           ? []
-          : await this.cargarInstalacionesCandidatas(idCliente, idsFiltro);
+          : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
       // Las geocercas que usan los vehículos de las instalaciones candidatas.
       const geocercasCliente = await this.cargarGeocercasDeVehiculos(
         candidatos.map((c) => Number(c.idProducto)),
@@ -2455,12 +2479,15 @@ export class ReportesService {
   private async detectarSalidasParaCandidatos(args: {
     candidatos: InstalacionCandidata[];
     porInstalacion: Map<number, GeocercaAplicable[]>;
-    idCliente: number;
+    idCliente: number | null;
     nombreCliente: string | null;
     fechaInicio: string;
     fechaFinal: string;
   }): Promise<SalidaGeocercaItem[]> {
     const { candidatos, porInstalacion, idCliente, nombreCliente } = args;
+    const nombresCliente = await this.nombresClientePorInstalacion(
+      idCliente == null ? candidatos : [],
+    );
     const { fechaInicio, fechaFinal } = args;
     if (!candidatos.length) return [];
 
@@ -2510,8 +2537,11 @@ export class ReportesService {
               ? duracionSegundosEntre(d.fechaSalida, hasta)
               : null);
           salidas.push({
-            idCliente,
-            nombreCliente,
+            idCliente: idCliente ?? cand.idClienteInstalacion ?? null,
+            nombreCliente:
+              idCliente != null
+                ? nombreCliente
+                : (nombresCliente.get(Number(cand.idClienteInstalacion)) ?? null),
             idInstalacion: cand.idInstalacion,
             idDispositivo: cand.idDispositivo,
             imei: cand.imei,
@@ -2670,6 +2700,59 @@ export class ReportesService {
     };
   }
 
+  /**
+   * Cliente del reporte: con `idCliente` se valida contra el alcance del rol y
+   * se queda como número (las consultas lo expanden a sus hijos y, para puntos,
+   * a sus padres); sin él, el reporte cubre todos los clientes del alcance
+   * (`idCliente` null).
+   */
+  private async resolverAlcanceReporte(
+    rol: number,
+    idClienteToken: number,
+    idClienteDto: number | null | undefined,
+  ): Promise<{ idCliente: number | null; alcance: number | AlcanceReporte }> {
+    const id = Number(idClienteDto);
+    if (Number.isFinite(id) && id > 0) {
+      await this.assertClienteEnAlcance(rol, idClienteToken, id);
+      return { idCliente: id, alcance: id };
+    }
+    const alcance = await this.tenantFilter.idsClientePermitidos(rol, idClienteToken);
+    return { idCliente: null, alcance };
+  }
+
+  /** Condición de cliente para un query builder (`alias.idCliente`). */
+  private whereCliente(
+    alias: string,
+    clientes: number | AlcanceReporte,
+  ): [string, Record<string, unknown>] {
+    if (clientes === 'all') return ['1 = 1', {}];
+    const ids = typeof clientes === 'number' ? [clientes] : clientes;
+    if (!ids.length) return ['1 = 0', {}];
+    return [`${alias}.idCliente IN (:...idsClienteAlcance)`, { idsClienteAlcance: ids }];
+  }
+
+  /** Un cliente se expande a él y sus hijos (spGetClientes); el alcance se usa tal cual. */
+  private async expandirClientes(clientes: number | AlcanceReporte): Promise<AlcanceReporte> {
+    if (typeof clientes !== 'number') return clientes;
+    return this.tenantFilter.getClienteHijosIds(clientes);
+  }
+
+  /** Nombre de cada cliente de las candidatas (salidas de geocerca sin cliente). */
+  private async nombresClientePorInstalacion(
+    candidatos: readonly InstalacionCandidata[],
+  ): Promise<Map<number, string | null>> {
+    const ids = [
+      ...new Set(
+        candidatos.map((c) => Number(c.idClienteInstalacion)).filter((id) => id > 0),
+      ),
+    ];
+    const mapa = new Map<number, string | null>();
+    if (!ids.length) return mapa;
+    const clientes = await this.clientesRepo.find({ where: { id: In(ids) } });
+    clientes.forEach((c) => mapa.set(Number(c.id), nombreClienteRelacion(c)));
+    return mapa;
+  }
+
   private async assertClienteEnAlcance(
     rol: number,
     idClienteToken: number,
@@ -2740,7 +2823,7 @@ export class ReportesService {
    * `soloVehiculos` limita a instalaciones con producto tipo vehículo.
    */
   private async resolverIdsInstalacionPorFiltro(
-    idCliente: number,
+    clientes: number | AlcanceReporte,
     filtro: FiltroPasoPorPoi | undefined,
     valoresRaw?: string[],
     soloVehiculos = false,
@@ -2753,7 +2836,7 @@ export class ReportesService {
     const qb = this.instalacionesRepo
       .createQueryBuilder('i')
       .select('DISTINCT i.id', 'id')
-      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
+      .where(...this.whereCliente('i', await this.expandirClientes(clientes)))
       .andWhere('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
       .andWhere('i.idDispositivo IS NOT NULL');
 
@@ -2811,15 +2894,22 @@ export class ReportesService {
 
   /** Puntos del cliente, de sus hijos o de sus clientes padre (los vehículos pueden usar los del padre). */
   private async cargarPuntosDelCliente(
-    idCliente: number,
+    clientes: number | AlcanceReporte,
     ids: number[],
   ): Promise<PoiNorm[]> {
-    const [hijos, padres] = await Promise.all([
-      this.tenantFilter.getClienteHijosIds(idCliente),
-      this.tenantFilter.getClienteAncestrosIds(idCliente),
-    ]);
+    const familia: number[] | null =
+      clientes === 'all'
+        ? null
+        : typeof clientes === 'number'
+          ? [
+              ...new Set([
+                ...(await this.tenantFilter.getClienteHijosIds(clientes)),
+                ...(await this.tenantFilter.getClienteAncestrosIds(clientes)),
+              ]),
+            ]
+          : clientes;
     const rows = await this.puntosRepo.find({
-      where: { id: In(ids), idCliente: In([...new Set([...hijos, ...padres])]) },
+      where: { id: In(ids), ...(familia ? { idCliente: In(familia.length ? familia : [0]) } : {}) },
     });
     const byId = new Map(rows.map((r) => [Number(r.id), r]));
     const missing = ids.filter((id) => !byId.has(id));
@@ -2845,7 +2935,7 @@ export class ReportesService {
   }
 
   private async cargarInstalacionesCandidatas(
-    idCliente: number,
+    clientes: number | AlcanceReporte,
     idsFiltro: number[] | null,
   ): Promise<InstalacionCandidata[]> {
     const qb = this.instalacionesRepo
@@ -2884,6 +2974,7 @@ export class ReportesService {
       )
       .select([
         'i.id AS idInstalacion',
+        'i.idCliente AS idClienteInstalacion',
         'd.id AS idDispositivo',
         'CAST(d.imei AS CHAR) AS imei',
         'd.numeroSerie AS numeroSerie',
@@ -2925,7 +3016,7 @@ export class ReportesService {
       ])
       // También las dadas de baja: lo que transmitieron mientras estuvieron
       // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
-      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
+      .where(...this.whereCliente('i', await this.expandirClientes(clientes)))
       .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       });
@@ -2938,6 +3029,7 @@ export class ReportesService {
     return rows
       .map((row) => ({
         idInstalacion: Number(row.idInstalacion),
+        idClienteInstalacion: Number(row.idClienteInstalacion) || undefined,
         idDispositivo: Number(row.idDispositivo),
         imei: String(row.imei ?? '').trim(),
         numeroSerie: str(row.numeroSerie),
@@ -2948,7 +3040,7 @@ export class ReportesService {
 
   /** Solo instalaciones de productos vehículo (con fila en `Vehiculos`). */
   private async cargarInstalacionesVehiculo(
-    idCliente: number,
+    clientes: number | AlcanceReporte,
     idsFiltro: number[] | null,
   ): Promise<InstalacionCandidataVehiculo[]> {
     const qb = this.instalacionesRepo
@@ -2981,7 +3073,7 @@ export class ReportesService {
       ])
       // También las dadas de baja: lo que transmitieron mientras estuvieron
       // instaladas sigue siendo del cliente; sin tramo en el periodo no aportan.
-      .where('i.idCliente IN (:...familiaCliente)', { familiaCliente: await this.tenantFilter.getClienteHijosIds(idCliente) })
+      .where(...this.whereCliente('i', await this.expandirClientes(clientes)))
       .andWhere('(d.id IS NULL OR d.idTipoDispositivo <> :panel)', {
         panel: EnumTipoDispositivo.PANEL_ALARMA,
       })

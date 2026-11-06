@@ -823,7 +823,8 @@ export class InstalacionesService {
     rol: number,
   ): Promise<ApiResponseCommon> {
     const idCliente = Number(idClienteParam);
-    if (!Number.isFinite(idCliente) || idCliente < 1) {
+    // 0 = todos los clientes del alcance del rol (reportes sin cliente).
+    if (!Number.isFinite(idCliente) || idCliente < 0) {
       throw new BadRequestException('idCliente inválido');
     }
 
@@ -832,10 +833,13 @@ export class InstalacionesService {
         rol,
         idClienteToken,
       );
-      if (!this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
+      if (idCliente > 0 && !this.tenantFilter.clienteVisibleEnScope(scope, idCliente)) {
         throw new ForbiddenException(
           'No tienes acceso a las instalaciones de ese cliente',
         );
+      }
+      if (idCliente === 0 && scope !== 'all' && !scope.length) {
+        return { data: [] };
       }
 
       const qb = this.repository.createQueryBuilder('i');
@@ -843,10 +847,14 @@ export class InstalacionesService {
       applyPaginadoSelectBase(qb);
       applyPaginadoTodosTiposProducto(qb);
 
-      // El cliente y sus hijos (spGetClientes).
-      const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
-      qb.andWhere('i.idCliente IN (:...familia)', { familia })
-        .andWhere('i.estatus = :estatusInstalacion', {
+      if (idCliente > 0) {
+        // El cliente y sus hijos (spGetClientes).
+        const familia = await this.tenantFilter.getClienteHijosIds(idCliente);
+        qb.andWhere('i.idCliente IN (:...familia)', { familia });
+      } else if (scope !== 'all') {
+        qb.andWhere('i.idCliente IN (:...idsClienteAlcance)', { idsClienteAlcance: scope });
+      }
+      qb.andWhere('i.estatus = :estatusInstalacion', {
           estatusInstalacion: EstatusEnum.ACTIVO,
         })
         .orderBy('i.id', 'ASC');

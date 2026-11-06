@@ -37,8 +37,9 @@ import { Productos } from 'src/entities/Productos';
 import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import { Vehiculos } from 'src/entities/Vehiculos';
 import {
+  fechaParedComoDate,
   isoUtcToMexicoCityMysql,
-  nowMexicoCityMysql,
+  nowMexicoCityAsUtcDate,
 } from 'src/utils/datetime-mexico.util';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { CreateSeguimientoIncidenteDto } from './dto/create-seguimiento-incidente.dto';
@@ -775,7 +776,7 @@ export class IncidentesService {
       }
 
       const idUsuario = Number.isFinite(idUser) && idUser > 0 ? idUser : null;
-      const ahora = nowMexicoCityMysql();
+      const ahora = nowMexicoCityAsUtcDate();
       const resultado = dto.resultado?.trim();
       const conclusion = dto.conclusion?.trim();
 
@@ -800,7 +801,7 @@ export class IncidentesService {
               idIncidente: Number(entity.id),
               idUsuario,
               estatus: EstatusIncidente.ABIERTO,
-              fechaHora: ahora as unknown as Date,
+              fechaHora: ahora,
             }),
           );
         }
@@ -810,7 +811,7 @@ export class IncidentesService {
           { id: entity.id, estatus: EstatusIncidente.ABIERTO },
           {
             estatus: EstatusIncidente.CERRADO,
-            fechaCierre: ahora as unknown as Date,
+            fechaCierre: ahora,
             ...(dto.descripcion !== undefined
               ? { descripcion: dto.descripcion.trim() || null }
               : {}),
@@ -925,7 +926,7 @@ export class IncidentesService {
       entity.estatus = estatus;
       entity.fechaCierre =
         estatus === EstatusIncidente.CERRADO
-          ? (nowMexicoCityMysql() as unknown as Date)
+          ? nowMexicoCityAsUtcDate()
           : null;
 
       const saved = await this.repository.save(entity);
@@ -989,7 +990,9 @@ export class IncidentesService {
         actividad: dto.actividad.trim(),
         medio: dto.medio?.trim() || null,
         estatus: EstatusIncidente.ABIERTO,
-        ...(fechaHora != null ? { fechaHora: fechaHora as unknown as Date } : {}),
+        // Hora de pared de México como Date (convención de datetime-mexico.util): un texto lo
+        // convierte TypeORM con el TZ del proceso y el driver lo escribe en UTC (DB_TZ) → +6 h.
+        ...(fechaHora != null ? { fechaHora: fechaParedComoDate(fechaHora) } : {}),
       });
 
       const saved = await this.seguimientoRepo.save(entity);

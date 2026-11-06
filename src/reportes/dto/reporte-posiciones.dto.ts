@@ -25,15 +25,16 @@ const FECHA_REPORTE_RE =
   /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
 
 export class ReportePosicionesDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Cliente dueño del análisis. Debe estar en el alcance del rol del token.',
+      'Cliente del análisis (opcional). Sin él, el reporte cubre todos los clientes del alcance del rol del token. Con él, debe estar en ese alcance.',
     example: 1,
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  idCliente!: number;
+  idCliente?: number;
 
   @ApiPropertyOptional({
     description:

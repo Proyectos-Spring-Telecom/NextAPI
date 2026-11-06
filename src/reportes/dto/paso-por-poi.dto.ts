@@ -30,16 +30,17 @@ export const FILTROS_PASO_POR_POI = [
 export type FiltroPasoPorPoi = (typeof FILTROS_PASO_POR_POI)[number];
 
 export class PasoPorPoiDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Cliente dueño del análisis. Debe estar en el alcance del rol del token. ' +
-      'Los POI deben pertenecer a este cliente.',
+      'Cliente del análisis (opcional). Sin él, el reporte cubre todos los clientes del alcance del rol del token. Con él, debe estar en ese alcance.' +
+      ' Los POI deben pertenecer al alcance.',
     example: 1,
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  idCliente!: number;
+  idCliente?: number;
 
   @ApiProperty({
     description:

@@ -42,16 +42,16 @@ export type EstadoSalidaGeocerca =
  * las geocercas sin instalación asociada no se atribuyen a ningún dispositivo.
  */
 export class ReporteSalidasGeocercaDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Cliente dueño del análisis. Debe estar en el alcance del rol del token. ' +
-      'Las geocercas e instalaciones consultadas deben pertenecer a este cliente.',
-    example: 15,
+      'Cliente del análisis (opcional). Sin él, el reporte cubre todos los clientes del alcance del rol del token. Con él, debe estar en ese alcance.',
+    example: 1,
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  idCliente!: number;
+  idCliente?: number;
 
   @ApiPropertyOptional({
     description:
