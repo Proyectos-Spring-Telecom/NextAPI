@@ -8,10 +8,12 @@ import {
 import { PosicionIngestService } from '../shared/posicion-ingest.service';
 import { TelemetriaHuerfanosService } from 'src/telemetria-huerfanos/telemetria-huerfanos.service';
 import {
+  estadoJimi,
   extractJimiAudit,
   mapJimiToPosicion,
   resolveJimiImei,
 } from './jimi-envelope.mapper';
+import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
 import { JimiTelemetryEnvelope } from './jimi.types';
 
 /**
@@ -19,6 +21,8 @@ import { JimiTelemetryEnvelope } from './jimi.types';
  * Lookup por Dispositivos.Imei (payload.Imei || deviceId).
  * - kind=position → Posiciones (+ Combustible)
  * - kind=alarm (SOS) → solo auditoría (NO Posiciones)
+ * - position sin GPS válido (Lat/Lng null) → ingestSinUbicacion: no va a
+ *   Posiciones; si es alerta abre el incidente sin ubicación
  */
 @Injectable()
 export class JimiIngestService {
@@ -79,6 +83,26 @@ export class JimiIngestService {
     }
 
     const p = envelope.payload;
+    if (p.Lat == null || p.Lng == null) {
+      return this.posicionIngest.ingestSinUbicacion({
+        eventId: envelope.eventId,
+        protocol: envelope.protocol,
+        kind: envelope.kind,
+        deviceId: envelope.deviceId,
+        routingKey,
+        imei,
+        idTipoDispositivo,
+        idInstalacion,
+        estatusDispositivo,
+        auditPayload: extractJimiAudit(envelope.payload, 'position'),
+        alerta: {
+          estado: estadoJimi(p.Estado, p.IdEvento),
+          idEvento: p.IdEvento != null ? Number(p.IdEvento) : null,
+          fechaHora: parseFechaHoraPared(String(p.FechaHora)),
+        },
+      });
+    }
+
     return this.posicionIngest.ingestPosition({
       eventId: envelope.eventId,
       protocol: envelope.protocol,

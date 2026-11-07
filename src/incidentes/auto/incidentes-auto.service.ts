@@ -39,6 +39,15 @@ const ETIQUETA_PANICO_PANEL: Record<string, string> = {
 
 /** Medio de los seguimientos que agrega el sistema (no un usuario). */
 export const MEDIO_SEGUIMIENTO_ALERTA = 'Alerta automática';
+
+/**
+ * Alerta repetida dentro de esta ventana tras el último seguimiento automático
+ * del incidente: no se agrega otro (6/11/2026: "Falta de energía" cada pocos
+ * segundos llenó el incidente 16 con 61 seguimientos). El pánico no se agrupa;
+ * mismo criterio que GATEWAY_ALARM_REPEAT_WINDOW_SEC de la TrackCam.
+ */
+export const VENTANA_ALERTA_REPETIDA_MS = 60_000;
+const ESTADO_PANICO = 2;
 import { snapshotEventoAlarma, snapshotPosicion } from '../map-datos-origen.util';
 
 /**
@@ -107,6 +116,15 @@ export class IncidentesAutoService {
           .set({ idPosicion: Number(posicion.id), idPosicionOrigen: Number(posicion.id) })
           .where('id = :id AND idPosicion IS NULL', { id: abierto })
           .execute();
+        if (
+          !ligada.affected &&
+          (await this.repetidaEnVentana(abierto, estado, posicion.fechaHora))
+        ) {
+          this.logger.debug(
+            `[IncidenteAuto] imei=${imei} estado=${estado} posicion=${posicionId} → repetida en Incidente=${abierto}, sin seguimiento`,
+          );
+          return;
+        }
         await this.seguimientosRepo.save(
           this.seguimientosRepo.create({
             idIncidente: abierto,
@@ -204,6 +222,7 @@ export class IncidentesAutoService {
       let idIncidente: number;
       let descripcion: string | null = null;
       if (abierto != null) {
+        if (await this.repetidaEnVentana(abierto, estado, params.fechaHora)) return;
         idIncidente = abierto;
         await this.seguimientosRepo.save(
           this.seguimientosRepo.create({
@@ -597,6 +616,31 @@ export class IncidentesAutoService {
       await qr.release();
       this.enCurso.delete(enCurso);
     }
+  }
+
+  /**
+   * ¿Hubo un seguimiento automático de este incidente a menos de
+   * VENTANA_ALERTA_REPETIDA_MS de esta alerta? El pánico nunca se agrupa.
+   */
+  private async repetidaEnVentana(
+    idIncidente: number,
+    estado: number,
+    fechaHora: Date | string,
+  ): Promise<boolean> {
+    if (estado === ESTADO_PANICO) return false;
+    const fecha = new Date(fechaHora);
+    if (!Number.isFinite(fecha.getTime())) return false;
+    const desde = new Date(fecha.getTime() - VENTANA_ALERTA_REPETIDA_MS);
+    const hasta = new Date(fecha.getTime() + VENTANA_ALERTA_REPETIDA_MS);
+    const row = await this.seguimientosRepo
+      .createQueryBuilder('s')
+      .select('s.id', 'id')
+      .where('s.idIncidente = :idIncidente', { idIncidente })
+      .andWhere('s.medio = :medio', { medio: MEDIO_SEGUIMIENTO_ALERTA })
+      .andWhere('s.fechaHora BETWEEN :desde AND :hasta', { desde, hasta })
+      .limit(1)
+      .getRawOne<{ id: string | number }>();
+    return row != null;
   }
 
   /** Id del incidente abierto más reciente de esta alerta, o null. */

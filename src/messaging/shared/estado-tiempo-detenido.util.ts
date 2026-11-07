@@ -1,4 +1,5 @@
 import { TIPOS_DISPOSITIVO_TIEMPO_DETENIDO } from '../../common/estatus.enum';
+import { distanciaMetros } from '../../utils/recorrido.utils';
 
 /** Estados Sion por tiempo detenido (Tabla 2). */
 export enum EnumEstadoTiempoDetenido {
@@ -52,27 +53,59 @@ export function estadoPorMinutosDetenido(
   return EnumEstadoTiempoDetenido.DETENIDO;
 }
 
+/** Desplazamiento entre dos posiciones seguidas que cuenta como movimiento. */
+export const DESPLAZAMIENTO_MOVIMIENTO_M = 200;
+
+export type PuntoTramoDetenido = {
+  fechaHora: Date | string;
+  lat: number | null;
+  lng: number | null;
+  ignicion: number | null;
+};
+
 /**
  * Desde cuándo se cuenta el tiempo detenido (regla SION: detenido con motor
- * encendido). El conteo empieza en el primer encendido de ignición posterior
- * al último movimiento:
- * - Hubo un encendido guardado después del último movimiento → ese.
- * - No hubo, pero la posición actual llega con ignición 1 → la actual (0 min).
- * - El motor no se ha encendido desde que se detuvo → null: se queda en
- *   Detenido (0, gris) aunque lleve días estacionado.
+ * encendido). `puntos` son las posiciones posteriores al último movimiento
+ * con velocidad, en orden, y la última es la actual.
+ * - Llegar a más de 200 m de la posición anterior también es movimiento: el
+ *   equipo reporta cada pocos minutos y puede no mandar ningún punto con
+ *   velocidad en un traslado corto (6/11/2026, unidad 41: 800 m sin
+ *   velocidad y salió "detenido más de 30 min" a los 5 min).
+ * - El conteo empieza en el encendido del periodo continuo de ignición que
+ *   llega hasta la posición actual: apagar el motor lo reinicia.
+ * - Motor apagado en la posición actual → null: Detenido (0, gris).
+ * Ignición null no corta el periodo; en la posición actual vale la última
+ * conocida.
  */
-export function inicioConteoDetenido(input: {
-  primerEncendidoTrasMovimiento: Date | string | null | undefined;
-  ignicionActual: number | null | undefined;
-  fechaActual: Date | string;
-}): Date | string | null {
-  if (input.primerEncendidoTrasMovimiento != null) {
-    return input.primerEncendidoTrasMovimiento;
+export function inicioConteoDetenido(
+  puntos: PuntoTramoDetenido[],
+): Date | string | null {
+  if (puntos.length === 0) return null;
+
+  let desde = 0;
+  for (let i = 1; i < puntos.length; i++) {
+    const a = puntos[i - 1];
+    const b = puntos[i];
+    if (
+      a.lat != null &&
+      a.lng != null &&
+      b.lat != null &&
+      b.lng != null &&
+      distanciaMetros({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }) >
+        DESPLAZAMIENTO_MOVIMIENTO_M
+    ) {
+      desde = i;
+    }
   }
-  if (input.ignicionActual != null && Number(input.ignicionActual) === 1) {
-    return input.fechaActual;
+
+  let inicio: number | null = null;
+  for (let i = puntos.length - 1; i >= desde; i--) {
+    const ignicion = puntos[i].ignicion;
+    if (ignicion == null) continue;
+    if (Number(ignicion) !== 1) break;
+    inicio = i;
   }
-  return null;
+  return inicio == null ? null : puntos[inicio].fechaHora;
 }
 
 export function minutosEntre(

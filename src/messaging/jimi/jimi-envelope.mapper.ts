@@ -70,8 +70,9 @@ function assertJimiPayload(payload: JimiAcometidasPayload, kind: JimiKind) {
   }
 
   if (kind === 'position') {
-    if (typeof payload.Lat !== 'number' || typeof payload.Lng !== 'number') {
-      throw new BadRequestException('payload Lat/Lng requeridos');
+    const sinGps = payload.Lat === null && payload.Lng === null;
+    if (!sinGps && (typeof payload.Lat !== 'number' || typeof payload.Lng !== 'number')) {
+      throw new BadRequestException('payload Lat/Lng requeridos (o ambos null sin GPS)');
     }
     if (!payload.FechaHora?.trim()) {
       throw new BadRequestException('payload FechaHora requerido');
@@ -138,6 +139,9 @@ export function mapJimiToPosicion(
   imei: string,
   aco: JimiAcometidasPayload,
 ): Partial<Posiciones> {
+  if (aco.Lat == null || aco.Lng == null) {
+    throw new BadRequestException('posición sin coordenadas: va por ingestSinUbicacion');
+  }
   return {
     imei,
     lat: aco.Lat,

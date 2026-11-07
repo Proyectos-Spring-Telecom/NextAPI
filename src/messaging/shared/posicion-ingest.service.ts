@@ -29,6 +29,7 @@ import {
   estadoPorMinutosDetenido,
   inicioConteoDetenido,
   minutosEntre,
+  PuntoTramoDetenido,
   VELOCIDAD_EN_MOVIMIENTO_MIN,
 } from './estado-tiempo-detenido.util';
 import { isPublicHttpUrl } from './media-url.util';
@@ -53,6 +54,9 @@ import { FuentePosicion } from 'src/common/fuente-posicion';
  * Cada protocolo: cola AMQP propia + mapper → este servicio.
  * Ver: docs/CHECKLIST-NUEVO-GATEWAY-TELEMETRIA.md
  */
+/** Tope del tramo detenido (~3 días a una posición cada 3 min). */
+const TRAMO_DETENIDO_MAX_POSICIONES = 1500;
+
 @Injectable()
 export class PosicionIngestService {
   private readonly logger = new Logger(PosicionIngestService.name);
@@ -377,8 +381,9 @@ export class PosicionIngestService {
   /**
    * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM/TRACKGAS).
    * Otros estados (alertas / geocerca) se conservan.
-   * Los minutos se cuentan desde el primer encendido de ignición posterior al
-   * último movimiento (detenido con motor encendido); sin encendido → Estado 0.
+   * Los minutos se cuentan desde el encendido del periodo continuo de ignición
+   * actual, después del último movimiento (velocidad o llegada a más de 200 m);
+   * motor apagado → Estado 0. Ver `inicioConteoDetenido`.
    */
   private async aplicarTiempoDetenidoSiCorresponde(
     manager: EntityManager,
@@ -410,19 +415,21 @@ export class PosicionIngestService {
       return;
     }
 
-    // Regla SION: el tiempo detenido cuenta desde el primer encendido de
-    // ignición posterior al último movimiento. Sin encendido → se queda en 0.
-    const primerEncendido = await this.buscarPrimerEncendidoTrasMovimiento(
+    const tramo = await this.buscarTramoDetenido(
       manager,
       imei,
       ultimaMovimiento,
       fechaActual,
     );
-    const inicioConteo = inicioConteoDetenido({
-      primerEncendidoTrasMovimiento: primerEncendido,
-      ignicionActual: posicionData.ignicion,
-      fechaActual,
-    });
+    const inicioConteo = inicioConteoDetenido([
+      ...tramo,
+      {
+        fechaHora: fechaActual,
+        lat: posicionData.lat ?? null,
+        lng: posicionData.lng ?? null,
+        ignicion: posicionData.ignicion ?? null,
+      },
+    ]);
     if (!inicioConteo) {
       return;
     }
@@ -466,27 +473,40 @@ export class PosicionIngestService {
   }
 
   /**
-   * Primera posición guardada con ignición encendida después del último
-   * movimiento y antes de la actual. Solo lectura; usa IMEI + FechaHora.
+   * Posiciones guardadas después del último movimiento con velocidad y antes
+   * de la actual, en orden (las más recientes si son muchas). Solo lectura;
+   * usa IMEI + FechaHora.
    */
-  private async buscarPrimerEncendidoTrasMovimiento(
+  private async buscarTramoDetenido(
     manager: EntityManager,
     imei: string,
     desde: Date | string,
     fechaActual: Date | string,
-  ): Promise<Date | string | null> {
-    const row = await manager
+  ): Promise<PuntoTramoDetenido[]> {
+    const rows = await manager
       .createQueryBuilder(Posiciones, 'p')
       .select('p.fechaHora', 'fechaHora')
+      .addSelect('p.lat', 'lat')
+      .addSelect('p.lng', 'lng')
+      .addSelect('p.ignicion', 'ignicion')
       .where('p.imei = :imei', { imei })
       .andWhere('p.fechaHora > :desde', { desde })
       .andWhere('p.fechaHora < :fechaActual', { fechaActual })
-      .andWhere('p.ignicion = :encendida', { encendida: 1 })
-      .orderBy('p.fechaHora', 'ASC')
-      .limit(1)
-      .getRawOne<{ fechaHora: Date | string }>();
+      .orderBy('p.fechaHora', 'DESC')
+      .limit(TRAMO_DETENIDO_MAX_POSICIONES)
+      .getRawMany<{
+        fechaHora: Date | string;
+        lat: number | string | null;
+        lng: number | string | null;
+        ignicion: number | string | null;
+      }>();
 
-    return row?.fechaHora ?? null;
+    return rows.reverse().map((r) => ({
+      fechaHora: r.fechaHora,
+      lat: r.lat == null ? null : Number(r.lat),
+      lng: r.lng == null ? null : Number(r.lng),
+      ignicion: r.ignicion == null ? null : Number(r.ignicion),
+    }));
   }
 
   private async tryInsertIngestLog(

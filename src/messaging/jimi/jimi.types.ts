@@ -10,8 +10,9 @@ export interface JimiExtension {
 /** Shape Acometidas + Combustible (litros UL212). Imei = Concox (o null legacy). */
 export interface JimiAcometidasPayload {
   Imei: string | number | null;
-  Lat: number;
-  Lng: number;
+  /** null en los dos sin GPS válido (solo coordenadas medidas). */
+  Lat: number | null;
+  Lng: number | null;
   Estado: number | null;
   FechaHora: string;
   Velocidad: number;

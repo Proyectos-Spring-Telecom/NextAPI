@@ -326,6 +326,84 @@ describe('Alerta de un equipo sin ubicación medida', () => {
   });
 });
 
+describe('GPS de flota (jimi): tiempo detenido, alertas repetidas y sin GPS', () => {
+  const { EnumCatEventos } = require('src/common/cat-eventos.enum');
+  const imei = String(357000000000000 + (Date.now() % 1e9));
+  const hex = () => require('crypto').randomBytes(32).toString('hex');
+  const jimi = () => servicio('src/messaging/jimi/jimi-ingest.service', 'JimiIngestService');
+  const posicion = (fechaHora: string, extra: Record<string, unknown>) =>
+    jimi().handleEnvelope(
+      {
+        eventId: hex(), protocol: 'jimi', kind: 'position', deviceId: imei, receivedAt: new Date().toISOString(),
+        payload: {
+          Imei: imei, Lat: 18.89024, Lng: -99.126663, Estado: 0, FechaHora: fechaHora, Velocidad: 0, Direccion: 0,
+          Odometro: null, Ignicion: 1, Alarma1: null, Alarma2: null, Energia: null, IdEvento: Number(EnumCatEventos.TRANSMISION),
+          IdFoto: null, Bateria: null, Alimentacion: null, GPS: null, GSM: null, Movimiento: 1, Combustible: null, ...extra,
+        },
+      },
+      'jimi.position',
+    );
+  const estadoEn = (fechaHora: string) =>
+    Number(sql(`SELECT Estado FROM Posiciones WHERE Imei = '${imei}' AND FechaHora = '${fechaHora}' ORDER BY Id DESC LIMIT 1`));
+  const seguimientos = () =>
+    Number(sql(`SELECT COUNT(*) FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}'`));
+
+  beforeAll(async () => {
+    sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (6, 'TRACKGAS', 'TrackGas', 1, 'AVL')`);
+    sql(`INSERT INTO Dispositivos (IdCliente, IdTipoDispositivo, NumeroSerie, Imei, Estatus) VALUES (${C.idClienteNext}, 6, 'GPS${imei.slice(-9)}', '${imei}', 1)`);
+    const idDispositivo = Number(sql(`SELECT Id FROM Dispositivos WHERE Imei = '${imei}'`));
+    const vehiculo = Number(ok(await op('POST', '/productos/vehiculos', { idCliente: C.idClienteNext, placa: 'TRE0J41' }), 'producto').data.id);
+    ok(await op('POST', '/instalaciones', { idCliente: C.idClienteNext, idProducto: vehiculo, idDispositivo }), 'instalar');
+  });
+
+  it('unidad 41 (6/11): llegar a 800 m sin reporte con velocidad reinicia el tiempo detenido', async () => {
+    await posicion('2026-11-06 20:59:41', { Velocidad: 70, Estado: 1, Movimiento: 2 });
+    await posicion('2026-11-06 21:01:03', { IdEvento: Number(EnumCatEventos.IGNICION_ON) });
+    await posicion('2026-11-06 21:01:29', { Ignicion: 0, IdEvento: Number(EnumCatEventos.IGNICION_OFF) });
+    await posicion('2026-11-06 21:28:55', { IdEvento: Number(EnumCatEventos.IGNICION_ON) });
+    await posicion('2026-11-06 21:33:48', { Lat: 18.8948, Lng: -99.133087 });
+    expect(estadoEn('2026-11-06 21:33:48')).toBe(0);
+    await posicion('2026-11-06 22:04:00', { Lat: 18.8948, Lng: -99.133087 });
+    expect(estadoEn('2026-11-06 22:04:00')).toBe(4);
+  });
+
+  it('con el motor apagado vuelve a Detenido (0), y al encender cuenta desde ese encendido', async () => {
+    await posicion('2026-11-06 22:05:00', { Lat: 18.8948, Lng: -99.133087, Ignicion: 0, IdEvento: Number(EnumCatEventos.IGNICION_OFF) });
+    expect(estadoEn('2026-11-06 22:05:00')).toBe(0);
+    await posicion('2026-11-06 22:20:00', { Lat: 18.8948, Lng: -99.133087, IdEvento: Number(EnumCatEventos.IGNICION_ON) });
+    await posicion('2026-11-06 22:45:00', { Lat: 18.8948, Lng: -99.133087 });
+    expect(estadoEn('2026-11-06 22:45:00')).toBe(0);
+  });
+
+  it('la misma alerta repetida en menos de 60 s no agrega otro seguimiento', async () => {
+    // Como la unidad 41: cada "Falta de energía" llega junto a una posición normal.
+    const circulando = { Velocidad: 40, Estado: 1, Movimiento: 2 };
+    const energia = { ...circulando, IdEvento: Number(EnumCatEventos.ENERGY_ALARM), Alarma1: 2 };
+    const alerta = async (fechaHora: string) => {
+      await posicion(fechaHora, energia);
+      await posicion(fechaHora, circulando);
+    };
+    await alerta('2026-11-07 08:00:00');
+    await esperar(() => Number(sql(`SELECT COUNT(*) FROM Incidentes WHERE JSON_UNQUOTE(JSON_EXTRACT(DatosOrigen, '$.imei')) = '${imei}'`)) === 1);
+    await alerta('2026-11-07 08:05:00');
+    await esperar(() => seguimientos() === 1);
+    expect(seguimientos()).toBe(1);
+    await alerta('2026-11-07 08:05:15');
+    await new Promise((res) => setTimeout(res, 500));
+    expect(seguimientos()).toBe(1);
+    await alerta('2026-11-07 08:07:00');
+    await esperar(() => seguimientos() === 2);
+    expect(seguimientos()).toBe(2);
+  });
+
+  it('una posición sin GPS (Lat/Lng null) no va a Posiciones', async () => {
+    const antes = Number(sql(`SELECT COUNT(*) FROM Posiciones WHERE Imei = '${imei}'`));
+    const r = await posicion('2026-11-07 09:00:00', { Lat: null, Lng: null });
+    expect(r).toEqual({ audited: true });
+    expect(Number(sql(`SELECT COUNT(*) FROM Posiciones WHERE Imei = '${imei}'`))).toBe(antes);
+  });
+});
+
 describe('Comandos de la consola de configuración', () => {
   it('cada confirmación del socket se empuja a la sala de la instalación con el ítem de GET …/comandos', async () => {
     sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (7, 'RELOJ INTELIGENTE', 'Reloj inteligente', 1, 'RELOJ')`);
