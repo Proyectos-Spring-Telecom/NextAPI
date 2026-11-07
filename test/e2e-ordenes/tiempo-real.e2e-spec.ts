@@ -237,6 +237,95 @@ describe('Pánico de un panel instalado', () => {
   });
 });
 
+describe('Alerta de un equipo sin ubicación medida', () => {
+  // Regla 9 de springSocketKit (6/11/2026): sin GPS, WiFi ni antena el socket
+  // no manda coordenadas; la alarma abre su incidente sin ubicación.
+  const { EnumCatEventos } = require('src/common/cat-eventos.enum');
+  const SOS = Number(EnumCatEventos.HELP_ME);
+  const imei = String(866000000000000 + (Date.now() % 1e9));
+  const hex = () => require('crypto').randomBytes(32).toString('hex');
+  const fa100s = () => servicio('src/messaging/fa100s/fa100s-ingest.service', 'Fa100sIngestService');
+  const sinUbicacion = () => de('consola:incidente').filter((x) => x.sinUbicacion);
+  const incidente = () =>
+    sql(
+      `SELECT CONCAT(COUNT(*), '|', IFNULL(MAX(TipoOrigen), ''), '|', IFNULL(MAX(IdPosicion), 'NULL'), '|', IFNULL(MAX(Descripcion), ''))
+         FROM Incidentes WHERE JSON_UNQUOTE(JSON_EXTRACT(DatosOrigen, '$.imei')) = '${imei}'`,
+    );
+  const alarma = (kind: 'alarm' | 'alarm_location', lat: number | null, fechaHora: string, extra: Record<string, unknown> = {}) =>
+    fa100s().handleEnvelope(
+      {
+        eventId: hex(),
+        protocol: 'fa100s',
+        kind,
+        deviceId: imei,
+        receivedAt: new Date().toISOString(),
+        payload: {
+          Imei: imei, Lat: lat, Lng: lat == null ? null : -99.19, Estado: 2, FechaHora: fechaHora,
+          Velocidad: 0, IdEvento: SOS, Alarma1: 16, Bateria: 90,
+          positionValid: lat != null, FuentePosicion: lat == null ? null : 0, RadioM: null, ...extra,
+        },
+      },
+      'fa100s.alarm.sos',
+    );
+  let inst = 0;
+
+  beforeAll(async () => {
+    sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (7, 'RELOJ INTELIGENTE', 'Reloj inteligente', 1, 'RELOJ')`);
+    sql(`UPDATE CatTipoDispositivo SET Clase = 'RELOJ' WHERE Id = 7`);
+    const reloj = Number(ok(await op('POST', '/dispositivos/relojes', { idCliente: C.idClienteNext, numeroSerie: imei.slice(-10), imei }), 'reloj').data.id);
+    const persona = Number(ok(await op('POST', '/productos/vehiculos', { idCliente: C.idClienteNext, placa: 'TRE0S01' }), 'producto').data.id);
+    inst = Number(ok(await op('POST', '/instalaciones', { idCliente: C.idClienteNext, idProducto: persona, idDispositivo: reloj }), 'instalar').data.id);
+  });
+
+  it('un SOS sin coordenadas abre un incidente sin posición y lo empuja a la consola', async () => {
+    await alarma('alarm', null, '2026-11-06 17:35:59');
+    await esperar(() => sinUbicacion().length === 1);
+    expect(incidente()).toMatch(/^1\|1\|NULL\|Alerta automática: .+ \(sin ubicación\)$/);
+    expect(Number(sql(`SELECT COUNT(*) FROM Posiciones WHERE Imei = '${imei}'`))).toBe(0);
+    expect(sinUbicacion()[0]).toEqual(
+      expect.objectContaining({ nuevo: true, tipoOrigen: 1, idInstalacion: inst, imei, estado: 2, idEvento: SOS, tipoEvento: 'sin_ubicacion', idPanel: null }),
+    );
+  });
+
+  it('otro SOS sin coordenadas entra como seguimiento del mismo incidente', async () => {
+    await alarma('alarm', null, '2026-11-06 17:37:00');
+    await esperar(() => sinUbicacion().length === 2);
+    expect(incidente()).toMatch(/^1\|1\|NULL\|/);
+    expect(sinUbicacion()[1]).toEqual(expect.objectContaining({ nuevo: false }));
+    expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/· sin ubicación$/);
+  });
+
+  it('la ubicación posterior por GPS se guarda como posición y se liga al incidente', async () => {
+    await alarma('alarm_location', 19.4282, '2026-11-06 17:35:59', { alarmEventId: hex() });
+    await esperar(() => incidente().split('|')[2] !== 'NULL');
+    const idPosicion = Number(sql(`SELECT MAX(Id) FROM Posiciones WHERE Imei = '${imei}'`));
+    expect(idPosicion).toBeGreaterThan(0);
+    expect(incidente()).toMatch(new RegExp(`^1\\|1\\|${idPosicion}\\|`));
+    expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/^Ubicación de la alerta: .+ubicación 19\.428200, -99\.190000/);
+  });
+
+  it('una posición de cámara sin GPS no va a Posiciones; su foto sí se guarda, y sin instalación no abre incidente', async () => {
+    const serie = `CAM${Date.now() % 1e9}`;
+    const imeiCam = String(867000000000000 + (Date.now() % 1e9));
+    // El catálogo sembrado puede no traer TrackCam (5): en producción sí existe.
+    sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (5, 'TRACKCAM', 'Trackcam', 1, 'TRACKCAM')`);
+    sql(`INSERT INTO Dispositivos (IdCliente, IdTipoDispositivo, NumeroSerie, Imei, Estatus) VALUES (${C.idClienteNext}, 5, '${serie}', '${imeiCam}', 1)`);
+    const jt808 = servicio('src/messaging/jt808/jt808-ingest.service', 'Jt808IngestService');
+    const r = await jt808.handleEnvelope(
+      {
+        eventId: hex(), protocol: 'jt808', kind: 'position', deviceId: serie, receivedAt: new Date().toISOString(),
+        payload: { Imei: null, Lat: null, Lng: null, Estado: 2, FechaHora: '2026-11-06 18:00:00', Velocidad: 0, Direccion: 0, IdEvento: SOS, Foto1: 'https://springtelecom.mx/trackcam/fotos/e2e.jpg' },
+      },
+      'jt808.position',
+    );
+    expect(r).toEqual({ audited: true });
+    expect(Number(sql(`SELECT COUNT(*) FROM Posiciones WHERE Imei = '${imeiCam}'`))).toBe(0);
+    expect(Number(sql(`SELECT COUNT(*) FROM Fotos WHERE Imei = '${imeiCam}'`))).toBe(1);
+    await new Promise((res) => setTimeout(res, 500));
+    expect(Number(sql(`SELECT COUNT(*) FROM Incidentes WHERE JSON_UNQUOTE(JSON_EXTRACT(DatosOrigen, '$.imei')) = '${imeiCam}'`))).toBe(0);
+  });
+});
+
 describe('Comandos de la consola de configuración', () => {
   it('cada confirmación del socket se empuja a la sala de la instalación con el ítem de GET …/comandos', async () => {
     sql(`INSERT IGNORE INTO CatTipoDispositivo (Id, Codigo, Nombre, Estatus, Clase) VALUES (7, 'RELOJ INTELIGENTE', 'Reloj inteligente', 1, 'RELOJ')`);

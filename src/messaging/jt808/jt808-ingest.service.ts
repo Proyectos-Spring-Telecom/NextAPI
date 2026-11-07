@@ -11,11 +11,14 @@ import {
   mapAcometidasToPosicion,
 } from './jt808-envelope.mapper';
 import { Jt808PhotoExtension, Jt808TelemetryEnvelope } from './jt808.types';
+import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
 
 /**
  * Adapter JT808 (springTrackCam) → PosicionIngestService.
  * - kind=position|photo → Posiciones (+ media)
  * - kind=alarm → solo auditoría (NO Posiciones)
+ * - position|photo sin GPS (Lat/Lng null) → auditoría + media; si es alerta,
+ *   incidente sin ubicación (no se guarda la última coordenada de la cámara)
  */
 @Injectable()
 export class Jt808IngestService {
@@ -81,6 +84,36 @@ export class Jt808IngestService {
           ? Number(jt808.multimediaId)
           : null;
 
+    const media = {
+      Foto1: p.Foto1,
+      Foto2: p.Foto2,
+      Foto3: p.Foto3,
+      Video1: p.Video1,
+      Video2: p.Video2,
+      Video3: p.Video3,
+      multimediaId,
+    };
+    if (p.Lat == null || p.Lng == null) {
+      return this.posicionIngest.ingestSinUbicacion({
+        eventId: envelope.eventId,
+        protocol: envelope.protocol,
+        kind: envelope.kind,
+        deviceId: envelope.deviceId,
+        routingKey,
+        imei,
+        idTipoDispositivo,
+        idInstalacion,
+        estatusDispositivo,
+        auditPayload: extractJt808Audit(envelope.payload, envelope.kind),
+        alerta: {
+          estado: p.Estado != null ? Number(p.Estado) : null,
+          idEvento: p.IdEvento != null ? Number(p.IdEvento) : null,
+          fechaHora: parseFechaHoraPared(String(p.FechaHora)),
+        },
+        media,
+      });
+    }
+
     return this.posicionIngest.ingestPosition({
       eventId: envelope.eventId,
       protocol: envelope.protocol,
@@ -93,15 +126,7 @@ export class Jt808IngestService {
       estatusDispositivo,
       auditPayload: extractJt808Audit(envelope.payload, envelope.kind),
       posicion: mapAcometidasToPosicion(imei, p),
-      media: {
-        Foto1: p.Foto1,
-        Foto2: p.Foto2,
-        Foto3: p.Foto3,
-        Video1: p.Video1,
-        Video2: p.Video2,
-        Video3: p.Video3,
-        multimediaId,
-      },
+      media,
     });
   }
 }

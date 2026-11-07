@@ -54,6 +54,16 @@ export interface PosicionIngestPositionRequest extends PosicionIngestBase {
   media?: PosicionIngestMedia;
 }
 
+/**
+ * Trama sin ubicación medida (regla 9 de springSocketKit: los sockets no
+ * mandan coordenadas que no midieron). No va a Posiciones.
+ */
+export interface PosicionIngestSinUbicacionRequest extends PosicionIngestBase {
+  /** Estado / IdEvento / FechaHora (hora de México) de la trama. */
+  alerta: { estado: number | null; idEvento: number | null; fechaHora: Date };
+  media?: PosicionIngestMedia;
+}
+
 export type PosicionIngestResult = {
   posicionId?: number;
   duplicate?: boolean;

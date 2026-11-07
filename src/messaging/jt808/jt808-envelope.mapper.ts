@@ -68,8 +68,14 @@ export function assertJt808Envelope(value: unknown): Jt808TelemetryEnvelope {
 }
 
 function assertAcometidasPayload(payload: AcometidasPayload, kind: Jt808Kind) {
-  if (typeof payload.Lat !== 'number' || typeof payload.Lng !== 'number') {
-    throw new BadRequestException('payload Lat/Lng requeridos');
+  // Sin GPS válido la cámara no tiene ubicación medida: Lat/Lng llegan en null
+  // (los dos); nunca su última coordenada (regla 9 de springSocketKit).
+  const sinUbicacion = payload.Lat === null && payload.Lng === null;
+  if (
+    !sinUbicacion &&
+    (typeof payload.Lat !== 'number' || typeof payload.Lng !== 'number')
+  ) {
+    throw new BadRequestException('payload Lat/Lng requeridos (o ambos null sin GPS)');
   }
   if (!payload.FechaHora?.trim()) {
     throw new BadRequestException('payload FechaHora requerido');
@@ -95,6 +101,10 @@ export function mapAcometidasToPosicion(
   imei: string,
   aco: AcometidasPayload,
 ): Partial<Posiciones> {
+  if (aco.Lat == null || aco.Lng == null) {
+    // Sin GPS no hay fila de Posiciones (Jt808IngestService → ingestSinUbicacion).
+    throw new BadRequestException('posición sin Lat/Lng: va por ingestSinUbicacion');
+  }
   return {
     imei,
     lat: aco.Lat,

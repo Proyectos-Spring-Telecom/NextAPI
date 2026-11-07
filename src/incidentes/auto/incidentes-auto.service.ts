@@ -100,12 +100,24 @@ export class IncidentesAutoService {
       if (!posicion) return;
 
       if (abierto != null) {
+        // Alerta que llegó sin ubicación: la primera posición medida es la suya.
+        const ligada = await this.incidentesRepo
+          .createQueryBuilder()
+          .update(Incidentes)
+          .set({ idPosicion: Number(posicion.id), idPosicionOrigen: Number(posicion.id) })
+          .where('id = :id AND idPosicion IS NULL', { id: abierto })
+          .execute();
         await this.seguimientosRepo.save(
           this.seguimientosRepo.create({
             idIncidente: abierto,
             idUsuario: null,
             fechaHora: posicion.fechaHora,
-            actividad: seguimientoAlertaRepetida(estado, evento, posicion),
+            actividad: ligada.affected
+              ? seguimientoAlertaRepetida(estado, evento, posicion).replace(
+                  'Nueva alerta:',
+                  'Ubicación de la alerta:',
+                )
+              : seguimientoAlertaRepetida(estado, evento, posicion),
             medio: MEDIO_SEGUIMIENTO_ALERTA,
           }),
         );
@@ -137,6 +149,129 @@ export class IncidentesAutoService {
     } catch (error) {
       this.logger.warn(
         `[IncidenteAuto] no se pudo crear incidente imei=${imei} estado=${estado} posicion=${posicionId}: ${(error as Error)?.message}`,
+      );
+    } finally {
+      this.enCurso.delete(clave);
+    }
+  }
+
+  /**
+   * Alerta de un equipo que llegó sin ubicación medida (SOS o caída de un reloj
+   * sin GPS, WiFi ni antena; alarma de cámara sin GPS). Los sockets no mandan
+   * la última posición ni coordenadas de relleno (regla 9 de springSocketKit),
+   * así que no hay fila de Posiciones: el incidente se abre sin `IdPosicion`,
+   * con la misma regla de uno abierto por IMEI + estado (+ evento propio), y
+   * se avisa a Consola (`consola:incidente`, `sinUbicacion: true`). La
+   * siguiente posición medida de esa alerta se liga a él en
+   * `registrarDesdePosicion`.
+   */
+  async registrarSinUbicacion(params: {
+    imei: string;
+    estado: number;
+    idEvento: number | null;
+    fechaHora: Date;
+    protocolo: string;
+  }): Promise<void> {
+    const { estado } = params;
+    if (!esEstadoAlertaConsola(estado)) return;
+    const imei = imeiToString(params.imei);
+    if (!imei) return;
+    const evento = eventoIncidente(params.idEvento);
+
+    const clave = `${imei}|${estado}|${evento ?? ''}`;
+    if (this.enCurso.has(clave)) return;
+    this.enCurso.add(clave);
+
+    try {
+      const instalacion = await this.dispositivosRepo
+        .createQueryBuilder('d')
+        .innerJoin(Instalaciones, 'i', 'i.idDispositivo = d.id AND i.estatus = :activa', {
+          activa: EstatusEnum.ACTIVO,
+        })
+        .select('i.idCliente', 'idCliente')
+        .addSelect('i.id', 'idInstalacion')
+        .where('d.imei = :imei', { imei })
+        .getRawOne<{ idCliente: string | number; idInstalacion: string | number }>();
+      const idCliente = Number(instalacion?.idCliente);
+      const idInstalacion = Number(instalacion?.idInstalacion);
+      if (!(idCliente > 0)) return;
+
+      const etiqueta = descripcionAlertaAutomatica(estado, params.idEvento).replace(
+        'Alerta automática: ',
+        '',
+      );
+      const abierto = await this.buscarAbierto(idCliente, imei, estado, evento);
+      let idIncidente: number;
+      let descripcion: string | null = null;
+      if (abierto != null) {
+        idIncidente = abierto;
+        await this.seguimientosRepo.save(
+          this.seguimientosRepo.create({
+            idIncidente,
+            idUsuario: null,
+            fechaHora: params.fechaHora,
+            actividad: `Nueva alerta: ${etiqueta} · sin ubicación`,
+            medio: MEDIO_SEGUIMIENTO_ALERTA,
+          }),
+        );
+      } else {
+        const saved = await this.incidentesRepo.save(
+          this.incidentesRepo.create({
+            idCliente,
+            tipoOrigen: TipoOrigenIncidente.POSICION,
+            idPosicion: null,
+            idPosicionOrigen: null,
+            idEventoAlarma: null,
+            idEventoAlarmaOrigen: null,
+            // Mismas llaves que snapshotPosicion (buscarAbierto filtra por imei/estado/idEvento).
+            datosOrigen: {
+              id: null,
+              imei,
+              lat: null,
+              lng: null,
+              estado,
+              idEvento: params.idEvento,
+              fechaHora: params.fechaHora,
+              sinUbicacion: true,
+              protocolo: params.protocolo,
+            },
+            idUsuario: null,
+            descripcion: `${descripcionAlertaAutomatica(estado, params.idEvento)} (sin ubicación)`,
+            fechaInicio: params.fechaHora,
+            fechaCierre: null,
+            estatus: EstatusIncidente.ABIERTO,
+          }),
+        );
+        idIncidente = Number(saved.id);
+        descripcion = saved.descripcion;
+      }
+      this.logger.log(
+        `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} sin ubicación → ${abierto == null ? 'Incidente' : 'seguimiento en Incidente'}=${idIncidente}`,
+      );
+
+      if (idInstalacion > 0) {
+        this.monitoreoGateway?.emitConsolaIncidente({
+          idIncidente,
+          nuevo: abierto == null,
+          tipoOrigen: TipoOrigenIncidente.POSICION,
+          idEventoAlarma: null,
+          idInstalacion,
+          idPanel: null,
+          idCliente,
+          tipoEvento: 'sin_ubicacion',
+          imei,
+          estado,
+          idEvento: params.idEvento,
+          sinUbicacion: true,
+          zona: null,
+          nombreDispositivo: null,
+          descripcion,
+          fechaHora: fechaPared(params.fechaHora),
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[IncidenteAuto] no se pudo crear el incidente sin ubicación imei=${imei} estado=${estado}: ${(error as Error)?.message}`,
       );
     } finally {
       this.enCurso.delete(clave);

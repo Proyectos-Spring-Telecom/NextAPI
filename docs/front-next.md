@@ -22,6 +22,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 9 | En vivo H.265: rearmar el decoder con el evento `codec` y **detectar el keyframe con la regla de H.265** | **Alta** | Sí: con H.265 sale negro con `Frames: 0` (visto otra vez el 06/11) |
 | 25 | Socket.IO detrás de `/nextAPI`: namespace `/monitoreo`, `path` `/nextAPI/socket.io` | **Alta** | Sí: `Invalid namespace`, el mapa no recibe posiciones (sigue el 06/11) |
 | 26 | Cambios del 06/11: reportes sin cliente, hora de los seguimientos, pánico del panel en Consola (`consola:incidente`) | **Alta** | No |
+| 27 | Alertas sin ubicación (06/11): SOS de reloj o alarma de cámara sin GPS abren incidente sin posición | **Alta** | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -347,7 +348,7 @@ Bajo techo el reloj casi nunca ubica por GPS. Desde el 29/10/2026 el servidor ca
 | Última válida | "Última ubicación hace X min"; no presentarla como actual |
 
 - En una **alerta** (SOS, caída) con ubicación aproximada, decirle al monitorista que la ubicación no es GPS y mostrar el círculo. Si después llega el GPS, la ubicación se actualiza sola.
-- Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena, 3 última válida, `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1 o 2.
+- Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena; el 3 "última válida" ya no llega desde el 6/11/2026, ver §27; `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1 o 2.
 
 ## 16. Órdenes de servicio, etapa 2: programación, código y autorizaciones
 
@@ -594,3 +595,20 @@ Lo que no empuja (consultar al entrar): equipos sin instalación (§20), "sin pr
 - El aviso en vivo llega por `/monitoreo` con el evento **`consola:incidente`**, no por `consola:actualizacion`.
 - Con `nuevo: true`, agregar el incidente al grid. Con `nuevo: false`, refrescar sus seguimientos.
 - Se finaliza y se imprime el PDF igual que los demás incidentes.
+
+## 27. Alertas sin ubicación (06/11/2026)
+
+Desde el 06/11 los sockets **solo mandan coordenadas medidas** en la trama: GPS, o WiFi/antena calculados con lo que vio el equipo en ese momento. Antes, el reloj sin nada medido mandaba su "última válida": el 06/11 un reloj en CDMX apareció en Cuernavaca (su GPS de 6 días antes), también en un SOS. La cámara hacía lo mismo con su última coordenada cuando perdía el GPS.
+
+Lo que cambia para el front:
+
+- **No hay posición para esa trama.** No llega a `Posiciones` ni a `UltimaPosicion`; el mapa sigue mostrando la última ubicación real con su hora real. Las fotos y videos de esa trama sí se guardan en `Fotos`/`Videos`.
+- **Una alerta sin ubicación abre su incidente igual** (SOS o caída del reloj, alarma de la cámara):
+  - `tipoOrigen = 1`, `idPosicion = null`, `datosOrigen.sinUbicacion = true`, `datosOrigen.lat`/`lng` en `null`.
+  - Descripción: "Alerta automática: SOS (sin ubicación)".
+  - Si llega otra igual con el incidente abierto, entra como seguimiento "Nueva alerta: SOS · sin ubicación".
+- **Aviso en vivo:** `/monitoreo`, evento **`consola:incidente`** (room de la instalación) con `sinUbicacion: true`, `tipoEvento: 'sin_ubicacion'`, `imei`, `estado`, `idEvento`, e `idPanel`/`idEventoAlarma` en `null`. Con `nuevo: true` agregarlo al grid; con `false` refrescar sus seguimientos.
+- **Cuando llega la ubicación** (el primer GPS de esa alerta), el incidente toma esa posición (`idPosicion`) y se agrega el seguimiento "Ubicación de la alerta: SOS · ubicación 19.428200, -99.190000 · posición N". Llega también por `consola:actualizacion` como cualquier posición.
+- **Pantalla del incidente:** si `idPosicion` es `null`, no centrar el mapa ni dibujar un punto; mostrar "Sin ubicación" y la última posición del equipo como referencia, con su hora.
+- **`fuentePosicion = 3`** ya no llega en posiciones nuevas. Las viejas se están revisando para corregirlas en la base.
+

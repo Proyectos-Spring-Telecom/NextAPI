@@ -37,6 +37,7 @@ import {
   PosicionIngestMedia,
   PosicionIngestPositionRequest,
   PosicionIngestResult,
+  PosicionIngestSinUbicacionRequest,
 } from './posicion-ingest.types';
 import { FuentePosicion } from 'src/common/fuente-posicion';
 
@@ -45,6 +46,7 @@ import { FuentePosicion } from 'src/common/fuente-posicion';
  *
  * - position/photo → TelemetryIngestLog + media + Posiciones + WS
  * - alarm → solo TelemetryIngestLog (NO Posiciones; evita GPS duplicado)
+ * - sin ubicación medida → TelemetryIngestLog + media; si es alerta, incidente sin ubicación
  * - Geocerca (Estado=8): RASTREADOR/AVL/TELEFONO/TRACKCAM/TRACKGAS; geocercas ligadas al vehículo (ProductosGeocerca)
  * - Tiempo detenido (4/5/6): AVL/TRACKCAM/TRACKGAS si Estado=0 y Velocidad=0
  *
@@ -78,6 +80,50 @@ export class PosicionIngestService {
       return { audited: true as const };
     });
 
+    return result;
+  }
+
+  /**
+   * Trama sin ubicación medida: un socket nunca manda la última posición ni
+   * coordenadas de relleno (regla 9 de springSocketKit; 6/11/2026 el reloj
+   * salió en Cuernavaca estando en CDMX). No va a Posiciones (Lat/Lng son
+   * obligatorias y UltimaPosicion perdería la última ubicación real): queda la
+   * auditoría y las fotos/videos. Si es una alerta de Consola en una
+   * instalación activa, se abre (o sigue) el incidente sin ubicación; la
+   * siguiente posición medida de esa alerta se liga a él.
+   */
+  async ingestSinUbicacion(
+    req: PosicionIngestSinUbicacionRequest,
+  ): Promise<PosicionIngestResult> {
+    const result = await this.dataSource.transaction(async (manager) => {
+      const logged = await this.tryInsertIngestLog(manager, req);
+      if (logged.duplicate) return logged;
+      if (req.media) {
+        // Solo Fotos/Videos: no hay fila de Posiciones a la cual ligarlos.
+        await this.attachMediaIds(manager, req.imei, req.media, {
+          fechaHora: req.alerta.fechaHora,
+        });
+      }
+      this.logger.debug(
+        `[PosicionIngest] ${req.kind} sin ubicación protocol=${req.protocol} eventId=${req.eventId} imei=${req.imei} Estado=${req.alerta.estado ?? 'NULL'}`,
+      );
+      return { audited: true as const };
+    });
+
+    if (
+      !result.duplicate &&
+      esEstadoAlertaConsola(req.alerta.estado) &&
+      (req.idInstalacion != null ||
+        (await this.instalacionActiva(this.dataSource.manager, req.imei)))
+    ) {
+      void this.incidentesAuto.registrarSinUbicacion({
+        imei: req.imei,
+        estado: Number(req.alerta.estado),
+        idEvento: req.alerta.idEvento,
+        fechaHora: req.alerta.fechaHora,
+        protocolo: req.protocol,
+      });
+    }
     return result;
   }
 

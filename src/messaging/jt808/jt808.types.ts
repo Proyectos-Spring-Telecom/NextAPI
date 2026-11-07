@@ -23,8 +23,9 @@ export interface Jt808PhotoExtension {
 /** Tabla 4 Acometidas — payload AMQP (URLs en Foto1..3 / Video1..3; IDs al persistir) */
 export interface AcometidasPayload {
   Imei: string | number | null;
-  Lat: number;
-  Lng: number;
+  /** null (los dos) cuando la cámara no tiene GPS válido. */
+  Lat: number | null;
+  Lng: number | null;
   Estado: number | null;
   FechaHora: string;
   Velocidad: number;

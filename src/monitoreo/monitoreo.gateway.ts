@@ -68,11 +68,20 @@ export interface ConsolaIncidenteEvento {
   /** true = incidente nuevo; false = seguimiento en uno abierto. */
   nuevo: boolean;
   tipoOrigen: number;
-  idEventoAlarma: number;
+  /** Pánico de panel: el evento SIA. null en alertas de equipo sin ubicación. */
+  idEventoAlarma: number | null;
   idInstalacion: number;
-  idPanel: number;
+  /** Pánico de panel. null en alertas de equipo sin ubicación. */
+  idPanel: number | null;
   idCliente: number;
+  /** `panico` / `panico_asalto` (panel) o `sin_ubicacion` (equipo con GPS). */
   tipoEvento: string;
+  /** Alerta de equipo sin ubicación medida (reloj, cámara): IMEI, Estado e IdEvento. */
+  imei?: string | null;
+  estado?: number | null;
+  idEvento?: number | null;
+  /** true: la alerta llegó sin ubicación medida; se completa con la siguiente posición. */
+  sinUbicacion?: boolean;
   zona: number | null;
   nombreDispositivo: string | null;
   descripcion: string | null;

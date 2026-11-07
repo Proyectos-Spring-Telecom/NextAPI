@@ -14,12 +14,14 @@ import {
   resolveFa100sImei,
 } from './fa100s-envelope.mapper';
 import { Fa100sTelemetryEnvelope } from './fa100s.types';
+import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
 
 /**
  * Adapter relojes FA100S (springFA100S) → PosicionIngestService.
  * Lookup por Dispositivos.Imei, como TrackGas.
  * - position → Posiciones (con la última posición válida si no hubo GPS)
- * - alarm → solo auditoría; la alarma se ve por la posición con su IdEvento
+ * - alarm → solo auditoría; la alarma se ve por la posición con su IdEvento.
+ *   Sin coordenadas (nada medido en la trama) → incidente sin ubicación.
  * - alarm_location → corrige Lat/Lng de la posición de la alarma
  */
 @Injectable()
@@ -77,6 +79,18 @@ export class Fa100sIngestService {
     };
 
     if (envelope.kind === 'alarm') {
+      const p = envelope.payload;
+      if (typeof p.Lat !== 'number' || typeof p.Lng !== 'number') {
+        // Sin posición que la acompañe: la alarma abre su incidente sola.
+        return this.posicionIngest.ingestSinUbicacion({
+          ...base,
+          alerta: {
+            estado: p.Estado != null ? Number(p.Estado) : null,
+            idEvento: p.IdEvento != null ? Number(p.IdEvento) : null,
+            fechaHora: parseFechaHoraPared(String(p.FechaHora)),
+          },
+        });
+      }
       return this.posicionIngest.ingestAlarm(base);
     }
 
