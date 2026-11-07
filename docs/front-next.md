@@ -24,6 +24,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 26 | Cambios del 06/11: reportes sin cliente, hora de los seguimientos, pánico del panel en Consola (`consola:incidente`) | **Alta** | No |
 | 27 | Alertas sin ubicación (06/11): SOS de reloj o alarma de cámara sin GPS abren incidente sin posición | **Alta** | No |
 | 28 | Tiempo detenido (se reinicia al llegar a otro punto o al apagar el motor) y alertas repetidas agrupadas en 60 s | Media: informativo | No |
+| 29 | Relojes (07/11): ubicación por torre cuando la antena no es conocida (menos huecos) y GPS al salir o llegar | Baja: informativo | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -345,8 +346,7 @@ Bajo techo el reloj casi nunca ubica por GPS. Desde el 29/10/2026 el servidor ca
 |---|---|
 | GPS | Punto normal |
 | WiFi (radio típico 30–100 m) | Punto con **círculo** del radio y la leyenda "Ubicación aproximada (WiFi) ±R m" |
-| Antena (radio 0.3–2 km) | Círculo grande, leyenda "Zona aproximada (antena celular)"; no centrar el mapa con zoom de calle |
-| Última válida | "Última ubicación hace X min"; no presentarla como actual |
+| Antena o torre (radio 0.3–5 km, típico ~1 km) | Círculo grande, leyenda "Zona aproximada (antena celular)"; no centrar el mapa con zoom de calle |
 
 - En una **alerta** (SOS, caída) con ubicación aproximada, decirle al monitorista que la ubicación no es GPS y mostrar el círculo. Si después llega el GPS, la ubicación se actualiza sola.
 - Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena; el 3 "última válida" ya no llega desde el 6/11/2026, ver §27; `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1 o 2.
@@ -630,4 +630,20 @@ Reporte de Monitoreo del 06/11: la unidad 41 (NV4064B) salía "Detenido más de 
 - Las ráfagas de segundos se ven como un solo seguimiento "Nueva alerta: …"; las que llegan con minutos de diferencia se siguen agregando.
 - Los incidentes abiertos antes del 06/11 conservan sus seguimientos.
 
+## 29. Relojes: ubicación por torre y GPS al salir o llegar (07/11/2026)
+
+Cambios en springGeoloc y en el socket del reloj (FA100S). **El contrato no cambia** (`fuentePosicion` y `radioM` siguen igual) y el front no necesita código; cambia lo que llega.
+
+### Menos huecos en el mapa
+
+- Antes, si el reloj se enganchaba a una antena que no está en las bases (OpenCellID o aprendidas), no había ubicación medida y la posición no se guardaba: huecos de 30 a 55 min en el recorrido del 07/11.
+- Ahora esa antena se ubica por los otros sectores de **su misma torre**. Llega como antena (`fuentePosicion = 2`) con `radioM` de alrededor de 1,100 m. Medido contra GPS: error mediano de 450 m.
+- Todavía puede haber huecos (antena de una torre sin datos, o el reloj sin WiFi ni antena). **No unir los puntos de un hueco como si fuera un trayecto conocido**: mostrar la última posición con su hora ("hace X min").
+
+### GPS al salir o llegar
+
+- El servidor reconoce el lugar habitual del reloj por sus redes WiFi. Cuando sale de ese lugar o regresa a él y sus routers aún no se conocen, pide GPS al reloj.
+- Afuera el reloj fija, el servidor aprende los routers de ese lugar y desde entonces lo ubica ahí por WiFi (`fuentePosicion = 1`, unos 10–20 m). Después ya no vuelve a pedir GPS por ese lugar.
+- Es normal que un reloj pase de círculo grande (antena) a punto (GPS) o a círculo chico (WiFi) en el mismo lugar con los días: es el aprendizaje, no un error.
+- Las alertas sin ubicación (§27) no cambian.
 
