@@ -23,6 +23,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 25 | Socket.IO detrás de `/nextAPI`: namespace `/monitoreo`, `path` `/nextAPI/socket.io` | **Alta** | Sí: `Invalid namespace`, el mapa no recibe posiciones (sigue el 06/11) |
 | 26 | Cambios del 06/11: reportes sin cliente, hora de los seguimientos, pánico del panel en Consola (`consola:incidente`) | **Alta** | No |
 | 27 | Alertas sin ubicación (06/11): SOS de reloj o alarma de cámara sin GPS abren incidente sin posición | **Alta** | No |
+| 28 | Tiempo detenido (se reinicia al llegar a otro punto o al apagar el motor) y alertas repetidas agrupadas en 60 s | Media: informativo | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -610,5 +611,23 @@ Lo que cambia para el front:
 - **Aviso en vivo:** `/monitoreo`, evento **`consola:incidente`** (room de la instalación) con `sinUbicacion: true`, `tipoEvento: 'sin_ubicacion'`, `imei`, `estado`, `idEvento`, e `idPanel`/`idEventoAlarma` en `null`. Con `nuevo: true` agregarlo al grid; con `false` refrescar sus seguimientos.
 - **Cuando llega la ubicación** (el primer GPS de esa alerta), el incidente toma esa posición (`idPosicion`) y se agrega el seguimiento "Ubicación de la alerta: SOS · ubicación 19.428200, -99.190000 · posición N". Llega también por `consola:actualizacion` como cualquier posición.
 - **Pantalla del incidente:** si `idPosicion` es `null`, no centrar el mapa ni dibujar un punto; mostrar "Sin ubicación" y la última posición del equipo como referencia, con su hora.
-- **`fuentePosicion = 3`** ya no llega en posiciones nuevas. Las viejas se están revisando para corregirlas en la base.
+- **`fuentePosicion = 3`** ya no llega en posiciones nuevas. Las viejas ya se corrigieron en la base (06/11, 21:43): se borraron 816 posiciones no medidas de un reloj y una cámara. Los incidentes 1 y 21 quedaron sin posición (`idPosicion = null`, `datosOrigen.sinUbicacion = true`) y con el seguimiento "Corrección 06/11/2026: se retiró la ubicación…".
+- **GPS de flota (jimi):** desde el 06/11 también pueden llegar sin coordenadas (springTrackGas sin fijo GPS). Se tratan igual: sin posición y, si es alerta, con incidente sin ubicación.
+
+## 28. Tiempo detenido y alertas repetidas (06/11/2026)
+
+Reporte de Monitoreo del 06/11: la unidad 41 (NV4064B) salía "Detenido más de 30 min" con 10 min o menos en el lugar, y su incidente de "Falta de energía" acumuló 61 seguimientos. Los dos se corrigieron en NextAPI; el front no cambia código, pero los datos sí cambian.
+
+### Tiempo detenido (Estado 4, 5 y 6)
+
+- **Llegar a otro punto reinicia el conteo.** Ahora también es movimiento llegar a más de 200 m de la posición anterior, aunque ningún reporte traiga velocidad. Antes solo contaba una velocidad mayor a 5 km/h, y un traslado corto entre dos reportes (la unidad 41 avanzó 800 m) no reiniciaba el tiempo.
+- **Apagar el motor reinicia el conteo.** Cuenta desde el último encendido sin interrupción. Con el motor apagado la unidad queda en Detenido (Estado 0, gris), aunque lleve horas en el lugar.
+- Las posiciones guardadas antes del 06/11 conservan el estado con el que se calcularon.
+
+### Alertas repetidas en un incidente abierto
+
+- Si la misma alerta llega a menos de 60 s del último seguimiento automático del incidente, ya no se agrega otro seguimiento. El pánico (Estado 2) nunca se agrupa: cada uno se registra.
+- Las ráfagas de segundos se ven como un solo seguimiento "Nueva alerta: …"; las que llegan con minutos de diferencia se siguen agregando.
+- Los incidentes abiertos antes del 06/11 conservan sus seguimientos.
+
 
