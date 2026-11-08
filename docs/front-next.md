@@ -346,7 +346,7 @@ Bajo techo el reloj casi nunca ubica por GPS. Desde el 29/10/2026 el servidor ca
 |---|---|
 | GPS | Punto normal |
 | WiFi (radio típico 30–100 m) | Punto con **círculo** del radio y la leyenda "Ubicación aproximada (WiFi) ±R m" |
-| Antena o torre (radio 0.3–5 km, típico ~1 km) | Círculo grande, leyenda "Zona aproximada (antena celular)"; no centrar el mapa con zoom de calle |
+| Antena o torre (radio 1–5 km; antena típica 1.8 km, torre ~1.1–2 km) | Círculo grande, leyenda "Zona aproximada (antena celular)"; no centrar el mapa con zoom de calle |
 
 - En una **alerta** (SOS, caída) con ubicación aproximada, decirle al monitorista que la ubicación no es GPS y mostrar el círculo. Si después llega el GPS, la ubicación se actualiza sola.
 - Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena; el 3 "última válida" ya no llega desde el 6/11/2026, ver §27; `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1 o 2.
@@ -646,4 +646,9 @@ Cambios en springGeoloc y en el socket del reloj (FA100S). **El contrato no camb
 - Afuera el reloj fija, el servidor aprende los routers de ese lugar y desde entonces lo ubica ahí por WiFi (`fuentePosicion = 1`, unos 10–20 m). Después ya no vuelve a pedir GPS por ese lugar.
 - Es normal que un reloj pase de círculo grande (antena) a punto (GPS) o a círculo chico (WiFi) en el mismo lugar con los días: es el aprendizaje, no un error.
 - Las alertas sin ubicación (§27) no cambian.
+
+### Radio de la antena más grande (y más honesto)
+
+- Evaluación con el historial del reloj contra GPS: con el radio anterior (~1 km), el reloj estaba dentro del círculo de la antena solo el 44 % de las veces. Ahora el radio de una antena es de **al menos 1,800 m** y el reloj cae dentro el 81 % (WiFi: 92 %; torre: 88 %).
+- En el mapa, las posiciones por antena (`fuentePosicion = 2`) se verán con un círculo más grande. Es lo correcto: el círculo dice dónde puede estar, no hay que achicarlo.
 
