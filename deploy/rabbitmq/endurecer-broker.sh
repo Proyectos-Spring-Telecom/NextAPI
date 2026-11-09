@@ -65,6 +65,7 @@ usuario sock_trackgas "${SOCK_TRACKGAS:-}" '^$' '^telemetry$' '^telemetry\.comma
 usuario sock_panel    "${SOCK_PANEL:-}"    '^$' '^telemetry$' '^telemetry\.commands\.axpro$'
 usuario sock_fa100s   "${SOCK_FA100S:-}"   '^$' '^telemetry$' '^telemetry\.commands\.fa100s$'
 usuario sock_s18      "${SOCK_S18:-}"      '^$' '^telemetry$' '^telemetry\.commands\.s18$'
+usuario sock_trackphone "${SOCK_TRACKPHONE:-}" '^$' '^telemetry$' '^telemetry\.commands\.phone$'
 # Server_Socket de Sion (.NET, fuera de nuestros servidores): solo publica
 # jimi.position; no recibe comandos. Entra por 5671 con TLS (reemplaza a avl).
 usuario sock_sion     "${SOCK_SION:-}"     '^$' '^telemetry$' '^$'
@@ -83,7 +84,7 @@ $CTL set_policy -p "$VH" --apply-to queues --priority 10 dlq-tope '^telemetry\..
   '{"max-length":50000,"max-length-bytes":104857600,"overflow":"drop-head"}'
 # Comandos: si la cola se llena, el broker rechaza (NextAPI usa confirmaciones) y
 # el comando se queda pendiente en Next en vez de perderse.
-$CTL set_policy -p "$VH" --apply-to queues --priority 10 comandos-tope '^telemetry\.commands\.(jt808|jimi|axpro|fa100s|s18)$' \
+$CTL set_policy -p "$VH" --apply-to queues --priority 10 comandos-tope '^telemetry\.commands\.(jt808|jimi|axpro|fa100s|s18|phone)$' \
   '{"max-length":10000,"overflow":"reject-publish"}'
 echo "políticas:"; $CTL list_policies -p "$VH"
 

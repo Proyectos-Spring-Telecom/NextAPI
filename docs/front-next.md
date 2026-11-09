@@ -25,6 +25,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 27 | Alertas sin ubicación (06/11): SOS de reloj o alarma de cámara sin GPS abren incidente sin posición | **Alta** | No |
 | 28 | Tiempo detenido (se reinicia al llegar a otro punto o al apagar el motor) y alertas repetidas agrupadas en 60 s | Media: informativo | No |
 | 29 | Relojes (07/11): ubicación por torre cuando la antena no es conocida (menos huecos) y GPS al salir o llegar | Baja: informativo | No |
+| 30 | Teléfonos con la app de rastreo 3.0 (08/11): `fuentePosicion = 4`, código de alta de la app y comandos | Media: antes del piloto | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -347,9 +348,10 @@ Bajo techo el reloj casi nunca ubica por GPS. Desde el 29/10/2026 el servidor ca
 | GPS | Punto normal |
 | WiFi (radio típico 30–100 m) | Punto con **círculo** del radio y la leyenda "Ubicación aproximada (WiFi) ±R m" |
 | Antena o torre (radio 1–5 km; antena típica 1.8 km, torre ~1.1–2 km) | Círculo grande, leyenda "Zona aproximada (antena celular)"; no centrar el mapa con zoom de calle |
+| Teléfono (`fuentePosicion = 4`, radio = precisión de Android, típico 10–100 m) | Círculo del radio, leyenda "Ubicación del teléfono ±R m" (§30) |
 
 - En una **alerta** (SOS, caída) con ubicación aproximada, decirle al monitorista que la ubicación no es GPS y mostrar el círculo. Si después llega el GPS, la ubicación se actualiza sola.
-- Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena; el 3 "última válida" ya no llega desde el 6/11/2026, ver §27; `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1 o 2.
+- Campos en monitoreo, historial y reportes de posiciones: `fuentePosicion` (0 GPS, 1 WiFi, 2 antena; el 3 "última válida" ya no llega desde el 6/11/2026, ver §27; `null` = no informado: cámaras y AVL, tratarlos como GPS) y `radioM` (metros). Circulo cuando `fuentePosicion` es 1, 2 o 4 (4 = teléfono, desde el 08/11, §30).
 
 ## 16. Órdenes de servicio, etapa 2: programación, código y autorizaciones
 
@@ -651,4 +653,42 @@ Cambios en springGeoloc y en el socket del reloj (FA100S). **El contrato no camb
 
 - Evaluación con el historial del reloj contra GPS: con el radio anterior (~1 km), el reloj estaba dentro del círculo de la antena solo el 44 % de las veces. Ahora el radio de una antena es de **al menos 1,800 m** y el reloj cae dentro el 81 % (WiFi: 92 %; torre: 88 %).
 - En el mapa, las posiciones por antena (`fuentePosicion = 2`) se verán con un círculo más grande. Es lo correcto: el círculo dice dónde puede estar, no hay que achicarlo.
+
+## 30. Teléfonos con la app de rastreo 3.0 (08/11/2026)
+
+La app de rastreo de la fuerza de ventas (Android) pasa del servidor web legacy a un socket propio (springTrackPhone), para varios clientes. Los teléfonos siguen siendo dispositivos tipo **Teléfono** (4); los de la app 2.x conservan su IMEI. El cambio llega por fases: primero un piloto de 3 a 5 teléfonos.
+
+### Ubicación: `fuentePosicion = 4`
+
+| `fuentePosicion` | Qué es | `radioM` | Cómo mostrarlo |
+|---|---|---|---|
+| 0 | GPS del teléfono | precisión del GPS (3–30 m) | Punto normal |
+| 4 | **Ubicación del teléfono** (Android la calcula con WiFi, antenas y GPS cuando puede; no se sabe si fue GPS) | precisión de Android, típico 10–100 m | Círculo del radio, leyenda "Ubicación del teléfono ±R m". Si `radioM` ≤ 30, punto normal |
+| 1 / 2 | WiFi / antena (springGeoloc), cuando Android no dio ubicación | igual que en relojes (§15) | Igual que en relojes |
+
+- En el teléfono `radioM` siempre viene, también con GPS: sirve para decidir el tamaño del círculo.
+- Sin ubicación medida no llega posición (regla de §27): el teléfono sigue vivo, pero no hay punto nuevo. Mostrar la última con su hora ("hace X min").
+- Un reporte que llegó tarde (el teléfono estuvo sin datos) entra con su hora real (`fechaHora`), no la de llegada: el historial queda en orden aunque llegue después.
+
+### Pantalla del dispositivo Teléfono: alta de la app
+
+En el detalle de un dispositivo tipo Teléfono con cliente, agregar una tarjeta **"App de rastreo"**:
+
+| Acción | Endpoint | Roles |
+|---|---|---|
+| Ver estado | `GET /dispositivos/:id/telefono-app` → `data: { estado, ultimoAt, modelo, appVersion, intervaloSeg }` o `null` (nunca dado de alta) | 1–5 |
+| **Generar código de alta** | `POST /dispositivos/:id/telefono-app/codigo-alta` → `data: { codigo, venceAt, imei }` | 1–5 |
+| Dar de baja la app | `POST /dispositivos/:id/telefono-app/baja` | 1–3 |
+
+- El código (`ABCD-EF23`) se muestra **una sola vez**, grande, con un QR del mismo texto y la hora en que vence (24 h). El vendedor lo teclea o lo escanea en la app.
+- Generar otro código anula el anterior. Sirve para cambiar de aparato: al usar el código nuevo en otro teléfono, el anterior deja de reportar.
+- `estado`: `pendiente` (código generado, sin usar), `activo`, `baja`. Mostrar `ultimoAt` como "último reporte hace X min" y la versión de la app.
+- Errores: `400` el dispositivo no es teléfono o no tiene cliente; `502` el socket no respondió (reintentar).
+
+### Comandos al teléfono
+
+En la instalación del teléfono, como los del reloj (§23):
+
+- `POST /instalaciones/:id/telefono/comandos` con `{ tipo: 'UBICAR' }` (ubicar ahora), `{ tipo: 'INTERVALO', intervaloSeg: 60 }` (30–3600), `{ tipo: 'ESTADO' }` (permisos, batería y versión en el resultado) o `{ tipo: 'SMS', pin?, numeros? }` (respaldo por SMS). Roles 1–5.
+- `GET /instalaciones/:id/telefono/comandos`: lista con estatus. El teléfono lo recibe en su siguiente reporte (a lo más un intervalo) y lo confirma en el que sigue; los eventos de Socket.IO son los mismos que los de los comandos del reloj (§25).
 

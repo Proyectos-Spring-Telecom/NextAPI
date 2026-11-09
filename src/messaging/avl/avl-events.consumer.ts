@@ -5,6 +5,7 @@ import { QUEUE_LABEL } from '../core/rabbitmq-queue-labels';
 import { Fa100sEventsConsumer } from '../fa100s/fa100s-events.consumer';
 import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
+import { PhoneEventsConsumer } from '../phone/phone-events.consumer';
 
 export type AvlExpectedKind = 'position' | 'alarm';
 
@@ -24,6 +25,7 @@ export class AvlEventsConsumer {
     private readonly jt808: Jt808EventsConsumer,
     private readonly jimi: JimiEventsConsumer,
     private readonly fa100s: Fa100sEventsConsumer,
+    private readonly phone: PhoneEventsConsumer,
     private readonly metrics: RabbitMqMetricsService,
   ) {}
 
@@ -62,6 +64,8 @@ export class AvlEventsConsumer {
       await this.jimi.consume(msg);
     } else if (protocol === 'fa100s') {
       await this.fa100s.consume(msg);
+    } else if (protocol === 'phone' && expectedKind === 'position') {
+      await this.phone.consume(msg);
     } else {
       throw new Error(
         `protocol=${String(protocol)} inválido para cola avl (${routingKey})`,

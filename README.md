@@ -78,6 +78,7 @@ Se validan con Joi al arrancar (`src/app.module.ts`); si falta una obligatoria, 
 | Ingest de paneles | `GATEWAY_HMAC_SECRET` (mín. 16) · `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` | `GATEWAY_HMAC_SECRET` |
 | Integración CRM | `CRM_HMAC_SECRET` (sin él, `/api/integracion/*` responde 503) · `CRM_ID_USUARIO` (usuario de Next para la bitácora y el alta de clientes del CRM) | No |
 | Webhooks / Trackcam | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`, `TRACKCAM_WEBHOOK_URL`, `TRACKCAM_GATEWAY_URL` | No |
+| App de teléfonos | `TRACKPHONE_URL`, `TRACKPHONE_WEBHOOK_SECRET` | No |
 | RabbitMQ | `RABBITMQ_ENABLED`, `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST`, `RABBITMQ_EXCHANGE`, `RABBITMQ_DLX` | No (con default) |
 | Colas | `RABBITMQ_QUEUE_AXPRO_*`, `RABBITMQ_QUEUE_AVL_*`, `RABBITMQ_PREFETCH*` | No (con default) |
 | Consumidor | `RABBITMQ_MAX_RETRIES`, `RABBITMQ_HEARTBEAT`, `RABBITMQ_RECONNECT_MAX_DELAY`, `RABBITMQ_MAX_CONCURRENT_DB`, `RABBITMQ_DB_RETRY_MAX_DELAY_MS`, `RABBITMQ_DB_HOLD_MAX_MS`, `CONSUMER_WATCHDOG_MINUTES`, `QUEUE_IDLE_WARN_SECONDS`, `DEVICE_LOOKUP_CACHE_TTL_SEC` | No (con default) |

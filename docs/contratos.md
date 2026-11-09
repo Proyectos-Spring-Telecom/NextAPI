@@ -342,7 +342,7 @@ Exchange: `telemetry` (topic). DLX: `telemetry.dlx`. Prefijo código: `src/messa
 
 | Grupo | Cola | Bindings | DLQ (routing key) |
 |-------|------|----------|-------------------|
-| AVL posiciones (JT808 + Jimi + FA100S) | `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
+| AVL posiciones (JT808 + Jimi + FA100S + teléfonos) | `telemetry.avl.events` | `jt808.position`, `jimi.position`, `fa100s.position`, `phone.position` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
 | AVL alarmas (JT808 + Jimi + FA100S) | `telemetry.avl.alarms` | `jt808.alarm.*`, `jimi.alarm.*`, `fa100s.alarm.*` | `telemetry.avl.dlq` (`telemetry.avl.failed`) |
 | AX PRO eventos | `telemetry.axpro.events` | `axpro.event` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
 | AX PRO heartbeats | `telemetry.axpro.heartbeats` | `axpro.heartbeat` | `telemetry.axpro.dlq` (`telemetry.axpro.failed`) |
@@ -363,12 +363,13 @@ Colas retiradas (ya sin consumer): `telemetry.jt808.events`, `telemetry.jimi.eve
 ```
 
 - Headers: `protocol` y `kind` (tienen prioridad sobre el body), `deviceId` opcional. `message_id` = `eventId`.
-- `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms; FA100S además acepta `alarm_location` en alarms); `protocol` ∉ {`jt808`, `jimi`, `fa100s`} → DLQ.
+- `kind` debe coincidir con la cola (`position` → events, `alarm` → alarms; FA100S además acepta `alarm_location` en alarms); `protocol` ∉ {`jt808`, `jimi`, `fa100s`, `phone`} → DLQ (`phone` solo en events).
 - **Jimi:** lookup `payload.Imei || deviceId` → `Dispositivos.Imei` (estatus 1 o 2). Alarm AMQP solo SOS (`jimi.alarm.*`).
 - **Sin GPS válido (6/11/2026):** `Lat`/`Lng` pueden llegar en `null` los dos (springTrackGas con `gpsFixed=0`, misma regla que JT808 y FA100S). No va a `Posiciones`: auditoría en `TelemetryIngestLog` y, si es alerta, incidente sin ubicación.
 - **Tiempo detenido (4/5/6, 6/11/2026):** cuenta desde el encendido del periodo continuo de ignición actual, después del último movimiento. Es movimiento una velocidad > 5 o llegar a más de 200 m de la posición anterior (un traslado corto puede no traer ningún reporte con velocidad). Motor apagado → Estado 0.
 - **Alertas repetidas:** con el incidente abierto, la misma alerta a menos de 60 s del último seguimiento automático no agrega otro (el pánico no se agrupa).
 - **FA100S (relojes, springFA100S):** lookup por `Dispositivos.Imei` (`deviceId` = IMEI de 15 dígitos; dar de alta el reloj como Rastreador). `position` → `Posiciones`; sin GPS llega con la última posición válida y `positionValid=false`. `alarm` (SOS 5, caída 35, pulsera 36, ritmo 37, batería 3) → auditoría; la alarma se ve por la posición con su `IdEvento` y `Estado=2`. `alarm_location` (por `fa100s.alarm.*`) corrige `Lat/Lng` de la posición de la alarma (mismo Imei, `FechaHora` e `IdEvento`) sin crear otra ni abrir otro incidente; si la alarma no llegó a `Posiciones`, se inserta. Sin alta → `TelemetryHuerfanos` (`protocol=fa100s`). Código: `src/messaging/fa100s/`.
+- **Teléfonos (springTrackPhone, 08/11/2026):** app de rastreo Android para varios clientes, por HTTPS al socket. Solo `phone.position`, siempre con `Lat`/`Lng` medidas en ese reporte (sin medición el socket no publica nada). `FuentePosicion`: 0 GPS, 1 WiFi, 2 antena (springGeoloc), **4 teléfono** (ubicación fusionada o por red de Android, no se sabe si fue GPS); `RadioM` siempre (precisión de Android o radio de springGeoloc). `payload.phone`: `reporteId`, `origen`, `proveedor`, `precisionM`, `medidaEn`, `diferida` (llegó más de 5 min tarde desde la cola del teléfono), `wifi`, `celdas`, `idCliente`, `app`. Lookup por `Dispositivos.Imei` (dispositivo tipo Teléfono, 4): el IMEI real de la app 2.x o uno sintético `99…` (15 dígitos con Luhn). Sin alta → `TelemetryHuerfanos` (`protocol=phone`). El alta de la app en el teléfono: `POST /dispositivos/:id/telefono-app/codigo-alta` (§14.3). Código: `src/messaging/phone/`.
 - Payload Jimi position: `IdEvento` (number), `Lat`/`Lng` (number) y `FechaHora` (`YYYY-MM-DD HH:mm:ss` o `YYYY-MM-DDTHH:mm:ss`, hora de pared) obligatorios.
 
 ### 12.2 Publicador Server_Socket (`jimi.position`)
@@ -493,6 +494,7 @@ Los sockets no filtran equipos (salvo TrackCam, que tiene registro propio): **Ne
 | `jt808` (TrackCam) | `NumeroSerie` | No existe en `Dispositivos` con estatus ACTIVO/ASIGNADO (`no_registrado`) o no tiene IMEI (`sin_imei`) |
 | `jimi` (TrackGas) | IMEI | Igual, buscando por `Dispositivos.Imei` |
 | `fa100s` (Reloj) | IMEI | Igual que `jimi`, buscando por `Dispositivos.Imei` |
+| `phone` (Teléfono) | IMEI | Igual que `jimi`, buscando por `Dispositivos.Imei` |
 | `axpro` (Panel) | Cuenta SIA | No hay `PanelAlarma` activo. El evento sigue guardándose en `EventoAlarma` con `Estatus=0`; el heartbeat se descarta |
 
 - Upsert por `Protocol + DeviceId`: primera y última vez, número de mensajes, último routing key y última posición si la trae.
@@ -507,7 +509,7 @@ Cada pieza entra con su propio usuario y solo puede lo que necesita (`deploy/rab
 | Usuario | configure | write | read | Quién |
 |---------|-----------|-------|------|-------|
 | `backend` | `^telemetry.*` | `^telemetry.*` | `^telemetry.*` | NextAPI: declara toda la topología |
-| `sock_trackcam` · `sock_trackgas` · `sock_panel` · `sock_fa100s` · `sock_s18` | `^$` | `^telemetry$` | `^telemetry\.commands\.<protocolo>$` (`jt808`, `jimi`, `axpro`, `fa100s`, `s18`) | Cada socket: publica telemetría y acks; solo lee su cola de comandos |
+| `sock_trackcam` · `sock_trackgas` · `sock_panel` · `sock_fa100s` · `sock_s18` · `sock_trackphone` | `^$` | `^telemetry$` | `^telemetry\.commands\.<protocolo>$` (`jt808`, `jimi`, `axpro`, `fa100s`, `s18`, `phone`) | Cada socket: publica telemetría y acks; solo lee su cola de comandos |
 | `sock_sion` | `^$` | `^telemetry$` | `^$` | Server_Socket de Sion (.NET): publica `jimi.position` por 5671 con TLS; reemplaza a `avl` |
 | `sentinela` (tag `monitoring`) | `^$` | `^$` | `^$` | Vigía de springfieldDev: lee el API de administración local (15672) |
 
@@ -517,7 +519,7 @@ Cada pieza entra con su propio usuario y solo puede lo que necesita (`deploy/rab
 | Política | Colas | Tope | Al llenarse |
 |----------|-------|------|-------------|
 | `dlq-tope` | `^telemetry\..+\.dlq$` | 50 000 mensajes o 100 MB | `drop-head`: se pierde lo más viejo |
-| `comandos-tope` | `^telemetry\.commands\.(jt808\|jimi\|axpro\|fa100s\|s18)$` | 10 000 | `reject-publish`: NextAPI recibe el rechazo (confirmaciones) y el comando sigue `pendiente` |
+| `comandos-tope` | `^telemetry\.commands\.(jt808\|jimi\|axpro\|fa100s\|s18\|phone)$` | 10 000 | `reject-publish`: NextAPI recibe el rechazo (confirmaciones) y el comando sigue `pendiente` |
 
 Las colas de ingesta (`avl.*`, `axpro.*`, `commands.acks`) no tienen tope: perder datos es peor que acumularlos. Las vigila el vigía (`~/ops/vigia/vigia.sh`, cada 2 min): sin consumidor o más de 2 000 por procesar → alta; comandos sin recoger > 1 000 → media; mensajes nuevos en una DLQ → media (a lo más cada 30 min); DLQ al 80 % del tope → alta.
 
@@ -573,6 +575,21 @@ Tipo `RELOJ INTELIGENTE` (`CatTipoDispositivo.Id = 7`, ya existe en producción)
 - Ingesta: aplica geocerca; **no** aplica estados de tiempo detenido (son para vehículos).
 - **Ubicación sin GPS:** `Posiciones` y `UltimaPosicion` traen `FuentePosicion` (0 GPS, 1 WiFi, 2 antena celular; 3 "última válida" ya no se publica desde el 6/11/2026; NULL = no informado, cámaras y AVL) y `RadioM` (radio en metros de la ubicación aproximada). Las calcula springGeoloc en spPenta0m con las redes WiFi y antenas que ve el reloj. **Solo coordenadas medidas** (regla 9 de springSocketKit, 6/11/2026): ningún socket manda la última posición conocida ni coordenadas de relleno. Una trama sin ubicación medida no entra a `Posiciones` (el reloj manda la alarma con `Lat`/`Lng` null; la TrackCam, posición/foto con `Lat`/`Lng` null cuando la cámara no tiene GPS): queda en `TelemetryIngestLog`, sus fotos/videos en `Fotos`/`Videos`, y si es alerta abre el incidente sin ubicación (`IdPosicion` NULL, `DatosOrigen.sinUbicacion = true`); la siguiente posición medida de esa alerta se liga al incidente. Salen en el monitoreo, el historial y los reportes de posiciones como `fuentePosicion` / `radioM`. El front dibuja un círculo con `radioM` cuando `fuentePosicion` es 1 o 2. DDL: `deploy/sql/PosicionesFuente.sql`.
 - **Pendiente:** que el socket aplique esta configuración al reloj. Hoy `springFA100S` usa valores globales de su `.env` (`FA100S_UPLOAD_INTERVAL_SEC`, `FA100S_GPS_WAKE_SEC`); la configuración por reloj queda guardada para cuando exista el canal Next → socket (springTrackCam `docs/cambios-back-next.md` §10.2).
+
+### 14.3 Teléfonos con la app de rastreo (springTrackPhone, 08/11/2026)
+
+El teléfono es un dispositivo tipo **Teléfono** (`CatTipoDispositivo.Id = 4`) con su cliente; se da de alta con el CRUD genérico `/dispositivos` (los de la app 2.x ya existen con su IMEI real). La app 3.0 se activa con un código de un solo uso que da el socket; ya no se teclea el IMEI.
+
+| Ruta | Roles | Qué hace |
+|---|---|---|
+| `GET /dispositivos/:id/telefono-app` | 1–5 | Estado en el socket: `estado` (pendiente, activo, baja), `ultimoAt`, `modelo`, `appVersion`, `intervaloSeg`; `data: null` si nunca se dio de alta |
+| `POST /dispositivos/:id/telefono-app/codigo-alta` | 1–5 | `data.codigo` (`ABCD-EF23`, 24 h, un solo uso), `venceAt`, `imei`. Anula el anterior; al canjearlo en otro aparato el anterior deja de reportar. Sin IMEI, el socket asigna uno (`99…`) y se guarda en el dispositivo |
+| `POST /dispositivos/:id/telefono-app/baja` | 1–3 | El token del teléfono deja de valer al momento |
+| `POST /instalaciones/:id/telefono/comandos` | 1–5 | `{ tipo: INTERVALO \| UBICAR \| ESTADO \| SMS, intervaloSeg?, pin?, numeros? }`; llega en la respuesta del siguiente reporte |
+| `GET /instalaciones/:id/telefono/comandos` | 1–5 | Últimos 100 comandos con su estatus |
+
+- NextAPI llama al socket por `TRACKPHONE_URL` (`/webhooks/next`, síncrono) con la firma HMAC del webhook de TrackCam y `TRACKPHONE_WEBHOOK_SECRET`.
+- Ingesta y validez de cada posición: §12.1 (Teléfonos).
 
 ### 14.1 Órdenes de servicio (`/ordenes-servicio`)
 
@@ -636,6 +653,7 @@ NextAPI **emite**; no recibe webhooks de negocio de Shift/Trackcam.
 | Destino | Config | Eventos |
 |---------|--------|---------|
 | Trackcam | `TRACKCAM_WEBHOOK_URL` + `WEBHOOK_SECRET` | `trackcam.created`, `trackcam.updated` |
+| TrackPhone (síncrono, §14.3) | `TRACKPHONE_URL` + `TRACKPHONE_WEBHOOK_SECRET` | `telefono.alta`, `telefono.codigo`, `telefono.baja`, `telefono.consultar` |
 | Genéricos (Shift, …) | `WEBHOOK_SUBSCRIBERS` (URLs coma) + `WEBHOOK_SECRET` | `vehiculo.created`, `vehiculo.updated`, `vehiculo.deleted`, `cliente.created`, `cliente.updated` |
 
 Firma HMAC-SHA256 sobre objeto sin `signature` (orden: `event` → `timestamp` → `tenantId` → `entityId` → `data`). Fallo de entrega **no** revierte el CRUD local.
@@ -667,6 +685,7 @@ Validadas con Joi en `app.module.ts`.
 | `THROTTLE_VALIDATE_FACE_LIMIT` / `THROTTLE_VALIDATE_FACE_TTL_MS` | No | Rate limit de `POST /auth/validateFace` |
 | `GATEWAY_API_KEY`, `SIA_OFFLINE_THRESHOLD_MS` | No (— / 600000) | Ingest paneles / offline |
 | `WEBHOOK_SUBSCRIBERS`, `WEBHOOK_SECRET`, `TRACKCAM_WEBHOOK_URL`, `TRACKCAM_GATEWAY_URL` | No | Webhooks / proxy |
+| `TRACKPHONE_URL`, `TRACKPHONE_WEBHOOK_SECRET` | No | Alta de la app en teléfonos (§14.3) |
 | `RABBITMQ_ENABLED` | No (false) | Activa consumers |
 | `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST`, `RABBITMQ_HEARTBEAT` | No (127.0.0.1 / 5672 / backend / '' / / / 60) | Conexión |
 | `RABBITMQ_EXCHANGE`, `RABBITMQ_DLX` | No (telemetry / telemetry.dlx) | Exchanges |

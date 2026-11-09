@@ -13,6 +13,7 @@ import { DispositivosController } from './dispositivos.controller';
 import { DispositivosService } from './dispositivos.service';
 import { PanelesModule } from './paneles/paneles.module';
 import { RelojesModule } from './relojes/relojes.module';
+import { TelefonosModule } from './telefonos/telefonos.module';
 import { TrackcamModule } from './trackcam/trackcam.module';
 
 @Module({
@@ -31,6 +32,7 @@ import { TrackcamModule } from './trackcam/trackcam.module';
     PanelesModule,
     TrackcamModule,
     RelojesModule,
+    TelefonosModule,
   ],
   controllers: [DispositivosController],
   providers: [DispositivosService],

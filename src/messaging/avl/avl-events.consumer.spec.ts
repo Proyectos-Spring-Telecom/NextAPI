@@ -11,6 +11,9 @@ jest.mock('../jimi/jimi-events.consumer', () => ({
 jest.mock('../fa100s/fa100s-events.consumer', () => ({
   Fa100sEventsConsumer: class {},
 }));
+jest.mock('../phone/phone-events.consumer', () => ({
+  PhoneEventsConsumer: class {},
+}));
 
 function buildMsg(opts: {
   routingKey: string;
@@ -28,6 +31,7 @@ describe('AvlEventsConsumer', () => {
   const jt808 = { consume: jest.fn().mockResolvedValue(undefined) };
   const jimi = { consume: jest.fn().mockResolvedValue(undefined) };
   const fa100s = { consume: jest.fn().mockResolvedValue(undefined) };
+  const phone = { consume: jest.fn().mockResolvedValue(undefined) };
   const metrics = { recordProtocol: jest.fn() };
   let consumer: AvlEventsConsumer;
 
@@ -37,6 +41,7 @@ describe('AvlEventsConsumer', () => {
       jt808 as never,
       jimi as never,
       fa100s as never,
+      phone as never,
       metrics as never,
     );
   });
@@ -229,5 +234,25 @@ describe('AvlEventsConsumer', () => {
     await expect(consumer.consume(deJt808, 'alarm')).rejects.toThrow('incoherente');
     expect(fa100s.consume).not.toHaveBeenCalled();
     expect(jt808.consume).not.toHaveBeenCalled();
+  });
+
+  it('phone position en cola events → delega a phone', async () => {
+    const msg = buildMsg({
+      routingKey: 'phone.position',
+      headers: { protocol: 'phone', kind: 'position', deviceId: '990123456789012' },
+      body: { protocol: 'phone', kind: 'position' },
+    });
+    await consumer.consume(msg, 'position');
+    expect(phone.consume).toHaveBeenCalledWith(msg);
+  });
+
+  it('phone en la cola de alarmas → inválido (el teléfono no manda alarmas)', async () => {
+    const msg = buildMsg({
+      routingKey: 'phone.alarm.sos',
+      headers: { protocol: 'phone', kind: 'alarm' },
+      body: { protocol: 'phone', kind: 'alarm' },
+    });
+    await expect(consumer.consume(msg, 'alarm')).rejects.toThrow('inválido');
+    expect(phone.consume).not.toHaveBeenCalled();
   });
 });
