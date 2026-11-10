@@ -14,3 +14,15 @@ ALTER TABLE `UltimaPosicion`
 
 ALTER TABLE `UltimaPosicion`
   ADD KEY `IX_UltimaPosicion_DetenidoDesde` (`DetenidoDesde`);
+
+-- Relleno para las unidades que ya están detenidas (sin esto, una que no
+-- vuelva a reportar, como LORD 021, nunca avanzaría): cuenta desde su último
+-- reporte. Es conservador (nunca pinta de más); el siguiente reporte lo
+-- corrige con el inicio real del tramo. Tipos 3 AVL, 5 TrackCam, 6 TrackGas.
+UPDATE `UltimaPosicion` u
+  JOIN `Dispositivos` d ON d.`Imei` = u.`Imei`
+   SET u.`DetenidoDesde` = u.`FechaHora`
+ WHERE u.`DetenidoDesde` IS NULL
+   AND u.`Estado` IN (0, 4, 5, 6)
+   AND IFNULL(u.`Velocidad`, 0) <= 5
+   AND d.`IdTipoDispositivo` IN (3, 5, 6);
