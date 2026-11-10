@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsString, MaxLength, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CorregirClienteInstalacionDto {
   @ApiProperty({ description: 'Cliente correcto.', example: 22 })
@@ -7,13 +7,16 @@ export class CorregirClienteInstalacionDto {
   @Min(1)
   idCliente: number;
 
-  @ApiProperty({
-    description: 'Vehículo (producto) del cliente correcto, disponible (1). Se da de alta antes en ese cliente.',
+  @ApiPropertyOptional({
+    description:
+      'Producto del cliente correcto, disponible (1). Sin él, se copia el producto actual a ese cliente ' +
+      '(un vehículo con la misma placa en el destino se reutiliza).',
     example: 1000210,
   })
+  @IsOptional()
   @IsInt()
   @Min(1)
-  idProducto: number;
+  idProducto?: number;
 
   @ApiProperty({ description: 'Por qué se corrige (error de captura).', example: 'Se capturó en el cliente equivocado' })
   @IsString()

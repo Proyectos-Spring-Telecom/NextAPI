@@ -22,6 +22,11 @@ import { Dispositivos } from 'src/entities/Dispositivos';
 import { CatTipoDispositivo } from 'src/entities/CatTipoDispositivo';
 import { Sims } from 'src/entities/Sims';
 import { Productos } from 'src/entities/Productos';
+import { Vehiculos } from 'src/entities/Vehiculos';
+import { Activos } from 'src/entities/Activos';
+import { Inmuebles } from 'src/entities/Inmuebles';
+import { Personas } from 'src/entities/Personas';
+import { crearProductoBase } from 'src/productos/crear-producto.util';
 import { CatEstatusInstalacion } from 'src/entities/CatEstatusInstalacion';
 import { Usuarios } from 'src/entities/Usuarios';
 import { UsuariosInstalaciones } from 'src/entities/UsuariosInstalaciones';
@@ -94,6 +99,14 @@ import {
 
 /** Clase de una instalación sin equipo o de un tipo sin clase (fase C). */
 const CLASE_POR_OMISION = 'AVL';
+
+/** Tabla de detalle de cada tipo de producto, para copiarlo a otro cliente. */
+const DETALLE_POR_TIPO_PRODUCTO = {
+  [EnumTipoProducto.VEHICULO]: Vehiculos,
+  [EnumTipoProducto.ACTIVO]: Activos,
+  [EnumTipoProducto.INMUEBLE]: Inmuebles,
+  [EnumTipoProducto.PERSONA]: Personas,
+} as const;
 
 /**
  * Dos altas simultáneas de la misma clase en un vehículo: la segunda choca con
@@ -253,6 +266,50 @@ export class InstalacionesService {
     throw new BadRequestException(
       'El producto debe estar disponible (1), o instalado con equipos de otra clase',
     );
+  }
+
+  /**
+   * Copia el producto al cliente correcto (corregir cliente sin `idProducto`).
+   * No se mueve: las instalaciones anteriores lo amarran a su cliente (FK
+   * compuesta IdCliente, IdProducto). Un vehículo con la misma placa en el
+   * destino se reutiliza (UQ_Vehiculos_Cliente_Placa). Devuelve el Id destino.
+   */
+  private async copiarProductoACliente(
+    manager: EntityManager,
+    idProducto: number,
+    idCliente: number,
+    idUsuario: number,
+  ): Promise<number> {
+    const origen = await manager.findOne(Productos, { where: { id: idProducto } });
+    const Detalle = origen
+      ? DETALLE_POR_TIPO_PRODUCTO[Number(origen.idTipoProducto) as keyof typeof DETALLE_POR_TIPO_PRODUCTO]
+      : undefined;
+    const detalle = Detalle
+      ? await manager.findOne<Vehiculos | Activos | Inmuebles | Personas>(Detalle, {
+          where: { idProducto, idCliente: Number(origen!.idCliente) },
+        })
+      : null;
+    if (!origen || !Detalle || !detalle) {
+      throw new BadRequestException('No se encontraron los datos del producto para copiarlo al cliente correcto.');
+    }
+    if (Detalle === Vehiculos) {
+      const mismaPlaca = await manager.findOne(Vehiculos, {
+        where: { idCliente, placa: (detalle as Vehiculos).placa },
+        select: { idProducto: true },
+      });
+      if (mismaPlaca) return Number(mismaPlaca.idProducto);
+    }
+    const copia = await crearProductoBase(manager, {
+      idCliente,
+      idUsuario,
+      idTipoProducto: Number(origen.idTipoProducto),
+      nombre: origen.nombre,
+    });
+    // Solo las columnas: sin la relación al producto original.
+    const columnas = manager.getRepository(Detalle).metadata.columns.map((c) => c.propertyName);
+    const datos = Object.fromEntries(columnas.map((k) => [k, (detalle as unknown as Record<string, unknown>)[k]]));
+    await manager.insert(Detalle, { ...datos, idProducto: Number(copia.id), idCliente });
+    return Number(copia.id);
   }
 
   /** Clase del equipo (CatTipoDispositivo.Clase); sin equipo, la clase por omisión. */
@@ -1469,7 +1526,7 @@ export class InstalacionesService {
     const resultado = await this.dataSource.transaction(async (manager) => {
       const actual = await manager.findOne(Instalaciones, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!actual) throw new NotFoundException('No se encontró la instalación solicitada.');
-      await this.bloquearProductos(manager, Number(actual.idProducto), Number(dto.idProducto));
+      await this.bloquearProductos(manager, Number(actual.idProducto), dto.idProducto);
       if (Number(actual.estatus) !== EstatusEnum.ACTIVO) {
         throw new BadRequestException('Solo se corrige el cliente de una instalación activa.');
       }
@@ -1481,7 +1538,6 @@ export class InstalacionesService {
         throw new BadRequestException('IdCliente no existe');
       }
       const clase = actual.clase || CLASE_POR_OMISION;
-      const productoDestino = await this.validarProductoDisponibleParaAsignar(dto.idProducto, destino, manager, clase);
       // Una orden de servicio abierta sobre esta instalación ya no podría cerrarse.
       const abierta = await manager.findOne(OrdenesServicio, {
         where: { idInstalacion: Number(actual.id), estatus: In(['programada', 'borrador']) },
@@ -1492,6 +1548,12 @@ export class InstalacionesService {
           `La instalación tiene la orden de servicio ${Number(abierta.id)} abierta: ciérrela o cancélela antes de corregir el cliente.`,
         );
       }
+
+      // Después de las demás validaciones, para no copiar el producto si la corrección no procede.
+      const idProductoDestino =
+        dto.idProducto ?? (await this.copiarProductoACliente(manager, Number(actual.idProducto), destino, idUser));
+      if (dto.idProducto == null) await this.bloquearProductos(manager, idProductoDestino);
+      const productoDestino = await this.validarProductoDisponibleParaAsignar(idProductoDestino, destino, manager, clase);
 
       const ahora = nowMexicoCityAsUtcDate();
       const idDispositivo = actual.idDispositivo != null ? Number(actual.idDispositivo) : null;
@@ -1561,7 +1623,7 @@ export class InstalacionesService {
       const nueva = await manager.save(
         manager.create(Instalaciones, {
           idCliente: destino,
-          idProducto: dto.idProducto,
+          idProducto: idProductoDestino,
           idDispositivo,
           idSim,
           clase,
@@ -1574,7 +1636,7 @@ export class InstalacionesService {
       );
       await this.motor.mover(
         manager,
-        { tipo: 'producto', id: Number(dto.idProducto), idCliente: destino, esperado: Number(productoDestino.estatus), nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
+        { tipo: 'producto', id: idProductoDestino, idCliente: destino, esperado: Number(productoDestino.estatus), nuevo: EstatusRecurso.INSTALADO, accion: 'instalacion' },
         this.contexto(idUser, Number(nueva.id), undefined, nota),
       );
       await this.asignarInstalacionUsuariosPorDefecto(manager, Number(nueva.id), destino);

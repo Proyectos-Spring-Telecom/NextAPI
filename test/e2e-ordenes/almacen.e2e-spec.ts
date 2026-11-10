@@ -171,6 +171,26 @@ describe('Corregir instalación', () => {
       `IdCliente|${C.idClienteNext} (instalación ${s.inst})|${D.idClienteNext}`,
     );
   });
+
+  it('sin idProducto copia el producto al cliente correcto; si allí hay un vehículo con la misma placa, lo reutiliza', async () => {
+    const vehD = Number(sql(`SELECT IdProducto FROM Instalaciones WHERE Id = ${s.instD}`));
+    const antes = Number(sql(`SELECT COUNT(*) FROM Productos`));
+    const r = ok(await op('PATCH', `/instalaciones/${s.instD}/corregir-cliente`, { idCliente: C.idClienteNext, motivo: 'Regresa al cliente original' }), 'corregir sin producto');
+    const instC = Number(r.data.id);
+    const copia = Number(sql(`SELECT IdProducto FROM Instalaciones WHERE Id = ${instC}`));
+    expect(copia).not.toBe(vehD);
+    expect(Number(sql(`SELECT COUNT(*) FROM Productos`))).toBe(antes + 1);
+    expect(sql(`SELECT CONCAT(IdCliente, '|', Placa) FROM Vehiculos WHERE IdProducto = ${copia}`)).toBe(`${C.idClienteNext}|ALM0003`);
+    expect(sql(`SELECT CONCAT(IdCliente, '|', Placa) FROM Vehiculos WHERE IdProducto = ${vehD}`)).toBe(`${D.idClienteNext}|ALM0003`);
+    expect([estatus('Productos', copia), estatus('Productos', vehD)]).toEqual([2, 1]);
+    expect(ultimoMovimiento('producto', copia)).toBe(`instalacion|${C.idClienteNext}|${C.idClienteNext}`);
+
+    const r2 = ok(await op('PATCH', `/instalaciones/${instC}/corregir-cliente`, { idCliente: D.idClienteNext, motivo: 'Otra vez a D' }), 'corregir a placa existente');
+    expect(Number(sql(`SELECT IdProducto FROM Instalaciones WHERE Id = ${Number(r2.data.id)}`))).toBe(vehD);
+    expect(Number(sql(`SELECT COUNT(*) FROM Productos`))).toBe(antes + 1);
+    expect([estatus('Productos', copia), estatus('Productos', vehD)]).toEqual([1, 2]);
+    s.instD = Number(r2.data.id);
+  });
 });
 
 describe('Saneamiento (deploy/sql/SaneamientoFaseB.sql)', () => {

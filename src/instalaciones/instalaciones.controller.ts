@@ -242,7 +242,8 @@ export class InstalacionesController {
     description:
       'Roles 1–4, con motivo. Cierra el periodo en el cliente actual (lo transmitido hasta ahora se queda con ese ' +
       'cliente) y regresa su vehículo a activo; el dispositivo y la SIM siguen instalados y pasan al cliente correcto, ' +
-      'en una instalación nueva con el vehículo indicado (`idProducto`, disponible en ese cliente; se da de alta antes). ' +
+      'en una instalación nueva con el producto indicado (`idProducto`, disponible en ese cliente). Sin `idProducto` se copia ' +
+      'el producto actual a ese cliente (un vehículo con la misma placa allí se reutiliza), en la misma transacción. ' +
       'Las asignaciones de usuarios de la instalación anterior no se trasladan; las geocercas se quedan con el vehículo anterior. Queda en ' +
       '`CorreccionesInstalacion` y en el historial de cada recurso. Responde el id de la instalación nueva.',
   })
