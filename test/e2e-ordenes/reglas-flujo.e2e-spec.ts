@@ -126,6 +126,17 @@ describe('No cumplida y cancelar', () => {
     expect(det.faltantesParaCerrar).toEqual([]);
     ok(await a.app('POST', `/ordenes-servicio/${o.id}/cerrar`), 'cerrar sin paro de motor');
   });
+
+  it('una prueba fallida se vuelve a pedir y el operador la valida de nuevo', async () => {
+    // 10/11 (Andrea): "Volver a solicitar" el botón de pánico fallido daba 500.
+    const o = await iniciada();
+    ok(await a.app('POST', `/ordenes-servicio/${o.id}/pruebas/boton_panico/solicitar`, { observaciones: 'Botón de pánico 11:31' }), 'pedir');
+    ok(await a.monitoreo('POST', `/ordenes-servicio/${o.id}/pruebas/boton_panico/validar`, { correcta: false, observaciones: 'No llega' }), 'fallida');
+    ok(await a.app('POST', `/ordenes-servicio/${o.id}/pruebas/boton_panico/solicitar`, { observaciones: 'Otra vez' }), 'volver a pedir');
+    const pendientes = ok(await a.monitoreo('GET', '/ordenes-servicio/pruebas-pendientes'), 'pendientes').data as any[];
+    expect(pendientes.find((p) => p.id === o.id && p.prueba === 'boton_panico')).toMatchObject({ notaTecnico: 'Otra vez' });
+    ok(await a.monitoreo('POST', `/ordenes-servicio/${o.id}/pruebas/boton_panico/validar`, { correcta: true }), 'correcta');
+  });
 });
 
 describe('Lo que muestran la App y el front', () => {

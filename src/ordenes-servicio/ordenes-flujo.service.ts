@@ -626,8 +626,11 @@ export class OrdenesFlujoService {
     const orden = await this.ordenEditable(id, user);
     this.exigirEstatus(orden, [ESTATUS_ORDEN.BORRADOR], 'pedir pruebas de');
     await this.validarClavePrueba(clave);
-    await this.pruebasRepo.save(
-      this.pruebasRepo.create({
+    // Volver a pedirla (fallida o ya validada) reescribe la misma fila: la
+    // llave es (orden, clave). Con save() TypeORM insertaba otra y daba 500
+    // (10/11, "Volver a solicitar" en la App).
+    await this.pruebasRepo.upsert(
+      {
         idOrdenServicio: Number(orden.id),
         clave,
         estatus: ESTATUS_PRUEBA.SOLICITADA,
@@ -638,7 +641,8 @@ export class OrdenesFlujoService {
         idUsuarioValido: null,
         nombreValido: null,
         notaOperador: null,
-      }),
+      },
+      ['idOrdenServicio', 'clave'],
     );
     await this.bitacora(`Prueba ${clave} pedida al operador en ${this.folio(orden)}`, 'UPDATE', { id, clave }, { tipo: 'usuario', user });
     return this.ok(orden, clave === 'paro_motor' ? 'Paro de motor pedido al operador' : 'Prueba pedida al operador');
