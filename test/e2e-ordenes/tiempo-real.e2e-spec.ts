@@ -295,13 +295,23 @@ describe('Alerta de un equipo sin ubicación medida', () => {
     expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/· sin ubicación$/);
   });
 
-  it('la ubicación posterior por GPS se guarda como posición y se liga al incidente', async () => {
-    await alarma('alarm_location', 19.4282, '2026-11-06 17:35:59', { alarmEventId: hex() });
+  it('la ubicación posterior por antena se liga al incidente; un GPS dentro de la ventana la reemplaza', async () => {
+    // 10/11: caída del cliente sin GPS; la trama siguiente traía antenas (±1.1 km).
+    const alarmEventId = hex();
+    await alarma('alarm_location', 19.428975, '2026-11-06 17:35:59', { alarmEventId, FuentePosicion: 2, RadioM: 1110, positionValid: false });
     await esperar(() => incidente().split('|')[2] !== 'NULL');
     const idPosicion = Number(sql(`SELECT MAX(Id) FROM Posiciones WHERE Imei = '${imei}'`));
-    expect(idPosicion).toBeGreaterThan(0);
+    expect(sql(`SELECT CONCAT(FuentePosicion, '|', RadioM) FROM Posiciones WHERE Id = ${idPosicion}`)).toBe('2|1110');
     expect(incidente()).toMatch(new RegExp(`^1\\|1\\|${idPosicion}\\|`));
-    expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/^Ubicación de la alerta: .+ubicación 19\.428200, -99\.190000/);
+    expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/^Ubicación de la alerta: .+ubicación 19\.428975, -99\.190000 \(aproximada por antena, ±1110 m\)/);
+
+    await alarma('alarm_location', 19.4282, '2026-11-06 17:35:59', { alarmEventId });
+    await esperar(() => sql(`SELECT FuentePosicion FROM Posiciones WHERE Id = ${idPosicion}`) === '0');
+    expect(Number(sql(`SELECT COUNT(*) FROM Posiciones WHERE Imei = '${imei}'`))).toBe(1);
+    expect(sql(`SELECT CONCAT(Lat, '|', IFNULL(RadioM, 'NULL')) FROM Posiciones WHERE Id = ${idPosicion}`)).toBe('19.4282|NULL');
+    expect(incidente()).toMatch(new RegExp(`^1\\|1\\|${idPosicion}\\|`));
+    await esperar(() => /^Ubicación GPS de la alerta:/.test(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)));
+    expect(sql(`SELECT si.Actividad FROM SeguimientoIncidentes si JOIN Incidentes i ON i.Id = si.IdIncidente WHERE JSON_UNQUOTE(JSON_EXTRACT(i.DatosOrigen, '$.imei')) = '${imei}' ORDER BY si.Id DESC LIMIT 1`)).toMatch(/^Ubicación GPS de la alerta: .+ubicación 19\.428200, -99\.190000 · posición/);
   });
 
   it('una posición de cámara sin GPS no va a Posiciones; su foto sí se guarda, y sin instalación no abre incidente', async () => {

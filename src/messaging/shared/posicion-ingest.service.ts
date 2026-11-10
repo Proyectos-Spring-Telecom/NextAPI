@@ -235,7 +235,7 @@ export class PosicionIngestService {
       return this.ingestPosition(req);
     }
     const original = await this.dataSource.getRepository(Posiciones).findOne({
-      select: { id: true },
+      select: { id: true, fuentePosicion: true },
       where: { imei: req.imei, fechaHora, idEvento },
       order: { id: 'DESC' },
     });
@@ -247,7 +247,7 @@ export class PosicionIngestService {
       const logged = await this.tryInsertIngestLog(manager, req);
       if (logged.duplicate) return logged;
 
-      // La ubicación posterior es GPS: también corrige el origen y el radio.
+      // También corrige el origen y el radio (aproximada → GPS).
       const ubicacion = {
         lat,
         lng,
@@ -270,6 +270,11 @@ export class PosicionIngestService {
 
     if (!result.duplicate) {
       void this.monitoreoGateway.notificarImei(req.imei);
+      const antes = original.fuentePosicion != null ? Number(original.fuentePosicion) : null;
+      const ahora = req.posicion.fuentePosicion ?? FuentePosicion.GPS;
+      if ((antes === FuentePosicion.WIFI || antes === FuentePosicion.ANTENA) && ahora === FuentePosicion.GPS) {
+        void this.incidentesAuto.ubicacionGpsDeAlerta(Number(original.id));
+      }
     }
     return result;
   }

@@ -58,6 +58,9 @@ describe('incidentes-alerta.util', () => {
     expect(
       seguimientoAlertaRepetida(2, 35, { id: 1633421, lat: 18.953261, lng: -99.235965 }),
     ).toBe('Nueva alerta: Caída · ubicación 18.953261, -99.235965 · posición 1633421');
+    expect(
+      seguimientoAlertaRepetida(2, 35, { id: 7, lat: 19.428975, lng: -99.19395, fuentePosicion: 2, radioM: 1110 }),
+    ).toBe('Nueva alerta: Caída · ubicación 19.428975, -99.193950 (aproximada por antena, ±1110 m) · posición 7');
     expect(seguimientoAlertaRepetida(10, null, { id: 9, lat: 0, lng: 0 })).toBe(
       'Nueva alerta: Falta de energía · sin ubicación · posición 9',
     );

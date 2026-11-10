@@ -99,7 +99,7 @@ export function etiquetaEstadoPosicion(estado: unknown): string | null {
 export function seguimientoAlertaRepetida(
   estado: unknown,
   idEvento: unknown,
-  posicion: { id: number | string; lat: unknown; lng: unknown },
+  posicion: { id: number | string; lat: unknown; lng: unknown; fuentePosicion?: unknown; radioM?: unknown },
 ): string {
   const etiqueta = descripcionAlertaAutomatica(estado, idEvento).replace(
     'Alerta automática: ',
@@ -109,9 +109,17 @@ export function seguimientoAlertaRepetida(
   const lng = Number(posicion.lng);
   const ubicacion =
     Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
-      ? `ubicación ${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      ? `ubicación ${lat.toFixed(6)}, ${lng.toFixed(6)}${aproximada(posicion.fuentePosicion, posicion.radioM)}`
       : 'sin ubicación';
   return `Nueva alerta: ${etiqueta} · ${ubicacion} · posición ${posicion.id}`;
+}
+
+/** Ubicación por WiFi, antena o teléfono: el monitorista ve que es aproximada y su radio. */
+function aproximada(fuente: unknown, radioM: unknown): string {
+  const origen = ({ 1: 'WiFi', 2: 'antena', 4: 'teléfono' } as Record<number, string>)[Number(fuente)];
+  if (fuente == null || !origen) return '';
+  const radio = Number(radioM);
+  return ` (aproximada por ${origen}${radioM != null && Number.isFinite(radio) ? `, ±${Math.round(radio)} m` : ''})`;
 }
 
 /** Descripción del incidente creado automáticamente por una alerta. */

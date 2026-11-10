@@ -82,6 +82,39 @@ export class IncidentesAutoService {
     @Optional() private readonly monitoreoGateway?: MonitoreoGateway,
   ) {}
 
+  /**
+   * La alerta tenía una ubicación aproximada (WiFi o antena) y llegó su GPS
+   * (alarm_location): la posición ya se corrigió; el incidente abierto que la
+   * usa recibe un seguimiento con la ubicación precisa.
+   */
+  async ubicacionGpsDeAlerta(posicionId: number): Promise<void> {
+    try {
+      const fila = await this.incidentesRepo.findOne({
+        select: { id: true },
+        where: { idPosicion: posicionId, estatus: EstatusIncidente.ABIERTO },
+      });
+      const posicion = fila ? await this.posicionesRepo.findOne({ where: { id: posicionId } }) : null;
+      if (!fila || !posicion) return;
+      await this.seguimientosRepo.save(
+        this.seguimientosRepo.create({
+          idIncidente: Number(fila.id),
+          idUsuario: null,
+          fechaHora: posicion.fechaHora,
+          actividad: seguimientoAlertaRepetida(posicion.estado, posicion.idEvento, posicion).replace(
+            'Nueva alerta:',
+            'Ubicación GPS de la alerta:',
+          ),
+          medio: MEDIO_SEGUIMIENTO_ALERTA,
+        }),
+      );
+      void this.monitoreoGateway?.notificarImei(String(posicion.imei));
+    } catch (error) {
+      this.logger.warn(
+        `[IncidenteAuto] no se pudo agregar la ubicación GPS posicion=${posicionId}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
   async registrarDesdePosicion(
     posicionId: number,
     imeiRaw: string,
