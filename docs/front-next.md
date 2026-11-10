@@ -623,7 +623,16 @@ Reporte de Monitoreo del 06/11: la unidad 41 (NV4064B) salía "Detenido más de 
 ### Tiempo detenido (Estado 4, 5 y 6)
 
 - **Llegar a otro punto reinicia el conteo.** Ahora también es movimiento llegar a más de 200 m de la posición anterior, aunque ningún reporte traiga velocidad. Antes solo contaba una velocidad mayor a 5 km/h, y un traslado corto entre dos reportes (la unidad 41 avanzó 800 m) no reiniciaba el tiempo.
-- **Apagar el motor reinicia el conteo.** Cuenta desde el último encendido sin interrupción. Con el motor apagado la unidad queda en Detenido (Estado 0, gris), aunque lleve horas en el lugar.
+- ~~Apagar el motor reinicia el conteo.~~ **Cambió el 10/11** (ver abajo).
+
+### Tiempo detenido a su hora (10/11/2026)
+
+Reporte de Monitoreo del 10/11: LORD 021, estacionada con el motor apagado desde las 09:29, seguía en gris a las 13:02. El front no cambia código.
+
+- **Con el motor apagado también cuenta.** Una unidad estacionada pasa a amarillo (30 min), naranja (60) y rojo (90).
+- **El color avanza solo, cada minuto**, sin esperar el siguiente reporte, y también si la unidad deja de reportar. Llega por `monitoreo:actualizacion` y `consola:actualizacion`, que el front ya escucha.
+- El GPS que marca 1–5 km/h con la unidad parada cuenta como detenida, y una unidad que nunca se ha movido cuenta desde su primera posición.
+- Solo cambia la última posición (mapa y consola). El histórico conserva el estado con el que llegó cada reporte.
 - Las posiciones guardadas antes del 06/11 conservan el estado con el que se calcularon.
 
 ### Alertas repetidas en un incidente abierto

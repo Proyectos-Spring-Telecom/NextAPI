@@ -122,6 +122,14 @@ export class UltimaPosicion {
   @Column('smallint', { name: 'RadioM', nullable: true, unsigned: true })
   radioM: number | null;
 
+  /**
+   * Inicio del tiempo detenido de la última posición (AVL/TrackCam/TrackGas en
+   * Estado 0/4/5/6); null en movimiento o alerta. Con él el proceso de cada
+   * minuto (TiempoDetenidoScheduler) avanza 0 → 4 → 5 → 6 sin esperar posiciones.
+   */
+  @Column('datetime', { name: 'DetenidoDesde', nullable: true })
+  detenidoDesde: Date | null;
+
   @OneToOne(() => Dispositivos, (d) => d.ultimaPosicion, {
     onDelete: 'NO ACTION',
     onUpdate: 'CASCADE',

@@ -19,8 +19,10 @@ export type AplicarTiempoDetenidoInput = {
 };
 
 /**
- * Solo AVL/TRACKCAM/TRACKGAS, y solo si Estado=0 y Velocidad=0.
- * Cualquier otro estado (alertas prioritarias, circulando, NULL) → no recalcular.
+ * Solo AVL/TRACKCAM/TRACKGAS, y solo si Estado=0 y Velocidad ≤ 5 (la regla
+ * de movimiento es > 5: el GPS marca 1–5 km/h estando parado). Velocidad
+ * null cuenta como 0. Cualquier otro estado (alertas prioritarias,
+ * circulando, NULL) → no recalcular.
  */
 export function debeAplicarTiempoDetenido(
   input: AplicarTiempoDetenidoInput,
@@ -33,11 +35,8 @@ export function debeAplicarTiempoDetenido(
   if (input.estado == null || Number(input.estado) !== EnumEstadoTiempoDetenido.DETENIDO) {
     return false;
   }
-  if (input.velocidad == null) {
-    return false;
-  }
-  const vel = Number(input.velocidad);
-  return Number.isFinite(vel) && vel === 0;
+  const vel = Number(input.velocidad ?? 0);
+  return Number.isFinite(vel) && vel <= VELOCIDAD_EN_MOVIMIENTO_MIN;
 }
 
 /** Minutos detenidos → 0 | 4 | 5 | 6. */
@@ -60,22 +59,19 @@ export type PuntoTramoDetenido = {
   fechaHora: Date | string;
   lat: number | null;
   lng: number | null;
-  ignicion: number | null;
 };
 
 /**
- * Desde cuándo se cuenta el tiempo detenido (regla SION: detenido con motor
- * encendido). `puntos` son las posiciones posteriores al último movimiento
- * con velocidad, en orden, y la última es la actual.
+ * Desde cuándo se cuenta el tiempo detenido. `puntos` son las posiciones
+ * posteriores al último movimiento con velocidad, en orden, y la última es
+ * la actual.
  * - Llegar a más de 200 m de la posición anterior también es movimiento: el
  *   equipo reporta cada pocos minutos y puede no mandar ningún punto con
  *   velocidad en un traslado corto (6/11/2026, unidad 41: 800 m sin
  *   velocidad y salió "detenido más de 30 min" a los 5 min).
- * - El conteo empieza en el encendido del periodo continuo de ignición que
- *   llega hasta la posición actual: apagar el motor lo reinicia.
- * - Motor apagado en la posición actual → null: Detenido (0, gris).
- * Ignición null no corta el periodo; en la posición actual vale la última
- * conocida.
+ * - La ignición no cuenta (10/11/2026, Monitoreo): una unidad estacionada
+ *   con el motor apagado también pasa a 30/60/90 min. Antes, con la regla
+ *   SION de motor encendido, LORD 021 se quedaba en gris horas.
  */
 export function inicioConteoDetenido(
   puntos: PuntoTramoDetenido[],
@@ -98,14 +94,7 @@ export function inicioConteoDetenido(
     }
   }
 
-  let inicio: number | null = null;
-  for (let i = puntos.length - 1; i >= desde; i--) {
-    const ignicion = puntos[i].ignicion;
-    if (ignicion == null) continue;
-    if (Number(ignicion) !== 1) break;
-    inicio = i;
-  }
-  return inicio == null ? null : puntos[inicio].fechaHora;
+  return puntos[desde].fechaHora;
 }
 
 export function minutosEntre(

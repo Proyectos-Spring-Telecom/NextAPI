@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
-import { EstatusEnum } from 'src/common/estatus.enum';
+import { EstatusEnum, TIPOS_DISPOSITIVO_TIEMPO_DETENIDO } from 'src/common/estatus.enum';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
@@ -159,7 +159,7 @@ export class PosicionIngestService {
         posicionData,
       );
 
-      await this.aplicarTiempoDetenidoSiCorresponde(
+      const detenidoDesde = await this.aplicarTiempoDetenidoSiCorresponde(
         manager,
         req.imei,
         req.idTipoDispositivo,
@@ -175,6 +175,7 @@ export class PosicionIngestService {
 
       const insertResult = await manager.insert(Posiciones, posicionData);
       const posicionId = Number(insertResult.identifiers[0]?.id);
+      await this.guardarDetenidoDesde(manager, req.imei, req.idTipoDispositivo, posicionData.fechaHora, detenidoDesde);
 
       await manager.update(
         TelemetryIngestLog,
@@ -384,18 +385,21 @@ export class PosicionIngestService {
   }
 
   /**
-   * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad=0 (AVL/TRACKCAM/TRACKGAS).
+   * Prioridad Sion: solo si ya quedó Estado=0 y Velocidad ≤ 5 (AVL/TRACKCAM/TRACKGAS).
    * Otros estados (alertas / geocerca) se conservan.
-   * Los minutos se cuentan desde el encendido del periodo continuo de ignición
-   * actual, después del último movimiento (velocidad o llegada a más de 200 m);
-   * motor apagado → Estado 0. Ver `inicioConteoDetenido`.
+   * Los minutos se cuentan desde el último movimiento (velocidad o llegada a
+   * más de 200 m), con el motor encendido o apagado; sin movimiento en el
+   * historial, desde la posición más antigua del tramo. Ver
+   * `inicioConteoDetenido`. Devuelve ese inicio (o null si no aplica) para
+   * `UltimaPosicion.DetenidoDesde`: con él el proceso de cada minuto avanza
+   * el color sin esperar la siguiente posición.
    */
   private async aplicarTiempoDetenidoSiCorresponde(
     manager: EntityManager,
     imei: string,
     idTipoDispositivo: number | null | undefined,
     posicionData: Partial<Posiciones>,
-  ): Promise<void> {
+  ): Promise<Date | string | null> {
     if (
       !debeAplicarTiempoDetenido({
         idTipoDispositivo,
@@ -403,12 +407,12 @@ export class PosicionIngestService {
         velocidad: posicionData.velocidad,
       })
     ) {
-      return;
+      return null;
     }
 
     const fechaActual = posicionData.fechaHora;
     if (fechaActual == null) {
-      return;
+      return null;
     }
 
     const ultimaMovimiento = await this.buscarUltimaFechaEnMovimiento(
@@ -416,9 +420,6 @@ export class PosicionIngestService {
       imei,
       fechaActual,
     );
-    if (!ultimaMovimiento) {
-      return;
-    }
 
     const tramo = await this.buscarTramoDetenido(
       manager,
@@ -432,27 +433,41 @@ export class PosicionIngestService {
         fechaHora: fechaActual,
         lat: posicionData.lat ?? null,
         lng: posicionData.lng ?? null,
-        ignicion: posicionData.ignicion ?? null,
       },
     ]);
     if (!inicioConteo) {
-      return;
+      return null;
     }
 
     const minutos = minutosEntre(inicioConteo, fechaActual);
     if (minutos == null) {
-      return;
+      return null;
     }
 
     const estadoNuevo = estadoPorMinutosDetenido(minutos);
-    if (estadoNuevo === Number(posicionData.estado)) {
-      return;
+    if (estadoNuevo !== Number(posicionData.estado)) {
+      this.logger.debug(
+        `[PosicionIngest] tiempoDetenido imei=${imei} minutos=${minutos.toFixed(1)} → Estado=${estadoNuevo}`,
+      );
+      posicionData.estado = estadoNuevo;
     }
+    return inicioConteo;
+  }
 
-    this.logger.debug(
-      `[PosicionIngest] tiempoDetenido imei=${imei} minutos=${minutos.toFixed(1)} → Estado=${estadoNuevo}`,
-    );
-    posicionData.estado = estadoNuevo;
+  /**
+   * Inicio del conteo en la última posición del equipo (null si esta posición
+   * es de movimiento o alerta). Solo si esta posición quedó como la última:
+   * una atrasada no toca `UltimaPosicion` (trigger trg_pos_after_ins_ult).
+   */
+  private async guardarDetenidoDesde(
+    manager: EntityManager,
+    imei: string,
+    idTipoDispositivo: number | null | undefined,
+    fechaHora: Date | string | null | undefined,
+    detenidoDesde: Date | string | null,
+  ): Promise<void> {
+    if (fechaHora == null || !TIPOS_DISPOSITIVO_TIEMPO_DETENIDO.includes(Number(idTipoDispositivo))) return;
+    await manager.update(UltimaPosicion, { imei, fechaHora }, { detenidoDesde: detenidoDesde as Date | null });
   }
 
   /** Última posición del IMEI en movimiento (Velocidad > 5 o Estado = 1) antes de fechaActual. */
@@ -479,38 +494,37 @@ export class PosicionIngestService {
 
   /**
    * Posiciones guardadas después del último movimiento con velocidad y antes
-   * de la actual, en orden (las más recientes si son muchas). Solo lectura;
-   * usa IMEI + FechaHora.
+   * de la actual, en orden (las más recientes si son muchas). Sin movimiento
+   * en el historial (`desde` null: unidad que no se ha movido desde que
+   * transmite), las más recientes. Solo lectura; usa IMEI + FechaHora.
    */
   private async buscarTramoDetenido(
     manager: EntityManager,
     imei: string,
-    desde: Date | string,
+    desde: Date | string | null,
     fechaActual: Date | string,
   ): Promise<PuntoTramoDetenido[]> {
-    const rows = await manager
+    const query = manager
       .createQueryBuilder(Posiciones, 'p')
       .select('p.fechaHora', 'fechaHora')
       .addSelect('p.lat', 'lat')
       .addSelect('p.lng', 'lng')
-      .addSelect('p.ignicion', 'ignicion')
       .where('p.imei = :imei', { imei })
-      .andWhere('p.fechaHora > :desde', { desde })
-      .andWhere('p.fechaHora < :fechaActual', { fechaActual })
+      .andWhere('p.fechaHora < :fechaActual', { fechaActual });
+    if (desde != null) query.andWhere('p.fechaHora > :desde', { desde });
+    const rows = await query
       .orderBy('p.fechaHora', 'DESC')
       .limit(TRAMO_DETENIDO_MAX_POSICIONES)
       .getRawMany<{
         fechaHora: Date | string;
         lat: number | string | null;
         lng: number | string | null;
-        ignicion: number | string | null;
       }>();
 
     return rows.reverse().map((r) => ({
       fechaHora: r.fechaHora,
       lat: r.lat == null ? null : Number(r.lat),
       lng: r.lng == null ? null : Number(r.lng),
-      ignicion: r.ignicion == null ? null : Number(r.ignicion),
     }));
   }
 

@@ -377,12 +377,58 @@ describe('GPS de flota (jimi): tiempo detenido, alertas repetidas y sin GPS', ()
     expect(estadoEn('2026-11-06 22:04:00')).toBe(4);
   });
 
-  it('con el motor apagado vuelve a Detenido (0), y al encender cuenta desde ese encendido', async () => {
+  it('con el motor apagado también cuenta (10/11, LORD 021), y 3 km/h estando parada es detenida', async () => {
     await posicion('2026-11-06 22:05:00', { Lat: 18.8948, Lng: -99.133087, Ignicion: 0, IdEvento: Number(EnumCatEventos.IGNICION_OFF) });
-    expect(estadoEn('2026-11-06 22:05:00')).toBe(0);
-    await posicion('2026-11-06 22:20:00', { Lat: 18.8948, Lng: -99.133087, IdEvento: Number(EnumCatEventos.IGNICION_ON) });
-    await posicion('2026-11-06 22:45:00', { Lat: 18.8948, Lng: -99.133087 });
-    expect(estadoEn('2026-11-06 22:45:00')).toBe(0);
+    expect(estadoEn('2026-11-06 22:05:00')).toBe(4);
+    await posicion('2026-11-06 23:05:00', { Lat: 18.8948, Lng: -99.133087, Ignicion: 0, Velocidad: 3 });
+    expect(estadoEn('2026-11-06 23:05:00')).toBe(6);
+  });
+
+  it('una unidad que nunca se ha movido cuenta desde su primera posición', async () => {
+    const otro = String(Number(imei) + 1);
+    sql(`INSERT INTO Dispositivos (IdCliente, IdTipoDispositivo, NumeroSerie, Imei, Estatus) VALUES (${C.idClienteNext}, 6, 'GPS${otro.slice(-9)}', '${otro}', 1)`);
+    const idDispositivo = Number(sql(`SELECT Id FROM Dispositivos WHERE Imei = '${otro}'`));
+    const vehiculo = Number(ok(await op('POST', '/productos/vehiculos', { idCliente: C.idClienteNext, placa: 'TRE0J42' }), 'producto').data.id);
+    ok(await op('POST', '/instalaciones', { idCliente: C.idClienteNext, idProducto: vehiculo, idDispositivo }), 'instalar');
+    const quieta = (fechaHora: string) =>
+      jimi().handleEnvelope(
+        {
+          eventId: hex(), protocol: 'jimi', kind: 'position', deviceId: otro, receivedAt: new Date().toISOString(),
+          payload: {
+            Imei: otro, Lat: 18.9, Lng: -99.2, Estado: 0, FechaHora: fechaHora, Velocidad: 0, Direccion: 0, Odometro: null,
+            Ignicion: 0, Alarma1: null, Alarma2: null, Energia: null, IdEvento: Number(EnumCatEventos.TRANSMISION), IdFoto: null,
+            Bateria: null, Alimentacion: null, GPS: null, GSM: null, Movimiento: 1, Combustible: null,
+          },
+        },
+        'jimi.position',
+      );
+    await quieta('2026-11-06 08:00:00');
+    await quieta('2026-11-06 09:05:00');
+    expect(Number(sql(`SELECT Estado FROM Posiciones WHERE Imei = '${otro}' AND FechaHora = '2026-11-06 09:05:00'`))).toBe(5);
+  });
+
+  it('el proceso de cada minuto avanza el color sin esperar posiciones y nunca toca una alerta', async () => {
+    const tiempo = () => servicio('src/monitoreo/tiempo-detenido.scheduler', 'TiempoDetenidoScheduler');
+    const ultima = () => sql(`SELECT CONCAT(Estado, '|', IFNULL(DetenidoDesde, 'NULL')) FROM UltimaPosicion WHERE Imei = '${imei}'`);
+    const mx = (t: string) => new Date(`${t}Z`); // hora de pared de México, como nowMexicoCityAsUtcDate
+    await posicion('2026-11-06 23:20:00', { Velocidad: 50, Estado: 1, Movimiento: 2 });
+    expect(ultima()).toBe('1|NULL');
+    await posicion('2026-11-06 23:30:00', {});
+    expect(ultima()).toBe('0|2026-11-06 23:30:00');
+    expect(await tiempo().recalcular(mx('2026-11-06T23:59:00'))).not.toContain(imei);
+    expect(await tiempo().recalcular(mx('2026-11-07T00:00:00'))).toContain(imei);
+    expect(ultima()).toBe('4|2026-11-06 23:30:00');
+    await tiempo().recalcular(mx('2026-11-07T01:01:00'));
+    expect(ultima()).toBe('6|2026-11-06 23:30:00');
+    expect(estadoEn('2026-11-06 23:30:00')).toBe(0); // el histórico conserva su estado
+    expect(await tiempo().recalcular(mx('2026-11-07T01:30:00'))).not.toContain(imei);
+
+    await posicion('2026-11-07 01:31:00', { Velocidad: 40, Estado: 1, Movimiento: 2 });
+    expect(ultima()).toBe('1|NULL');
+    await posicion('2026-11-07 01:35:00', { IdEvento: Number(EnumCatEventos.HELP_ME), Estado: 2 });
+    expect(ultima()).toBe('2|NULL');
+    await tiempo().recalcular(mx('2026-11-07T05:00:00'));
+    expect(ultima()).toBe('2|NULL');
   });
 
   it('la misma alerta repetida en menos de 60 s no agrega otro seguimiento', async () => {

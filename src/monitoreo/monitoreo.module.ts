@@ -12,6 +12,7 @@ import { MonitoreoController } from './monitoreo.controller';
 import { MonitoreoGateway } from './monitoreo.gateway';
 import { MonitoreoService } from './monitoreo.service';
 import { TrackcamGatewayClient } from './trackcam-gateway.client';
+import { TiempoDetenidoScheduler } from './tiempo-detenido.scheduler';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { TrackcamGatewayClient } from './trackcam-gateway.client';
     }),
   ],
   controllers: [MonitoreoController],
-  providers: [MonitoreoService, MonitoreoGateway, TrackcamGatewayClient],
+  providers: [MonitoreoService, MonitoreoGateway, TrackcamGatewayClient, TiempoDetenidoScheduler],
   exports: [MonitoreoService, MonitoreoGateway],
 })
 export class MonitoreoModule {}
