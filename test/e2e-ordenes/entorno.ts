@@ -56,8 +56,8 @@ export class S3Falso {
 
 /** Correo simulado: guarda lo que se hubiera enviado. */
 export class CorreoFalso {
-  readonly enviados: Array<{ para: string[]; asunto: string; adjuntos?: Array<{ filename: string; content: Buffer }> }> = [];
-  async enviar(c: { para: string[]; asunto: string; adjuntos?: Array<{ filename: string; content: Buffer }> }) {
+  readonly enviados: Array<{ para: string[]; asunto: string; html?: string; adjuntos?: Array<{ filename: string; content: Buffer; contentType?: string }> }> = [];
+  async enviar(c: { para: string[]; asunto: string; html?: string; adjuntos?: Array<{ filename: string; content: Buffer; contentType?: string }> }) {
     this.enviados.push(c);
   }
   async sendConfirmationEmail() {}

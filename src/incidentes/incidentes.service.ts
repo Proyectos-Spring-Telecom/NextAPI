@@ -12,6 +12,8 @@ import { TramosInstalacionService } from 'src/motor-activos/tramos-instalacion.s
 import { posicionEnTramos } from 'src/motor-activos/tramos-instalacion';
 import { fechaPared } from 'src/utils/datetime-mexico.util';
 import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
+import { MailService } from 'src/mail/mail.service';
+import { isEmail } from 'class-validator';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -72,6 +74,38 @@ type WhereIncidentes =
 /** Medios de los seguimientos que guarda el reporte final. */
 export const MEDIO_SEGUIMIENTO_RESULTADO = 'Resultado final';
 export const MEDIO_SEGUIMIENTO_CIERRE = 'Cierre';
+/** Seguimiento que deja el envío del reporte por correo (también en un incidente cerrado). */
+export const MEDIO_SEGUIMIENTO_CORREO = 'Correo';
+const MAX_CORREOS_REPORTE = 5;
+const MAX_PDF_REPORTE = 10 * 1024 * 1024;
+
+/** Correos separados por coma o punto y coma, sin espacios ni repetidos; 1 a 5 válidos o 400. */
+export function correosDeReporte(texto: string | undefined): string[] {
+  const correos = [
+    ...new Set(
+      String(texto ?? '')
+        .split(/[,;]/)
+        .map((c) => c.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const invalidos = correos.filter((c) => !isEmail(c));
+  if (invalidos.length) throw new BadRequestException(`Correo no válido: ${invalidos.join(', ')}`);
+  if (correos.length < 1 || correos.length > MAX_CORREOS_REPORTE) {
+    throw new BadRequestException(`Indica de 1 a ${MAX_CORREOS_REPORTE} correos`);
+  }
+  return correos;
+}
+
+/** Texto plano del monitorista → HTML: escapado y con sus saltos de línea. */
+export function mensajeHtml(texto: string): string {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\r?\n/g, '<br>');
+}
 
 @Injectable()
 export class IncidentesService {
@@ -94,6 +128,7 @@ export class IncidentesService {
     private readonly bitacoraLogger: BitacoraLoggerService,
     private readonly tenantFilter: TenantFilterService,
     private readonly tramos: TramosInstalacionService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -750,6 +785,68 @@ export class IncidentesService {
     );
     const [data] = await this.mapConUnidad([entity], true);
     return { data };
+  }
+
+  /**
+   * Envía por correo el "Reporte de incidencia" que generó Consola (PDF del
+   * front, no se vuelve a generar). Solo finalizado y visible para el usuario
+   * (mismo alcance que el detalle); queda un seguimiento "Correo" con los
+   * destinatarios aunque el incidente esté cerrado. Roles 1–5 (controlador).
+   */
+  async enviarCorreo(
+    id: number,
+    file: Express.Multer.File | undefined,
+    dto: { correos: string; asunto?: string; mensaje?: string },
+    idClienteToken: number,
+    rol: number,
+    idUser: number,
+  ): Promise<ApiCrudResponse & { data: { id: number; correos: string[] } }> {
+    const correos = correosDeReporte(dto.correos);
+    if (!file?.buffer?.length) throw new BadRequestException('Adjunta el PDF del reporte (file)');
+    if (file.size > MAX_PDF_REPORTE) throw new BadRequestException('El PDF pesa más de 10 MB');
+    if (file.mimetype !== 'application/pdf' || file.buffer.subarray(0, 4).toString('latin1') !== '%PDF') {
+      throw new BadRequestException('El archivo debe ser un PDF');
+    }
+    const entity = await this.findVisibleOrFail(id, idClienteToken, rol, idUser);
+    if (Number(entity.estatus) !== EstatusIncidente.CERRADO) {
+      throw new BadRequestException('Solo se envía un incidente finalizado');
+    }
+
+    const numero = Number(entity.id);
+    const mensaje =
+      dto.mensaje?.trim() ||
+      `Buen día.\n\nLe compartimos el reporte de la incidencia #${numero}; el detalle va en el PDF adjunto.\n\nQuedamos a sus órdenes.\nSpring Telecom`;
+    await this.mailService.enviar({
+      para: correos,
+      asunto: dto.asunto?.trim() || `Reporte de incidencia #${numero}`,
+      html: `<p>${mensajeHtml(mensaje)}</p>`,
+      adjuntos: [{ filename: `reporte-incidencia-${numero}.pdf`, content: file.buffer, contentType: 'application/pdf' }],
+    });
+
+    await this.seguimientoRepo.save(
+      this.seguimientoRepo.create({
+        idIncidente: numero,
+        idUsuario: Number.isFinite(idUser) && idUser > 0 ? idUser : null,
+        estatus: EstatusIncidente.ABIERTO,
+        fechaHora: nowMexicoCityAsUtcDate(),
+        actividad: `Reporte enviado por correo a ${correos.join(', ')}`,
+        medio: MEDIO_SEGUIMIENTO_CORREO,
+      }),
+    );
+    await this.bitacoraLogger.logToBitacora(
+      'Incidentes',
+      `Se envió por correo el reporte del incidente ID: ${numero}`,
+      'UPDATE',
+      { correos, asunto: dto.asunto ?? null },
+      idUser,
+      EnumModulos.REPORTES,
+      EstatusEnumBitcora.SUCCESS,
+    );
+    return {
+      status: 'success',
+      message: `Reporte enviado a ${correos.join(', ')}`,
+      data: { id: numero, nombre: nombreIncidente(entity), correos },
+    };
   }
 
   /**

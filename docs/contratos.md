@@ -541,6 +541,7 @@ Dominio distinto de alarmas GPS (`Posiciones.alarma1` / `idEvento`).
 - Una alerta = IMEI + `Estado`, y además `IdEvento` si es de incidente propio (SOS, caída, ritmo cardiaco, colisión, volcadura, GNSS, sobrecupo): cada uno tiene su incidente aunque compartan estado.
 - Si ya hay uno **abierto** de esa misma alerta no se abre otro: la alerta nueva se agrega como seguimiento (`Medio` = "Alerta automática", `IdUsuario` null, `FechaHora` = la de la posición) con el texto "Nueva alerta: <alerta> · ubicación <lat>, <lng> · posición <Id>".
 - Un incidente solo se cierra con `PATCH /incidentes/:id/finalizar` (o `PATCH /incidentes/estatus/:id`); no hay cierre automático.
+- **Reporte por correo** (10/11/2026): `POST /incidentes/:id/enviar-correo`, `multipart/form-data` con `file` (PDF que genera Consola; el back no lo vuelve a generar, máx. 10 MB, se valida `%PDF`), `correos` (1–5, coma o punto y coma), `asunto?`, `mensaje?` (texto plano; se escapa y los saltos de línea pasan a `<br>`). Roles 1–5, solo finalizado, mismo alcance que `GET /incidentes/:id`. Deja un seguimiento `medio = "Correo"` ("Reporte enviado por correo a …") con el usuario, aunque el incidente esté cerrado.
 - Qué eventos abren incidente propio y el catálogo completo por equipo: [catalogo-eventos.md](./catalogo-eventos.md).
 
 ---

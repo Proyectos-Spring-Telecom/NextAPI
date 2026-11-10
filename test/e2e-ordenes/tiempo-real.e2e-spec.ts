@@ -481,3 +481,55 @@ describe('Comandos de la consola de configuración', () => {
     expect(emitidos.filter((x) => x.evento === 'comando:actualizacion').map((x) => x.audiencia)).toEqual(['operacion_y_cliente', 'operacion_y_cliente']);
   });
 });
+
+describe('Reporte de incidencia por correo (POST /incidentes/:id/enviar-correo)', () => {
+  const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+  let id = 0;
+  const enviar = async (campos: Record<string, string>, archivo: Buffer | null = PDF, tipo = 'application/pdf', token = tokSa) => {
+    const fd = new FormData();
+    if (archivo) fd.append('file', new Blob([archivo], { type: tipo }), 'reporte.pdf');
+    for (const [k, v] of Object.entries(campos)) fd.append(k, v);
+    const r = await fetch(`${e.nextUrl}/incidentes/${id}/enviar-correo`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+    return { status: r.status, body: await r.json().catch(() => null) };
+  };
+
+  beforeAll(() => {
+    sql(`INSERT INTO Usuarios (Id, UserName, PasswordHash, EmailConfirmado, Nombre, IdRol, IdCliente, Estatus) VALUES (92, 'cli-tr@e2e.local', 'x', 1, 'Cliente', 6, ${C.idClienteNext}, 1)`);
+    sql(`INSERT INTO Incidentes (IdCliente, TipoOrigen, DatosOrigen, Descripcion, FechaInicio, Estatus)
+         VALUES (${C.idClienteNext}, 1, '{}', 'Prueba de correo', NOW(), 1)`);
+    id = Number(sql(`SELECT MAX(Id) FROM Incidentes WHERE Descripcion = 'Prueba de correo'`));
+  });
+
+  it('abierto → 400; rol de cliente → 403', async () => {
+    expect((await enviar({ correos: 'cliente@empresa.com' })).status).toBe(400);
+    const cliente = e.tokenNext({ id: 92, rol: 6 }, C.idClienteNext);
+    expect((await enviar({ correos: 'cliente@empresa.com' }, PDF, 'application/pdf', cliente)).status).toBe(403);
+  });
+
+  it('finalizado: valida correos y archivo, envía el PDF con el mensaje escapado y deja el seguimiento', async () => {
+    ok(await sa('PATCH', `/incidentes/${id}/finalizar`, { conclusion: 'Atendido' }), 'finalizar');
+    expect((await enviar({ correos: 'a@x.mx,b@x.mx,c@x.mx,d@x.mx,e@x.mx,f@x.mx' })).status).toBe(400);
+    expect((await enviar({ correos: 'mal-escrito' })).status).toBe(400);
+    expect((await enviar({ correos: 'a@x.mx' }, null)).status).toBe(400);
+    expect((await enviar({ correos: 'a@x.mx' }, Buffer.from('no es pdf'), 'application/pdf')).status).toBe(400);
+    expect((await enviar({ correos: 'a@x.mx' }, Buffer.alloc(10 * 1024 * 1024 + 1, 37))).status).toBe(400);
+
+    const antes = e.correo.enviados.length;
+    const r = await enviar({ correos: 'Cliente@Empresa.com; otro@empresa.com, cliente@empresa.com', mensaje: 'Hola <script>alert(1)</script>\nSaludos' });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ message: 'Reporte enviado a cliente@empresa.com, otro@empresa.com', data: { id, correos: ['cliente@empresa.com', 'otro@empresa.com'] } });
+    expect(e.correo.enviados).toHaveLength(antes + 1);
+    const correo = e.correo.enviados.at(-1)!;
+    expect(correo).toMatchObject({ para: ['cliente@empresa.com', 'otro@empresa.com'], asunto: `Reporte de incidencia #${id}` });
+    expect(correo.html).toBe('<p>Hola &lt;script&gt;alert(1)&lt;/script&gt;<br>Saludos</p>');
+    expect(correo.adjuntos?.[0]).toMatchObject({ filename: `reporte-incidencia-${id}.pdf`, contentType: 'application/pdf' });
+    expect(sql(`SELECT CONCAT(Medio, '|', Actividad, '|', IdUsuario) FROM SeguimientoIncidentes WHERE IdIncidente = ${id} ORDER BY Id DESC LIMIT 1`)).toBe(
+      `Correo|Reporte enviado por correo a cliente@empresa.com, otro@empresa.com|${SA.id}`,
+    );
+  });
+
+  it('incidente inexistente → 404', async () => {
+    id = 999999999;
+    expect((await enviar({ correos: 'a@x.mx' })).status).toBe(404);
+  });
+});

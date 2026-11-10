@@ -8,12 +8,17 @@ import {
   Post,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as multer from 'multer';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -27,6 +32,7 @@ import {
 import { ApiCrudResponse, ApiResponseCommon } from 'src/common/ApiResponse';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import {
+  EnumRoles,
   EstatusIncidente,
   TipoOrigenIncidente,
 } from 'src/common/estatus.enum';
@@ -35,6 +41,7 @@ import { RolesGuard } from 'src/guard/roles.guard';
 import { CreateIncidenteDto } from './dto/create-incidente.dto';
 import { CreateSeguimientoIncidenteDto } from './dto/create-seguimiento-incidente.dto';
 import { FinalizarIncidenteDto } from './dto/finalizar-incidente.dto';
+import { EnviarCorreoIncidenteDto } from './dto/enviar-correo-incidente.dto';
 import { UpdateIncidenteDto } from './dto/update-incidente.dto';
 import { IncidentesService } from './incidentes.service';
 
@@ -244,6 +251,52 @@ export class IncidentesController {
   ): Promise<ApiCrudResponse> {
     return this.service.finalizar(
       id,
+      dto,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+      Number(req.user.userId),
+    );
+  }
+
+  @Post(':id/enviar-correo')
+  @Roles(EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO)
+  @UseInterceptors(
+    // 11 MB: el servicio responde 400 "más de 10 MB" en lugar del 413 de multer.
+    FileInterceptor('file', { storage: multer.memoryStorage(), limits: { fileSize: 11 * 1024 * 1024 } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'correos'],
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'PDF "Reporte de incidencia" generado por Consola, máx. 10 MB' },
+        correos: { type: 'string', example: 'cliente@empresa.com, otro@empresa.com' },
+        asunto: { type: 'string', maxLength: 200 },
+        mensaje: { type: 'string', maxLength: 4000 },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: 'Enviar el reporte de incidencia (PDF) por correo',
+    description:
+      'Roles 1–5. Solo finalizado y visible para el usuario. Hasta 5 destinatarios (coma o punto y coma). ' +
+      'El mensaje es texto plano con saltos de línea. Queda un seguimiento "Correo" con los destinatarios.',
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Reporte enviado' })
+  @ApiBadRequestResponse({ description: 'Sin PDF, más de 10 MB, correos inválidos o más de 5, o incidente abierto' })
+  @ApiForbiddenResponse({ description: 'Rol distinto de 1 a 5' })
+  @ApiNotFoundResponse({ description: 'No encontrado o fuera de alcance' })
+  async enviarCorreo(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: EnviarCorreoIncidenteDto,
+    @Request() req,
+  ): Promise<ApiCrudResponse> {
+    return this.service.enviarCorreo(
+      id,
+      file,
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),

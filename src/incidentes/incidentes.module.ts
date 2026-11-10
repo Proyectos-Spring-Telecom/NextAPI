@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { MailModule } from 'src/mail/mail.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
@@ -24,6 +25,7 @@ import { IncidentesService } from './incidentes.service';
       Instalaciones,
     ]),
     BitacoraModule,
+    MailModule,
     TenantFilterModule,
   ],
   controllers: [IncidentesController],

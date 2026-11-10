@@ -334,6 +334,7 @@ Los incidentes automáticos (SOS, caída, alertas de vehículo) **solo se cierra
 |---|---|---|
 | **Finalizar reporte** (recomendado) | `PATCH /api/incidentes/:id/finalizar` | `{ "descripcion"?, "resultado"?, "conclusion"? }`, todos opcionales (máx. 1000 / 500 / 1000). `resultado` y `conclusion` quedan como seguimientos "Resultado final" y "Cierre". Si ya está cerrado → 400 |
 | Alternar abierto ↔ cerrado | `PATCH /api/incidentes/estatus/:id` | Sin body. Sirve para reabrir uno cerrado por error |
+| **Enviar el reporte por correo** (10/11/2026) | `POST /api/incidentes/:id/enviar-correo` | `multipart/form-data`: `file` (el PDF "Reporte de incidencia" que genera Consola, máx. 10 MB), `correos` (1 a 5, separados por coma o punto y coma), `asunto`? (máx. 200; por omisión "Reporte de incidencia #id"), `mensaje`? (texto plano con saltos de línea, máx. 4000). Roles 1–5; solo finalizado. Responde `"Reporte enviado a …"` y `data.correos`; queda un seguimiento `medio = "Correo"` con los destinatarios. 400: sin PDF, no es PDF, más de 10 MB, correos inválidos o más de 5, o incidente abierto; 404: fuera de alcance; 500: falló el SMTP |
 
 - Pedir al monitorista al menos el **resultado** (por ejemplo "Falsa alarma confirmada con el usuario") antes de finalizar.
 - Al finalizar, el incidente ya no admite seguimientos; la siguiente alerta de ese tipo abre un incidente nuevo.
