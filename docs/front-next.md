@@ -688,7 +688,7 @@ En el detalle de un dispositivo tipo Teléfono con cliente, agregar una tarjeta 
 | Acción | Endpoint | Roles |
 |---|---|---|
 | Ver estado | `GET /dispositivos/:id/telefono-app` → `data: { estado, ultimoAt, modelo, appVersion, intervaloSeg }` o `null` (nunca dado de alta) | 1–5 |
-| **Generar código de alta** | `POST /dispositivos/:id/telefono-app/codigo-alta` → `data: { codigo, venceAt, imei }` | 1–5 |
+| **Generar código de alta** | `POST /dispositivos/:id/telefono-app/codigo-alta` → `data: { codigo, venceAt, imei, estado }`. Con la app dada de baja, roles 1–3 la reactivan (queda `pendiente` hasta teclear el código); roles 4–5 reciben 409 | 1–5 |
 | Dar de baja la app | `POST /dispositivos/:id/telefono-app/baja` | 1–3 |
 
 - El código (`ABCD-EF23`) se muestra **una sola vez**, grande, con un QR del mismo texto y la hora en que vence (24 h). El vendedor lo teclea o lo escanea en la app.
