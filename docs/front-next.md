@@ -2,7 +2,7 @@
 
 **Para:** equipo del frontend de Next
 **Fuente:** NextAPI (`dev-isra`) y el gateway SpringTrackCam (dashcams Hikvision AE-DI5052-G40PRO)
-**Actualizado:** 06/11/2026
+**Actualizado:** 11/11/2026
 
 Lista de lo que el front debe cambiar o agregar, en orden de número. La App de instaladores tiene su propia guía: [app-instaladores.md](app-instaladores.md).
 
@@ -26,6 +26,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 28 | Tiempo detenido (se reinicia al llegar a otro punto o al apagar el motor) y alertas repetidas agrupadas en 60 s | Media: informativo | No |
 | 29 | Relojes (07/11): ubicación por torre cuando la antena no es conocida (menos huecos) y GPS al salir o llegar | Baja: informativo | No |
 | 30 | Teléfonos con la app de rastreo 3.0 (08/11): `fuentePosicion = 4`, código de alta de la app y comandos | Media: antes del piloto | No |
+| 31 | Alertas de IA de la TrackCam (ADAS/DSM): flujo, qué hace cada una y su configuración (11/11) | Media | No, pero los interruptores de IA de `TrackcamConfig` no cambian la cámara |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -703,3 +704,12 @@ En la instalación del teléfono, como los del reloj (§23):
 - `POST /instalaciones/:id/telefono/comandos` con `{ tipo: 'UBICAR' }` (ubicar ahora), `{ tipo: 'INTERVALO', intervaloSeg: 60 }` (30–3600), `{ tipo: 'ESTADO' }` (permisos, batería y versión en el resultado) o `{ tipo: 'SMS', pin?, numeros? }` (respaldo por SMS). Roles 1–5.
 - `GET /instalaciones/:id/telefono/comandos`: lista con estatus. El teléfono lo recibe en su siguiente reporte (a lo más un intervalo) y lo confirma en el que sigue; los eventos de Socket.IO son los mismos que los de los comandos del reloj (§25).
 
+## 31. Alertas de IA de la TrackCam: flujo y configuración (11/11/2026)
+
+Guía completa: [alertas-ia-trackcam.md](alertas-ia-trackcam.md). Lo esencial:
+
+- **Llegan como evento de la posición** (`idEvento` 12–31 y 51–60, §13) por `monitoreo:actualizacion` y `consola:actualizacion`. No hay endpoint aparte.
+- **Una alerta = un registro.** El gateway publica solo la primera de cada episodio: si el mismo código de la misma cámara se repite con menos de 60 s entre reportes, no llega otra vez. El front no puede calcular duraciones.
+- **Identificar la alerta por `idEvento`, no por `Estado`:** casi todas llegan con Estado 0/1, como una posición normal. Solo fatiga, celular y fumar traen 13.
+- **Sin foto ni incidente**, salvo el **sobrecupo** (20): Estado 3, incidente propio y foto de los canales 1 y 2. No mostrar "ver foto" en las demás.
+- **Configuración:** la IA (qué alertas, sensibilidad, velocidad mínima) se configura **en la cámara con HikDashcam**. Los interruptores y umbrales de IA de `TrackcamConfig` (`alarma*`, `umbral*`…) **solo se guardan; no llegan a la cámara**: ocultarlos o ponerlos en solo lectura con esa leyenda. De `TrackcamConfig` solo se aplican los canales activos. Los intervalos de reporte y la velocidad máxima se cambian en los parámetros de la cámara (§24).
