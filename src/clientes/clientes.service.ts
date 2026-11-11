@@ -24,8 +24,8 @@ import { TenantFilterService, type UsuarioAlcance } from 'src/common/tenant-filt
 import { WebhookEmitterService } from 'src/webhook-emitter/webhook-emitter.service';
 import { WebhookEvent } from 'src/webhook-emitter/interfaces/webhook-event.interface';
 
-/** Roles que dan de alta clientes bajo cualquier padre (SA, Dev, Admin). El rol 6, solo en su árbol. */
-const ROLES_ALTA_CLIENTE_GLOBAL: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
+/** Roles que dan de alta clientes bajo cualquier padre de su alcance (SA, Dev, Admin y, desde el 10/11/2026, Monitoreo). El rol 6, solo en su árbol. */
+const ROLES_ALTA_CLIENTE_GLOBAL: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.MONITOREO];
 
 @Injectable()
 export class ClientesService {
@@ -475,7 +475,7 @@ ORDER BY Id ASC
   // 🔹 PADRE DEL CLIENTE NUEVO
   // ========================================
   /**
-   * - Roles 1–3: cualquier padre de su alcance (por defecto 1).
+   * - Roles 1–3 y 5: cualquier padre de su alcance (por defecto 1).
    * - Rol 6: solo bajo un cliente de su árbol (por defecto el suyo).
    * - Otros roles: 403.
    */

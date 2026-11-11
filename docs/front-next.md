@@ -401,14 +401,15 @@ NextAPI cerró accesos que no revisaban el cliente del usuario ([diagnostico-mod
   - administran usuarios (crear, editar a otros, estatus, asignar instalaciones) los roles 1, 2, 3, **4 (solo monitoristas 5 y operadores 7)** y 6 (solo usuarios 9 de su árbol); los demás reciben 403: ocultar esas acciones;
   - **(03/11) el jefe de monitoreo (4) también asigna y quita instalaciones a usuarios de cliente (9)** (`POST /usuarios/asignacion/instalaciones`); a esos usuarios no los crea ni los edita: mostrarle solo la asignación de instalaciones;
   - **un 403 no es sesión vencida:** solo el 401 intenta renovar el token y, si falla, cierra la sesión; el 403 se muestra como aviso con el `message` del API y el usuario sigue en la pantalla;
+  - **(10/11) el monitorista (5) también administra usuarios de rol 5 a 9 de su alcance** (crear, editar, estatus, asignar instalaciones); a un rol 1–4 → 403;
   - nadie asigna un rol más alto que el suyo;
-  - **el jefe de monitoreo y el cliente solo pueden otorgar los permisos y soluciones que ellos mismos tienen** (403 si no): en el formulario, mostrar solo esos;
+  - **el jefe de monitoreo, el monitorista y el cliente solo pueden otorgar los permisos y soluciones que ellos mismos tienen** (403 si no): en el formulario, mostrar solo esos;
   - al editarse a sí mismo, nadie cambia su rol, cliente, permisos ni estatus.
 - **Inventario** (vehículos, activos, personas, inmuebles, dispositivos, TrackCam, relojes, paneles, SIM):
   - el detalle o la edición de algo ajeno → 404;
   - el alta en un cliente fuera del alcance → 403;
   - **administración y el rol 6 ya pueden editar lo de sus clientes hijos** (antes recibían 404).
-- **Clientes:** crean clientes los roles 1–3 y el 6 (este solo como hijo de su árbol); `GET /clientes/list/:cliente` ajeno → 404.
+- **Clientes:** crean clientes los roles 1–3, **el 5 (desde el 10/11)** con un `idPadre` de su alcance, y el 6 (solo como hijo de su árbol); `GET /clientes/list/:cliente` ajeno → 404.
 - `GET /sims/:id` ahora trae cliente, telefonía y plan, como el listado.
 
 

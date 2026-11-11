@@ -20,7 +20,8 @@ let B: Awaited<ReturnType<typeof clienteListo>>;
 const U6A = { id: 70, rol: 6 };
 const U7A = { id: 71, rol: 7 };
 const U9B = { id: 72, rol: 9 };
-const tok = {} as Record<'u6a' | 'u7a' | 'u9b', string>;
+const U5A = { id: 73, rol: 5 }; // monitorista de A; el rol 5 no se filtra por cliente (ROLES_SIN_FILTRO)
+const tok = {} as Record<'u6a' | 'u7a' | 'u9b' | 'u5a', string>;
 let instA: number; // asignada a U7A
 let instA2: number; // del mismo cliente A, no asignada a U7A
 let instB: number;
@@ -58,11 +59,13 @@ beforeAll(async () => {
     `INSERT INTO Usuarios (Id, UserName, PasswordHash, EmailConfirmado, Nombre, IdRol, IdCliente, Estatus) VALUES
       (${U6A.id}, 'u6a@e2e.local', 'x', 1, 'Cliente A', 6, ${A.idClienteNext}, 1),
       (${U7A.id}, 'u7a@e2e.local', 'x', 1, 'Operador A', 7, ${A.idClienteNext}, 1),
-      (${U9B.id}, 'u9b@e2e.local', 'x', 1, 'Usuario B', 9, ${B.idClienteNext}, 1)`,
+      (${U9B.id}, 'u9b@e2e.local', 'x', 1, 'Usuario B', 9, ${B.idClienteNext}, 1),
+      (${U5A.id}, 'u5a@e2e.local', 'x', 1, 'Monitorista A', 5, ${A.idClienteNext}, 1)`,
   );
   tok.u6a = e.tokenNext(U6A, A.idClienteNext);
   tok.u7a = e.tokenNext(U7A, A.idClienteNext);
   tok.u9b = e.tokenNext(U9B, B.idClienteNext);
+  tok.u5a = e.tokenNext(U5A, A.idClienteNext);
   instA = await instalar(A, 0, 'ACC0001');
   instA2 = await instalar(A, 1, 'ACC0002');
   instB = await instalar(B, 0, 'ACC0003');
@@ -154,7 +157,7 @@ describe('C1 usuarios: sin escalada de rol', () => {
       permisosIds: [],
     });
 
-  it('un operador (7) o monitoreo (5) no crea usuarios; nadie crea un rol más alto que el suyo', async () => {
+  it('un operador (7) no crea usuarios; nadie crea un rol más alto que el suyo', async () => {
     expect((await alta(tok.u7a, 1, A.idClienteNext)).status).toBe(403);
     expect((await alta(a.tokenMonitoreo, 1, A.idClienteNext)).status).toBe(403);
     expect((await alta(a.tokenOperacion, 1, A.idClienteNext)).status).toBe(403); // admin (3) no crea SA
@@ -178,6 +181,59 @@ describe('C1 usuarios: sin escalada de rol', () => {
     expect((await como(tok.u7a, 'PATCH', `/usuarios/${U7A.id}`, { idRol: 1 })).status).toBe(403);
     expect(Number(e.consulta('Next', `SELECT IdRol FROM Usuarios WHERE Id = ${U7A.id}`)[0][0])).toBe(7);
     expect([403, 404]).toContain((await como(tok.u6a, 'PATCH', `/usuarios/${U9B.id}`, { nombre: 'Otro' })).status);
+  });
+});
+
+describe('Monitoreo (5) administra usuarios y clientes (10/11/2026)', () => {
+  let n = 0;
+  const altaUsuario = (idRol: number, idCliente: number) =>
+    como(tok.u5a, 'POST', '/usuarios', {
+      userName: `mon${++n}@e2e.local`,
+      passwordHash: 'Clave.123',
+      nombre: 'Alta',
+      apellidoPaterno: 'Monitoreo',
+      idRol,
+      idCliente,
+      permisosIds: [],
+    });
+  const altaCliente = (token: string, rfc: string, idPadre: number) =>
+    como(token, 'POST', '/clientes', {
+      idPadre,
+      rfc,
+      tipoPersona: 2,
+      nombre: `Cliente ${rfc}`,
+      numerosEmergencia: [{ nombre: 'Contacto', telefono: '7771234567', prioridad: 1 }],
+    });
+
+  it('crea usuarios de rol 5 a 9, no de rol 1–4', async () => {
+    const r = ok(await altaUsuario(7, A1.idClienteNext), 'monitoreo crea operador en el hijo');
+    expect(Number(e.consulta('Next', `SELECT IdRol FROM Usuarios WHERE Id = ${Number(r.data?.id ?? r.id)}`)[0][0])).toBe(7);
+    ok(await altaUsuario(5, A.idClienteNext), 'monitoreo crea monitorista');
+    expect((await altaUsuario(4, A.idClienteNext)).status).toBe(403);
+    expect((await altaUsuario(3, A.idClienteNext)).status).toBe(403);
+    ok(await altaUsuario(9, B.idClienteNext), 'monitoreo ve toda la flota: crea en otro cliente');
+  });
+
+  it('edita y cambia el estatus de otro usuario; a un rol mayor, 403; el suyo, 403', async () => {
+    ok(await como(tok.u5a, 'PATCH', `/usuarios/${U7A.id}`, { nombre: 'Operador A editado' }), 'editar operador');
+    ok(await como(tok.u5a, 'PATCH', `/usuarios/estatus/${U7A.id}`), 'desactivar');
+    expect(Number(e.consulta('Next', `SELECT Estatus FROM Usuarios WHERE Id = ${U7A.id}`)[0][0])).toBe(0);
+    ok(await como(tok.u5a, 'PATCH', `/usuarios/estatus/${U7A.id}`), 'reactivar');
+    expect((await como(a.tokenMonitoreo, 'PATCH', `/usuarios/${NEXT.ADMIN.id}`, { nombre: 'Tomado' })).status).toBe(403);
+    expect((await como(a.tokenMonitoreo, 'PATCH', `/usuarios/estatus/${NEXT.JEFE.id}`)).status).toBe(403);
+    expect((await como(tok.u5a, 'PATCH', `/usuarios/estatus/${U5A.id}`)).status).toBe(403);
+  });
+
+  it('asigna instalaciones a un usuario de su alcance', async () => {
+    ok(await como(tok.u5a, 'POST', '/usuarios/asignacion/instalaciones', { idUsuario: U7A.id, instalacionesIds: [instA] }), 'asignar (la misma que ya tiene: las otras pruebas dependen de ella)');
+  });
+
+  it('da de alta y edita clientes; el operador (7) sigue sin poder', async () => {
+    const r = ok(await altaCliente(tok.u5a, 'MON010101AA1', A.idClienteNext), 'monitoreo crea cliente');
+    const id = Number(r.data?.id ?? r.id);
+    expect(Number(e.consulta('Next', `SELECT IdPadre FROM Clientes WHERE Id = ${id}`)[0][0])).toBe(A.idClienteNext);
+    expect((await altaCliente(tok.u7a, 'MON010101AA3', A.idClienteNext)).status).toBe(403);
+    ok(await como(tok.u5a, 'PATCH', `/clientes/${A1.idClienteNext}`, { nombre: 'Hijo editado' }), 'monitoreo edita cliente');
   });
 });
 

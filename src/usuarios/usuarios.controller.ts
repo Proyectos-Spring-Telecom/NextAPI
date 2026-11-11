@@ -66,7 +66,7 @@ export class UsuariosController {
       'Registra un nuevo usuario con `multipart/form-data` y asigna **UsuariosPermisos** desde `permisosIds` (obligatorio, puede ser `[]`).',
       'Opcionalmente asigna **AsignacionSoluciones** desde `solucionesIds` (omitir = sin relaciones).',
       '',
-      'Solo crean usuarios los roles **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**; el resto recibe 403.',
+      'Solo crean usuarios los roles **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)**, **Monitoreo (5)** y **Cliente (6)**; el resto recibe 403. Nadie da un rol de mayor jerarquía que el suyo (Monitoreo da 5–9).',
       'SA asigna cualquier rol; Dev y Admin solo un rol igual o menor en jerarquía (número >= al suyo: 2 → 2..9, 3 → 3..9).',
       'Si quien crea es **Cliente (6)**, el nuevo usuario recibe rol **Usuario (9)** automáticamente (`idRol` del body se ignora).',
       '`idCliente` debe estar en el alcance de quien crea (Cliente 6: su cliente o uno de sus hijos); si no, 403.',
@@ -125,7 +125,7 @@ export class UsuariosController {
       'Enviar `[]` desactiva todas las asignaciones.',
       '',
       'Validaciones: cada instalación debe existir, tener `estatus = 1` y pertenecer al mismo `idCliente` del usuario destino.',
-      'Quien asigna debe ser **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)** o **Cliente (6)**, ver al usuario según su alcance de clientes y no asignar a un usuario de rol de mayor jerarquía. El jefe de monitoreo asigna a monitoristas (5), operadores (7) y usuarios de cliente (9).',
+      'Quien asigna debe ser **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)**, **Monitoreo (5)** o **Cliente (6)**, ver al usuario según su alcance de clientes y no asignar a un usuario de rol de mayor jerarquía. El jefe de monitoreo asigna a monitoristas (5), operadores (7) y usuarios de cliente (9).',
     ].join('\n'),
   })
   @ApiBody({ type: AsignarUsuarioInstalacionesDto })
@@ -379,7 +379,7 @@ export class UsuariosController {
     summary: 'Cambiar estatus del usuario',
     description: [
       'Alterna el estatus: si está activo (1) pasa a inactivo (0) y viceversa. No requiere body.',
-      'Solo **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**; el usuario debe estar en el alcance de clientes de quien cambia (si no, 404)',
+      'Solo **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)**, **Monitoreo (5)** y **Cliente (6)**; el usuario debe estar en el alcance de clientes de quien cambia (si no, 404)',
       'y no tener un rol de mayor jerarquía (403). Nadie cambia su propio estatus (403).',
     ].join(' '),
   })
@@ -529,8 +529,8 @@ export class UsuariosController {
     description: [
       'Actualiza con `multipart/form-data`. No modifica contraseña (use PATCH /usuarios/actualizar/contrasena).',
       'Solo sincroniza **UsuariosPermisos** vía `permisosIds` y **AsignacionSoluciones** vía `solucionesIds` (omitir = no cambiar; `[]` = desactivar todos).',
-      'Editar a **otro** usuario: solo **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)** (si no, 403); el usuario debe estar en su alcance de clientes (si no, 404)',
-      'y no tener un rol de mayor jerarquía (403). `idRol`: SA cualquiera; Dev y Admin solo número >= al suyo (403); si quien actualiza es **Cliente (6)** y envía `idRol`, se fuerza **Usuario (9)**.',
+      'Editar a **otro** usuario: solo **SA (1)**, **Dev (2)**, **Admin (3)**, **Jefe de monitoreo (4)**, **Monitoreo (5)** y **Cliente (6)** (si no, 403); el usuario debe estar en su alcance de clientes (si no, 404)',
+      'y no tener un rol de mayor jerarquía (403). `idRol`: SA cualquiera; Dev, Admin y Monitoreo solo número >= al suyo (403); si quien actualiza es **Cliente (6)** y envía `idRol`, se fuerza **Usuario (9)**.',
       'Un `idCliente` nuevo debe estar en el alcance de quien edita (403).',
       'Editarse a **sí mismo**: cualquier rol, pero sin cambiar `idRol` ni `idCliente` (403); permisos y soluciones propios solo los cambian SA, Dev y Admin (403).',
       'Adjuntar `fotoPerfil` reemplaza la imagen en S3.',

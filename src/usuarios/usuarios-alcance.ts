@@ -8,14 +8,15 @@ import { EnumRoles } from 'src/common/estatus.enum';
 
 /**
  * Roles que crean usuarios, editan a otros, cambian su estatus y les asignan
- * instalaciones: SA, Dev, Admin, Jefe de monitoreo (solo a sus operadores) y
- * Cliente (solo usuarios de su árbol).
+ * instalaciones: SA, Dev, Admin, Jefe de monitoreo (solo a sus operadores),
+ * Monitoreo (roles 5–9, decisión del 10/11/2026) y Cliente (solo usuarios de su árbol).
  */
 export const ROLES_ADMIN_USUARIOS: readonly number[] = [
   EnumRoles.SA,
   EnumRoles.DEV,
   EnumRoles.ADMIN,
   EnumRoles.JEFE_MONITOREO,
+  EnumRoles.MONITOREO,
   EnumRoles.CLIENTE,
 ];
 
@@ -24,9 +25,10 @@ const ROLES_DEL_JEFE_MONITOREO: readonly number[] = [EnumRoles.MONITOREO, EnumRo
 
 /**
  * Roles que solo pueden dar permisos y soluciones que ellos mismos tienen
- * (decisión del 30/10/2026: el cliente no reparte más de lo que tiene).
+ * (decisión del 30/10/2026: el cliente no reparte más de lo que tiene; el
+ * monitorista tampoco, desde que administra usuarios el 10/11/2026).
  */
-export const ROLES_PERMISOS_ACOTADOS: readonly number[] = [EnumRoles.JEFE_MONITOREO, EnumRoles.CLIENTE];
+export const ROLES_PERMISOS_ACOTADOS: readonly number[] = [EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO, EnumRoles.CLIENTE];
 
 /** Roles que pueden cambiar sus propios permisos y soluciones al editarse a sí mismos. */
 const ROLES_PERMISOS_PROPIOS: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];

@@ -48,7 +48,7 @@ export class ClientesController {
   // ==================== POST ====================
 
   @Post()
-  @Roles(1, 2, 3, 6) // SA, Dev y Admin con cualquier padre; Cliente (6) solo dentro de su árbol
+  @Roles(1, 2, 3, 5, 6) // SA, Dev, Admin y Monitoreo con un padre de su alcance; Cliente (6) solo dentro de su árbol
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     clientesFileFieldsInterceptor(),
@@ -59,7 +59,7 @@ export class ClientesController {
     description:
       'Crea un cliente con `multipart/form-data`. Acta, comprobante y constancia son opcionales (URL o PDF). ' +
       'Es **obligatorio** `numerosEmergencia` (JSON string, mínimo 1 contacto). Logotipo opcional. ' +
-      'Solo roles **SA (1)**, **Dev (2)**, **Admin (3)** y **Cliente (6)**. Roles 1–3: `idPadre` opcional (por defecto 1). ' +
+      'Solo roles **SA (1)**, **Dev (2)**, **Admin (3)**, **Monitoreo (5)** y **Cliente (6)**. Roles 1–3 y 5: `idPadre` opcional (por defecto 1), dentro de su alcance. ' +
       'Rol 6: el cliente se crea como hijo de un cliente de su árbol (`idPadre` opcional, por defecto su propio cliente); fuera de su árbol → 403.',
   })
   @ApiBody(clientesCreateMultipartApiBody)

@@ -11,10 +11,10 @@ import {
 
 describe('usuarios-alcance (C1, escalada de rol)', () => {
   describe('assertPuedeAdministrarUsuarios', () => {
-    it.each([1, 2, 3, 4, 6])('rol %i administra usuarios', (rol) => {
+    it.each([1, 2, 3, 4, 5, 6])('rol %i administra usuarios', (rol) => {
       expect(() => assertPuedeAdministrarUsuarios(rol)).not.toThrow();
     });
-    it.each([5, 7, 8, 9])('rol %i recibe 403', (rol) => {
+    it.each([7, 8, 9])('rol %i recibe 403', (rol) => {
       expect(() => assertPuedeAdministrarUsuarios(rol)).toThrow(ForbiddenException);
     });
   });
@@ -101,7 +101,6 @@ describe('decisiones del 30/10/2026', () => {
     expect(() => assertJerarquiaUsuarioDestino(4, 7)).not.toThrow();
     expect(() => assertJerarquiaUsuarioDestino(4, 9)).toThrow(ForbiddenException);
     expect(() => assertPuedeAdministrarUsuarios(4)).not.toThrow();
-    expect(() => assertPuedeAdministrarUsuarios(5)).toThrow(ForbiddenException);
   });
 
   it('el jefe de monitoreo (4) asigna instalaciones también a usuarios de cliente (9), no a otros roles', () => {
@@ -111,6 +110,19 @@ describe('decisiones del 30/10/2026', () => {
     expect(() => assertPuedeAsignarInstalaciones(4, 3)).toThrow(ForbiddenException);
     expect(() => assertPuedeAsignarInstalaciones(6, 9)).not.toThrow();
     expect(() => assertPuedeAsignarInstalaciones(6, 5)).toThrow(ForbiddenException);
+  });
+
+  it('decisión del 10/11/2026: monitoreo (5) administra roles 5–9 y no a los de mayor jerarquía', () => {
+    expect(() => assertPuedeAdministrarUsuarios(5)).not.toThrow();
+    for (const destino of [5, 6, 7, 8, 9]) {
+      expect(() => assertJerarquiaUsuarioDestino(5, destino)).not.toThrow();
+      expect(resolveIdRolAsignable(5, destino, true)).toBe(destino);
+      expect(() => assertPuedeAsignarInstalaciones(5, destino)).not.toThrow();
+    }
+    for (const destino of [1, 2, 3, 4]) {
+      expect(() => assertJerarquiaUsuarioDestino(5, destino)).toThrow(ForbiddenException);
+      expect(() => resolveIdRolAsignable(5, destino, true)).toThrow(ForbiddenException);
+    }
   });
 
   it('solo se otorgan permisos que quien administra tiene', () => {
