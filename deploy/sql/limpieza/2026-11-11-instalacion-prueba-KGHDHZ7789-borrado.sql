@@ -1,5 +1,6 @@
 -- Borrado FÍSICO de la instalación de prueba del vehículo KGHDHZ7789 (11/11/2026,
--- Israel): instalación, equipo IMEI 222, vehículo (la SIM 418 se conserva), posiciones, órdenes de
+-- Israel): instalación, vehículo (el equipo IMEI 222 regresa al almacén y la SIM 418
+-- se conserva), posiciones, órdenes de
 -- servicio desde que se agendó, historial y movimientos. Mismo alcance que
 -- 2026-11-10-instalaciones-prueba.sql.
 -- Correr SOLO después de revisar la vista previa
@@ -60,10 +61,11 @@ CREATE TEMPORARY TABLE t_mov (Id BIGINT PRIMARY KEY) AS
 SELECT DISTINCT m.Id FROM MovimientosRecurso m
 LEFT JOIN t_os o ON o.Id = m.IdOrdenServicio
 LEFT JOIN t_inst i ON i.Id = m.IdInstalacion
-LEFT JOIN t_disp d ON m.TipoRecurso = 'dispositivo' AND d.Id = m.IdRecurso
 LEFT JOIN t_sim s ON m.TipoRecurso = 'sim' AND s.Id = m.IdRecurso
 LEFT JOIN t_prod p ON m.TipoRecurso = 'producto' AND p.Id = m.IdRecurso
-WHERE o.Id IS NOT NULL OR i.Id IS NOT NULL OR d.Id IS NOT NULL OR s.Id IS NOT NULL OR p.Id IS NOT NULL;
+-- Sin los movimientos propios del equipo: el IMEI 222 ya existía antes de agendar
+-- (movimiento 39 del 30/10) y se conserva.
+WHERE o.Id IS NOT NULL OR i.Id IS NOT NULL OR s.Id IS NOT NULL OR p.Id IS NOT NULL;
 
 CREATE TEMPORARY TABLE t_aviso (Id BIGINT PRIMARY KEY) AS
 SELECT DISTINCT a.Id FROM AvisosSinTransmision a
@@ -86,7 +88,6 @@ START TRANSACTION;
 DELETE s FROM SeguimientoIncidentes s JOIN t_inc t ON t.Id = s.IdIncidente;
 DELETE x FROM Incidentes x JOIN t_inc t ON t.Id = x.Id;
 DELETE e FROM EventosPuntoInteres e JOIN t_evpi t ON t.Id = e.Id;
-DELETE u FROM UltimaPosicion u JOIN t_disp d ON d.Imei = u.Imei;
 DELETE p FROM Posiciones p JOIN t_pos t ON t.Id = p.Id;
 DELETE f FROM Fotos f JOIN t_foto t ON t.Id = f.Id;
 DELETE v FROM Videos v JOIN t_video t ON t.Id = v.Id;
@@ -99,7 +100,6 @@ DELETE o FROM OrdenesServicio o JOIN t_os t ON t.Id = o.Id;
 DELETE u FROM UsuariosInstalaciones u JOIN t_inst t ON t.Id = u.IdInstalacion;
 DELETE c FROM CorreccionesInstalacion c JOIN t_inst t ON t.Id = c.IdInstalacion;
 DELETE a FROM AvisosSinTransmision a JOIN t_aviso t ON t.Id = a.Id;
-DELETE c FROM ComandosDispositivo c JOIN t_disp t ON t.Id = c.IdDispositivo;
 
 -- Instalación e historial (la instalación apunta al historial y el historial a sí mismo)
 DELETE i FROM Instalaciones i JOIN t_inst t ON t.Id = i.Id;
@@ -109,11 +109,13 @@ DELETE h FROM HistoricoInstalaciones h JOIN t_hist t ON t.Id = h.Id;
 -- Recursos (configuración, geocercas y puntos de interés se van en cascada)
 DELETE v FROM Vehiculos v JOIN t_prod t ON t.Id = v.IdProducto;
 DELETE p FROM Productos p JOIN t_prod t ON t.Id = p.Id;
-DELETE d FROM Dispositivos d JOIN t_disp t ON t.Id = d.Id;
+-- El equipo IMEI 222 se conserva y regresa al almacén, como antes de agendar
+-- (movimiento 156: estatus 1, sin cliente).
+UPDATE Dispositivos d JOIN t_disp t ON t.Id = d.Id SET d.Estatus = 1, d.IdCliente = NULL;
 DELETE s FROM Sims s JOIN t_sim t ON t.Id = s.Id;
 
 SELECT (SELECT COUNT(*) FROM Instalaciones i JOIN t_inst t ON t.Id = i.Id) AS InstalacionesRestantes,
-       (SELECT COUNT(*) FROM Dispositivos d JOIN t_disp t ON t.Id = d.Id) AS DispositivosRestantes,
+       (SELECT CONCAT('Estatus ', d.Estatus, ', cliente ', IFNULL(d.IdCliente, 'ninguno')) FROM Dispositivos d JOIN t_disp t ON t.Id = d.Id) AS EquipoConservado,
        (SELECT COUNT(*) FROM Sims s JOIN t_sim t ON t.Id = s.Id) AS SimsRestantes,
        (SELECT COUNT(*) FROM Productos p JOIN t_prod t ON t.Id = p.Id) AS VehiculosRestantes;
 COMMIT;

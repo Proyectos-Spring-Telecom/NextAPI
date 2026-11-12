@@ -59,10 +59,11 @@ CREATE TEMPORARY TABLE t_mov (Id BIGINT PRIMARY KEY) AS
 SELECT DISTINCT m.Id FROM MovimientosRecurso m
 LEFT JOIN t_os o ON o.Id = m.IdOrdenServicio
 LEFT JOIN t_inst i ON i.Id = m.IdInstalacion
-LEFT JOIN t_disp d ON m.TipoRecurso = 'dispositivo' AND d.Id = m.IdRecurso
 LEFT JOIN t_sim s ON m.TipoRecurso = 'sim' AND s.Id = m.IdRecurso
 LEFT JOIN t_prod p ON m.TipoRecurso = 'producto' AND p.Id = m.IdRecurso
-WHERE o.Id IS NOT NULL OR i.Id IS NOT NULL OR d.Id IS NOT NULL OR s.Id IS NOT NULL OR p.Id IS NOT NULL;
+-- Sin los movimientos propios del equipo: el IMEI 222 ya existía antes de agendar
+-- (movimiento 39 del 30/10) y se conserva.
+WHERE o.Id IS NOT NULL OR i.Id IS NOT NULL OR s.Id IS NOT NULL OR p.Id IS NOT NULL;
 
 CREATE TEMPORARY TABLE t_aviso (Id BIGINT PRIMARY KEY) AS
 SELECT DISTINCT a.Id FROM AvisosSinTransmision a
@@ -81,7 +82,7 @@ WHERE ps.Id IS NOT NULL OR i.Id IS NOT NULL OR p.Id IS NOT NULL;
 -- ===== Vista previa =====
 SELECT 'Instalaciones señaladas (debe ser 1)' AS Que, IdInstalacion, IdCliente, Imei, NumeroSerie, IdSim, IdProducto, Placa FROM t_sel;
 SELECT 'Instalaciones' AS Tabla, COUNT(*) AS Filas FROM t_inst
-UNION ALL SELECT 'Dispositivos', COUNT(*) FROM t_disp
+UNION ALL SELECT 'Dispositivos (se conserva, al almacén)', COUNT(*) FROM t_disp
 UNION ALL SELECT 'Sims', COUNT(*) FROM t_sim
 UNION ALL SELECT 'Productos (vehículos)', COUNT(*) FROM t_prod
 UNION ALL SELECT 'HistoricoInstalaciones', COUNT(*) FROM t_hist
