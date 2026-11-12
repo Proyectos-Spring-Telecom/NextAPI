@@ -1,5 +1,5 @@
 -- Borrado FÍSICO de la instalación de prueba del vehículo KGHDHZ7789 (11/11/2026,
--- Israel): instalación, equipo IMEI 222, SIM, vehículo, posiciones, órdenes de
+-- Israel): instalación, equipo IMEI 222, vehículo (la SIM 418 se conserva), posiciones, órdenes de
 -- servicio desde que se agendó, historial y movimientos. Mismo alcance que
 -- 2026-11-10-instalaciones-prueba.sql.
 -- Correr SOLO después de revisar la vista previa
@@ -20,7 +20,9 @@ JOIN Vehiculos v ON v.IdProducto = i.IdProducto
 WHERE (d.Imei, v.Placa) IN (('222', 'KGHDHZ7789'));
 
 CREATE TEMPORARY TABLE t_disp (Id BIGINT PRIMARY KEY, Imei VARCHAR(64)) AS SELECT DISTINCT IdDispositivo AS Id, Imei FROM t_sel;
-CREATE TEMPORARY TABLE t_sim (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdSim AS Id FROM t_sel WHERE IdSim IS NOT NULL;
+-- La SIM 418 ("Reloj Rosa") NO se toca (Israel, 11/11): t_sim queda vacía, así
+-- no se borra la SIM ni lo que cuelga solo de ella.
+CREATE TEMPORARY TABLE t_sim (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdSim AS Id FROM t_sel WHERE 1 = 0;
 CREATE TEMPORARY TABLE t_prod (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdProducto AS Id FROM t_sel;
 
 -- Toda instalación (actual o pasada) que use esos equipos, SIM o vehículos

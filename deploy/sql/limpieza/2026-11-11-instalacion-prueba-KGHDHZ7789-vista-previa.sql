@@ -19,7 +19,9 @@ JOIN Vehiculos v ON v.IdProducto = i.IdProducto
 WHERE (d.Imei, v.Placa) IN (('222', 'KGHDHZ7789'));
 
 CREATE TEMPORARY TABLE t_disp (Id BIGINT PRIMARY KEY, Imei VARCHAR(64)) AS SELECT DISTINCT IdDispositivo AS Id, Imei FROM t_sel;
-CREATE TEMPORARY TABLE t_sim (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdSim AS Id FROM t_sel WHERE IdSim IS NOT NULL;
+-- La SIM 418 ("Reloj Rosa") NO se toca (Israel, 11/11): t_sim queda vacía, así
+-- no se borra la SIM ni lo que cuelga solo de ella.
+CREATE TEMPORARY TABLE t_sim (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdSim AS Id FROM t_sel WHERE 1 = 0;
 CREATE TEMPORARY TABLE t_prod (Id BIGINT PRIMARY KEY) AS SELECT DISTINCT IdProducto AS Id FROM t_sel;
 
 -- Toda instalación (actual o pasada) que use esos equipos, SIM o vehículos
@@ -95,4 +97,5 @@ SELECT 'Instalaciones que arrastra' AS Que, i.Id, i.IdCliente, i.IdDispositivo, 
 FROM Instalaciones i JOIN t_inst t ON t.Id = i.Id;
 SELECT 'Órdenes de servicio que arrastra' AS Que, o.Id, o.Folio, o.TipoServicio, o.Estatus, o.IdCliente, o.Origen, o.ReferenciaCrm
 FROM OrdenesServicio o JOIN t_os t ON t.Id = o.Id;
-SELECT 'SIM de la instalación' AS Que, s.* FROM Sims s JOIN t_sim t ON t.Id = s.Id;
+SELECT 'SIM que se conserva' AS Que, s.* FROM Sims s JOIN t_sel t ON t.IdSim = s.Id;
+SELECT 'Movimientos que se borran' AS Que, m.* FROM MovimientosRecurso m JOIN t_mov t ON t.Id = m.Id;
