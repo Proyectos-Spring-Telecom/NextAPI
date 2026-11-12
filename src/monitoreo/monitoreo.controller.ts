@@ -53,6 +53,7 @@ export class MonitoreoController {
       'Vehículo (1) además: `colorVehiculo`, `numeroSerieVehiculo` (planos).',
       'Persona (4) además: `persona` (nombre) y `fotoPersona` (URL S3, carpeta `personas`; null si no tiene).',
       'Todos: `geocercas` = nombres de las geocercas activas asignadas a la instalación (null si no tiene).',
+      '`detenidoDesde`: desde cuándo cuenta el tiempo detenido que da `estado` 4/5/6 (null si no está detenido).',
       '',
       '**Inmueble / panel (3):** no usa UltimaPosicion ni rutas de foto/video.',
       'Campos: cliente, imei, inmueble, economico, numeroSerie, estatus, modelo, marca,',

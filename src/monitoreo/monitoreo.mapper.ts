@@ -54,6 +54,8 @@ export type TelemetriaUltimaPosicion = {
   movimiento: number | null;
   combustible: number | null;
   nivelCombustible: number | null;
+  /** Desde cuándo cuenta el tiempo detenido (Estado 4/5/6); null si se está moviendo. */
+  detenidoDesde: string | null;
 };
 
 export function mapTelemetriaUltimaPosicion(
@@ -84,6 +86,7 @@ export function mapTelemetriaUltimaPosicion(
     movimiento: num(row.upMovimiento),
     combustible,
     nivelCombustible: combustible,
+    detenidoDesde: toIso(row.upDetenidoDesde as string | Date | null | undefined),
   };
 }
 

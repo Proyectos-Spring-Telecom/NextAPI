@@ -125,6 +125,7 @@ export function applyMonitoreoListSelect(
     'up.gsm AS upGsm',
     'up.movimiento AS upMovimiento',
     'up.combustible AS upCombustible',
+    'up.detenidoDesde AS upDetenidoDesde',
 
     'uea.id AS ueaId',
     'uea.idEventoAlarma AS ueaIdEventoAlarma',
