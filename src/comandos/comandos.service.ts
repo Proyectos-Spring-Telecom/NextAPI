@@ -65,12 +65,14 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
       comandos: readonly ComandoEquipo[];
       idUsuario: number | null;
       origen?: 'api' | 'sistema';
+      /** Vigencia propia (p. ej. el paro de motor vence en minutos, no en días). */
+      vigenciaMs?: number;
     },
     manager?: EntityManager,
   ): Promise<number[]> {
     const m = manager ?? this.dataSource.manager;
     const ahora = nowMexicoCityAsUtcDate();
-    const venceAt = new Date(ahora.getTime() + this.vigenciaMs());
+    const venceAt = new Date(ahora.getTime() + (params.vigenciaMs ?? this.vigenciaMs()));
     const ids: number[] = [];
     for (const c of params.comandos) {
       const r = await m.insert(ComandosDispositivo, {
