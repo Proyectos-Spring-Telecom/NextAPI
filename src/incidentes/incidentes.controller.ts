@@ -346,6 +346,55 @@ export class IncidentesController {
     );
   }
 
+  @Get(':id/evidencias')
+  @ApiOperation({
+    summary: 'Fotos y videos de la unidad alrededor de la alarma',
+    description: [
+      'Junta por IMEI y hora la ráfaga de fotos y el clip de evidencia que el gateway toma al',
+      'dispararse la alarma (llegan como posiciones aparte, evento Cámara). Ventana: de `antesMin`',
+      '(2 por defecto, máx. 60) antes a `despuesMin` (5 por defecto, máx. 120) después del inicio.',
+      'Mismo alcance que el detalle. Sin IMEI en el origen (paneles), listas vacías.',
+    ].join('\n'),
+  })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiQuery({ name: 'antesMin', required: false, type: Number })
+  @ApiQuery({ name: 'despuesMin', required: false, type: Number })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        data: {
+          idIncidente: 321,
+          imei: '2300007434',
+          desde: '2026-11-13 15:31:00',
+          hasta: '2026-11-13 15:38:00',
+          fotos: [{ id: 9001, url: 'https://springtelecom.mx/trackcam/data/trackcam/fotos/…/ch1.jpg', fechaHora: '2026-11-13T15:33:04' }],
+          videos: [{ id: 120, url: 'https://springtelecom.mx/trackcam/data/trackcam/videos/…/ch1.mp4', fechaHora: '2026-11-13T15:33:25' }],
+        },
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'No encontrado o fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async evidencias(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('antesMin') antesMin: string | undefined,
+    @Query('despuesMin') despuesMin: string | undefined,
+    @Request() req,
+  ) {
+    const minutos = (v: string | undefined, def: number, max: number) => {
+      const n = Number(v);
+      return v == null || v === '' || !Number.isFinite(n) ? def : Math.min(Math.max(0, n), max);
+    };
+    return this.service.evidencias(
+      id,
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+      Number(req.user.userId),
+      minutos(antesMin, 2, 60),
+      minutos(despuesMin, 5, 120),
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de un incidente' })
   @ApiParam({ name: 'id', type: Number })

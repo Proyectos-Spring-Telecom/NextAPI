@@ -770,6 +770,42 @@ export class IncidentesService {
     }
   }
 
+  /**
+   * Fotos y videos de la unidad alrededor de la alarma (docs/fis-fiber, ruta
+   * del back §3.8): la ráfaga de fotos y el clip de evidencia del gateway
+   * llegan como posiciones aparte (evento Cámara), así que se juntan por IMEI
+   * y hora: de `antesMin` antes a `despuesMin` después del inicio. Mismo
+   * alcance que el detalle.
+   */
+  async evidencias(
+    id: number,
+    idClienteToken: number,
+    rol: number,
+    idUsuario: number,
+    antesMin = 2,
+    despuesMin = 5,
+  ) {
+    const entity = await this.findVisibleOrFail(id, idClienteToken, rol, idUsuario);
+    const imei = imeiToString((entity.datosOrigen as { imei?: unknown } | null)?.imei);
+    const inicio = entity.fechaInicio instanceof Date ? entity.fechaInicio : new Date(String(entity.fechaInicio));
+    const desde = fechaPared(new Date(inicio.getTime() - antesMin * 60_000));
+    const hasta = fechaPared(new Date(inicio.getTime() + despuesMin * 60_000));
+    const vacio = { idIncidente: Number(entity.id), imei, desde, hasta, fotos: [], videos: [] };
+    if (!imei || Number.isNaN(inicio.getTime())) return { data: vacio };
+
+    const consulta = (tabla: 'Fotos' | 'Videos') =>
+      this.repository.query(
+        `SELECT Id AS id, Ruta AS url, DATE_FORMAT(FechaHora, '%Y-%m-%dT%H:%i:%s') AS fechaHora
+           FROM ${tabla}
+          WHERE Imei = ? AND FechaHora BETWEEN ? AND ? AND Ruta IS NOT NULL
+          ORDER BY FechaHora, Id`,
+        [imei, desde, hasta],
+      ) as Promise<Array<{ id: string; url: string; fechaHora: string }>>;
+    const [fotos, videos] = await Promise.all([consulta('Fotos'), consulta('Videos')]);
+    const mapa = (f: { id: string; url: string; fechaHora: string }) => ({ id: Number(f.id), url: f.url, fechaHora: f.fechaHora });
+    return { data: { ...vacio, fotos: fotos.map(mapa), videos: videos.map(mapa) } };
+  }
+
   async findOne(
     id: number,
     idClienteToken: number,
