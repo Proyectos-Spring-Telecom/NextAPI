@@ -90,3 +90,18 @@ export class ParadasDto extends JornadaDto {
   @Max(1440)
   minutosMinimos?: number;
 }
+
+/** Body de entradas y salidas de geocerca: el de jornada más geocercas opcionales. */
+export class GeocercasEventosDto extends JornadaDto {
+  @ApiPropertyOptional({
+    description: 'Solo estas geocercas. Sin él, todas las ligadas a los vehículos.',
+    type: [Number],
+    example: [12],
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  idsGeocerca?: number[];
+}

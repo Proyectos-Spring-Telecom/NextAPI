@@ -7,6 +7,7 @@ import { EstatusRecurso } from 'src/motor-activos/estatus-recurso';
 import { Fotos } from 'src/entities/Fotos';
 import { Geocercas } from 'src/entities/Geocercas';
 import { PuntosInteresAvisosService } from './puntos-interes-avisos.service';
+import { GeocercasAvisosService } from './geocercas-avisos.service';
 import { ProductosGeocerca } from 'src/entities/ProductosGeocerca';
 import { Posiciones } from 'src/entities/Posiciones';
 import { TelemetryIngestLog } from 'src/entities/TelemetryIngestLog';
@@ -66,6 +67,7 @@ export class PosicionIngestService {
     private readonly monitoreoGateway: MonitoreoGateway,
     private readonly incidentesAuto: IncidentesAutoService,
     private readonly puntosInteres: PuntosInteresAvisosService,
+    private readonly geocercas: GeocercasAvisosService,
   ) {}
 
   /**
@@ -193,15 +195,18 @@ export class PosicionIngestService {
     if (!result.duplicate && result.posicionId != null) {
       void this.monitoreoGateway.notificarImei(req.imei);
       if (req.idInstalacion != null) {
-        // Llegada/salida de puntos de interés ligados: fuera de la transacción y sin esperar.
-        void this.puntosInteres.evaluar({
+        // Llegada/salida de puntos de interés y entrada/salida de geocercas
+        // ligadas: fuera de la transacción y sin esperar.
+        const posicionLigada = {
           idInstalacion: Number(req.idInstalacion),
           idPosicion: result.posicionId,
           idTipoDispositivo: req.idTipoDispositivo,
           lat: posicionData.lat,
           lng: posicionData.lng,
           fechaHora: posicionData.fechaHora,
-        });
+        };
+        void this.puntosInteres.evaluar(posicionLigada);
+        void this.geocercas.evaluar(posicionLigada);
       }
       if (Number(req.estatusDispositivo) === EstatusRecurso.INSERVIBLE) {
         // Un equipo dado por inservible no debería transmitir: posible robo o

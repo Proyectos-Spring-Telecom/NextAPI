@@ -19,6 +19,7 @@ Los tres reciben el mismo body (`JornadaDto`):
 | `POST /reportes/jornada` | El detalle de una unidad: la barra del día. | `data.unidades[].jornadas[]` con el resumen + `tramos`, `ciclos`, `cambiosEstado` y `eventos`. |
 | `POST /reportes/motor` | Medición de motor on/off. | `data.unidades[]` con `horasMotor`, `porDia[]` y `ciclos[]`. |
 | `POST /reportes/paradas` | Paradas con duración, motor y lugar. Acepta `minutosMinimos` (opcional). | `data.unidades[].paradas[]`: `inicio`, `fin`, `min`, `motor` (`encendido` / `apagado` / `mixto` / `sin_ignicion`), `lat` / `lng`, `geocercas[]` y `puntoInteres`. |
+| `POST /reportes/geocercas/eventos` | Entradas y salidas de geocerca, con el tiempo dentro. Acepta `idsGeocerca` (opcional). | `data.unidades[].visitas[]`: `entrada`, `salida`, `minDentro` y `minFueraAntes`. Cuentan desde el despliegue (13/11/2026); antes de esa fecha, `salidas-geocerca`. |
 
 **Resumen de cada día:**
 - `primerEncendido` y `ultimoApagado`;
@@ -70,6 +71,10 @@ Sin el parámetro, las respuestas no cambian.
   - una tabla con duración, geocerca y punto de interés;
   - un filtro de minutos mínimos en el front.
   - Una parada que cruza la medianoche sale en los dos días (`continuaDelDiaAnterior` / `continuaAlDiaSiguiente`); el front puede unirlas.
+- **Geocercas:**
+  - una línea de tiempo por geocerca con las visitas;
+  - una tabla de entradas y salidas con el tiempo dentro;
+  - `entrada: null` se muestra como "ya estaba dentro", y `salida: null` como "sigue dentro".
 - **Motor:**
   - una gráfica de horas de motor por día (`porDia`);
   - la tabla de ciclos;

@@ -11,6 +11,7 @@ import { Videos } from 'src/entities/Videos';
 import { DeviceLookupService } from './device-lookup.service';
 import { PosicionIngestService } from './posicion-ingest.service';
 import { PuntosInteresAvisosService } from './puntos-interes-avisos.service';
+import { GeocercasAvisosService } from './geocercas-avisos.service';
 import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-huerfanos.module';
 
 @Module({
@@ -27,7 +28,7 @@ import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-h
       Geocercas,
     ]),
   ],
-  providers: [DeviceLookupService, PosicionIngestService, PuntosInteresAvisosService],
+  providers: [DeviceLookupService, PosicionIngestService, PuntosInteresAvisosService, GeocercasAvisosService],
   exports: [DeviceLookupService, PosicionIngestService, TelemetriaHuerfanosModule],
 })
 export class MessagingSharedModule {}

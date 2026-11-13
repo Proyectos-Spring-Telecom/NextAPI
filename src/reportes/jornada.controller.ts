@@ -12,7 +12,8 @@ import {
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { JornadaDto, ParadasDto } from './dto/jornada.dto';
+import { GeocercasEventosDto, JornadaDto, ParadasDto } from './dto/jornada.dto';
+import { GeocercasEventosService } from './geocercas-eventos.service';
 import { JornadaService, usuarioDe } from './jornada.service';
 
 const REGLAS = [
@@ -87,7 +88,10 @@ const UNIDAD_EJEMPLO = {
 @Roles()
 @Controller('reportes')
 export class JornadaController {
-  constructor(private readonly service: JornadaService) {}
+  constructor(
+    private readonly service: JornadaService,
+    private readonly geocercas: GeocercasEventosService,
+  ) {}
 
   @Post('jornada')
   @ApiOperation({
@@ -366,5 +370,78 @@ export class JornadaController {
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async paradas(@Body() dto: ParadasDto, @Request() req) {
     return this.service.paradas(dto, usuarioDe(req));
+  }
+
+  @Post('geocercas/eventos')
+  @ApiOperation({
+    summary: 'Entradas y salidas de geocerca por unidad, con el tiempo dentro',
+    description: [
+      'Visitas a las geocercas ligadas al vehículo (`ProductosGeocerca`), registradas en vivo en',
+      '`EventosGeocerca` a partir del despliegue (las salidas anteriores siguen en `salidas-geocerca`).',
+      '',
+      '- Entra al cruzar la orilla; sale al alejarse más de 15 m (el ruido del GPS no repite eventos).',
+      '- `entrada: null`: ya estaba dentro al empezar el periodo. `salida: null`: seguía dentro al terminar.',
+      '- `minFueraAntes`: minutos desde la salida anterior de la misma geocerca.',
+      '- No cambia el `Estado` 8 ni los incidentes por geocerca.',
+      '- Solo unidades con eventos en el periodo; máximo 31 días.',
+    ].join('\n'),
+  })
+  @ApiBody({
+    type: GeocercasEventosDto,
+    examples: {
+      ...BODY_EJEMPLO,
+      unaGeocerca: {
+        summary: 'Una geocerca, una semana',
+        value: { idCliente: 15, fechaInicio: '2026-11-06', fechaFinal: '2026-11-12', idsGeocerca: [12] },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: '`data.unidades[].visitas[]`',
+    schema: {
+      example: {
+        data: {
+          idCliente: 15,
+          fechaInicio: '2026-11-12',
+          fechaFinal: '2026-11-12',
+          total: 1,
+          unidades: [
+            {
+              idInstalacion: 1000325,
+              idProducto: 1000309,
+              placas: 'PXP613F',
+              economico: 'PXP613F',
+              descripcion: 'PXP613F',
+              entradas: 1,
+              salidas: 2,
+              visitas: [
+                {
+                  idGeocerca: 12,
+                  nombreGeocerca: 'Base Querétaro',
+                  entrada: null,
+                  salida: '2026-11-12T15:33:09',
+                  minDentro: null,
+                  minFueraAntes: null,
+                },
+                {
+                  idGeocerca: 12,
+                  nombreGeocerca: 'Base Querétaro',
+                  entrada: '2026-11-12T16:23:24',
+                  salida: '2026-11-12T19:17:02',
+                  minDentro: 173.6,
+                  minFueraAntes: 50.3,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Fechas inválidas, periodo mayor a 31 días o filtro inválido' })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async geocercasEventos(@Body() dto: GeocercasEventosDto, @Request() req) {
+    return this.geocercas.eventos(dto, usuarioDe(req));
   }
 }

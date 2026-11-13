@@ -12,6 +12,7 @@ import { JornadaController } from './jornada.controller';
 import { ContadoresController } from './contadores.controller';
 import { ContadoresService } from './contadores.service';
 import { ResumenDiarioService } from './resumen-diario.service';
+import { GeocercasEventosService } from './geocercas-eventos.service';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { ProductosClienteController } from './productos-cliente.controller';
 import { ProductosClienteService } from './productos-cliente.service';
@@ -33,6 +34,7 @@ import { ProductosClienteService } from './productos-cliente.service';
     JornadaService,
     ResumenDiarioService,
     ContadoresService,
+    GeocercasEventosService,
     ProductosClienteService,
   ],
   exports: [ReportesService],
