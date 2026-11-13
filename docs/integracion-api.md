@@ -42,6 +42,14 @@ Todas son `POST` con cuerpo JSON. El filtro común es `{ "filtro": "placa" | "ec
 | `/reportes/contadores` | Odómetro y horas de motor acumulados. |
 | `/reportes/odometro` | Km y horas de motor por día, con el acumulado al cierre. |
 
+**Despacho** (solo lectura con la llave; son `GET`):
+
+| Ruta | Qué devuelve |
+|---|---|
+| `/despacho/trabajos?fechaInicio=&fechaFinal=` | Trabajos del periodo, con su estado y avance. |
+| `/despacho/trabajos/:id` | Un trabajo con el cumplimiento de cada parada: llegada, salida y a tiempo o tarde. |
+| `/despacho/rutas` · `/despacho/rutas/:id` | Rutas y sus paradas. |
+
 **Fechas:** todas las fechas van en hora del centro de México, sin zona (`2026-11-12T15:31:09`). Los días van de 00:00 a 23:59.
 
 **Ejemplo:**

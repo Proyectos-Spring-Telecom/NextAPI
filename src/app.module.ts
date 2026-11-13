@@ -34,6 +34,7 @@ import { ReportesModule } from './reportes/reportes.module';
 import { LlavesApiModule } from './llaves-api/llaves-api.module';
 import { WebhooksClienteModule } from './webhooks-cliente/webhooks-cliente.module';
 import { InmovilizadorModule } from './inmovilizador/inmovilizador.module';
+import { DespachoModule } from './despacho/despacho.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ConsolaModule } from './consola/consola.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -241,6 +242,7 @@ import * as jwt from 'jsonwebtoken';
     LlavesApiModule,
     WebhooksClienteModule,
     InmovilizadorModule,
+    DespachoModule,
 
     DashboardModule,
 
