@@ -68,6 +68,21 @@ import {
 import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto';
 import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
 import { redondearKm } from 'src/utils/recorrido.utils';
+import { fechaDeMs, msDeFecha, type PuntoOperacion } from './helpers/jornada.helpers';
+
+/** Horas antes del periodo que se leen para saber cómo amaneció la unidad. */
+const HORAS_PREVIAS_OPERACION = 6;
+
+/** Una instalación con sus posiciones de operación (ASC). */
+export type UnidadOperacion = {
+  idInstalacion: number;
+  idProducto: number | null;
+  placas: string | null;
+  economico: string | null;
+  descripcion: string | null;
+  imeis: string[];
+  puntos: PuntoOperacion[];
+};
 
 /** Producto base + detalle por tipo (plano; mismos nombres que instalaciones). */
 export type ProductoPlanoPasoPoi = {
@@ -1313,6 +1328,97 @@ export class ReportesService {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException((error as Error)?.message);
     }
+  }
+
+  /**
+   * Posiciones de operación por instalación para jornada / motor / flota del
+   * día (docs/fis-fiber, ruta del back §2): mismas reglas de alcance, filtro y
+   * tramos de vigencia que `distancia`, solo las columnas que usa el cálculo y
+   * en orden ASC. Trae además las 6 h previas a `desde` para saber cómo
+   * amaneció la unidad.
+   */
+  async posicionesOperacion(
+    dto: { idCliente?: number; filtro?: FiltroPasoPorPoi; valores?: string[] },
+    desde: string,
+    hasta: string,
+    idClienteToken: number,
+    rol: number,
+    idUsuario: number,
+  ): Promise<{ idCliente: number | null; unidades: UnidadOperacion[] }> {
+    const { idCliente, alcance } = await this.resolverAlcanceReporte(
+      rol,
+      idClienteToken,
+      dto.idCliente,
+    );
+    const idsFiltro = await this.limitarPorAsignacion(
+      { userId: idUsuario, idCliente: idClienteToken, rol },
+      await this.resolverIdsInstalacionPorFiltro(alcance, dto.filtro, dto.valores),
+    );
+    const candidatos =
+      idsFiltro !== null && idsFiltro.length === 0
+        ? []
+        : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
+    if (!candidatos.length) return { idCliente, unidades: [] };
+
+    const conPrevias = fechaDeMs(msDeFecha(desde) - HORAS_PREVIAS_OPERACION * 3_600_000).replace('T', ' ');
+    const porTramo = await this.candidatasPorTramo(candidatos, conPrevias, hasta);
+    const unidades = new Map<number, UnidadOperacion>();
+    for (const c of candidatos) {
+      unidades.set(c.idInstalacion, {
+        idInstalacion: c.idInstalacion,
+        idProducto: c.idProducto,
+        placas: c.placaVehiculo,
+        economico: c.ecoVehiculo,
+        descripcion: c.nombreProducto ?? c.ecoVehiculo,
+        imeis: [],
+        puntos: [],
+      });
+    }
+    if (!porTramo.length) return { idCliente, unidades: [...unidades.values()] };
+
+    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
+    const rows = await this.instalacionesRepo.manager
+      .getRepository(Posiciones)
+      .createQueryBuilder('p')
+      .select([
+        'p.id AS id',
+        'CAST(p.imei AS CHAR) AS imei',
+        'p.lat AS lat',
+        'p.lng AS lng',
+        'p.estado AS estado',
+        'p.fechaHora AS fechaHora',
+        'p.velocidad AS velocidad',
+        'p.ignicion AS ignicion',
+        'p.idEvento AS idEvento',
+      ])
+      .where(enTramos.sql, enTramos.params)
+      .orderBy('p.fechaHora', 'ASC')
+      .addOrderBy('p.id', 'ASC')
+      .getRawMany<Record<string, unknown>>();
+
+    for (const row of rows) {
+      const imei = imeiToString(row.imei);
+      if (!imei) continue;
+      const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
+      const fechaHora = formatFechaPosicion(row.fechaHora as string | Date | null | undefined);
+      const unidad = cand ? unidades.get(cand.idInstalacion) : undefined;
+      if (!unidad || !fechaHora) continue;
+      if (!unidad.imeis.includes(imei)) unidad.imeis.push(imei);
+      unidad.puntos.push({
+        id: Number(row.id),
+        fechaHora,
+        lat: num(row.lat),
+        lng: num(row.lng),
+        velocidad: num(row.velocidad),
+        ignicion: num(row.ignicion),
+        idEvento: num(row.idEvento),
+        estado: num(row.estado),
+      });
+    }
+    return {
+      idCliente,
+      unidades: [...unidades.values()].sort((a, b) => a.idInstalacion - b.idInstalacion),
+    };
   }
 
   /**

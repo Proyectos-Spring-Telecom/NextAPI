@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  IsBoolean,
   IsArray,
   IsIn,
   IsInt,
@@ -118,4 +119,14 @@ export class DistanciaDto {
   @Min(1)
   @Max(200)
   limit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Agrega el resumen de jornada por día de cada unidad (primer encendido, último apagado, ' +
+      'tiempos por estado, horas de motor). Máximo 31 días. Sin él, la respuesta no cambia.',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  incluirJornada?: boolean;
 }

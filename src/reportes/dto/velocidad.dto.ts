@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  IsBoolean,
   IsArray,
   IsIn,
   IsInt,
@@ -100,4 +101,14 @@ export class VelocidadDto {
       'fechaFinal debe ser YYYY-MM-DD, YYYY-MM-DD HH:mm:ss o ISO 8601',
   })
   fechaFinal!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Agrega el resumen de jornada por día de cada unidad (primer encendido, último apagado, ' +
+      'tiempos por estado, horas de motor). Máximo 31 días. Sin él, la respuesta no cambia.',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  incluirJornada?: boolean;
 }

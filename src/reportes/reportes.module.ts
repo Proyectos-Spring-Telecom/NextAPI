@@ -7,6 +7,8 @@ import { Clientes } from 'src/entities/Clientes';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
 import { ReportesController } from './reportes.controller';
 import { ReportesService } from './reportes.service';
+import { JornadaService } from './jornada.service';
+import { JornadaController } from './jornada.controller';
 import { ProductosClienteController } from './productos-cliente.controller';
 import { ProductosClienteService } from './productos-cliente.service';
 
@@ -20,8 +22,8 @@ import { ProductosClienteService } from './productos-cliente.service';
     ]),
     TenantFilterModule,
   ],
-  controllers: [ReportesController, ProductosClienteController],
-  providers: [ReportesService, ProductosClienteService],
+  controllers: [ReportesController, JornadaController, ProductosClienteController],
+  providers: [ReportesService, JornadaService, ProductosClienteService],
   exports: [ReportesService],
 })
 export class ReportesModule {}

@@ -1,0 +1,292 @@
+import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
+import { RolesGuard } from 'src/guard/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { JornadaDto } from './dto/jornada.dto';
+import { JornadaService, usuarioDe } from './jornada.service';
+
+const REGLAS = [
+  '**Reglas (iguales en los tres reportes):**',
+  '- Día de **00:00 a 23:59**, hora de pared como `Posiciones.FechaHora`. Un tramo que cruza la medianoche se parte.',
+  '- **Semáforo:** detenida en cuanto la velocidad es 0 o la ignición está apagada.',
+  '- Tipos de tramo: `movimiento` (velocidad > 0), `detenido_encendido` (velocidad 0, ignición 1),',
+  '  `apagado` (ignición 0), `detenido` (velocidad 0 en equipos sin ignición: teléfono, reloj) y',
+  '  `sin_datos` (hueco mayor al doble del intervalo de reporte con motor encendido, mínimo 10 min).',
+  '  Apagada, los reportes espaciados (p. ej. cada 2 h) siguen contando como apagado.',
+  '- Distancia: solo entre coordenadas medidas (las posiciones sin GPS no suman).',
+  '- Ciclo de motor: del encendido al apagado; un hueco `sin_datos` entre tramos encendidos queda dentro.',
+  '- El día en curso termina en la hora actual; los días futuros no se devuelven.',
+  '- Mismo alcance que distancia: cliente + hijos, usuarios limitados a sus unidades, cambios de equipo.',
+  '- Máximo 31 días por consulta.',
+];
+
+const BODY_EJEMPLO = {
+  unaUnidad: {
+    summary: 'Una unidad, un día',
+    value: {
+      idCliente: 15,
+      filtro: 'placa',
+      valores: ['PXP613F'],
+      fechaInicio: '2026-11-12',
+    },
+  },
+  flota: {
+    summary: 'Toda la flota del cliente, una semana',
+    value: { idCliente: 15, fechaInicio: '2026-11-06', fechaFinal: '2026-11-12' },
+  },
+};
+
+const RESUMEN_EJEMPLO = {
+  fecha: '2026-11-12',
+  primerEncendido: '2026-11-12T07:02:10',
+  ultimoApagado: '2026-11-12T19:41:55',
+  encendidoDesdeDiaAnterior: false,
+  terminaEncendido: false,
+  primerMovimiento: '2026-11-12T07:03:00',
+  ultimoMovimiento: '2026-11-12T19:40:30',
+  jornadaMin: 759.8,
+  km: 184.6,
+  horasMotor: 7.88,
+  velocidadMax: 96,
+  velocidadPromedio: 41,
+  tiempos: {
+    movimientoMin: 412,
+    detenidoEncendidoMin: 61,
+    apagadoMin: 949,
+    detenidoMin: 0,
+    sinDatosMin: 18,
+  },
+  ciclosMotor: 7,
+  excesosVelocidad: 3,
+  posiciones: 1290,
+  reportaIgnicion: true,
+};
+
+const UNIDAD_EJEMPLO = {
+  idInstalacion: 1000325,
+  idProducto: 812,
+  placas: 'PXP613F',
+  economico: 'ECO-14',
+  descripcion: 'Camioneta reparto 14',
+  imeis: ['2300007434'],
+};
+
+@ApiTags('Reportes')
+@ApiBearerAuth('bearer-token')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles()
+@Controller('reportes')
+export class JornadaController {
+  constructor(private readonly service: JornadaService) {}
+
+  @Post('jornada')
+  @ApiOperation({
+    summary: 'Jornada por unidad y día: encendido, apagado, tramos y cambios de estado',
+    description: [
+      'Por unidad y día: primer encendido, último apagado, km, tiempos por estado, horas de motor,',
+      'la **línea de tiempo** (`tramos[]`) para pintar la barra del día, los **ciclos de motor**,',
+      'los **cambios de `Estado`** y los **eventos** (excesos, alertas; sin los informativos).',
+      '',
+      ...REGLAS,
+    ].join('\n'),
+  })
+  @ApiBody({ type: JornadaDto, examples: BODY_EJEMPLO })
+  @ApiOkResponse({
+    description: '`data.unidades[].jornadas[]`, una por día',
+    schema: {
+      example: {
+        data: {
+          idCliente: 15,
+          fechaInicio: '2026-11-12',
+          fechaFinal: '2026-11-12',
+          total: 1,
+          unidades: [
+            {
+              ...UNIDAD_EJEMPLO,
+              jornadas: [
+                {
+                  ...RESUMEN_EJEMPLO,
+                  tramos: [
+                    {
+                      tipo: 'apagado',
+                      inicio: '2026-11-12T00:00:00',
+                      fin: '2026-11-12T07:02:10',
+                      min: 422.2,
+                      km: 0,
+                      velocidadMax: null,
+                      velocidadPromedio: null,
+                      lat: 18.9533,
+                      lng: -99.2358,
+                    },
+                    {
+                      tipo: 'movimiento',
+                      inicio: '2026-11-12T07:03:00',
+                      fin: '2026-11-12T07:48:30',
+                      min: 45.5,
+                      km: 31.2,
+                      velocidadMax: 88,
+                      velocidadPromedio: 46,
+                      lat: 18.9533,
+                      lng: -99.2358,
+                    },
+                  ],
+                  ciclos: [
+                    {
+                      encendido: '2026-11-12T07:02:10',
+                      apagado: '2026-11-12T09:15:00',
+                      min: 132.8,
+                      km: 58.4,
+                      velocidadMax: 96,
+                      detenidoEncendidoMin: 12.5,
+                      sinDatosMin: 0,
+                      continuaDelDiaAnterior: false,
+                    },
+                  ],
+                  cambiosEstado: [
+                    { fechaHora: '2026-11-12T07:03:00', estado: 1, nombre: 'Movimiento' },
+                    {
+                      fechaHora: '2026-11-12T08:10:12',
+                      estado: 7,
+                      nombre: 'Exceso de velocidad',
+                    },
+                  ],
+                  eventos: [
+                    {
+                      fechaHora: '2026-11-12T08:10:12',
+                      idEvento: 6,
+                      nombre: 'Exceso de velocidad',
+                      estado: 7,
+                      lat: 18.91,
+                      lng: -99.2,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas, periodo mayor a 31 días o filtro inválido',
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async jornada(@Body() dto: JornadaDto, @Request() req) {
+    return this.service.jornada(dto, usuarioDe(req));
+  }
+
+  @Post('motor')
+  @ApiOperation({
+    summary: 'Medición de motor on/off: ciclos de encendido y horas de motor',
+    description: [
+      'Por unidad: horas de motor y km del periodo, el resumen por día (primer encendido, último',
+      'apagado, horas, ciclos) y la lista de **ciclos** (encendido → apagado) con su duración, km,',
+      'velocidad máxima y minutos detenido con motor encendido.',
+      '',
+      'Equipos sin ignición (`reportaIgnicion: false`): sin ciclos ni horas de motor.',
+      '',
+      ...REGLAS,
+    ].join('\n'),
+  })
+  @ApiBody({ type: JornadaDto, examples: BODY_EJEMPLO })
+  @ApiOkResponse({
+    description: '`data.unidades[]` con `ciclos[]` y `porDia[]`',
+    schema: {
+      example: {
+        data: {
+          idCliente: 15,
+          fechaInicio: '2026-11-12',
+          fechaFinal: '2026-11-12',
+          total: 1,
+          unidades: [
+            {
+              ...UNIDAD_EJEMPLO,
+              horasMotor: 7.88,
+              km: 184.6,
+              ciclosMotor: 7,
+              reportaIgnicion: true,
+              porDia: [
+                {
+                  fecha: '2026-11-12',
+                  primerEncendido: '2026-11-12T07:02:10',
+                  ultimoApagado: '2026-11-12T19:41:55',
+                  horasMotor: 7.88,
+                  ciclosMotor: 7,
+                  km: 184.6,
+                },
+              ],
+              ciclos: [
+                {
+                  fecha: '2026-11-12',
+                  encendido: '2026-11-12T07:02:10',
+                  apagado: '2026-11-12T09:15:00',
+                  min: 132.8,
+                  km: 58.4,
+                  velocidadMax: 96,
+                  detenidoEncendidoMin: 12.5,
+                  sinDatosMin: 0,
+                  continuaDelDiaAnterior: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas, periodo mayor a 31 días o filtro inválido',
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async motor(@Body() dto: JornadaDto, @Request() req) {
+    return this.service.motor(dto, usuarioDe(req));
+  }
+
+  @Post('flota-dia')
+  @ApiOperation({
+    summary: 'Flota del día: una fila por unidad y día con el resumen de jornada',
+    description: [
+      'Tabla de la flota: el resumen de `POST /reportes/jornada` sin listas (sin tramos, ciclos,',
+      'cambios ni eventos). Incluye las unidades sin posiciones (todo el día en `sin_datos`).',
+      'Pensado como vista inicial; el detalle de una unidad sale de `jornada`.',
+      '',
+      ...REGLAS,
+    ].join('\n'),
+  })
+  @ApiBody({ type: JornadaDto, examples: BODY_EJEMPLO })
+  @ApiOkResponse({
+    description: '`data.filas[]`, una por unidad y día',
+    schema: {
+      example: {
+        data: {
+          idCliente: 15,
+          fechaInicio: '2026-11-12',
+          fechaFinal: '2026-11-12',
+          total: 1,
+          filas: [{ ...UNIDAD_EJEMPLO, ...RESUMEN_EJEMPLO }],
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas, periodo mayor a 31 días o filtro inválido',
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async flotaDia(@Body() dto: JornadaDto, @Request() req) {
+    return this.service.flotaDia(dto, usuarioDe(req));
+  }
+}

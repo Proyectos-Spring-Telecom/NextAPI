@@ -23,6 +23,7 @@ import { ReporteSalidasGeocercaDto } from './dto/salidas-geocerca.dto';
 import { ReporteSalidasGeocercaInstalacionDto } from './dto/salidas-geocerca-instalacion.dto';
 import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto';
 import { ReportesService } from './reportes.service';
+import { JornadaService, usuarioDe } from './jornada.service';
 
 @ApiTags('Reportes')
 @ApiBearerAuth('bearer-token')
@@ -30,7 +31,10 @@ import { ReportesService } from './reportes.service';
 @Roles()
 @Controller('reportes')
 export class ReportesController {
-  constructor(private readonly service: ReportesService) {}
+  constructor(
+    private readonly service: ReportesService,
+    private readonly jornadas: JornadaService,
+  ) {}
 
   @Post('paso-por-poi')
   @ApiOperation({
@@ -102,6 +106,10 @@ export class ReportesController {
       '`estado`, `ignicion`, `velocidad`, `fechaHora`, `modelo`, `numeroSerie`,',
       '`imagen`, `idProducto`.',
       '',
+      '**`incluirJornada: true` (opcional):** agrega `data.jornadas[]`, una fila por unidad y día con',
+      'el resumen de `POST /reportes/flota-dia` (primer encendido, último apagado, tiempos, horas de motor).',
+      'Sin el parámetro la respuesta no cambia.',
+      '',
       '**Exclusiones:** paneles de alarma; productos que no sean vehículo.',
       '',
       '**Alcance:** `idCliente` debe estar visible según el rol del token.',
@@ -118,12 +126,27 @@ export class ReportesController {
   @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async velocidad(@Body() dto: VelocidadDto, @Request() req) {
-    return this.service.velocidad(
+    const respuesta = await this.service.velocidad(
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
       Number(req.user.userId),
     );
+    if (!dto.incluirJornada) return respuesta;
+    // Solo las unidades que aparecen en el reporte, ubicadas por IMEI.
+    const imeis = new Set(respuesta.data.posiciones.map((p) => p.imei).filter(Boolean));
+    const { data } = await this.jornadas.flotaDia(
+      {
+        idCliente: dto.idCliente,
+        filtro: dto.filtro,
+        valores: dto.valores,
+        fechaInicio: dto.fechaInicio.slice(0, 10),
+        fechaFinal: dto.fechaFinal.slice(0, 10),
+      },
+      usuarioDe(req),
+    );
+    const jornadas = data.filas.filter((f) => f.imeis.some((i) => imeis.has(i)));
+    return { data: { ...respuesta.data, jornadas } };
   }
 
   @Post('posiciones')
@@ -248,6 +271,9 @@ export class ReportesController {
       '  `recorridos[].posiciones` va vacío. Totales y `porDia` siempre son del periodo completo.',
       '- Sin ambos → respuesta completa como antes (uso: exportar).',
       '',
+      '**`incluirJornada: true` (opcional):** agrega `recorridos[].jornada[]`, el resumen por día de',
+      '`POST /reportes/flota-dia`. Máximo 31 días. Sin el parámetro la respuesta no cambia.',
+      '',
       '**Exclusiones:** tipo panel de alarma (`idTipoDispositivo = 2`).',
       '',
       '**Alcance:** `idCliente` debe estar visible según el rol del token.',
@@ -356,12 +382,33 @@ export class ReportesController {
   @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async distancia(@Body() dto: DistanciaDto, @Request() req) {
-    return this.service.distancia(
+    const respuesta = await this.service.distancia(
       dto,
       Number(req.user.idCliente),
       Number(req.user.rol),
       Number(req.user.userId),
     );
+    if (!dto.incluirJornada) return respuesta;
+    const porInstalacion = await this.jornadas.resumenPorInstalacion(
+      {
+        idCliente: dto.idCliente,
+        filtro: dto.filtro,
+        valores: dto.valores,
+        fechaInicio: dto.fechaInicio,
+        fechaFinal: dto.fechaFinal,
+      },
+      usuarioDe(req),
+    );
+    return {
+      ...respuesta,
+      data: {
+        ...respuesta.data,
+        recorridos: respuesta.data.recorridos.map((r) => ({
+          ...r,
+          jornada: porInstalacion.get(r.idInstalacion) ?? [],
+        })),
+      },
+    };
   }
 
   @Post('salidas-geocerca')
