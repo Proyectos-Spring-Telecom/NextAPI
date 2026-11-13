@@ -200,6 +200,15 @@ export class SolicitarAutorizacionDto {
   @IsString()
   @MaxLength(2000)
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Informativo: el instalador indica que el equipo es de otro proveedor. El API lo decide igual: si Next no tiene ' +
+      'equipo activo de esa clase en el vehículo, la autorización queda como de equipo de terceros (`equipoTercero`).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  equipoTercero?: boolean;
 }
 
 export class DecisionAutorizacionDto {

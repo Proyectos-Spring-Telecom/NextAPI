@@ -172,6 +172,16 @@ describe('OrdenesServicioService.cerrar', () => {
     expect(updates[0]).toMatchObject({ idInstalacionRetirada: null });
   });
 
+  it('autorizada como equipo de otro proveedor: no da de baja aunque Next ya tenga uno', async () => {
+    const { service, instalaciones, updates } = build(
+      { ...base, tipoServicio: 'instalacion', idInstalacion: null, idDispositivoNuevo: 20, autorizacion: 'autorizada', idProductoAutorizacion: 5, equipoTercero: 1, origen: 'crm' },
+      { equipoExistente: true },
+    );
+    await service.cerrar(1, tecnico);
+    expect(instalaciones.baja).not.toHaveBeenCalled();
+    expect(updates[0]).toMatchObject({ idInstalacionRetirada: null });
+  });
+
   it('mantenimiento programado sin código validado: 400', async () => {
     const { service, qr } = build({ ...base, tipoServicio: 'revision', origen: 'crm', fechaCodigoValidado: null });
     await expect(service.cerrar(1, tecnico)).rejects.toThrow(BadRequestException);

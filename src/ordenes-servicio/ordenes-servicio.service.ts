@@ -621,7 +621,11 @@ export class OrdenesServicioService {
           throw new BadRequestException('La desinstalación se autorizó para otro vehículo');
         }
         // Solo la del mismo tipo de equipo: un GPS no retira la TrackCam del vehículo.
-        const existente = await this.instalacionMismaClase(orden, Number(orden.idProductoAutorizacion), qr.manager);
+        // Equipo de otro proveedor: no hay nada de Next que dar de baja.
+        const existente =
+          Number(orden.equipoTercero) === 1
+            ? null
+            : await this.instalacionMismaClase(orden, Number(orden.idProductoAutorizacion), qr.manager);
         if (existente) {
           await this.instalacionesService.baja(
             Number(existente.id),

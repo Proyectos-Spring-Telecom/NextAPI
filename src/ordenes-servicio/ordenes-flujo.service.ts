@@ -540,9 +540,10 @@ export class OrdenesFlujoService {
         ...(orden.idDispositivoNuevo != null ? { clase: fila?.clase || 'AVL' } : {}),
       },
     });
-    if (!conEquipo) {
-      throw new BadRequestException('Ese vehículo no tiene un equipo de esa clase registrado en Next: no hace falta autorización');
-    }
+    // Sin equipo de Next (vehículo nuevo o con desinstalación previa), lo que
+    // encontró el instalador es de otro proveedor: también se autoriza, pero al
+    // cerrar no hay nada que dar de baja (13/11, OS-000014).
+    const equipoTercero = !conEquipo;
     if (orden.autorizacion === AUTORIZACION.PENDIENTE) return this.ok(orden, 'La autorización ya estaba pedida');
     if (orden.autorizacion === AUTORIZACION.AUTORIZADA) return this.ok(orden, 'La desinstalación ya está autorizada');
     await this.transicion(
@@ -551,13 +552,26 @@ export class OrdenesFlujoService {
       {
         autorizacion: AUTORIZACION.PENDIENTE,
         idProductoAutorizacion: Number(orden.idProducto),
+        equipoTercero: equipoTercero ? 1 : 0,
         fechaSolicitudAutorizacion: nowMexicoCityAsUtcDate(),
-        observaciones: this.agregarNota(orden.observaciones, 'Equipo existente', dto.observaciones),
+        observaciones: this.agregarNota(
+          orden.observaciones,
+          equipoTercero ? 'Equipo de otro proveedor' : 'Equipo existente',
+          dto.observaciones,
+        ),
       },
       'pedir autorización',
     );
-    await this.bitacora(`Se pidió autorizar la desinstalación en ${this.folio(orden)}`, 'UPDATE', { id, dto }, { tipo: 'usuario', user });
-    return this.ok(orden, 'Autorización pedida a operación');
+    await this.bitacora(
+      `Se pidió autorizar la desinstalación${equipoTercero ? ' de un equipo de otro proveedor' : ''} en ${this.folio(orden)}`,
+      'UPDATE',
+      { id, dto },
+      { tipo: 'usuario', user },
+    );
+    return this.ok(
+      orden,
+      equipoTercero ? 'Autorización pedida a operación (equipo de otro proveedor)' : 'Autorización pedida a operación',
+    );
   }
 
   async autorizacionesPendientes() {

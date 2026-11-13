@@ -182,6 +182,14 @@ export class OrdenesServicio {
   @Column('bigint', { name: 'IdProductoAutorizacion', nullable: true })
   idProductoAutorizacion: number | null;
 
+  /**
+   * 1 = la autorización es para quitar un equipo de otro proveedor (Next no
+   * tiene instalación activa de esa clase en el vehículo): al cerrar no se da
+   * de baja nada en Next.
+   */
+  @Column('tinyint', { name: 'EquipoTercero', default: 0 })
+  equipoTercero: number;
+
   @Column('datetime', { name: 'FechaSolicitudAutorizacion', nullable: true })
   fechaSolicitudAutorizacion: Date | null;
 

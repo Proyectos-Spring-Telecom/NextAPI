@@ -50,6 +50,8 @@ export function mapOrden(o: OrdenesServicio) {
     fechaCodigoValidado: o.fechaCodigoValidado ?? null,
     idUsuarioCodigo: n(o.idUsuarioCodigo),
     autorizacion: o.autorizacion ?? null,
+    /** La autorización es para quitar un equipo de otro proveedor (no se da de baja nada en Next). */
+    equipoTercero: Number(o.equipoTercero ?? 0) === 1,
     nombreAutorizo: o.nombreAutorizo ?? null,
     fechaAutorizacion: o.fechaAutorizacion ?? null,
     origenAutorizacion: o.origenAutorizacion ?? null,

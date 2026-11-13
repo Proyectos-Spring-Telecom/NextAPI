@@ -64,6 +64,7 @@ Si `requiereObservaciones` es `true`, pedir el texto antes de enviar.
 | `referenciaCrm`, `unidad`, `unidadesTotal` | Alta de varias unidades: "unidad 2 de 5" (cada una es una orden independiente) |
 | `codigoValidado` | Mantenimientos: ya se validó el código |
 | `autorizacion` | `null` / `pendiente` / `autorizada` / `rechazada` (alta sobre vehículo con equipo) |
+| `equipoTercero` | `true` si la autorización es para quitar un equipo de otro proveedor (no registrado en Next) |
 | `pruebas[]` | `{ clave, estatus, fechaSolicitud, notaTecnico, fechaValidacion, nombreValido, notaOperador }`; `estatus`: `solicitada` / `correcta` / `fallida` / `anulada` |
 | `respuestas[]` | `{ seccion, clave, valor: bool }` ya guardadas |
 | `archivos[]` | `{ clave, fechaCreacion, url }`; la `url` firmada dura **5 min** (no guardarla) |
@@ -138,7 +139,7 @@ Si el vehículo del alta tiene una instalación vigente en Next, la orden no cie
 
 1. **Primero** fijar el vehículo: `PATCH { "idProducto": 812 }` (sin vehículo → 400 "Primero indica el vehículo").
 2. Foto del equipo encontrado: `POST /:id/archivos/equipo_existente`.
-3. `POST /ordenes-servicio/:id/autorizacion` `{ "observaciones": "GPS de otra marca bajo el tablero" }`. Si el vehículo no tiene equipo registrado en Next → 400 (no hace falta autorización). Repetirla responde 200 "ya estaba pedida".
+3. `POST /ordenes-servicio/:id/autorizacion` `{ "observaciones": "GPS de otra marca bajo el tablero", "equipoTercero": true }` (`equipoTercero` es opcional e informativo). Si el vehículo no tiene equipo activo de esa clase en Next (vehículo nuevo o con desinstalación previa), lo encontrado es de **otro proveedor**: la autorización se pide igual y la orden trae `equipoTercero: true`; al cerrar no se da de baja nada en Next (13/11/2026; antes respondía 400). Repetirla responde 200 "ya estaba pedida".
 4. **Esperar la decisión** consultando `GET /:id` cada 10–15 s (no hay push): campo `autorizacion`.
    - `autorizada`: desinstalar y seguir con el alta normal. Al cerrar, Next da de baja la instalación anterior.
    - `rechazada`: la orden queda `no_cumplida` (motivo `sin_autorizacion_desinstalacion`); ya no se edita. Mostrarlo y regresar a la agenda.
