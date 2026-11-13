@@ -18,9 +18,9 @@ import { JornadaService, usuarioDe } from './jornada.service';
 const REGLAS = [
   '**Reglas (iguales en los tres reportes):**',
   '- Día de **00:00 a 23:59**, hora de pared como `Posiciones.FechaHora`. Un tramo que cruza la medianoche se parte.',
-  '- **Semáforo:** detenida en cuanto la velocidad es 0 o la ignición está apagada.',
-  '- Tipos de tramo: `movimiento` (velocidad > 0), `detenido_encendido` (velocidad 0, ignición 1),',
-  '  `apagado` (ignición 0), `detenido` (velocidad 0 en equipos sin ignición: teléfono, reloj) y',
+  '- **Semáforo:** detenida con velocidad menor a 5 km/h o con la ignición apagada (el mismo umbral del `Estado` 0 del socket).',
+  '- Tipos de tramo: `movimiento` (≥ 5 km/h), `detenido_encendido` (< 5 km/h, ignición 1),',
+  '  `apagado` (ignición 0), `detenido` (< 5 km/h en equipos sin ignición: teléfono, reloj) y',
   '  `sin_datos` (hueco mayor al doble del intervalo de reporte con motor encendido, mínimo 10 min).',
   '  Apagada, los reportes espaciados (p. ej. cada 2 h) siguen contando como apagado.',
   '- Distancia: solo entre coordenadas medidas (las posiciones sin GPS no suman).',

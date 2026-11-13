@@ -5,8 +5,10 @@ import { distanciaMetros, redondearKm } from 'src/utils/recorrido.utils';
 /**
  * Tramos de operación de una unidad (docs/fis-fiber, ruta del back §2).
  *
- * Regla del semáforo: la unidad está detenida en cuanto la velocidad es 0 o
- * llega una ignición apagada. El día va de 00:00 a 23:59 (hora de pared, la
+ * Regla del semáforo: la unidad está detenida con velocidad menor a 5 km/h o
+ * con la ignición apagada; el mismo umbral con que el socket pone `Estado` 0
+ * (docs/catalogo-eventos.md), para que la jornada y el semáforo coincidan y el
+ * ruido del GPS parado (1–4 km/h) no cuente como movimiento. El día va de 00:00 a 23:59 (hora de pared, la
  * misma de `Posiciones.FechaHora`); un tramo que cruza la medianoche se parte.
  */
 export type TipoTramo =
@@ -117,6 +119,9 @@ export type OpcionesJornada = {
   umbralSinDatosMin?: number;
 };
 
+/** Desde esta velocidad la unidad está en movimiento (`Estado` 1 del socket). */
+export const VELOCIDAD_MOVIMIENTO_KMH = 5;
+
 /** Mínimo del hueco `sin_datos` cuando se estima con el intervalo del equipo. */
 export const UMBRAL_SIN_DATOS_MIN_MINUTOS = 10;
 const MS_MIN = 60_000;
@@ -173,7 +178,7 @@ function ignicionDe(p: PuntoOperacion): number | null {
 /** Tipo de tramo con la regla del semáforo. */
 export function clasificar(velocidad: number | null, ignicion: number | null): TipoTramo {
   if (ignicion === 0) return 'apagado';
-  if ((velocidad ?? 0) > 0) return 'movimiento';
+  if ((velocidad ?? 0) >= VELOCIDAD_MOVIMIENTO_KMH) return 'movimiento';
   return ignicion === 1 ? 'detenido_encendido' : 'detenido';
 }
 
@@ -320,7 +325,8 @@ function unirTramos(intervalos: readonly Intervalo[]): TramoOperacion[] {
   type Acumulado = Omit<Intervalo, 'velocidad'> & { velocidades: number[] };
   const acumulados: Acumulado[] = [];
   for (const { velocidad, ...iv } of intervalos) {
-    const vel = velocidad != null && velocidad > 0 ? [velocidad] : [];
+    const vel =
+      velocidad != null && velocidad >= VELOCIDAD_MOVIMIENTO_KMH ? [velocidad] : [];
     const ultimo = acumulados[acumulados.length - 1];
     if (ultimo && ultimo.tipo === iv.tipo && ultimo.fin === iv.ini) {
       ultimo.fin = iv.fin;
@@ -463,7 +469,7 @@ export function armarJornada(
 
   const velocidades = delDia
     .map((p) => p.velocidad)
-    .filter((v): v is number => v != null && v > 0);
+    .filter((v): v is number => v != null && v >= VELOCIDAD_MOVIMIENTO_KMH);
   const movimientos = tramos.filter((t) => t.tipo === 'movimiento');
   const primero = ciclos[0];
   const ultimo = ciclos[ciclos.length - 1];

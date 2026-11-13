@@ -43,12 +43,15 @@ describe('clasificar (regla del semáforo)', () => {
   it('ignición apagada siempre es apagado, aunque traiga velocidad', () => {
     expect(clasificar(30, 0)).toBe('apagado');
   });
-  it('velocidad mayor a 0 es movimiento', () => {
-    expect(clasificar(1, 1)).toBe('movimiento');
+  it('desde 5 km/h es movimiento, el mismo umbral del Estado del socket', () => {
+    expect(clasificar(5, 1)).toBe('movimiento');
     expect(clasificar(12, null)).toBe('movimiento');
   });
-  it('velocidad 0: detenido encendido con ignición, detenido sin ella', () => {
+  it('menos de 5 km/h: detenido encendido con ignición, detenido sin ella', () => {
+    expect(clasificar(4, 1)).toBe('detenido_encendido');
+    expect(clasificar(2, 1)).toBe('detenido_encendido');
     expect(clasificar(0, 1)).toBe('detenido_encendido');
+    expect(clasificar(4, null)).toBe('detenido');
     expect(clasificar(0, null)).toBe('detenido');
     expect(clasificar(null, null)).toBe('detenido');
   });

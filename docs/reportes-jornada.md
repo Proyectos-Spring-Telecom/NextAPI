@@ -36,14 +36,14 @@ Sin el parámetro, las respuestas no cambian.
 ## Reglas
 
 - **El día va de 00:00 a 23:59.** Un tramo que cruza la medianoche se parte. El día en curso termina en la hora actual.
-- **Semáforo:** la unidad está detenida en cuanto la velocidad es 0 o la ignición está apagada.
+- **Semáforo:** la unidad está detenida con velocidad menor a 5 km/h o con la ignición apagada. Es el mismo umbral con que el socket pone `Estado` 0, así que la barra y el semáforo coinciden, y el ruido del GPS parado (1–4 km/h) no cuenta como movimiento.
 
 | `tipo` de tramo | Cuándo | Color sugerido |
 |---|---|---|
-| `movimiento` | Velocidad > 0 | Verde |
-| `detenido_encendido` | Velocidad 0 con motor encendido | Ámbar |
+| `movimiento` | Velocidad ≥ 5 km/h | Verde |
+| `detenido_encendido` | Menos de 5 km/h con motor encendido | Ámbar |
 | `apagado` | Ignición apagada | Gris |
-| `detenido` | Velocidad 0 en equipos sin ignición (teléfono, reloj) | Ámbar claro |
+| `detenido` | Menos de 5 km/h en equipos sin ignición (teléfono, reloj) | Ámbar claro |
 | `sin_datos` | Hueco mayor al doble del intervalo de reporte con motor encendido (mínimo 10 min) | Rayado |
 
 - Apagada, una unidad que reporta cada 2 h sigue contando como apagada; ese hueco no es `sin_datos`.
