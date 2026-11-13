@@ -7,6 +7,7 @@ import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
 import { MonitoreoModule } from 'src/monitoreo/monitoreo.module';
 import { IncidentesAutoService } from './incidentes-auto.service';
+import { WebhooksClienteModule } from 'src/webhooks-cliente/webhooks-cliente.module';
 
 /** Módulo ligero (solo repos) para que el ingest de telemetría lo importe sin ciclos. */
 @Module({
@@ -18,6 +19,7 @@ import { IncidentesAutoService } from './incidentes-auto.service';
       EventoAlarma,
     ]),
     MonitoreoModule,
+    WebhooksClienteModule,
   ],
   providers: [IncidentesAutoService],
   exports: [IncidentesAutoService],

@@ -15,6 +15,7 @@ import { ResumenDiarioService } from './resumen-diario.service';
 import { GeocercasEventosService } from './geocercas-eventos.service';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { LlavesApiModule } from 'src/llaves-api/llaves-api.module';
+import { WebhooksClienteModule } from 'src/webhooks-cliente/webhooks-cliente.module';
 import { ProductosClienteController } from './productos-cliente.controller';
 import { ProductosClienteService } from './productos-cliente.service';
 
@@ -24,6 +25,7 @@ import { ProductosClienteService } from './productos-cliente.service';
     TenantFilterModule,
     BitacoraModule,
     LlavesApiModule,
+    WebhooksClienteModule,
   ],
   controllers: [
     ReportesController,

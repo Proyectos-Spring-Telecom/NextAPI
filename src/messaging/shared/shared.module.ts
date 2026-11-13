@@ -13,12 +13,14 @@ import { PosicionIngestService } from './posicion-ingest.service';
 import { PuntosInteresAvisosService } from './puntos-interes-avisos.service';
 import { GeocercasAvisosService } from './geocercas-avisos.service';
 import { TelemetriaHuerfanosModule } from 'src/telemetria-huerfanos/telemetria-huerfanos.module';
+import { WebhooksClienteModule } from 'src/webhooks-cliente/webhooks-cliente.module';
 
 @Module({
   imports: [
     MonitoreoModule,
     TelemetriaHuerfanosModule,
     IncidentesAutoModule,
+    WebhooksClienteModule,
     TypeOrmModule.forFeature([
       Dispositivos,
       Posiciones,

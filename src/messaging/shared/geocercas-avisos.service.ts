@@ -1,9 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TIPOS_DISPOSITIVO_GEOCERCA } from 'src/common/estatus.enum';
 import { extractOuterRing } from './estado-geocerca.util';
 import { dentroDeGeocerca } from './geocercas-avisos.util';
 import type { PosicionParaPuntos } from './puntos-interes-avisos.service';
+import { WebhooksClienteService } from 'src/webhooks-cliente/webhooks-cliente.service';
+import { fechaPared } from 'src/utils/datetime-mexico.util';
 
 /**
  * Entrada y salida de las geocercas ligadas al vehículo (`ProductosGeocerca`),
@@ -20,7 +22,10 @@ import type { PosicionParaPuntos } from './puntos-interes-avisos.service';
 export class GeocercasAvisosService {
   private readonly logger = new Logger(GeocercasAvisosService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @Optional() private readonly webhooks?: WebhooksClienteService,
+  ) {}
 
   async evaluar(p: PosicionParaPuntos): Promise<void> {
     try {
@@ -49,7 +54,7 @@ export class GeocercasAvisosService {
         if (!ring) continue;
         const dentro = dentroDeGeocerca(lng, lat, ring);
         if (dentro == null) continue;
-        await this.aplicar(p, Number(g.idProducto), Number(g.id), dentro);
+        await this.aplicar(p, Number(g.idProducto), Number(g.id), dentro, lat, lng);
       }
     } catch (error) {
       this.logger.warn(
@@ -63,6 +68,8 @@ export class GeocercasAvisosService {
     idProducto: number,
     idGeocerca: number,
     dentro: boolean,
+    lat: number,
+    lng: number,
   ): Promise<void> {
     const valor = dentro ? 1 : 0;
     const fecha = p.fechaHora as Date;
@@ -92,6 +99,27 @@ export class GeocercasAvisosService {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [idGeocerca, idProducto, p.idInstalacion, p.idPosicion, tipo, fecha],
     );
+    if (this.webhooks) {
+      const [inst]: Array<{ idCliente: number; nombre: string }> =
+        await this.dataSource.query(
+          'SELECT i.IdCliente AS idCliente, g.Nombre AS nombre FROM Instalaciones i, Geocercas g WHERE i.Id = ? AND g.Id = ?',
+          [p.idInstalacion, idGeocerca],
+        );
+      void this.webhooks.encolar(
+        dentro ? 'geocerca.entrada' : 'geocerca.salida',
+        inst?.idCliente,
+        {
+          idGeocerca,
+          nombreGeocerca: inst?.nombre ?? null,
+          idProducto,
+          idInstalacion: p.idInstalacion,
+          idPosicion: p.idPosicion,
+          fechaHora: fechaPared(fecha),
+          lat,
+          lng,
+        },
+      );
+    }
     this.logger.log(
       `[Geocercas] ${tipo} producto=${idProducto} geocerca=${idGeocerca} instalacion=${p.idInstalacion} posicion=${p.idPosicion}`,
     );

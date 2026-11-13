@@ -14,6 +14,7 @@ import { Instalaciones } from 'src/entities/Instalaciones';
 import { imeiToString } from 'src/common/imei.util';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { Incidentes } from 'src/entities/Incidentes';
+import { WebhooksClienteService } from 'src/webhooks-cliente/webhooks-cliente.service';
 import { Posiciones } from 'src/entities/Posiciones';
 import { SeguimientoIncidentes } from 'src/entities/SeguimientoIncidentes';
 import {
@@ -80,6 +81,7 @@ export class IncidentesAutoService {
     @InjectRepository(SeguimientoIncidentes)
     private readonly seguimientosRepo: Repository<SeguimientoIncidentes>,
     @Optional() private readonly monitoreoGateway?: MonitoreoGateway,
+    @Optional() private readonly webhooks?: WebhooksClienteService,
   ) {}
 
   /**
@@ -197,6 +199,17 @@ export class IncidentesAutoService {
       this.logger.log(
         `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} posicion=${posicionId} → Incidente=${saved.id}`,
       );
+      // Aviso al sistema del cliente (bandeja con reintentos; nunca frena aquí).
+      void this.webhooks?.encolar('alerta.abierta', idCliente, {
+        idIncidente: Number(saved.id),
+        descripcion: saved.descripcion,
+        imei,
+        estado,
+        idEvento: idEvento ?? null,
+        fechaHora: fechaPared(posicion.fechaHora),
+        lat: posicion.lat,
+        lng: posicion.lng,
+      });
     } catch (error) {
       this.logger.warn(
         `[IncidenteAuto] no se pudo crear incidente imei=${imei} estado=${estado} posicion=${posicionId}: ${(error as Error)?.message}`,
@@ -296,6 +309,16 @@ export class IncidentesAutoService {
         );
         idIncidente = Number(saved.id);
         descripcion = saved.descripcion;
+        void this.webhooks?.encolar('alerta.abierta', idCliente, {
+          idIncidente,
+          descripcion,
+          imei,
+          estado,
+          idEvento: params.idEvento,
+          fechaHora: fechaPared(params.fechaHora),
+          lat: null,
+          lng: null,
+        });
       }
       this.logger.log(
         `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} sin ubicación → ${abierto == null ? 'Incidente' : 'seguimiento en Incidente'}=${idIncidente}`,

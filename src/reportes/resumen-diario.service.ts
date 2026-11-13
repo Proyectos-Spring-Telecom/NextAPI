@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
@@ -6,9 +12,11 @@ import {
   diasDelPeriodo,
   fechaDeMs,
   jornadasDelPeriodo,
+  resumenDeJornada,
   type JornadaDia,
 } from './helpers/jornada.helpers';
 import { ReportesService } from './reportes.service';
+import { WebhooksClienteService } from 'src/webhooks-cliente/webhooks-cliente.service';
 
 const INTERVAL_MS = 10 * 60 * 1000;
 const PRIMER_TICK_MS = 2 * 60 * 1000;
@@ -44,6 +52,7 @@ export class ResumenDiarioService implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
     private readonly reportes: ReportesService,
     private readonly config: ConfigService,
+    @Optional() private readonly webhooks?: WebhooksClienteService,
   ) {}
 
   onModuleInit() {
@@ -69,7 +78,12 @@ export class ResumenDiarioService implements OnModuleInit, OnModuleDestroy {
     try {
       const dia = await this.diaFaltante();
       if (dia) {
-        const filas = await this.calcularDia(dia);
+        // Solo el día de ayer avisa `jornada.cerrada`; el histórico no.
+        const ayer = fechaDeMs(Date.parse(`${ahoraDia()}T00:00:00Z`) - MS_DIA).slice(
+          0,
+          10,
+        );
+        const filas = await this.calcularDia(dia, dia === ayer);
         this.logger.log(`Resumen diario ${dia}: ${filas} unidades`);
       }
     } catch (error) {
@@ -100,7 +114,7 @@ export class ResumenDiarioService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Calcula y guarda (upsert) el resumen de un día para todas las instalaciones. */
-  async calcularDia(dia: string): Promise<number> {
+  async calcularDia(dia: string, avisar = false): Promise<number> {
     const ids = await this.reportes.idsInstalacionSistema();
     let total = 0;
     for (let i = 0; i < ids.length; i += LOTE_INSTALACIONES) {
@@ -115,9 +129,35 @@ export class ResumenDiarioService implements OnModuleInit, OnModuleDestroy {
         jornada: jornadasDelPeriodo(u.puntos, [dia])[0],
       }));
       await this.guardar(filas);
+      if (avisar) await this.avisarJornadas(filas);
       total += filas.length;
     }
     return total;
+  }
+
+  /** `jornada.cerrada` a los clientes con webhook (la bandeja filtra quién lo suscribe). */
+  private async avisarJornadas(
+    filas: Array<{
+      idInstalacion: number;
+      idProducto: number | null;
+      jornada: JornadaDia;
+    }>,
+  ): Promise<void> {
+    if (!this.webhooks || !filas.length) return;
+    const clientes: Array<{ id: number; idCliente: number }> =
+      await this.dataSource.query(
+        'SELECT Id AS id, IdCliente AS idCliente FROM Instalaciones WHERE Id IN (?)',
+        [filas.map((f) => f.idInstalacion)],
+      );
+    const clienteDe = new Map(clientes.map((c) => [Number(c.id), Number(c.idCliente)]));
+    for (const { idInstalacion, idProducto, jornada } of filas) {
+      if (jornada.posiciones === 0) continue;
+      await this.webhooks.encolar('jornada.cerrada', clienteDe.get(idInstalacion), {
+        idInstalacion,
+        idProducto,
+        ...resumenDeJornada(jornada),
+      });
+    }
   }
 
   private async guardar(
@@ -212,4 +252,8 @@ export class ResumenDiarioService implements OnModuleInit, OnModuleDestroy {
       horasMotor: Number(f.horasMotor) || 0,
     }));
   }
+}
+
+function ahoraDia(): string {
+  return nowMexicoCityAsUtcDate().toISOString().slice(0, 10);
 }
