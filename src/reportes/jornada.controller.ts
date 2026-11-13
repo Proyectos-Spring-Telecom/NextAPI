@@ -6,10 +6,12 @@ import {
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
+import { JwtOLlaveApiGuard } from 'src/llaves-api/jwt-o-llave-api.guard';
+import { AceptaLlaveApi } from 'src/llaves-api/acepta-llave-api.decorator';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { GeocercasEventosDto, JornadaDto, ParadasDto } from './dto/jornada.dto';
@@ -84,8 +86,10 @@ const UNIDAD_EJEMPLO = {
 
 @ApiTags('Reportes')
 @ApiBearerAuth('bearer-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtOLlaveApiGuard, RolesGuard)
 @Roles()
+@AceptaLlaveApi()
+@ApiSecurity('api-key')
 @Controller('reportes')
 export class JornadaController {
   constructor(

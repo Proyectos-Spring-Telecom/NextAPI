@@ -31,6 +31,7 @@ import { GeocercasModule } from './geocercas/geocercas.module';
 import { NumerosEmergenciaModule } from './numeros-emergencia/numeros-emergencia.module';
 import { IncidentesModule } from './incidentes/incidentes.module';
 import { ReportesModule } from './reportes/reportes.module';
+import { LlavesApiModule } from './llaves-api/llaves-api.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ConsolaModule } from './consola/consola.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -235,6 +236,7 @@ import * as jwt from 'jsonwebtoken';
     IncidentesModule,
 
     ReportesModule,
+    LlavesApiModule,
 
     DashboardModule,
 

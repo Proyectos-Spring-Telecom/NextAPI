@@ -14,6 +14,7 @@ import { ContadoresService } from './contadores.service';
 import { ResumenDiarioService } from './resumen-diario.service';
 import { GeocercasEventosService } from './geocercas-eventos.service';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
+import { LlavesApiModule } from 'src/llaves-api/llaves-api.module';
 import { ProductosClienteController } from './productos-cliente.controller';
 import { ProductosClienteService } from './productos-cliente.service';
 
@@ -22,6 +23,7 @@ import { ProductosClienteService } from './productos-cliente.service';
     TypeOrmModule.forFeature([PuntosInteres, Instalaciones, Geocercas, Clientes]),
     TenantFilterModule,
     BitacoraModule,
+    LlavesApiModule,
   ],
   controllers: [
     ReportesController,

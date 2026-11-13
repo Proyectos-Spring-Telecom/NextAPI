@@ -17,10 +17,12 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
+import { JwtOLlaveApiGuard } from 'src/llaves-api/jwt-o-llave-api.guard';
+import { AceptaLlaveApi } from 'src/llaves-api/acepta-llave-api.decorator';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { EnumRoles } from 'src/common/estatus.enum';
@@ -52,7 +54,7 @@ const REGLAS_CONTADORES = [
 
 @ApiTags('Reportes')
 @ApiBearerAuth('bearer-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtOLlaveApiGuard, RolesGuard)
 @Roles()
 @Controller('reportes')
 export class ContadoresController {
@@ -62,6 +64,8 @@ export class ContadoresController {
   ) {}
 
   @Post('contadores')
+  @AceptaLlaveApi()
+  @ApiSecurity('api-key')
   @ApiOperation({
     summary: 'Odómetro y horas de motor acumulados por vehículo',
     description: [
@@ -117,6 +121,8 @@ export class ContadoresController {
   }
 
   @Post('odometro')
+  @AceptaLlaveApi()
+  @ApiSecurity('api-key')
   @ApiOperation({
     summary: 'Km y horas de motor por día, con el odómetro al cierre de cada día',
     description: [

@@ -46,6 +46,15 @@ async function bootstrap() {
       },
       'bearer-token',
     )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-Api-Key',
+        description: 'Llave de API del cliente (solo rutas de reportes de lectura)',
+      },
+      'api-key',
+    )
     .addTag('Autenticación', 'Endpoints de autenticación y registro')
     .addTag('Bitácora', 'Registro de actividades del sistema')
     .addTag('Clientes', 'Gestión de clientes')
