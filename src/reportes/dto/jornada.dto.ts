@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -74,4 +75,18 @@ export class JornadaDto {
   @IsString()
   @Matches(DIA_RE, { message: 'fechaFinal debe ser YYYY-MM-DD' })
   fechaFinal?: string;
+}
+
+/** Body de paradas: el de jornada más un filtro opcional de duración. */
+export class ParadasDto extends JornadaDto {
+  @ApiPropertyOptional({
+    description:
+      'Solo paradas de al menos estos minutos. Sin él, todas (la regla del semáforo no tiene mínimo).',
+    example: 5,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(1440)
+  minutosMinimos?: number;
 }

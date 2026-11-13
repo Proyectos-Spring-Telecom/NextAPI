@@ -18,6 +18,7 @@ Los tres reciben el mismo body (`JornadaDto`):
 | `POST /reportes/flota-dia` | Tabla de la flota: una fila por unidad y día. | `data.filas[]` con el resumen de la jornada. |
 | `POST /reportes/jornada` | El detalle de una unidad: la barra del día. | `data.unidades[].jornadas[]` con el resumen + `tramos`, `ciclos`, `cambiosEstado` y `eventos`. |
 | `POST /reportes/motor` | Medición de motor on/off. | `data.unidades[]` con `horasMotor`, `porDia[]` y `ciclos[]`. |
+| `POST /reportes/paradas` | Paradas con duración, motor y lugar. Acepta `minutosMinimos` (opcional). | `data.unidades[].paradas[]`: `inicio`, `fin`, `min`, `motor` (`encendido` / `apagado` / `mixto` / `sin_ignicion`), `lat` / `lng`, `geocercas[]` y `puntoInteres`. |
 
 **Resumen de cada día:**
 - `primerEncendido` y `ultimoApagado`;
@@ -63,7 +64,12 @@ Sin el parámetro, las respuestas no cambian.
   - una barra de 24 h con los tramos por color;
   - marcadores de `eventos`;
   - tarjetas de encendido, apagado, km y horas;
-  - la lista de paradas: tramos `detenido_encendido` y `apagado`, con `lat`/`lng` para la dirección con OpenStreetMap.
+  - la lista de paradas, de `POST /reportes/paradas`, con la dirección resuelta en el front con OpenStreetMap.
+- **Paradas:**
+  - un mapa con un pin por parada, con color según `motor`;
+  - una tabla con duración, geocerca y punto de interés;
+  - un filtro de minutos mínimos en el front.
+  - Una parada que cruza la medianoche sale en los dos días (`continuaDelDiaAnterior` / `continuaAlDiaSiguiente`); el front puede unirlas.
 - **Motor:**
   - una gráfica de horas de motor por día (`porDia`);
   - la tabla de ciclos;

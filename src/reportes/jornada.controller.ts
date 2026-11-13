@@ -12,7 +12,7 @@ import {
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { JornadaDto } from './dto/jornada.dto';
+import { JornadaDto, ParadasDto } from './dto/jornada.dto';
 import { JornadaService, usuarioDe } from './jornada.service';
 
 const REGLAS = [
@@ -288,5 +288,83 @@ export class JornadaController {
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async flotaDia(@Body() dto: JornadaDto, @Request() req) {
     return this.service.flotaDia(dto, usuarioDe(req));
+  }
+
+  @Post('paradas')
+  @ApiOperation({
+    summary: 'Paradas por unidad: duración, motor y lugar',
+    description: [
+      'Cada racha de tramos detenidos o apagados es una parada (regla del semáforo, sin mínimo;',
+      '`minutosMinimos` es un filtro opcional). Un hueco `sin_datos` corta la parada.',
+      '',
+      'Por parada: `inicio`, `fin`, `min`, `motor` (`encendido` | `apagado` | `mixto` | `sin_ignicion`),',
+      '`motorEncendidoMin`, `apagadoMin`, `lat` / `lng` (la dirección la resuelve el front con OpenStreetMap),',
+      'las **geocercas** que la contienen y el **punto de interés** más cercano dentro de su radio',
+      '(solo los ligados al vehículo). Una parada que cruza la medianoche sale en los dos días',
+      '(`continuaDelDiaAnterior` / `continuaAlDiaSiguiente`).',
+      '',
+      ...REGLAS,
+    ].join('\n'),
+  })
+  @ApiBody({
+    type: ParadasDto,
+    examples: {
+      ...BODY_EJEMPLO,
+      cincoMinutos: {
+        summary: 'Solo paradas de 5 min o más',
+        value: {
+          idCliente: 15,
+          filtro: 'placa',
+          valores: ['PXP613F'],
+          fechaInicio: '2026-11-12',
+          minutosMinimos: 5,
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: '`data.unidades[].paradas[]`',
+    schema: {
+      example: {
+        data: {
+          idCliente: 15,
+          fechaInicio: '2026-11-12',
+          fechaFinal: '2026-11-12',
+          total: 1,
+          unidades: [
+            {
+              ...UNIDAD_EJEMPLO,
+              total: 1,
+              minutos: 36.4,
+              paradas: [
+                {
+                  fecha: '2026-11-12',
+                  inicio: '2026-11-12T15:39:58',
+                  fin: '2026-11-12T16:16:24',
+                  min: 36.4,
+                  motor: 'mixto',
+                  motorEncendidoMin: 3.8,
+                  apagadoMin: 32.7,
+                  lat: 20.562212,
+                  lng: -100.413589,
+                  continuaDelDiaAnterior: false,
+                  continuaAlDiaSiguiente: false,
+                  geocercas: [{ id: 12, nombre: 'Base Querétaro' }],
+                  puntoInteres: { id: 40, nombre: 'Cliente Norte', distanciaM: 35 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas, periodo mayor a 31 días o filtro inválido',
+  })
+  @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  async paradas(@Body() dto: ParadasDto, @Request() req) {
+    return this.service.paradas(dto, usuarioDe(req));
   }
 }

@@ -69,6 +69,8 @@ import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto'
 import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
 import { redondearKm } from 'src/utils/recorrido.utils';
 import { fechaDeMs, msDeFecha, type PuntoOperacion } from './helpers/jornada.helpers';
+import type { LugaresVehiculo } from './helpers/paradas.helpers';
+import { ProductosPuntoInteres } from 'src/entities/ProductosPuntoInteres';
 
 /** Horas antes del periodo que se leen para saber cómo amaneció la unidad. */
 const HORAS_PREVIAS_OPERACION = 6;
@@ -1419,6 +1421,55 @@ export class ReportesService {
       idCliente,
       unidades: [...unidades.values()].sort((a, b) => a.idInstalacion - b.idInstalacion),
     };
+  }
+
+  /**
+   * Geocercas y puntos de interés ligados a cada vehículo (`ProductosGeocerca`,
+   * `ProductosPuntoInteres`), para ubicar las paradas. Solo activos.
+   */
+  async lugaresDeVehiculos(idsProducto: number[]): Promise<Map<number, LugaresVehiculo>> {
+    const productos = [...new Set(idsProducto.filter((x) => Number.isFinite(x) && x > 0))];
+    const lugares = new Map<number, LugaresVehiculo>(
+      productos.map((id) => [id, { geocercas: [], puntos: [] }]),
+    );
+    if (!productos.length) return lugares;
+
+    for (const g of await this.cargarGeocercasDeVehiculos(productos, null)) {
+      const ring = extractOuterRing(g.geocerca);
+      if (!ring) continue;
+      for (const idProducto of g.vehiculos) {
+        lugares.get(idProducto)?.geocercas.push({ id: Number(g.id), nombre: g.nombre, ring });
+      }
+    }
+
+    const puntos = await this.puntosRepo
+      .createQueryBuilder('poi')
+      .innerJoin(ProductosPuntoInteres, 'pp', 'pp.idPuntoInteres = poi.id AND pp.estatus = :activo')
+      .select([
+        'poi.id AS id',
+        'poi.nombre AS nombre',
+        'poi.lat AS lat',
+        'poi.lng AS lng',
+        'poi.radioMetros AS radioMetros',
+        'pp.idProducto AS idProducto',
+      ])
+      .where('poi.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+      .andWhere('pp.idProducto IN (:...productos)', { productos })
+      .getRawMany<Record<string, unknown>>();
+    for (const r of puntos) {
+      const lat = num(r.lat);
+      const lng = num(r.lng);
+      if (lat == null || lng == null) continue;
+      const radio = num(r.radioMetros);
+      lugares.get(Number(r.idProducto))?.puntos.push({
+        id: Number(r.id),
+        nombre: String(r.nombre ?? ''),
+        lat,
+        lng,
+        radioMetros: radio != null && radio > 0 ? radio : 25,
+      });
+    }
+    return lugares;
   }
 
   /**

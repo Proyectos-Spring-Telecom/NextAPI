@@ -14,6 +14,7 @@ import {
   type PuntoOperacion,
   type ResumenJornada,
 } from './helpers/jornada.helpers';
+import { paradasDeJornada, ubicarParada, type Parada } from './helpers/paradas.helpers';
 import { ReportesService, type UnidadOperacion } from './reportes.service';
 
 type ConsultaJornada = {
@@ -56,6 +57,12 @@ export type MotorUnidad = EtiquetaUnidad & {
 };
 
 export type FilaFlotaDia = EtiquetaUnidad & ResumenJornada;
+
+export type ParadasUnidad = EtiquetaUnidad & {
+  total: number;
+  minutos: number;
+  paradas: Parada[];
+};
 
 const MS_DIA = 86_400_000;
 const MS_PREVIAS = 6 * 3_600_000;
@@ -112,6 +119,29 @@ export class JornadaService {
         jornadas.map((j) => ({ ...unidad, ...resumenDeJornada(j) })),
       );
       return { data: { ...periodo, total: filas.length, filas } };
+    });
+  }
+
+  async paradas(dto: ConsultaJornada & { minutosMinimos?: number }, usuario: Usuario) {
+    return envolver(async () => {
+      const { unidades, ...periodo } = await this.calcular(dto, usuario);
+      const lugares = await this.reportes.lugaresDeVehiculos(
+        unidades.map(({ unidad }) => unidad.idProducto ?? 0),
+      );
+      const minimo = dto.minutosMinimos ?? 0;
+      const items: ParadasUnidad[] = unidades.map(({ unidad, jornadas }) => {
+        const paradas = jornadas
+          .flatMap(paradasDeJornada)
+          .filter((p) => p.min >= minimo)
+          .map((p) => ubicarParada(p, lugares.get(unidad.idProducto ?? 0)));
+        return {
+          ...unidad,
+          total: paradas.length,
+          minutos: Math.round(paradas.reduce((s, p) => s + p.min, 0) * 10) / 10,
+          paradas,
+        };
+      });
+      return { data: { ...periodo, total: items.length, unidades: items } };
     });
   }
 
