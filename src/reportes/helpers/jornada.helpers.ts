@@ -541,3 +541,38 @@ export function resumenDeJornada(j: JornadaDia): ResumenJornada {
   const { tramos: _t, ciclos: _c, cambiosEstado: _ce, eventos: _e, ...resumen } = j;
   return resumen;
 }
+
+/** Horas antes del día que se leen para saber cómo amaneció la unidad. */
+export const HORAS_PREVIAS_JORNADA = 6;
+
+/**
+ * Las posiciones que necesita un día: las 6 h previas (cómo amaneció), las
+ * del día y la primera del día siguiente (cierra el último tramo).
+ */
+export function puntosDelDia(
+  puntos: readonly PuntoOperacion[],
+  dia: string,
+): PuntoOperacion[] {
+  const inicio = msDeFecha(`${dia}T00:00:00`);
+  const fin = inicio + MS_DIA;
+  const salida: PuntoOperacion[] = [];
+  for (const p of puntos) {
+    const ms = msDeFecha(p.fechaHora);
+    if (ms < inicio - HORAS_PREVIAS_JORNADA * 3_600_000) continue;
+    salida.push(p);
+    if (ms >= fin) break;
+  }
+  return salida;
+}
+
+/** Jornada de cada día con el mismo umbral `sin_datos` (estimado con todo el periodo). */
+export function jornadasDelPeriodo(
+  puntos: readonly PuntoOperacion[],
+  dias: readonly string[],
+  ahoraMs?: number,
+): JornadaDia[] {
+  const umbralSinDatosMin = estimarUmbralSinDatos(puntos);
+  return dias.map((dia) =>
+    armarJornada(dia, puntosDelDia(puntos, dia), { ahoraMs, umbralSinDatosMin }),
+  );
+}

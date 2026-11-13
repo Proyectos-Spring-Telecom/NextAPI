@@ -9,21 +9,32 @@ import { ReportesController } from './reportes.controller';
 import { ReportesService } from './reportes.service';
 import { JornadaService } from './jornada.service';
 import { JornadaController } from './jornada.controller';
+import { ContadoresController } from './contadores.controller';
+import { ContadoresService } from './contadores.service';
+import { ResumenDiarioService } from './resumen-diario.service';
+import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { ProductosClienteController } from './productos-cliente.controller';
 import { ProductosClienteService } from './productos-cliente.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      PuntosInteres,
-      Instalaciones,
-      Geocercas,
-      Clientes,
-    ]),
+    TypeOrmModule.forFeature([PuntosInteres, Instalaciones, Geocercas, Clientes]),
     TenantFilterModule,
+    BitacoraModule,
   ],
-  controllers: [ReportesController, JornadaController, ProductosClienteController],
-  providers: [ReportesService, JornadaService, ProductosClienteService],
+  controllers: [
+    ReportesController,
+    JornadaController,
+    ContadoresController,
+    ProductosClienteController,
+  ],
+  providers: [
+    ReportesService,
+    JornadaService,
+    ResumenDiarioService,
+    ContadoresService,
+    ProductosClienteService,
+  ],
   exports: [ReportesService],
 })
 export class ReportesModule {}

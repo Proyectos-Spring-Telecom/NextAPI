@@ -74,3 +74,26 @@ Sin el parámetro, las respuestas no cambian.
   - una gráfica de horas de motor por día (`porDia`);
   - la tabla de ciclos;
   - un ranking de unidades por horas de motor o por tiempo detenido encendido.
+
+## Odómetro y horas de motor acumulados
+
+| Endpoint | Para qué |
+|---|---|
+| `POST /reportes/contadores` | Odómetro y horas de motor actuales por vehículo (`filtro` / `valores` como siempre). |
+| `POST /reportes/odometro` | Por día: `km`, `odometroAlCierre`, `horasMotor` y `horasMotorAlCierre`. Hasta 366 días. |
+| `PUT /reportes/contadores/:idProducto` | Captura la lectura del tablero: `{ "km": 215097, "horasMotor": 5120.5, "fecha": "2026-11-13 08:00:00" }` (uno o ambos). Roles SA, Dev, Admin y Cliente. Queda en bitácora. |
+
+- **Base:** la última lectura capturada (`fuente: captura`). Sin ella, `Vehiculos.KM` y 0 horas en la fecha de alta del vehículo (`fuente: alta_vehiculo`).
+- **Acumulado:** a la base se le suma lo de cada día **posterior** al de la lectura, más el día en curso.
+- **`historialCompleto: false`:** el resumen diario todavía no cubre desde la base, así que el valor se queda corto. Conviene mostrarlo como "estimado parcial" o pedir la lectura del tablero.
+- **`odometroEquipo`:** lo que reporta la cámara, sin ajustar. Puede venir en `null`.
+
+**Resumen diario (tabla `ResumenDiarioUnidad`):**
+- se llena solo: ayer, poco después de medianoche;
+- hacia atrás completa un día cada 10 min, hasta 60 días;
+- `POST /reportes/resumen-diario/recalcular` (SA y Dev) rehace días ya guardados.
+
+**Ideas de presentación:**
+- en la ficha del vehículo, el odómetro y las horas con la fecha de la última lectura y un botón "Capturar lectura";
+- una gráfica de km por día con la línea del odómetro;
+- un aviso cuando `historialCompleto` es falso.

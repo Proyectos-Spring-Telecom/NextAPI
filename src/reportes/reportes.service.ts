@@ -68,23 +68,35 @@ import {
 import { RecorridoSalidaGeocercaDto } from './dto/recorrido-salida-geocerca.dto';
 import { calcularDistanciaHistoricoMonitoreo } from 'src/monitoreo/helpers/monitoreo-distancia.helpers';
 import { redondearKm } from 'src/utils/recorrido.utils';
-import { fechaDeMs, msDeFecha, type PuntoOperacion } from './helpers/jornada.helpers';
+import {
+  fechaDeMs,
+  HORAS_PREVIAS_JORNADA,
+  msDeFecha,
+  type PuntoOperacion,
+} from './helpers/jornada.helpers';
 import type { LugaresVehiculo } from './helpers/paradas.helpers';
 import { ProductosPuntoInteres } from 'src/entities/ProductosPuntoInteres';
 
-/** Horas antes del periodo que se leen para saber cómo amaneció la unidad. */
-const HORAS_PREVIAS_OPERACION = 6;
+/** Alcance y filtro de los reportes de operación (mismo body que distancia). */
+export type ConsultaUnidades = {
+  idCliente?: number;
+  filtro?: FiltroPasoPorPoi;
+  valores?: string[];
+};
 
-/** Una instalación con sus posiciones de operación (ASC). */
-export type UnidadOperacion = {
+/** Etiqueta de una instalación en los reportes de operación. */
+export type EtiquetaOperacion = {
   idInstalacion: number;
   idProducto: number | null;
   placas: string | null;
   economico: string | null;
   descripcion: string | null;
+  /** IMEI con posiciones en el periodo; sin posiciones (contadores), el equipo actual. */
   imeis: string[];
-  puntos: PuntoOperacion[];
 };
+
+/** Una instalación con sus posiciones de operación (ASC). */
+export type UnidadOperacion = EtiquetaOperacion & { puntos: PuntoOperacion[] };
 
 /** Producto base + detalle por tipo (plano; mismos nombres que instalaciones). */
 export type ProductoPlanoPasoPoi = {
@@ -588,6 +600,17 @@ function num(value: unknown): number | null {
   if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function etiquetaOperacion(c: InstalacionCandidata): EtiquetaOperacion {
+  return {
+    idInstalacion: c.idInstalacion,
+    idProducto: c.idProducto,
+    placas: c.placaVehiculo,
+    economico: c.ecoVehiculo,
+    descripcion: c.nombreProducto ?? c.ecoVehiculo,
+    imeis: [],
+  };
 }
 
 function str(value: unknown): string | null {
@@ -1337,16 +1360,73 @@ export class ReportesService {
    * día (docs/fis-fiber, ruta del back §2): mismas reglas de alcance, filtro y
    * tramos de vigencia que `distancia`, solo las columnas que usa el cálculo y
    * en orden ASC. Trae además las 6 h previas a `desde` para saber cómo
-   * amaneció la unidad.
+   * amaneció la unidad. Solo instalaciones con tramo de vigencia en el periodo.
    */
   async posicionesOperacion(
-    dto: { idCliente?: number; filtro?: FiltroPasoPorPoi; valores?: string[] },
+    dto: ConsultaUnidades,
     desde: string,
     hasta: string,
     idClienteToken: number,
     rol: number,
     idUsuario: number,
   ): Promise<{ idCliente: number | null; unidades: UnidadOperacion[] }> {
+    const { idCliente, candidatos } = await this.candidatosDelAlcance(
+      dto,
+      idClienteToken,
+      rol,
+      idUsuario,
+    );
+    return {
+      idCliente,
+      unidades: await this.posicionesDeCandidatos(candidatos, desde, hasta),
+    };
+  }
+
+  /** Instalaciones del alcance y filtro, sin posiciones (contadores, odómetro). */
+  async unidadesDelAlcance(
+    dto: ConsultaUnidades,
+    idClienteToken: number,
+    rol: number,
+    idUsuario: number,
+  ): Promise<{ idCliente: number | null; unidades: EtiquetaOperacion[] }> {
+    const { idCliente, candidatos } = await this.candidatosDelAlcance(
+      dto,
+      idClienteToken,
+      rol,
+      idUsuario,
+    );
+    return {
+      idCliente,
+      unidades: candidatos.map((c) => ({
+        ...etiquetaOperacion(c),
+        imeis: c.imei ? [c.imei] : [],
+      })),
+    };
+  }
+
+  /** Todas las instalaciones (resumen diario nocturno, sin usuario), por id. */
+  async idsInstalacionSistema(): Promise<number[]> {
+    const candidatos = await this.cargarInstalacionesCandidatas('all', null);
+    return candidatos.map((c) => c.idInstalacion).sort((a, b) => a - b);
+  }
+
+  /** Posiciones de operación de ciertas instalaciones, sin alcance de usuario (sistema). */
+  async posicionesOperacionSistema(
+    idsInstalacion: number[],
+    desde: string,
+    hasta: string,
+  ): Promise<UnidadOperacion[]> {
+    if (!idsInstalacion.length) return [];
+    const candidatos = await this.cargarInstalacionesCandidatas('all', idsInstalacion);
+    return this.posicionesDeCandidatos(candidatos, desde, hasta);
+  }
+
+  private async candidatosDelAlcance(
+    dto: ConsultaUnidades,
+    idClienteToken: number,
+    rol: number,
+    idUsuario: number,
+  ): Promise<{ idCliente: number | null; candidatos: InstalacionCandidata[] }> {
     const { idCliente, alcance } = await this.resolverAlcanceReporte(
       rol,
       idClienteToken,
@@ -1360,25 +1440,40 @@ export class ReportesService {
       idsFiltro !== null && idsFiltro.length === 0
         ? []
         : await this.cargarInstalacionesCandidatas(alcance, idsFiltro);
-    if (!candidatos.length) return { idCliente, unidades: [] };
+    return { idCliente, candidatos };
+  }
 
-    const conPrevias = fechaDeMs(msDeFecha(desde) - HORAS_PREVIAS_OPERACION * 3_600_000).replace('T', ' ');
-    const porTramo = await this.candidatasPorTramo(candidatos, conPrevias, hasta);
+  private async posicionesDeCandidatos(
+    candidatos: InstalacionCandidata[],
+    desde: string,
+    hasta: string,
+  ): Promise<UnidadOperacion[]> {
+    if (!candidatos.length) return [];
+    const conPrevias = fechaDeMs(
+      msDeFecha(desde) - HORAS_PREVIAS_JORNADA * 3_600_000,
+    ).replace('T', ' ');
+    // Y hasta 2 h después: la primera posición del día siguiente cierra el último tramo.
+    const conSiguiente = fechaDeMs(msDeFecha(hasta) + 2 * 3_600_000).replace('T', ' ');
+    const porTramo = await this.candidatasPorTramo(candidatos, conPrevias, conSiguiente);
+    if (!porTramo.length) return [];
+
+    // Solo las que estuvieron instaladas en el periodo (sin contar las 6 h previas).
+    const vigentes = new Set(
+      (await this.candidatasPorTramo(candidatos, desde, hasta)).map(
+        (c) => c.idInstalacion,
+      ),
+    );
     const unidades = new Map<number, UnidadOperacion>();
     for (const c of candidatos) {
-      unidades.set(c.idInstalacion, {
-        idInstalacion: c.idInstalacion,
-        idProducto: c.idProducto,
-        placas: c.placaVehiculo,
-        economico: c.ecoVehiculo,
-        descripcion: c.nombreProducto ?? c.ecoVehiculo,
-        imeis: [],
-        puntos: [],
-      });
+      if (!vigentes.has(c.idInstalacion)) continue;
+      unidades.set(c.idInstalacion, { ...etiquetaOperacion(c), puntos: [] });
     }
-    if (!porTramo.length) return { idCliente, unidades: [...unidades.values()] };
+    if (!unidades.size) return [];
 
-    const enTramos = condicionTramos('p', porTramo.map((c) => c.tramo));
+    const enTramos = condicionTramos(
+      'p',
+      porTramo.map((c) => c.tramo),
+    );
     const rows = await this.instalacionesRepo.manager
       .getRepository(Posiciones)
       .createQueryBuilder('p')
@@ -1402,7 +1497,9 @@ export class ReportesService {
       const imei = imeiToString(row.imei);
       if (!imei) continue;
       const cand = ubicarCandidata(porTramo, imei, row.fechaHora);
-      const fechaHora = formatFechaPosicion(row.fechaHora as string | Date | null | undefined);
+      const fechaHora = formatFechaPosicion(
+        row.fechaHora as string | Date | null | undefined,
+      );
       const unidad = cand ? unidades.get(cand.idInstalacion) : undefined;
       if (!unidad || !fechaHora) continue;
       if (!unidad.imeis.includes(imei)) unidad.imeis.push(imei);
@@ -1417,10 +1514,7 @@ export class ReportesService {
         estado: num(row.estado),
       });
     }
-    return {
-      idCliente,
-      unidades: [...unidades.values()].sort((a, b) => a.idInstalacion - b.idInstalacion),
-    };
+    return [...unidades.values()].sort((a, b) => a.idInstalacion - b.idInstalacion);
   }
 
   /**

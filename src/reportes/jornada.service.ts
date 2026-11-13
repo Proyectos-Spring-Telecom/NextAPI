@@ -4,14 +4,12 @@ import { redondearKm } from 'src/utils/recorrido.utils';
 import { MAX_DIAS_JORNADA } from './dto/jornada.dto';
 import type { FiltroPasoPorPoi } from './dto/paso-por-poi.dto';
 import {
-  armarJornada,
   diasDelPeriodo,
-  estimarUmbralSinDatos,
+  jornadasDelPeriodo,
   msDeFecha,
   resumenDeJornada,
   type CicloMotor,
   type JornadaDia,
-  type PuntoOperacion,
   type ResumenJornada,
 } from './helpers/jornada.helpers';
 import { paradasDeJornada, ubicarParada, type Parada } from './helpers/paradas.helpers';
@@ -63,9 +61,6 @@ export type ParadasUnidad = EtiquetaUnidad & {
   minutos: number;
   paradas: Parada[];
 };
-
-const MS_DIA = 86_400_000;
-const MS_PREVIAS = 6 * 3_600_000;
 
 /**
  * Jornada, motor on/off y flota del día (docs/fis-fiber, ruta del back §3.1).
@@ -196,34 +191,12 @@ export class JornadaService {
       idCliente,
       fechaInicio,
       fechaFinal,
-      unidades: unidades.map(({ puntos, ...unidad }) => {
-        const umbralSinDatosMin = estimarUmbralSinDatos(puntos);
-        return {
-          unidad,
-          jornadas: diasValidos.map((dia) =>
-            armarJornada(dia, puntosDelDia(puntos, dia), { ahoraMs, umbralSinDatosMin }),
-          ),
-        };
-      }),
+      unidades: unidades.map(({ puntos, ...unidad }) => ({
+        unidad,
+        jornadas: jornadasDelPeriodo(puntos, diasValidos, ahoraMs),
+      })),
     };
   }
-}
-
-/**
- * Las posiciones que necesita un día: las 6 h previas (cómo amaneció), las
- * del día y la primera del día siguiente (cierra el último tramo).
- */
-function puntosDelDia(puntos: readonly PuntoOperacion[], dia: string): PuntoOperacion[] {
-  const inicio = msDeFecha(`${dia}T00:00:00`);
-  const fin = inicio + MS_DIA;
-  const salida: PuntoOperacion[] = [];
-  for (const p of puntos) {
-    const ms = msDeFecha(p.fechaHora);
-    if (ms < inicio - MS_PREVIAS) continue;
-    salida.push(p);
-    if (ms >= fin) break;
-  }
-  return salida;
 }
 
 /** Errores no HTTP → 400, como los demás reportes. */
