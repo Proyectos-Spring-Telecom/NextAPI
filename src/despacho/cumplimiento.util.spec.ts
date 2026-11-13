@@ -123,7 +123,7 @@ describe('resumir', () => {
     );
     expect(resumir(ps, INI, FIN, t, false)).toEqual({
       estado: 'completado',
-      paradas: 2,
+      totalParadas: 2,
       visitadas: 2,
       aTiempo: 1,
       tarde: 1,

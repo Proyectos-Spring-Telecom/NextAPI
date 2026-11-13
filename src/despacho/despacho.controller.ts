@@ -69,7 +69,7 @@ const TRABAJO_EJEMPLO = {
   placa: 'PXP613F',
   economico: 'PXP613F',
   estado: 'en_curso',
-  paradas: 2,
+  totalParadas: 2,
   visitadas: 1,
   aTiempo: 1,
   tarde: 0,

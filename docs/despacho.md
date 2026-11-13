@@ -37,11 +37,11 @@ Cada parada trae `llegada`, `salida` y `minutosEnSitio`. Llega al entrar al radi
 - `incompleto`: terminó sin visitar todas;
 - `cancelado`.
 
-Además trae los conteos `visitadas`, `aTiempo`, `tarde` y `noVisitadas`, y `enOrden`, que dice si siguió la secuencia.
+Además trae los conteos `totalParadas`, `visitadas`, `aTiempo`, `tarde` y `noVisitadas`, y `enOrden`, que dice si siguió la secuencia.
 
 ## Ideas de presentación
 
-- **Tablero del día:** una fila por trabajo, con unidad, avance (visitadas / paradas), estado en color y alertas de `tarde` o `no_visitada`.
+- **Tablero del día:** una fila por trabajo, con unidad, avance (`visitadas` / `totalParadas`), estado en color y alertas de `tarde` o `no_visitada`.
 - **Detalle:**
   - el mapa con la ruta planeada (pines numerados) y el recorrido real de la unidad (`/monitoreo/:id/historico`);
   - la lista de paradas con su llegada, salida y estado.

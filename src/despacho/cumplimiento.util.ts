@@ -49,7 +49,7 @@ export type EstadoTrabajo =
 
 export type ResumenCumplimiento = {
   estado: EstadoTrabajo;
-  paradas: number;
+  totalParadas: number;
   visitadas: number;
   aTiempo: number;
   tarde: number;
@@ -138,7 +138,7 @@ export function resumir(
   else estado = 'programado';
   return {
     estado,
-    paradas: paradas.length,
+    totalParadas: paradas.length,
     visitadas: visitadas.length,
     aTiempo: paradas.filter((p) => p.estado === 'a_tiempo').length,
     tarde: paradas.filter((p) => p.estado === 'tarde').length,
