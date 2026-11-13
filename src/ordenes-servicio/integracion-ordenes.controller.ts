@@ -11,6 +11,7 @@ import {
   ReprogramarOrdenDto,
 } from './dto/flujo-orden-servicio.dto';
 import { OrdenesFlujoService } from './ordenes-flujo.service';
+import { OrdenesAvisosService } from './ordenes-avisos.service';
 
 /**
  * Órdenes de servicio para el CRM (docs/ordenes-servicio.md §12.9). Sin JWT:
@@ -26,7 +27,10 @@ import { OrdenesFlujoService } from './ordenes-flujo.service';
 @UseGuards(CrmHmacGuard)
 @Controller('integracion/ordenes-servicio')
 export class IntegracionOrdenesController {
-  constructor(private readonly flujo: OrdenesFlujoService) {}
+  constructor(
+    private readonly flujo: OrdenesFlujoService,
+    private readonly avisos: OrdenesAvisosService,
+  ) {}
 
   @Get('cambios')
   @ApiOperation({
@@ -64,27 +68,44 @@ export class IntegracionOrdenesController {
       'Alta de N unidades = N órdenes `programada` independientes. Idempotente por (`referenciaCrm`, unidad): reenviar devuelve las mismas.',
   })
   programar(@Body() dto: ProgramarOrdenCrmDto) {
-    return this.flujo.programar(dto, { tipo: 'crm', nombre: dto.usuario ?? null });
+    return this.avisos.tras(this.flujo.programar(dto, { tipo: 'crm', nombre: dto.usuario ?? null }), (ids) =>
+      this.avisos.orden(ids, 'programada'),
+    );
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Reprogramar cita, técnico o vehículo (solo `programada`; si no, 409)' })
   @ApiParam({ name: 'id' })
   reprogramar(@Param('id', ParseIntPipe) id: number, @Body() dto: ReprogramarOrdenDto): Promise<ApiCrudResponse> {
-    return this.flujo.reprogramar(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null });
+    return this.avisos.tras(
+      this.flujo.reprogramar(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null }),
+      (ids) => this.avisos.orden(ids, 'reprogramada'),
+      id,
+    );
   }
 
   @Post(':id/cancelar')
   @ApiOperation({ summary: 'Cancelar con motivo (solo `programada`; iniciada → 409, la cierra operación)' })
   @ApiParam({ name: 'id' })
   cancelar(@Param('id', ParseIntPipe) id: number, @Body() dto: CancelarOrdenDto): Promise<ApiCrudResponse> {
-    return this.flujo.cancelar(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null });
+    return this.avisos.tras(
+      this.flujo.cancelar(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null }),
+      (ids) => this.avisos.orden(ids, 'cancelada'),
+      id,
+    );
   }
 
   @Post(':id/autorizacion/decision')
   @ApiOperation({ summary: 'Autorizar o rechazar la desinstalación del equipo existente' })
   @ApiParam({ name: 'id' })
   decidir(@Param('id', ParseIntPipe) id: number, @Body() dto: DecisionAutorizacionDto): Promise<ApiCrudResponse> {
-    return this.flujo.decidirAutorizacion(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null });
+    return this.avisos.tras(
+      this.flujo.decidirAutorizacion(id, dto, { tipo: 'crm', nombre: dto.usuario ?? null }),
+      (ids) => {
+        this.avisos.autorizacion(ids, 'decidida');
+        this.avisos.orden(ids, 'autorizacion');
+      },
+      id,
+    );
   }
 }

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BitacoraModule } from 'src/bitacora/bitacora.module';
 import { MailModule } from 'src/mail/mail.module';
 import { TenantFilterModule } from 'src/common/tenant-filter/tenant-filter.module';
+import { MonitoreoModule } from 'src/monitoreo/monitoreo.module';
 import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
@@ -27,6 +28,7 @@ import { IncidentesService } from './incidentes.service';
     BitacoraModule,
     MailModule,
     TenantFilterModule,
+    MonitoreoModule,
   ],
   controllers: [IncidentesController],
   providers: [IncidentesService],

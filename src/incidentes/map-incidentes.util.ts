@@ -34,7 +34,11 @@ export function mapSeguimientoPlano(item: SeguimientoIncidentes) {
   };
 }
 
-/** Datos de la unidad (instalación activa del IMEI) para el grid / PDF de Consola. */
+/**
+ * Datos de la unidad para el grid / PDF de Consola: la instalación activa del
+ * IMEI (posición) o del panel (`idPanel`, evento de alarma). En un panel,
+ * `nombreProducto` es el inmueble y `lat`/`lng` son las del inmueble.
+ */
 export type UnidadIncidente = {
   idInstalacion: number | null;
   economico: string | null;
@@ -42,6 +46,9 @@ export type UnidadIncidente = {
   marca: string | null;
   modelo: string | null;
   nombreProducto: string | null;
+  inmueble?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 function datoOrigen(item: Incidentes, key: string): unknown {
@@ -55,6 +62,31 @@ export function imeiIncidente(item: Incidentes): string | null {
   const raw = datoOrigen(item, 'imei');
   const imei = raw == null ? '' : String(raw).trim();
   return imei || null;
+}
+
+/** Panel del snapshot (solo incidentes de evento de alarma). */
+export function idPanelIncidente(item: Incidentes): number | null {
+  if (Number(item.tipoOrigen) !== TipoOrigenIncidente.EVENTO_ALARMA) return null;
+  const n = Number(datoOrigen(item, 'idPanel'));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Número o null (las coordenadas en null no se convierten en 0). */
+function coordenada(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Ubicación del incidente: la de la posición que lo originó o, en un panel,
+ * la del inmueble. null si no hay (alerta sin ubicación medida).
+ */
+function ubicacionIncidente(item: Incidentes, unidad: UnidadIncidente | null): { lat: number | null; lng: number | null } {
+  if (Number(item.tipoOrigen) === TipoOrigenIncidente.POSICION) {
+    return { lat: coordenada(datoOrigen(item, 'lat')), lng: coordenada(datoOrigen(item, 'lng')) };
+  }
+  return { lat: coordenada(unidad?.lat), lng: coordenada(unidad?.lng) };
 }
 
 /** Estado de la posición que originó el incidente (2 = alerta primaria, 8 = geocerca…). */
@@ -115,6 +147,9 @@ export function mapIncidentePlano(
     marca: unidad?.marca ?? null,
     modelo: unidad?.modelo ?? null,
     nombreProducto: unidad?.nombreProducto ?? null,
+    /** Panel: nombre del inmueble (también en `nombreProducto`). */
+    inmueble: unidad?.inmueble ?? null,
+    ...ubicacionIncidente(item, unidad),
     ...(incluirSeguimientos ? { seguimientos } : {}),
   };
 }

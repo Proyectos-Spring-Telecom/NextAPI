@@ -27,6 +27,7 @@ El análisis de §1–§9 se hizo sobre el bundle desplegado en `springfieldDev:
 | 29 | Relojes (07/11): ubicación por torre cuando la antena no es conocida (menos huecos) y GPS al salir o llegar | Baja: informativo | No |
 | 30 | Teléfonos con la app de rastreo 3.0 (08/11): `fuentePosicion = 4`, código de alta de la app y comandos | Media: antes del piloto | No |
 | 31 | Alertas de IA de la TrackCam (ADAS/DSM): flujo, qué hace cada una y su configuración (11/11) | Media | No, pero los interruptores de IA de `TrackcamConfig` no cambian la cámara |
+| 32 | Inmueble y ubicación en incidentes de panel; Socket.IO para Consola (cualquier incidente y cierre), Validaciones y Órdenes (13/11) | **Alta** | No |
 | 5 | Clips de máximo 15 s | Baja | No |
 | 6 | URLs de fotos y videos nuevas | Baja | No |
 | 7 | Mostrar el motivo de las fotos (`trigger`) | Opcional | No |
@@ -567,7 +568,10 @@ Next empuja por Socket.IO lo que cambia; el front carga con el `GET` al entrar y
 | Mapa / listado | `/monitoreo` | `conexion:lista`, luego `monitoreo:actualizacion` | Pintar la lista inicial y reemplazar el ítem de esa instalación |
 | Consola | `/monitoreo` | `conexion:consola`, luego `consola:actualizacion` | Igual, con el ítem de `GET /monitoreo/consola` |
 | Bandeja "Sin transmisión" (roles 1–5) | `/monitoreo` | `vigilancia:avisos` | `evaluacion`/`atencion`: insertar o reemplazar por `id` (y `porProveedor` si viene); `cierre`: quitar por `id` |
-| Consola | `/monitoreo` | `consola:incidente` | Pánico de un panel: incidente nuevo (`nuevo: true`) o seguimiento en el abierto; ver arriba |
+| Consola | `/monitoreo` | `consola:incidente` | Cualquier incidente nuevo (`nuevo: true`) o seguimiento en uno abierto (§32) |
+| Consola | `/monitoreo` | `consola:incidente-cerrado` | El incidente sale de activas (§32) |
+| Operación → Validaciones | `/monitoreo` | `validaciones:codigo`, `validaciones:prueba`, `validaciones:autorizacion` | Volver a pedir la lista correspondiente (§32) |
+| Órdenes de servicio | `/monitoreo` | `ordenes:actualizacion` | Refrescar el grid (§32) |
 | Incidentes (roles 1–5) | `/monitoreo` | `incidente:inservible` | Aviso destacado "equipo/panel inservible transmitiendo" con `idIncidente`; abrir el detalle con el `GET` de incidentes |
 | Consola de configuración (reloj §23, TrackCam §24; roles 1–5, y el cliente 6 los del reloj) | `/monitoreo` | `comando:actualizacion` | Reemplazar el comando por `comando.id` en la lista; en TrackCam, al llegar `confirmado` o `fallido`, volver a pedir `GET …/trackcam/parametros` (trae la lectura nueva) |
 | Puntos de interés (llegada / salida) | `/monitoreo` | `punto-interes:evento` | Aviso informativo en el mapa o la consola (§22); el historial con `GET /puntos-interes/eventos` |
@@ -713,3 +717,38 @@ Guía completa: [alertas-ia-trackcam.md](alertas-ia-trackcam.md). Lo esencial:
 - **Identificar la alerta por `idEvento`, no por `Estado`:** casi todas llegan con Estado 0/1, como una posición normal. Solo fatiga, celular y fumar traen 13.
 - **Sin foto ni incidente**, salvo el **sobrecupo** (20): Estado 3, incidente propio y foto de los canales 1 y 2. No mostrar "ver foto" en las demás.
 - **Configuración:** la IA (qué alertas, sensibilidad, velocidad mínima) se configura **en la cámara con HikDashcam**. Los interruptores y umbrales de IA de `TrackcamConfig` (`alarma*`, `umbral*`…) **solo se guardan; no llegan a la cámara**: ocultarlos o ponerlos en solo lectura con esa leyenda. De `TrackcamConfig` solo se aplican los canales activos. Los intervalos de reporte y la velocidad máxima se cambian en los parámetros de la cámara (§24).
+
+## 32. Inmueble en incidentes de panel y Socket.IO de Consola, Validaciones y Órdenes (13/11/2026)
+
+### Incidentes de panel con inmueble y ubicación
+
+En `GET /incidentes/:id` y en los listados (`/incidentes/list`, grid de Consola), un incidente de panel (`tipoOrigen = 2`) trae la instalación activa del panel (`Instalaciones.IdDispositivo = idPanel`) y su inmueble:
+
+| Campo | Panel (`tipoOrigen = 2`) | Posición (`tipoOrigen = 1`) |
+|---|---|---|
+| `idInstalacion` | Instalación activa del panel | Instalación activa del IMEI (igual que antes) |
+| `nombreProducto` | Nombre del inmueble (o del producto si el inmueble no tiene nombre) | Producto del vehículo (igual que antes) |
+| `inmueble` | Nombre del inmueble | `null` |
+| `lat` / `lng` | Coordenadas del inmueble | Coordenadas de la posición que lo originó (las mismas de `datosOrigen`) |
+
+- `lat`/`lng` vienen en `null` cuando no hay ubicación: panel sin instalación activa o inmueble sin coordenadas, o alerta de equipo sin GPS. Nunca en 0.
+- `economico`, `placas`, `marca` y `modelo` siguen en `null` en un panel.
+- Si el panel no tiene instalación activa (en almacén o dado de baja), todo eso sale en `null`: el incidente se ve como "Sin unidad".
+
+### Socket.IO
+
+Mismo namespace `/monitoreo` y mismo `auth.token`. Todos son solo avisos: con que llegue el evento, volver a pedir la lista. Las salas se fijan al conectar.
+
+| Evento | Cuándo | Payload | Quién lo recibe |
+|---|---|---|---|
+| `consola:incidente` | Se abre un incidente o se le agrega un seguimiento, **de cualquier origen** (alerta con posición, sin ubicación, pánico de panel, manual, inservible), aunque no tenga instalación. También al reabrirlo con el cambio de estatus (`nuevo: true`) | `{ idIncidente, nuevo, tipoOrigen, estatus, idCliente, idInstalacion \| null, tipoEvento, descripcion, fechaHora? }` y, según el origen, los campos de §25 y §27 | Quien ve ese incidente en el grid: roles 1–5 (y 8) todos; 6 los de su cliente y sus hijos; 7 y 9 los de sus instalaciones asignadas |
+| `consola:incidente-cerrado` | Se finaliza un incidente (o se cierra con el cambio de estatus) | `{ idIncidente, idCliente, idInstalacion \| null, fechaCierre }` | Los mismos |
+| `validaciones:codigo` | El técnico pide un código, se reinicia, el operador lo ve, el técnico lo valida, se agotan los intentos o vence | `{ idOrden, folio, accion: 'pedido' \| 'reiniciado' \| 'visto' \| 'validado' \| 'agotado' \| 'vencido' }` | Roles 1–5 (`ROLES_TURNO`) |
+| `validaciones:prueba` | El técnico pide una prueba o el operador la valida | `{ idOrden, folio, clave, accion: 'pedida' \| 'validada', estatus }` (`estatus` de la orden) | Roles 1–5 |
+| `validaciones:autorizacion` | El técnico pide autorizar o se decide (en Next o desde el CRM) | `{ idOrden, folio, accion: 'pedida' \| 'decidida', autorizacion }` | Roles 1–4 (`ROLES_AUTORIZAN`) |
+| `ordenes:actualizacion` | Se crea, programa (también desde el CRM), reprograma, inicia, cierra, cancela o queda no cumplida una orden, o se decide su autorización | `{ idOrden, folio, estatus, tipoServicio, idCliente, accion }`; `accion`: `creada`, `programada`, `reprogramada`, `iniciada`, `cerrada`, `cancelada`, `no_cumplida`, `autorizacion` | Roles 1–5 (ven todas) y el técnico de la orden |
+
+- **`vencido`:** el código vence por hora. Next avisa cuando llega su hora sin validarse; si el API se reinició entre medio, ese aviso no llega, pero la lista ya no lo trae al recargar.
+- **Seguimientos de alertas repetidas** (`nuevo: false`) siguen la regla de §28: dentro de la ventana de 60 s no hay seguimiento, así que tampoco aviso.
+- El `consola:actualizacion` de siempre sigue igual (la última posición del vehículo).
+

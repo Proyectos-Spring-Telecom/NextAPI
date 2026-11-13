@@ -49,6 +49,7 @@ import { FilterOrdenesServicioDto } from './dto/filter-ordenes-servicio.dto';
 import { UpdateOrdenServicioDto } from './dto/update-orden-servicio.dto';
 import { OrdenesServicioService } from './ordenes-servicio.service';
 import { OrdenesFlujoService } from './ordenes-flujo.service';
+import { OrdenesAvisosService } from './ordenes-avisos.service';
 import { ROLES_ADMIN, ROLES_AUTORIZAN, ROLES_ESCRIBEN, ROLES_LEEN, ROLES_TURNO } from './ordenes-servicio.acceso';
 
 // Roles y pertenencia: ordenes-servicio.acceso.ts (un solo lugar).
@@ -67,6 +68,7 @@ export class OrdenesServicioController {
     private readonly service: OrdenesServicioService,
     private readonly flujo: OrdenesFlujoService,
     private readonly pdfService: OrdenesServicioPdfService,
+    private readonly avisos: OrdenesAvisosService,
   ) {}
 
   @Get('catalogo')
@@ -126,7 +128,9 @@ export class OrdenesServicioController {
       'Alta de N unidades = N órdenes independientes.',
   })
   programar(@Body() dto: ProgramarOrdenDto, @Request() req) {
-    return this.flujo.programar(dto, { tipo: 'usuario', user: req.user });
+    return this.avisos.tras(this.flujo.programar(dto, { tipo: 'usuario', user: req.user }), (ids) =>
+      this.avisos.orden(ids, 'programada'),
+    );
   }
 
   @Get('paginado/:page/:limit')
@@ -158,7 +162,7 @@ export class OrdenesServicioController {
   })
   @ApiResponse({ status: 201, description: 'Orden creada (o existente con la misma claveApp)' })
   create(@Body() dto: CreateOrdenServicioDto, @Request() req): Promise<ApiCrudResponse> {
-    return this.service.create(dto, req.user);
+    return this.avisos.tras(this.service.create(dto, req.user), (ids) => this.avisos.orden(ids, 'creada'));
   }
 
   @Patch(':id')
@@ -215,7 +219,7 @@ export class OrdenesServicioController {
   })
   @ApiParam({ name: 'id' })
   cerrar(@Param('id', ParseIntPipe) id: number, @Request() req): Promise<ApiCrudResponse> {
-    return this.service.cerrar(id, req.user);
+    return this.avisos.tras(this.service.cerrar(id, req.user), (ids) => this.avisos.orden(ids, 'cerrada'), id);
   }
 
   @Post(':id/cancelar')
@@ -232,7 +236,11 @@ export class OrdenesServicioController {
     @Body() dto: CancelarOrdenDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.cancelar(id, dto ?? {}, { tipo: 'usuario', user: req.user });
+    return this.avisos.tras(
+      this.flujo.cancelar(id, dto ?? {}, { tipo: 'usuario', user: req.user }),
+      (ids) => this.avisos.orden(ids, 'cancelada'),
+      id,
+    );
   }
 
   @Patch(':id/reprogramar')
@@ -244,7 +252,11 @@ export class OrdenesServicioController {
     @Body() dto: ReprogramarOrdenDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.reprogramar(id, dto, { tipo: 'usuario', user: req.user });
+    return this.avisos.tras(
+      this.flujo.reprogramar(id, dto, { tipo: 'usuario', user: req.user }),
+      (ids) => this.avisos.orden(ids, 'reprogramada'),
+      id,
+    );
   }
 
   @Post(':id/iniciar')
@@ -261,7 +273,7 @@ export class OrdenesServicioController {
     @Body() dto: IniciarOrdenDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.iniciar(id, dto, req.user);
+    return this.avisos.tras(this.flujo.iniciar(id, dto, req.user), (ids) => this.avisos.orden(ids, 'iniciada'), id);
   }
 
   @Post(':id/codigo')
@@ -272,7 +284,7 @@ export class OrdenesServicioController {
   })
   @ApiParam({ name: 'id' })
   solicitarCodigo(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.flujo.solicitarCodigo(id, req.user);
+    return this.avisos.tras(this.flujo.solicitarCodigo(id, req.user), (ids) => this.avisos.codigo(ids, 'pedido'), id);
   }
 
   @Post(':id/codigo/reiniciar')
@@ -280,7 +292,7 @@ export class OrdenesServicioController {
   @ApiOperation({ summary: 'Reiniciar el tope de códigos de una orden (operación)' })
   @ApiParam({ name: 'id' })
   reiniciarCodigos(@Param('id', ParseIntPipe) id: number, @Request() req): Promise<ApiCrudResponse> {
-    return this.flujo.reiniciarCodigos(id, req.user);
+    return this.avisos.tras(this.flujo.reiniciarCodigos(id, req.user), (ids) => this.avisos.codigo(ids, 'reiniciado'), id);
   }
 
   @Post(':id/codigo/ver')
@@ -288,19 +300,29 @@ export class OrdenesServicioController {
   @ApiOperation({ summary: 'Ver el código para dictarlo (registra quién lo vio)' })
   @ApiParam({ name: 'id' })
   verCodigo(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.flujo.verCodigo(id, req.user);
+    return this.avisos.tras(this.flujo.verCodigo(id, req.user), (ids) => this.avisos.codigo(ids, 'visto'), id);
   }
 
   @Post(':id/codigo/validar')
   @Roles(...ESCRIBEN)
   @ApiOperation({ summary: 'Validar el código dictado por el operador' })
   @ApiParam({ name: 'id' })
-  validarCodigo(
+  async validarCodigo(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ValidarCodigoDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.validarCodigo(id, dto, req.user);
+    try {
+      return await this.avisos.tras(
+        this.flujo.validarCodigo(id, dto, req.user),
+        (ids) => this.avisos.codigo(ids, 'validado'),
+        id,
+      );
+    } catch (error) {
+      // Intentos agotados: el código se borra y sale de la pantalla del operador.
+      if (/agotaron/i.test((error as Error)?.message ?? '')) this.avisos.codigo([id], 'agotado');
+      throw error;
+    }
   }
 
   @Post(':id/autorizacion')
@@ -315,7 +337,11 @@ export class OrdenesServicioController {
     @Body() dto: SolicitarAutorizacionDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.solicitarAutorizacion(id, dto, req.user);
+    return this.avisos.tras(
+      this.flujo.solicitarAutorizacion(id, dto, req.user),
+      (ids) => this.avisos.autorizacion(ids, 'pedida'),
+      id,
+    );
   }
 
   @Post(':id/autorizacion/decision')
@@ -330,7 +356,14 @@ export class OrdenesServicioController {
     @Body() dto: DecisionAutorizacionDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.decidirAutorizacion(id, dto, { tipo: 'usuario', user: req.user });
+    return this.avisos.tras(
+      this.flujo.decidirAutorizacion(id, dto, { tipo: 'usuario', user: req.user }),
+      (ids) => {
+        this.avisos.autorizacion(ids, 'decidida');
+        this.avisos.orden(ids, 'autorizacion');
+      },
+      id,
+    );
   }
 
   @Post(':id/pruebas/:clave/solicitar')
@@ -348,7 +381,11 @@ export class OrdenesServicioController {
     @Body() dto: SolicitarPruebaDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.solicitarPrueba(id, clave, dto ?? {}, req.user);
+    return this.avisos.tras(
+      this.flujo.solicitarPrueba(id, clave, dto ?? {}, req.user),
+      (ids) => this.avisos.prueba(ids, clave, 'pedida'),
+      id,
+    );
   }
 
   @Post(':id/pruebas/:clave/validar')
@@ -365,7 +402,11 @@ export class OrdenesServicioController {
     @Body() dto: ValidarPruebaDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.validarPrueba(id, clave, dto, req.user);
+    return this.avisos.tras(
+      this.flujo.validarPrueba(id, clave, dto, req.user),
+      (ids) => this.avisos.prueba(ids, clave, 'validada'),
+      id,
+    );
   }
 
   @Get(':id/pdf')
@@ -409,7 +450,7 @@ export class OrdenesServicioController {
     @Body() dto: MotivoOrdenDto,
     @Request() req,
   ): Promise<ApiCrudResponse> {
-    return this.flujo.noCumplida(id, dto, req.user);
+    return this.avisos.tras(this.flujo.noCumplida(id, dto, req.user), (ids) => this.avisos.orden(ids, 'no_cumplida'), id);
   }
 
   @Get(':id')

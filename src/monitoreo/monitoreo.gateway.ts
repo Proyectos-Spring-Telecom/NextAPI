@@ -13,6 +13,7 @@ import {
 } from './monitoreo.service';
 import { MonitoreoPosicionItem } from './monitoreo.mapper';
 import { EnumRoles } from 'src/common/estatus.enum';
+import { TenantFilterService } from 'src/common/tenant-filter/tenant-filter.service';
 
 /**
  * Roles de operación (1–5): reciben lo que no es de una instalación del
@@ -21,6 +22,11 @@ import { EnumRoles } from 'src/common/estatus.enum';
  */
 const ROLES_OPERACION: readonly number[] = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO];
 const ROOM_OPERACION = 'operacion';
+/** Incidentes: quien ve los de todos los clientes (roles sin filtro de cliente). */
+const ROOM_INCIDENTES_TODOS = 'incidentes:todos';
+const roomIncidentesCliente = (idCliente: number) => `incidentes-cliente:${idCliente}`;
+const roomRol = (rol: number) => `rol:${rol}`;
+const roomUsuario = (idUsuario: number) => `usuario:${idUsuario}`;
 
 /** `vigilancia:avisos`: avisos de la bandeja que cambiaron (mismo ítem que `GET /vigilancia-transmision/avisos`). */
 export interface AvisosSinTransmisionEvento {
@@ -59,34 +65,46 @@ export interface IncidenteInservibleEvento {
 }
 
 /**
- * `consola:incidente`: un panel de alarma abrió un incidente (pánico) o le
- * agregó un seguimiento. Los paneles no tienen `UltimaPosicion`, así que no
- * llegan por `consola:actualizacion`.
+ * `consola:incidente`: se abrió un incidente o se le agregó un seguimiento, de
+ * cualquier origen (posición, panel, manual, inservible), tenga o no
+ * instalación. Lo reciben quienes ven ese incidente en el grid de Consola.
  */
 export interface ConsolaIncidenteEvento {
   idIncidente: number;
   /** true = incidente nuevo; false = seguimiento en uno abierto. */
   nuevo: boolean;
   tipoOrigen: number;
+  /** 1 = abierto, 0 = cerrado. */
+  estatus?: number;
   /** Pánico de panel: el evento SIA. null en alertas de equipo sin ubicación. */
-  idEventoAlarma: number | null;
-  idInstalacion: number;
+  idEventoAlarma?: number | null;
+  /** Instalación activa del equipo o panel; null si no tiene. */
+  idInstalacion: number | null;
   /** Pánico de panel. null en alertas de equipo sin ubicación. */
-  idPanel: number | null;
+  idPanel?: number | null;
   idCliente: number;
-  /** `panico` / `panico_asalto` (panel) o `sin_ubicacion` (equipo con GPS). */
-  tipoEvento: string;
+  /** `panico` / `panico_asalto` (panel), `sin_ubicacion`, `alerta` (posición), `manual`, `inservible` o `seguimiento`. */
+  tipoEvento?: string;
   /** Alerta de equipo sin ubicación medida (reloj, cámara): IMEI, Estado e IdEvento. */
   imei?: string | null;
   estado?: number | null;
   idEvento?: number | null;
   /** true: la alerta llegó sin ubicación medida; se completa con la siguiente posición. */
   sinUbicacion?: boolean;
-  zona: number | null;
-  nombreDispositivo: string | null;
-  descripcion: string | null;
+  zona?: number | null;
+  nombreDispositivo?: string | null;
+  descripcion?: string | null;
   /** Hora de México, `YYYY-MM-DD HH:mm:ss`. */
-  fechaHora: string;
+  fechaHora?: string;
+}
+
+/** `consola:incidente-cerrado`: se finalizó un incidente (sale de activas). */
+export interface ConsolaIncidenteCerradoEvento {
+  idIncidente: number;
+  idCliente: number;
+  idInstalacion: number | null;
+  /** Hora de México, `YYYY-MM-DD HH:mm:ss`. */
+  fechaCierre: string | null;
 }
 
 /** `comando:actualizacion`: un comando de la instalación cambió de estatus (mismo ítem que `GET …/comandos`). */
@@ -114,6 +132,7 @@ export class MonitoreoGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly monitoreoService: MonitoreoService,
+    private readonly tenantFilter: TenantFilterService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -141,6 +160,8 @@ export class MonitoreoGateway
       if (salaComandos) {
         for (const id of ids) await client.join(`comandos-${salaComandos}:${id}`);
       }
+      // Órdenes y validaciones (por rol o usuario) e incidentes (alcance del grid).
+      await client.join([roomRol(rol), roomUsuario(idUsuario), ...(await this.salasIncidentes(rol, idCliente))]);
 
       const listado = await this.monitoreoService.listado(
         idUsuario,
@@ -261,9 +282,63 @@ export class MonitoreoGateway
     this.safeEmit(evento.idInstalacion, 'punto-interes:evento', evento);
   }
 
-  /** Evento: `consola:incidente` (room de la instalación del panel). */
+  /**
+   * Evento: `consola:incidente`. Mismo alcance que el grid de incidentes:
+   * roles sin filtro (todos), usuarios del cliente o de un padre (familia de
+   * spGetClientes) y, por la instalación, los roles por asignación (7/9).
+   */
   emitConsolaIncidente(evento: ConsolaIncidenteEvento) {
-    this.safeEmit(evento.idInstalacion, 'consola:incidente', evento);
+    this.safeEmitRooms(this.salasDeIncidente(evento.idCliente, evento.idInstalacion), 'consola:incidente', evento);
+  }
+
+  /** Evento: `consola:incidente-cerrado` (mismas salas que `consola:incidente`). */
+  emitConsolaIncidenteCerrado(evento: ConsolaIncidenteCerradoEvento) {
+    this.safeEmitRooms(
+      this.salasDeIncidente(evento.idCliente, evento.idInstalacion),
+      'consola:incidente-cerrado',
+      evento,
+    );
+  }
+
+  /**
+   * Evento a los usuarios de ciertos roles (todos sus sockets) y, aparte, a
+   * usuarios puntuales (p. ej. el técnico de una orden). Para lo que no se
+   * filtra por cliente: órdenes de servicio y validaciones.
+   */
+  emitPorRoles(event: string, payload: unknown, roles: readonly number[], idsUsuario: readonly number[] = []) {
+    const salas = [
+      ...roles.map((r) => roomRol(Number(r))),
+      ...idsUsuario.filter((id) => Number(id) > 0).map((id) => roomUsuario(Number(id))),
+    ];
+    this.safeEmitRooms(salas, event, payload);
+  }
+
+  private salasDeIncidente(idCliente: number, idInstalacion: number | null | undefined): string[] {
+    const salas = [ROOM_INCIDENTES_TODOS, roomIncidentesCliente(Number(idCliente))];
+    if (Number(idInstalacion) > 0) salas.push(this.roomInstalacion(Number(idInstalacion)));
+    return salas;
+  }
+
+  /**
+   * Salas de incidentes del usuario, igual que `whereListado` de incidentes:
+   * sin filtro → todos; por asignación (7/9) → solo por instalación (ya unido);
+   * los demás → su cliente y sus hijos.
+   */
+  private async salasIncidentes(rol: number, idCliente: number): Promise<string[]> {
+    if (this.tenantFilter.esPorAsignacion(rol)) return [];
+    const permitidos = await this.tenantFilter.idsClientePermitidos(rol, idCliente);
+    if (permitidos === 'all') return [ROOM_INCIDENTES_TODOS];
+    return permitidos.map((id) => roomIncidentesCliente(Number(id)));
+  }
+
+  private safeEmitRooms(salas: string[], event: string, payload: unknown) {
+    if (!salas.length) return;
+    try {
+      // Un solo emit a varias salas: un socket en dos de ellas lo recibe una vez.
+      this.server?.to(salas).emit(event, payload);
+    } catch (error) {
+      this.logger.error(`Error emitiendo ${event} salas=${salas.join(',')}: ${(error as Error)?.message}`);
+    }
   }
 
   /** Evento: `incidente:inservible` (room de operación). */

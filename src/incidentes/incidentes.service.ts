@@ -3,8 +3,11 @@ import {
   ForbiddenException,
   HttpException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { MonitoreoGateway } from 'src/monitoreo/monitoreo.gateway';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import { HistoricoInstalaciones } from 'src/entities/HistoricoInstalaciones';
@@ -33,6 +36,7 @@ import { Clientes } from 'src/entities/Clientes';
 import { Dispositivos } from 'src/entities/Dispositivos';
 import { EventoAlarma } from 'src/entities/EventoAlarma';
 import { Incidentes } from 'src/entities/Incidentes';
+import { Inmuebles } from 'src/entities/Inmuebles';
 import { Instalaciones } from 'src/entities/Instalaciones';
 import { Posiciones } from 'src/entities/Posiciones';
 import { Productos } from 'src/entities/Productos';
@@ -57,6 +61,7 @@ import {
   snapshotPosicion,
 } from './map-datos-origen.util';
 import {
+  idPanelIncidente,
   imeiIncidente,
   mapIncidentePlano,
   mapSeguimientoPlano,
@@ -109,6 +114,8 @@ export function mensajeHtml(texto: string): string {
 
 @Injectable()
 export class IncidentesService {
+  private readonly logger = new Logger(IncidentesService.name);
+
   constructor(
     @InjectRepository(Incidentes)
     private readonly repository: Repository<Incidentes>,
@@ -129,7 +136,46 @@ export class IncidentesService {
     private readonly tenantFilter: TenantFilterService,
     private readonly tramos: TramosInstalacionService,
     private readonly mailService: MailService,
+    @Optional() private readonly monitoreoGateway?: MonitoreoGateway,
   ) {}
+
+  /**
+   * Avisa a Consola por Socket.IO (`consola:incidente` o
+   * `consola:incidente-cerrado`) sin frenar la respuesta: la instalación se
+   * resuelve igual que en el grid (IMEI o panel).
+   */
+  private avisarConsola(
+    entity: Incidentes,
+    cambio: 'nuevo' | 'seguimiento' | 'cerrado' | 'reabierto',
+  ): void {
+    if (!this.monitoreoGateway) return;
+    void (async () => {
+      const [plano] = await this.mapConUnidad([entity]);
+      const idInstalacion = plano?.idInstalacion ?? null;
+      const idCliente = Number(entity.idCliente);
+      if (cambio === 'cerrado') {
+        this.monitoreoGateway?.emitConsolaIncidenteCerrado({
+          idIncidente: Number(entity.id),
+          idCliente,
+          idInstalacion,
+          fechaCierre: entity.fechaCierre ? fechaPared(new Date(entity.fechaCierre)) : null,
+        });
+        return;
+      }
+      this.monitoreoGateway?.emitConsolaIncidente({
+        idIncidente: Number(entity.id),
+        nuevo: cambio === 'nuevo' || cambio === 'reabierto',
+        tipoOrigen: Number(entity.tipoOrigen),
+        estatus: EstatusIncidente.ABIERTO,
+        idCliente,
+        idInstalacion,
+        tipoEvento: cambio === 'seguimiento' ? 'seguimiento' : 'manual',
+        descripcion: entity.descripcion ?? null,
+      });
+    })().catch((error) =>
+      this.logger.warn(`No se pudo avisar a Consola del incidente ${entity.id}: ${(error as Error)?.message}`),
+    );
+  }
 
   /**
    * Unidad (instalación activa) de cada IMEI, en un solo query.
@@ -203,18 +249,94 @@ export class IncidentesService {
     return mapa;
   }
 
+  /**
+   * Instalación activa de cada panel de los incidentes de evento de alarma
+   * (`Instalaciones.IdDispositivo = idPanel`), con su inmueble: nombre y
+   * coordenadas. Un evento de panel no trae ubicación: es la del inmueble.
+   * Si falla no rompe el listado.
+   */
+  private async unidadesPorPanel(
+    items: Incidentes[],
+  ): Promise<Map<number, UnidadIncidente>> {
+    const mapa = new Map<number, UnidadIncidente>();
+    const paneles = [
+      ...new Set(
+        items
+          .map((item) => idPanelIncidente(item))
+          .filter((id): id is number => id != null),
+      ),
+    ];
+    if (!paneles.length) return mapa;
+
+    try {
+      const rows = await this.instalacionesRepo
+        .createQueryBuilder('i')
+        .leftJoin(
+          Productos,
+          'p',
+          'p.id = i.idProducto AND p.idCliente = i.idCliente',
+        )
+        .leftJoin(
+          Inmuebles,
+          'inm',
+          'inm.idProducto = i.idProducto AND inm.idCliente = i.idCliente',
+        )
+        .select('i.idDispositivo', 'idPanel')
+        .addSelect('i.id', 'idInstalacion')
+        .addSelect('p.nombre', 'nombreProducto')
+        .addSelect('inm.inmueble', 'inmueble')
+        .addSelect('inm.lat', 'lat')
+        .addSelect('inm.lng', 'lng')
+        .where('i.estatus = :activo', { activo: EstatusEnum.ACTIVO })
+        .andWhere('i.idDispositivo IN (:...paneles)', { paneles })
+        .orderBy('i.id', 'DESC')
+        .getRawMany<Record<string, unknown>>();
+
+      const texto = (v: unknown): string | null => {
+        const s = v == null ? '' : String(v).trim();
+        return s || null;
+      };
+      const numero = (v: unknown): number | null =>
+        v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
+      for (const row of rows) {
+        const idPanel = Number(row.idPanel);
+        if (!(idPanel > 0) || mapa.has(idPanel)) continue;
+        const inmueble = texto(row.inmueble);
+        mapa.set(idPanel, {
+          idInstalacion: numero(row.idInstalacion),
+          economico: null,
+          placas: null,
+          marca: null,
+          modelo: null,
+          nombreProducto: inmueble ?? texto(row.nombreProducto),
+          inmueble,
+          lat: numero(row.lat),
+          lng: numero(row.lng),
+        });
+      }
+    } catch {
+      // Datos del inmueble son opcionales; el listado sigue sin ellos.
+    }
+    return mapa;
+  }
+
   private async mapConUnidad(
     items: Incidentes[],
     incluirSeguimientos = false,
   ) {
-    const unidades = await this.unidadesPorImei(items);
+    const [unidades, paneles] = await Promise.all([
+      this.unidadesPorImei(items),
+      this.unidadesPorPanel(items),
+    ]);
     return items.map((item) => {
       const imei = imeiIncidente(item);
-      return mapIncidentePlano(
-        item,
-        incluirSeguimientos,
-        imei ? (unidades.get(imei) ?? null) : null,
-      );
+      const idPanel = idPanelIncidente(item);
+      const unidad = imei
+        ? unidades.get(imei)
+        : idPanel != null
+          ? paneles.get(idPanel)
+          : undefined;
+      return mapIncidentePlano(item, incluirSeguimientos, unidad ?? null);
     });
   }
 
@@ -617,6 +739,7 @@ export class IncidentesService {
       });
 
       const saved = await this.repository.save(entity);
+      this.avisarConsola(saved, 'nuevo');
 
       await this.bitacoraLogger.logToBitacora(
         'Incidentes',
@@ -952,6 +1075,8 @@ export class IncidentesService {
         );
       });
 
+      this.avisarConsola({ ...entity, estatus: EstatusIncidente.CERRADO, fechaCierre: ahora } as Incidentes, 'cerrado');
+
       await this.bitacoraLogger.logToBitacora(
         'Incidentes',
         `Se finalizó el reporte del incidente ID: ${entity.id}`,
@@ -1063,6 +1188,7 @@ export class IncidentesService {
           : null;
 
       const saved = await this.repository.save(entity);
+      this.avisarConsola(saved, estatus === EstatusIncidente.CERRADO ? 'cerrado' : 'reabierto');
 
       await this.bitacoraLogger.logToBitacora(
         'Incidentes',
@@ -1129,6 +1255,7 @@ export class IncidentesService {
       });
 
       const saved = await this.seguimientoRepo.save(entity);
+      this.avisarConsola(incidente, 'seguimiento');
 
       await this.bitacoraLogger.logToBitacora(
         'Incidentes',

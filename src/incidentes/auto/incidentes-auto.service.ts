@@ -133,8 +133,9 @@ export class IncidentesAutoService {
     this.enCurso.add(clave);
 
     try {
-      const idCliente = await this.idClientePorImei(imei);
-      if (idCliente == null) return;
+      const unidad = await this.instalacionPorImei(imei);
+      if (unidad == null) return;
+      const { idCliente, idInstalacion } = unidad;
 
       const abierto = await this.buscarAbierto(idCliente, imei, estado, evento);
 
@@ -177,6 +178,7 @@ export class IncidentesAutoService {
         this.logger.log(
           `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} posicion=${posicionId} → seguimiento en Incidente=${abierto} (ya abierto)`,
         );
+        this.avisarAlertaPosicion(abierto, false, idCliente, idInstalacion, imei, estado, evento, null, posicion.fechaHora);
         return;
       }
 
@@ -195,6 +197,17 @@ export class IncidentesAutoService {
         estatus: EstatusIncidente.ABIERTO,
       });
       const saved = await this.incidentesRepo.save(entity);
+      this.avisarAlertaPosicion(
+        Number(saved.id),
+        true,
+        idCliente,
+        idInstalacion,
+        imei,
+        estado,
+        evento,
+        saved.descripcion,
+        posicion.fechaHora,
+      );
 
       this.logger.log(
         `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} posicion=${posicionId} → Incidente=${saved.id}`,
@@ -324,13 +337,14 @@ export class IncidentesAutoService {
         `[IncidenteAuto] imei=${imei} estado=${estado} evento=${evento ?? '-'} sin ubicación → ${abierto == null ? 'Incidente' : 'seguimiento en Incidente'}=${idIncidente}`,
       );
 
-      if (idInstalacion > 0) {
+      {
         this.monitoreoGateway?.emitConsolaIncidente({
           idIncidente,
           nuevo: abierto == null,
           tipoOrigen: TipoOrigenIncidente.POSICION,
+          estatus: EstatusIncidente.ABIERTO,
           idEventoAlarma: null,
-          idInstalacion,
+          idInstalacion: idInstalacion > 0 ? idInstalacion : null,
           idPanel: null,
           idCliente,
           tipoEvento: 'sin_ubicacion',
@@ -449,13 +463,15 @@ export class IncidentesAutoService {
         `[IncidenteAuto] panel=${idPanel} ${evento.tipoEvento} evento=${evento.id} → ${nuevo ? 'Incidente' : 'seguimiento en Incidente'}=${idIncidente}`,
       );
 
-      if (idInstalacion > 0) {
+      // Aunque el panel no tenga instalación activa: el incidente sí está en el grid.
+      {
         this.monitoreoGateway?.emitConsolaIncidente({
           idIncidente,
           nuevo,
           tipoOrigen: TipoOrigenIncidente.EVENTO_ALARMA,
+          estatus: EstatusIncidente.ABIERTO,
           idEventoAlarma: Number(evento.id),
-          idInstalacion,
+          idInstalacion: idInstalacion > 0 ? idInstalacion : null,
           idPanel,
           idCliente,
           tipoEvento: evento.tipoEvento,
@@ -479,17 +495,48 @@ export class IncidentesAutoService {
    * es de la vigencia actual). Sin instalación activa no hay incidente de
    * cliente: lo transmitido en almacén o taller es solo evidencia (§7).
    */
-  private async idClientePorImei(imei: string): Promise<number | null> {
+  private async instalacionPorImei(imei: string): Promise<{ idCliente: number; idInstalacion: number | null } | null> {
     const row = await this.dispositivosRepo
       .createQueryBuilder('d')
       .innerJoin(Instalaciones, 'i', 'i.idDispositivo = d.id AND i.estatus = :activa', {
         activa: EstatusEnum.ACTIVO,
       })
       .select('i.idCliente', 'idCliente')
+      .addSelect('i.id', 'idInstalacion')
       .where('d.imei = :imei', { imei })
-      .getRawOne<{ idCliente: string | number }>();
+      .getRawOne<{ idCliente: string | number; idInstalacion: string | number }>();
     const idCliente = Number(row?.idCliente);
-    return Number.isFinite(idCliente) && idCliente > 0 ? idCliente : null;
+    if (!(Number.isFinite(idCliente) && idCliente > 0)) return null;
+    const idInstalacion = Number(row?.idInstalacion);
+    return { idCliente, idInstalacion: idInstalacion > 0 ? idInstalacion : null };
+  }
+
+  /** `consola:incidente` de una alerta con posición (nueva o seguimiento). */
+  private avisarAlertaPosicion(
+    idIncidente: number,
+    nuevo: boolean,
+    idCliente: number,
+    idInstalacion: number | null,
+    imei: string,
+    estado: number,
+    idEvento: number | null,
+    descripcion: string | null,
+    fechaHora: Date | string,
+  ): void {
+    this.monitoreoGateway?.emitConsolaIncidente({
+      idIncidente,
+      nuevo,
+      tipoOrigen: TipoOrigenIncidente.POSICION,
+      estatus: EstatusIncidente.ABIERTO,
+      idCliente,
+      idInstalacion,
+      tipoEvento: 'alerta',
+      imei,
+      estado,
+      idEvento,
+      descripcion,
+      fechaHora: fechaPared(new Date(fechaHora)),
+    });
   }
 
   /**
@@ -653,6 +700,17 @@ export class IncidentesAutoService {
       );
       this.inservibleVisto.set(clave, Date.now() + MEMORIA_INSERVIBLE_MS);
       this.logger.log(`[IncidenteAuto] inservible transmite ${clave} → Incidente=${saved.id}`);
+      this.monitoreoGateway?.emitConsolaIncidente({
+        idIncidente: Number(saved.id),
+        nuevo: true,
+        tipoOrigen: Number(saved.tipoOrigen),
+        estatus: EstatusIncidente.ABIERTO,
+        idCliente,
+        idInstalacion: null,
+        tipoEvento: 'inservible',
+        descripcion: saved.descripcion,
+        fechaHora: fechaPared(new Date(saved.fechaInicio)),
+      });
       this.monitoreoGateway?.emitIncidenteInservible({
         idIncidente: Number(saved.id),
         tipo: datos.tipo,

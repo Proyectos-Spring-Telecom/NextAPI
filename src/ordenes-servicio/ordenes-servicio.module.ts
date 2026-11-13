@@ -19,6 +19,8 @@ import { InstalacionesModule } from 'src/instalaciones/instalaciones.module';
 import { S3Module } from 'src/s3/s3.module';
 import { IntegracionOrdenesController } from './integracion-ordenes.controller';
 import { OrdenesFlujoService } from './ordenes-flujo.service';
+import { OrdenesAvisosService } from './ordenes-avisos.service';
+import { MonitoreoModule } from 'src/monitoreo/monitoreo.module';
 import { OrdenesServicioPdfService } from './ordenes-servicio-pdf.service';
 import { OrdenesServicioController } from './ordenes-servicio.controller';
 import { OrdenesServicioService } from './ordenes-servicio.service';
@@ -44,8 +46,9 @@ import { OrdenesServicioService } from './ordenes-servicio.service';
     S3Module,
     BitacoraModule,
     MailModule,
+    MonitoreoModule,
   ],
   controllers: [OrdenesServicioController, IntegracionOrdenesController],
-  providers: [OrdenesServicioService, OrdenesFlujoService, OrdenesServicioPdfService],
+  providers: [OrdenesServicioService, OrdenesFlujoService, OrdenesServicioPdfService, OrdenesAvisosService],
 })
 export class OrdenesServicioModule {}
