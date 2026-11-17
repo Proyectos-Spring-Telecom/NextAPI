@@ -14,12 +14,14 @@ describe('TelefonosAppService.codigoAlta', () => {
     return servicio;
   };
 
-  it('roles 1–3 piden reactivar; 4–5 no', async () => {
+  it('roles 1–3 piden reactivar; 4–6 no', async () => {
     const llamar = jest.fn().mockResolvedValue({ imei: disp.imei, codigo: 'ABCD-EF23', venceAt: 'x', estado: 'pendiente' });
     const s = armar(llamar);
     await s.codigoAlta({ rol: 3 } as any, 7);
     expect(llamar).toHaveBeenLastCalledWith('telefono.codigo', 41, { imei: disp.imei, reactivar: true });
     await s.codigoAlta({ rol: 5 } as any, 7);
+    expect(llamar).toHaveBeenLastCalledWith('telefono.codigo', 41, { imei: disp.imei, reactivar: false });
+    await s.codigoAlta({ rol: 6 } as any, 7);
     expect(llamar).toHaveBeenLastCalledWith('telefono.codigo', 41, { imei: disp.imei, reactivar: false });
   });
 
@@ -27,5 +29,20 @@ describe('TelefonosAppService.codigoAlta', () => {
     const s = armar(jest.fn().mockRejectedValue(new HttpException('La app de este teléfono está dada de baja', 409)));
     await expect(s.codigoAlta({ rol: 5 } as any, 7)).rejects.toThrow(ConflictException);
     await expect(s.codigoAlta({ rol: 5 } as any, 7)).rejects.toThrow(/solo administración/);
+  });
+});
+
+/** 17/11/2026: el cliente (rol 6) ve el QR, pero solo de los teléfonos de su cliente y sus hijos. */
+describe('TelefonosAppService: alcance por cliente', () => {
+  it('un teléfono fuera de su cliente da 404 y no llama al socket', async () => {
+    const { NotFoundException } = require('@nestjs/common');
+    const findOne = jest.fn().mockResolvedValue({ id: 7, idCliente: 99, idTipoDispositivo: 4, imei: '1', eco: null, numeroSerie: null });
+    const assertClienteVisible = jest.fn().mockRejectedValue(new NotFoundException('Dispositivo no encontrado'));
+    const llamar = jest.fn();
+    const s = new TelefonosAppService({ manager: { findOne } } as any, { assertClienteVisible } as any, { llamar } as any);
+    await expect(s.estado({ rol: 6, idCliente: 22 } as any, 7)).rejects.toThrow(NotFoundException);
+    await expect(s.codigoAlta({ rol: 6, idCliente: 22 } as any, 7)).rejects.toThrow(NotFoundException);
+    expect(assertClienteVisible).toHaveBeenCalledWith({ rol: 6, idCliente: 22 }, 99, 'Dispositivo');
+    expect(llamar).not.toHaveBeenCalled();
   });
 });

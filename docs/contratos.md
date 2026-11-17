@@ -590,8 +590,8 @@ El teléfono es un dispositivo tipo **Teléfono** (`CatTipoDispositivo.Id = 4`) 
 
 | Ruta | Roles | Qué hace |
 |---|---|---|
-| `GET /dispositivos/:id/telefono-app` | 1–5 | Estado en el socket: `estado` (pendiente, activo, baja), `ultimoAt`, `modelo`, `appVersion`, `intervaloSeg`; `data: null` si nunca se dio de alta |
-| `POST /dispositivos/:id/telefono-app/codigo-alta` | 1–5 | `data.codigo` (`ABCD-EF23`, 24 h, un solo uso), `venceAt`, `imei`. Anula el anterior; al canjearlo en otro aparato el anterior deja de reportar. Sin IMEI, el socket asigna uno (`99…`) y se guarda en el dispositivo |
+| `GET /dispositivos/:id/telefono-app` | 1–6 (6: su cliente e hijos) | Estado en el socket: `estado` (pendiente, activo, baja), `ultimoAt`, `modelo`, `appVersion`, `intervaloSeg`; `data: null` si nunca se dio de alta |
+| `POST /dispositivos/:id/telefono-app/codigo-alta` | 1–6 (6: su cliente e hijos; no reactiva) | `data.codigo` (`ABCD-EF23`, 24 h, un solo uso), `venceAt`, `imei`. Anula el anterior; al canjearlo en otro aparato el anterior deja de reportar. Sin IMEI, el socket asigna uno (`99…`) y se guarda en el dispositivo |
 | `POST /dispositivos/:id/telefono-app/baja` | 1–3 | El token del teléfono deja de valer al momento |
 | `POST /instalaciones/:id/telefono/comandos` | 1–5 | `{ tipo: INTERVALO \| UBICAR \| ESTADO \| SMS, intervaloSeg?, pin?, numeros? }`; llega en la respuesta del siguiente reporte |
 | `GET /instalaciones/:id/telefono/comandos` | 1–5 | Últimos 100 comandos con su estatus |

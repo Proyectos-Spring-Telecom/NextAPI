@@ -8,6 +8,8 @@ import { TelefonosAppService } from './telefonos-app.service';
 
 const ADMINISTRACION = [EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN];
 const OPERACION = [...ADMINISTRACION, EnumRoles.JEFE_MONITOREO, EnumRoles.MONITOREO];
+/** El cliente (6) ve y da de alta solo los teléfonos de su cliente y de sus hijos. */
+const CON_CLIENTE = [...OPERACION, EnumRoles.CLIENTE];
 
 @ApiTags('Teléfono: app de rastreo')
 @ApiBearerAuth('bearer-token')
@@ -17,10 +19,10 @@ export class TelefonosAppController {
   constructor(private readonly telefonos: TelefonosAppService) {}
 
   @Get()
-  @Roles(...OPERACION)
+  @Roles(...CON_CLIENTE)
   @ApiOperation({
     summary: 'Estado de la app en el teléfono',
-    description: '`estado` (pendiente | activo | baja), `ultimoAt`, `modelo`, `appVersion`, `intervaloSeg`. `data: null` si nunca se dio de alta. Roles 1–5.',
+    description: '`estado` (pendiente | activo | baja), `ultimoAt`, `modelo`, `appVersion`, `intervaloSeg`. `data: null` si nunca se dio de alta. Roles 1–6 (el 6 solo los de su cliente y sus hijos).',
   })
   @ApiParam({ name: 'id', description: 'Dispositivo tipo Teléfono (4) con cliente' })
   estado(@Param('id', ParseIntPipe) id: number, @Request() req) {
@@ -28,17 +30,17 @@ export class TelefonosAppController {
   }
 
   @Post('codigo-alta')
-  @Roles(...OPERACION)
+  @Roles(...CON_CLIENTE)
   @ApiOperation({
     summary: 'Generar el código de alta de la app',
     description:
       'Código de 8 caracteres (`ABCD-EF23`), un solo uso, vence en 24 h; se teclea en la app. Anula el anterior y, al canjearlo en otro ' +
-      'aparato, el anterior deja de reportar. Si el dispositivo no tiene IMEI se le asigna uno (`99…`). Roles 1–5. ' +
-      'Si la app está dada de baja, el código la reactiva (queda `pendiente` hasta canjearlo) solo para roles 1–3; roles 4–5 reciben 409.',
+      'aparato, el anterior deja de reportar. Si el dispositivo no tiene IMEI se le asigna uno (`99…`). Roles 1–6 (el 6 solo los de su cliente y sus hijos). ' +
+      'Si la app está dada de baja, el código la reactiva (queda `pendiente` hasta canjearlo) solo para roles 1–3; roles 4–6 reciben 409.',
   })
   @ApiParam({ name: 'id', description: 'Dispositivo tipo Teléfono (4) con cliente' })
   @ApiResponse({ status: 200, description: '`data.codigo`, `data.venceAt`, `data.imei`' })
-  @ApiResponse({ status: 409, description: 'App dada de baja y el rol no puede reactivarla (4–5)' })
+  @ApiResponse({ status: 409, description: 'App dada de baja y el rol no puede reactivarla (4–6)' })
   @ApiResponse({ status: 502, description: 'springTrackPhone no respondió' })
   codigo(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.telefonos.codigoAlta(req.user, id);
