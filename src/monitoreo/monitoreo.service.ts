@@ -883,6 +883,13 @@ export class MonitoreoService {
          WHERE pg.IdProducto = i.IdProducto AND pg.Estatus = 1)`,
       'geocercas',
     );
+    // Episodio abierto de sin reporte, si no ha llegado nada desde que se abrió.
+    qb.addSelect(
+      `(SELECT e.UltimaFechaHora FROM SinReporteEpisodios e
+         WHERE e.IdInstalacion = i.Id AND e.Abierto = 1 AND e.UltimoRegistro >= up.FHRegistro
+         LIMIT 1)`,
+      'sinReporteDesde',
+    );
     return qb;
   }
 

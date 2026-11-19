@@ -107,6 +107,41 @@ export interface ConsolaIncidenteCerradoEvento {
   fechaCierre: string | null;
 }
 
+/** `monitoreo:sin-reporte`: la unidad lleva más que su umbral sin reportar (una vez por episodio). */
+export interface SinReporteEvento {
+  idInstalacion: number;
+  idCliente: number;
+  tipoProducto: number;
+  idTipoDispositivo: number | null;
+  cliente: string | null;
+  placa: string | null;
+  economico: string | null;
+  /** Persona del reloj o teléfono, o descripción del activo. */
+  nombre: string | null;
+  imei: string;
+  /** `fechaHora` de su última posición (mismo formato que el listado). */
+  ultimaPosicion: string | null;
+  minutosSinReporte: number;
+  umbralMin: number;
+  /** Última ubicación conocida (para "Ubicar"); no es una posición nueva. */
+  lat: number | null;
+  lng: number | null;
+}
+
+/** `monitoreo:reporte-recuperado`: se cerró el episodio. */
+export interface ReporteRecuperadoEvento {
+  idInstalacion: number;
+  /** `fechaHora` de la posición con la que volvió; null si se cerró por baja o cambio de equipo. */
+  fechaHora: string | null;
+  motivo: 'reporto' | 'baja' | 'cambio';
+}
+
+/** `monitoreo:sin-reporte-masivo`: muchas unidades a la vez (socket o red caídos); a operación. */
+export interface SinReporteMasivoEvento {
+  total: number;
+  porTipoDispositivo: Array<{ idTipoDispositivo: number | null; total: number }>;
+}
+
 /** `comando:actualizacion`: un comando de la instalación cambió de estatus (mismo ítem que `GET …/comandos`). */
 export interface ComandoActualizacionEvento {
   idInstalacion: number;
@@ -269,6 +304,21 @@ export class MonitoreoGateway
         `Error notificando imei ${imei}: ${(error as Error)?.message}`,
       );
     }
+  }
+
+  /** Evento: `monitoreo:sin-reporte` (mismas salas que `monitoreo:actualizacion`). */
+  emitSinReporte(idInstalacion: number, evento: SinReporteEvento) {
+    this.safeEmit(idInstalacion, 'monitoreo:sin-reporte', evento);
+  }
+
+  /** Evento: `monitoreo:reporte-recuperado` (mismas salas que `monitoreo:actualizacion`). */
+  emitReporteRecuperado(idInstalacion: number, evento: ReporteRecuperadoEvento) {
+    this.safeEmit(idInstalacion, 'monitoreo:reporte-recuperado', evento);
+  }
+
+  /** Evento: `monitoreo:sin-reporte-masivo` (room de operación, 1–5). */
+  emitSinReporteMasivo(evento: SinReporteMasivoEvento) {
+    this.safeEmitRoom(ROOM_OPERACION, 'monitoreo:sin-reporte-masivo', evento);
   }
 
   /** Evento: `vigilancia:avisos` (room de operación). */

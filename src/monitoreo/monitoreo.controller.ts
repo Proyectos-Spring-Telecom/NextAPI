@@ -80,6 +80,26 @@ export class MonitoreoController {
     );
   }
 
+  @Get('sin-reporte')
+  @ApiOperation({
+    summary: 'Unidades en falta de reporte ahora',
+    description: [
+      'Mismos ítems y alcance que `GET /monitoreo/list`, solo los que tienen `sinReporteDesde` (episodio abierto).',
+      'Lo mismo que llega por `monitoreo:sin-reporte`; se cierra con `monitoreo:reporte-recuperado`.',
+      'Umbral: vehículo y activo 11 min con la última posición encendida, en movimiento o en alerta;',
+      'reloj, el doble de su intervalo (mínimo 11); teléfono 30 min. Paneles no aplican.',
+    ].join('\n'),
+  })
+  @ApiResponse({ status: 200, description: '`{ posicion: [...] }`' })
+  async sinReporte(@Request() req) {
+    const { posicion } = await this.monitoreoService.listado(
+      Number(req.user.userId),
+      Number(req.user.idCliente),
+      Number(req.user.rol),
+    );
+    return { posicion: posicion.filter((p) => p.sinReporteDesde != null) };
+  }
+
   @Get('consola')
   @ApiOperation({
     summary: 'Consola — listado de UltimaPosicion',

@@ -752,3 +752,47 @@ Mismo namespace `/monitoreo` y mismo `auth.token`. Todos son solo avisos: con qu
 - **Seguimientos de alertas repetidas** (`nuevo: false`) siguen la regla de §28: dentro de la ventana de 60 s no hay seguimiento, así que tampoco aviso.
 - El `consola:actualizacion` de siempre sigue igual (la última posición del vehículo).
 
+## 33. Unidad sin reporte: alerta roja en Monitoreo (18/11/2026)
+
+Pedido de Lalo (`pedido-alerta-sin-reporte-11min.md`). Código: `src/monitoreo/sin-reporte.reglas.ts` y `sin-reporte.scheduler.ts`; tabla `SinReporteEpisodios` (`deploy/sql/SinReporte.sql`).
+
+### Eventos (namespace `/monitoreo`, mismas salas y alcance que `monitoreo:actualizacion`)
+
+| Evento | Cuándo | Payload |
+|---|---|---|
+| `monitoreo:sin-reporte` | La unidad cruza su umbral. **Una vez por episodio** | `{ idInstalacion, idCliente, tipoProducto, idTipoDispositivo, cliente, placa, economico, nombre, imei, ultimaPosicion, minutosSinReporte, umbralMin, lat, lng }` |
+| `monitoreo:reporte-recuperado` | Llega una posición nueva, o la instalación se da de baja o cambia de equipo | `{ idInstalacion, fechaHora \| null, motivo: 'reporto' \| 'baja' \| 'cambio' }` |
+| `monitoreo:sin-reporte-masivo` | Más de 25 unidades entran en falta en el mismo minuto (un socket o la red caídos). Solo roles 1–5 | `{ total, porTipoDispositivo: [{ idTipoDispositivo, total }] }` |
+
+- `nombre`: persona del reloj o teléfono, o descripción del activo. `lat`/`lng`: última ubicación **conocida**, para "Ubicar"; no es una posición nueva. `ultimaPosicion` y `fechaHora`: mismo formato que `fechaHora` del listado.
+- Se revisa cada minuto: la alerta llega entre 0 y 60 s después de cruzar el umbral, y el recuperado hasta 60 s después de la posición.
+- **Masivo:** no llega ninguna alerta individual de esas unidades (quedan marcadas en el listado). Mostrar un solo aviso, por ejemplo "40 unidades TrackCam dejaron de reportar a la vez".
+
+### Listado
+
+- `GET /monitoreo/list` y `monitoreo:actualizacion`: campo nuevo **`sinReporteDesde`** en cada ítem: la `fechaHora` de la última posición mientras el episodio está abierto; `null` al corriente o si no aplica (paneles). Se vuelve `null` en cuanto llega una posición, aunque el recuperado tarde hasta un minuto.
+- `GET /monitoreo/sin-reporte`: `{ posicion: [...] }`, los mismos ítems del listado que están en falta ahora.
+
+### Umbral (respuesta a las dudas del pedido)
+
+| Unidad | Umbral | Variable |
+|---|---|---|
+| Vehículo con la última posición encendida (`ignicion = 1`), en movimiento (velocidad ≥ 5 o `estado` 1/7) o en alerta (2, 3, 8, 9, 10, 11) | 11 min | `SIN_REPORTE_VEHICULO_MIN` |
+| Vehículo apagado y detenido | **No aplica** (reporta cada 2 h; lo cubre la vigilancia diaria de transmisión) | `SIN_REPORTE_APAGADO_MIN` (0) |
+| Activo | Igual que el vehículo | `SIN_REPORTE_ACTIVO_MIN` |
+| Reloj | El doble de su `IntervaloReporteSegundos`, mínimo 11 min | `SIN_REPORTE_RELOJ_MIN` |
+| Teléfono | 30 min: quieto, la app no manda la coordenada repetida y sus latidos sin posición no llegan a Next | `SIN_REPORTE_TELEFONO_MIN` |
+| Inmueble / panel | No aplica | — |
+
+1. **Unidades apagadas:** la regla de 11 min solo aplica si la última posición fue con ignición encendida, en movimiento o en alerta.
+2. **Intervalo por equipo:** fijo para vehículos y activos; el reloj usa su intervalo configurado.
+3. **Teléfonos y relojes:** aplica a toda instalación activa que ya haya reportado.
+4. **Registro:** cada episodio queda en `SinReporteEpisodios` (inicio, cierre, motivo, umbral y si se avisó).
+5. **Sin ninguna posición:** se excluyen (las cubre "sin primera transmisión" de la vigilancia). Solo cuenta lo transmitido en la vigencia de la instalación.
+
+### Frenos contra la alerta falsa
+
+- El silencio se mide con la llegada al servidor (`UltimaPosicion.FHRegistro`), no con la hora del equipo.
+- Si en toda la flota no llega ninguna posición en 5 min (`SIN_REPORTE_INGESTA_MAX_MIN`), la falla es de Next o de RabbitMQ: no se abre nada.
+- Una unidad que ya llevaba más de su umbral + 30 min (`SIN_REPORTE_AVISO_MAX_MIN`) al detectarse, por ejemplo al desplegar, se registra sin alerta: sale con `sinReporteDesde` pero sin alerta roja.
+- `SIN_REPORTE_ENABLED=false` apaga todo.

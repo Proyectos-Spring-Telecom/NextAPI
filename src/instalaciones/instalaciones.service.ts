@@ -2354,13 +2354,17 @@ export class InstalacionesService {
       const dispositivo = await manager.findOne(Dispositivos, {
         where: { id: instalacion.idDispositivo },
       });
-      if (
-        !dispositivo ||
-        (dispositivo.idCliente != null && Number(dispositivo.idCliente) !== Number(instalacion.idCliente)) ||
-        (dispositivo.idCliente == null && !almacenPermitido)
-      ) {
+      if (!dispositivo) {
+        throw new BadRequestException('No se puede activar la instalación: el dispositivo vinculado no existe.');
+      }
+      if (dispositivo.idCliente != null && Number(dispositivo.idCliente) !== Number(instalacion.idCliente)) {
         throw new BadRequestException(
-          'No se puede activar la instalación: el dispositivo vinculado no existe o está reservado o instalado en otro cliente.',
+          `No se puede activar la instalación: el dispositivo está reservado o instalado en ${await this.clienteDeOtro(manager, Number(dispositivo.idCliente), almacenPermitido)}.`,
+        );
+      }
+      if (dispositivo.idCliente == null && !almacenPermitido) {
+        throw new BadRequestException(
+          'No se puede activar la instalación: el dispositivo está en el almacén; solo operación puede reactivarla con él.',
         );
       }
       if (
@@ -2377,13 +2381,17 @@ export class InstalacionesService {
       const sim = await manager.findOne(Sims, {
         where: { id: instalacion.idSim },
       });
-      if (
-        !sim ||
-        (sim.idCliente != null && Number(sim.idCliente) !== Number(instalacion.idCliente)) ||
-        (sim.idCliente == null && !almacenPermitido)
-      ) {
+      if (!sim) {
+        throw new BadRequestException('No se puede activar la instalación: la SIM vinculada no existe.');
+      }
+      if (sim.idCliente != null && Number(sim.idCliente) !== Number(instalacion.idCliente)) {
         throw new BadRequestException(
-          'No se puede activar la instalación: la SIM vinculada no existe o está reservada o instalada en otro cliente.',
+          `No se puede activar la instalación: la SIM está reservada o instalada en ${await this.clienteDeOtro(manager, Number(sim.idCliente), almacenPermitido)}.`,
+        );
+      }
+      if (sim.idCliente == null && !almacenPermitido) {
+        throw new BadRequestException(
+          'No se puede activar la instalación: la SIM está en el almacén; solo operación puede reactivarla con ella.',
         );
       }
       if (Number(sim.estatus) !== EnumEstatusProductoDispositivo.ACTIVO) {
@@ -2392,5 +2400,19 @@ export class InstalacionesService {
         );
       }
     }
+  }
+
+  /**
+   * "el cliente 43 (Rodrigo …)" para operación (ve todos los clientes); para
+   * los demás roles solo "otro cliente", sin el nombre (18/11/2026, inst. 1000211).
+   */
+  private async clienteDeOtro(manager: EntityManager, idCliente: number, conNombre: boolean): Promise<string> {
+    if (!conNombre) return 'otro cliente';
+    const c = await manager.findOne(Clientes, {
+      where: { id: idCliente },
+      select: { id: true, nombre: true, apellidoPaterno: true, apellidoMaterno: true },
+    });
+    const nombre = [c?.nombre, c?.apellidoPaterno, c?.apellidoMaterno].filter((x) => x && String(x).trim()).join(' ');
+    return nombre ? `el cliente ${idCliente} (${nombre})` : `el cliente ${idCliente}`;
   }
 }

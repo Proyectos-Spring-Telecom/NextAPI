@@ -107,6 +107,11 @@ type MonitoreoBase = {
   canal4Activo: number | null;
   /** Dispositivos.Camara (0/1; null si no hay dispositivo). */
   camara: number | null;
+  /**
+   * `fechaHora` de la última posición si la unidad está en falta de reporte
+   * (episodio abierto de `monitoreo:sin-reporte`); null si está al corriente o no aplica.
+   */
+  sinReporteDesde: string | null;
 };
 
 export type MonitoreoVehiculoItem = MonitoreoBase &
@@ -179,6 +184,7 @@ function mapBase(row: Record<string, unknown>): MonitoreoBase {
     canal3Activo: num(row.canal3Activo),
     canal4Activo: num(row.canal4Activo),
     camara: num(row.camara),
+    sinReporteDesde: toIso(row.sinReporteDesde as string | Date | null | undefined),
   };
 }
 
