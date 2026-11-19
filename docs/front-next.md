@@ -831,7 +831,7 @@ Reemplaza la vista legacy de Sion "Monitoreo — Reporte de Vehículos". En Next
 - **Sin reporte:** tiene abierto un episodio de §33. **Sin posición:** nunca ha reportado en su vigencia.
 - `GET /monitoreo/list` también trae ahora `anioVehiculo` en los vehículos.
 - **`mensaje`:** es el texto para el botón "Copiar texto", con las negritas de WhatsApp (`*`). La línea de ignición solo aparece en TrackCam y TrackGas, porque en los AVL no es confiable.
-- **`direccion`:** la resuelve el back con OpenStreetMap, guarda cada coordenada en caché y consulta como máximo una por segundo. Si `direccionPendiente` es `true`, la dirección todavía se está buscando y `mensaje` trae la coordenada en su lugar. Mientras haya pendientes, volver a pedir el listado cada ~10 s; las que ya se resolvieron llegan con su dirección. **No** pedir una por una todas las tarjetas: el límite de peticiones es de 100 por minuto por usuario.
+- **`direccion`:** la resuelve el back con OpenStreetMap, guarda cada coordenada en caché y consulta como máximo una por segundo. Si `direccionPendiente` es `true`, la dirección todavía se está buscando y `mensaje` trae la coordenada en su lugar. Como una unidad en movimiento cambia de coordenada en cada consulta, mientras no haya avanzado más de 300 m desde la última dirección que se le encontró, sale esa y `direccionPendiente` va en `false`. Mientras haya pendientes, volver a pedir el listado cada ~10 s; las que ya se resolvieron llegan con su dirección. **No** pedir una por una todas las tarjetas: el límite de peticiones es de 100 por minuto por usuario.
 - **Mapa de la imagen:** usar la llave de mapas que ya tiene el front. Las del HTML legacy no se deben copiar: quedaron expuestas en el código.
 
 ### `GET /reporte-flota/:idInstalacion`
@@ -844,7 +844,7 @@ Devuelve el mismo ítem, pero espera a tener la dirección. Sirve para "Copiar t
 |---|---|---|
 | `REPORTE_FLOTA_VELOCIDAD_KMH` | 5 | Velocidad desde la que cuenta como en movimiento |
 | `REPORTE_FLOTA_VIGENCIA_MIN` | 15 | Antigüedad máxima de la última posición para contar como en movimiento |
-| `REPORTE_FLOTA_PRECARGA_MAX` | 30 | Direcciones que se encolan por consulta |
+| `REPORTE_FLOTA_PRECARGA_MAX` | 30 | Tope de direcciones en cola (no crece aunque el front repita el listado) |
 | `GEOCODIFICACION_ENABLED` | true | `false`: `direccion` siempre `null` |
 | `GEOCODIFICACION_URL` | Nominatim público | Otro servidor compatible con Nominatim |
 | `GEOCODIFICACION_INTERVALO_MS` | 1100 | Pausa entre consultas |

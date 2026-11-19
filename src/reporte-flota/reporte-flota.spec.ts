@@ -1,4 +1,4 @@
-import { armarMensaje, clasificar, claveCoordenada, direccionDeNominatim } from './reporte-flota.reglas';
+import { armarMensaje, clasificar, claveCoordenada, direccionDeNominatim, distanciaM } from './reporte-flota.reglas';
 import { GeocodificacionService } from './geocodificacion.service';
 
 // Hora de pared de México marcada como UTC, como sale de la base.
@@ -75,5 +75,11 @@ describe('reporte de flota: geocodificación', () => {
   it('apagada no consulta', async () => {
     const geo = new GeocodificacionService({ get: (k: string) => (k === 'GEOCODIFICACION_ENABLED' ? 'false' : undefined) } as never);
     expect(await geo.direccion(19.4, -99.1)).toBeNull();
+  });
+});
+
+describe('reporte de flota: distancia', () => {
+  it('~111 m por milésima de grado de latitud', () => {
+    expect(Math.round(distanciaM({ lat: 19.4, lng: -99.1 }, { lat: 19.401, lng: -99.1 }))).toBe(111);
   });
 });

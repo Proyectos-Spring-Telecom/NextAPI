@@ -13,6 +13,9 @@
 
 import { IGNICION_CONFIABLE } from 'src/monitoreo/sin-reporte.reglas';
 
+/** Metros que puede avanzar una unidad conservando la última dirección encontrada. */
+export const DIRECCION_VIGENTE_M = 300;
+
 export type SituacionUnidad = 'movimiento' | 'detenida' | 'sinReporte' | 'sinPosicion';
 
 export const SITUACIONES: readonly SituacionUnidad[] = ['movimiento', 'detenida', 'sinReporte', 'sinPosicion'];
@@ -134,4 +137,14 @@ export function direccionDeNominatim(address: Record<string, string> | undefined
 /** Llave de caché: ~11 m (4 decimales). */
 export function claveCoordenada(lat: number, lng: number): string {
   return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+}
+
+/** Distancia en metros (haversine). */
+export function distanciaM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const rad = (g: number) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

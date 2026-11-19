@@ -73,11 +73,27 @@ export class GeocodificacionService {
     }
   }
 
-  /** Encola sin esperar (precarga para la siguiente consulta del listado). */
-  precargar(coords: Array<{ lat: number; lng: number }>): void {
+  /** Consultas esperando turno (las de precarga y las directas). */
+  get enCola(): number {
+    return this.enCurso.size;
+  }
+
+  /**
+   * Encola sin esperar (precarga para la siguiente consulta del listado).
+   * Con `maxEnCola` la cola no crece si el front repite el listado: una unidad
+   * en movimiento trae coordenada nueva cada vez.
+   */
+  precargar(
+    coords: Array<{ lat: number; lng: number }>,
+    maxEnCola = Number.POSITIVE_INFINITY,
+    alResolver?: (c: { lat: number; lng: number }, texto: string | null) => void,
+  ): void {
     if (!this.habilitada) return;
     for (const c of coords) {
-      this.direccion(c.lat, c.lng).catch(() => undefined);
+      if (this.enCola >= maxEnCola) return;
+      this.direccion(c.lat, c.lng)
+        .then((texto) => alResolver?.(c, texto))
+        .catch(() => undefined);
     }
   }
 

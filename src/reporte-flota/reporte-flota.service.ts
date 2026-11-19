@@ -11,6 +11,8 @@ import {
   clasificar,
   CRITERIO_DEFECTO,
   CriterioMovimiento,
+  DIRECCION_VIGENTE_M,
+  distanciaM,
   ignicionConfiable,
   SituacionUnidad,
   urlMapa,
@@ -61,6 +63,8 @@ export interface ReporteFlotaResponse {
 export class ReporteFlotaService {
   private readonly criterio: CriterioMovimiento;
   private readonly precargaMax: number;
+  /** Última dirección encontrada por instalación: la unidad en movimiento cambia de coordenada en cada consulta. */
+  private readonly ultimaDireccion = new Map<number, { lat: number; lng: number; texto: string }>();
 
   constructor(
     private readonly monitoreo: MonitoreoService,
@@ -100,18 +104,28 @@ export class ReporteFlotaService {
       .filter((x) => situacion === 'todas' || x.s === situacion)
       .sort((a, b) => (b.v.fechaHora ?? '').localeCompare(a.v.fechaHora ?? ''));
 
+    const porBuscar: Array<{ id: number; lat: number; lng: number }> = [];
     const unidades = elegidos.map(({ v, s }) => {
-      const dir = v.lat != null && v.lng != null ? this.geo.enCache(v.lat, v.lng) : null;
-      return this.armar(v, s, dir ?? null, dir === undefined && this.geo.activa, ahora);
+      if (v.lat == null || v.lng == null) return this.armar(v, s, null, false, ahora);
+      const exacta = this.geo.enCache(v.lat, v.lng);
+      if (exacta !== undefined) {
+        if (exacta) this.recordar(v.idInstalacion, v.lat, v.lng, exacta);
+        return this.armar(v, s, exacta, false, ahora);
+      }
+      porBuscar.push({ id: v.idInstalacion, lat: v.lat, lng: v.lng });
+      // Mientras se busca la nueva, la última que se le encontró si no ha avanzado mucho.
+      const previa = this.ultimaDireccion.get(v.idInstalacion);
+      const cercana = previa && distanciaM(previa, { lat: v.lat, lng: v.lng }) <= DIRECCION_VIGENTE_M ? previa.texto : null;
+      return this.armar(v, s, cercana, cercana == null && this.geo.activa, ahora);
     });
 
     // Las que faltan se buscan en segundo plano (1 por segundo); la siguiente consulta ya las trae.
-    this.geo.precargar(
-      unidades
-        .filter((u) => u.direccionPendiente)
-        .slice(0, this.precargaMax)
-        .map((u) => ({ lat: u.lat as number, lng: u.lng as number })),
-    );
+    // Primero las que no tienen ninguna dirección; la cola no pasa de `precargaMax`.
+    const sinNinguna = new Set(unidades.filter((u) => u.direccionPendiente).map((u) => u.idInstalacion));
+    porBuscar.sort((a, b) => Number(sinNinguna.has(b.id)) - Number(sinNinguna.has(a.id)));
+    for (const c of porBuscar) {
+      this.geo.precargar([c], this.precargaMax, (_, texto) => texto && this.recordar(c.id, c.lat, c.lng, texto));
+    }
 
     // Misma convención que `fechaHora` (hora de pared de México marcada como UTC).
     return { generadoEn: pared.toISOString(), criterio: this.criterio, resumen, unidades };
@@ -128,7 +142,13 @@ export class ReporteFlotaService {
     const v = item as MonitoreoVehiculoItem;
     const ahora = new Date();
     const dir = v.lat != null && v.lng != null ? await this.geo.direccion(v.lat, v.lng) : null;
+    if (dir && v.lat != null && v.lng != null) this.recordar(v.idInstalacion, v.lat, v.lng, dir);
     return this.armar(v, clasificar(v, nowMexicoCityAsUtcDate(), this.criterio), dir, false, ahora);
+  }
+
+  private recordar(idInstalacion: number, lat: number, lng: number, texto: string): void {
+    if (this.ultimaDireccion.size >= 5000 && !this.ultimaDireccion.has(idInstalacion)) this.ultimaDireccion.clear();
+    this.ultimaDireccion.set(idInstalacion, { lat, lng, texto });
   }
 
   private armar(
