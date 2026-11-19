@@ -103,6 +103,7 @@ export class SinReporteScheduler implements OnModuleInit, OnModuleDestroy {
     return {
       vehiculoMin: n('SIN_REPORTE_VEHICULO_MIN', UMBRALES_DEFECTO.vehiculoMin),
       apagadoMin: n('SIN_REPORTE_APAGADO_MIN', UMBRALES_DEFECTO.apagadoMin),
+      velocidadKmh: n('SIN_REPORTE_VELOCIDAD_KMH', UMBRALES_DEFECTO.velocidadKmh),
       activoMin: n('SIN_REPORTE_ACTIVO_MIN', UMBRALES_DEFECTO.activoMin),
       relojMin: n('SIN_REPORTE_RELOJ_MIN', UMBRALES_DEFECTO.relojMin),
       telefonoMin: n('SIN_REPORTE_TELEFONO_MIN', UMBRALES_DEFECTO.telefonoMin),

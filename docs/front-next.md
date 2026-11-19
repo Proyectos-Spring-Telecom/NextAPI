@@ -777,14 +777,14 @@ Pedido de Lalo (`pedido-alerta-sin-reporte-11min.md`). Código: `src/monitoreo/s
 
 | Unidad | Umbral | Variable |
 |---|---|---|
-| Vehículo con la última posición encendida (`ignicion = 1`), en movimiento (velocidad ≥ 5 o `estado` 1/7) o en alerta (2, 3, 8, 9, 10, 11) | 11 min | `SIN_REPORTE_VEHICULO_MIN` |
-| Vehículo apagado y detenido | **No aplica** (reporta cada 2 h; lo cubre la vigilancia diaria de transmisión) | `SIN_REPORTE_APAGADO_MIN` (0) |
+| Vehículo **en marcha** en su última posición: en alerta (2, 3, 8, 9, 10, 11), a 20 km/h o más, o con ignición encendida si es TrackCam o TrackGas | 11 min | `SIN_REPORTE_VEHICULO_MIN`, `SIN_REPORTE_VELOCIDAD_KMH` (20) |
+| Lo demás: apagado, detenido o a vuelta de rueda | **No aplica** (apagados reportan cada 2 h; lo cubre la vigilancia diaria de transmisión) | `SIN_REPORTE_APAGADO_MIN` (0) |
 | Activo | Igual que el vehículo | `SIN_REPORTE_ACTIVO_MIN` |
 | Reloj | El doble de su `IntervaloReporteSegundos`, mínimo 11 min | `SIN_REPORTE_RELOJ_MIN` |
 | Teléfono | 30 min: quieto, la app no manda la coordenada repetida y sus latidos sin posición no llegan a Next | `SIN_REPORTE_TELEFONO_MIN` |
 | Inmueble / panel | No aplica | — |
 
-1. **Unidades apagadas:** la regla de 11 min solo aplica si la última posición fue con ignición encendida, en movimiento o en alerta.
+1. **Unidades apagadas:** la regla de 11 min solo aplica si la unidad iba en marcha o en alerta. En los AVL la ignición no cuenta: varios no reportan el apagado y se quedan estacionados con `ignicion = 1` (8 de 19 revisados el 18/11/2026), y una última posición a 6–12 km/h es la maniobra de estacionarse.
 2. **Intervalo por equipo:** fijo para vehículos y activos; el reloj usa su intervalo configurado.
 3. **Teléfonos y relojes:** aplica a toda instalación activa que ya haya reportado.
 4. **Registro:** cada episodio queda en `SinReporteEpisodios` (inicio, cierre, motivo, umbral y si se avisó).

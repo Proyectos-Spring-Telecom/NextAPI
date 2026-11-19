@@ -2,10 +2,13 @@
  * Reglas puras de "unidad sin reporte" (docs/front-next.md §33).
  *
  * Cuánto silencio es anormal depende del equipo:
- * - Vehículo y activo: con la última posición encendida, en movimiento o en
- *   alerta, `vehiculoMin` (11). Apagada o detenida sin ignición: `apagadoMin`
- *   (0 = no aplica: con el motor apagado los equipos reportan cada 2 h; esa
- *   falta la cubre la vigilancia diaria de transmisión).
+ * - Vehículo y activo "en marcha" en su última posición: `vehiculoMin` (11).
+ *   En marcha = en alerta (2, 3, 8, 9, 10, 11), a `velocidadKmh` (20) o más, o
+ *   con ignición encendida en TrackCam o TrackGas. En los AVL la ignición no
+ *   sirve: varios no reportan el apagado y se quedan detenidos con
+ *   `Ignicion = 1` (LORD 109, Kangoo, Urvan… 18/11/2026); la última posición a
+ *   6–12 km/h es la maniobra de estacionarse. Lo demás: `apagadoMin` (0 = no
+ *   aplica: apagados reportan cada 2 h; lo cubre la vigilancia diaria).
  * - Reloj: el doble de su `IntervaloReporteSegundos`, mínimo `relojMin`.
  * - Teléfono: `telefonoMin` (30). Quieto, la app no manda la coordenada
  *   repetida y sus latidos sin posición no llegan a Next.
@@ -17,6 +20,8 @@ import { EnumTipoDispositivo, EnumTipoProducto } from 'src/common/estatus.enum';
 export interface UmbralesSinReporte {
   vehiculoMin: number;
   apagadoMin: number;
+  /** km/h desde los que la última posición cuenta como en marcha. */
+  velocidadKmh: number;
   activoMin: number;
   relojMin: number;
   telefonoMin: number;
@@ -25,15 +30,16 @@ export interface UmbralesSinReporte {
 export const UMBRALES_DEFECTO: UmbralesSinReporte = {
   vehiculoMin: 11,
   apagadoMin: 0,
+  velocidadKmh: 20,
   activoMin: 11,
   relojMin: 11,
   telefonoMin: 30,
 };
 
-/** Estados de una unidad "despierta": movimiento (1), exceso (7) y alertas (2, 3, 8, 9, 10, 11). */
-const ESTADOS_ACTIVOS: ReadonlySet<number> = new Set([1, 2, 3, 7, 8, 9, 10, 11]);
-/** km/h: por encima, en movimiento aunque el Estado diga otra cosa. */
-const VELOCIDAD_MOVIMIENTO = 5;
+/** Estados de alerta: la unidad en alerta que se calla siempre cuenta (corte de energía, pánico). */
+const ESTADOS_ALERTA: ReadonlySet<number> = new Set([2, 3, 8, 9, 10, 11]);
+/** Equipos cuya ignición es confiable (ACC del propio equipo). */
+const IGNICION_CONFIABLE: ReadonlySet<number> = new Set([EnumTipoDispositivo.TRACKCAM, EnumTipoDispositivo.TRACKGAS]);
 
 export interface UltimoReporte {
   idTipoProducto: number;
@@ -44,12 +50,15 @@ export interface UltimoReporte {
   intervaloRelojSeg: number | null;
 }
 
-/** La última posición dice que la unidad debería seguir reportando seguido. */
-export function encendida(u: Pick<UltimoReporte, 'ignicion' | 'estado' | 'velocidad'>): boolean {
+/** La última posición dice que la unidad iba en marcha (y debería seguir reportando seguido). */
+export function enMarcha(
+  u: Pick<UltimoReporte, 'idTipoDispositivo' | 'ignicion' | 'estado' | 'velocidad'>,
+  velocidadKmh: number = UMBRALES_DEFECTO.velocidadKmh,
+): boolean {
   return (
-    Number(u.ignicion) === 1 ||
-    (u.estado != null && ESTADOS_ACTIVOS.has(Number(u.estado))) ||
-    Number(u.velocidad ?? 0) >= VELOCIDAD_MOVIMIENTO
+    (u.estado != null && ESTADOS_ALERTA.has(Number(u.estado))) ||
+    Number(u.velocidad ?? 0) >= velocidadKmh ||
+    (Number(u.ignicion) === 1 && IGNICION_CONFIABLE.has(Number(u.idTipoDispositivo)))
   );
 }
 
@@ -57,7 +66,7 @@ export function encendida(u: Pick<UltimoReporte, 'ignicion' | 'estado' | 'veloci
 export function umbralMinutos(u: UltimoReporte, c: UmbralesSinReporte = UMBRALES_DEFECTO): number {
   const tipo = Number(u.idTipoProducto);
   if (tipo === EnumTipoProducto.VEHICULO || tipo === EnumTipoProducto.ACTIVO) {
-    if (!encendida(u)) return positivo(c.apagadoMin);
+    if (!enMarcha(u, c.velocidadKmh)) return positivo(c.apagadoMin);
     return positivo(tipo === EnumTipoProducto.VEHICULO ? c.vehiculoMin : c.activoMin);
   }
   if (tipo === EnumTipoProducto.PERSONA) {

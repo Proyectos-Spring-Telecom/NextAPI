@@ -1,20 +1,25 @@
-import { decidir, encendida, UMBRALES_DEFECTO, umbralMinutos } from './sin-reporte.reglas';
+import { decidir, enMarcha, UMBRALES_DEFECTO, umbralMinutos } from './sin-reporte.reglas';
 import { motivoCierre, SinReporteScheduler } from './sin-reporte.scheduler';
 
 const vehiculo = { idTipoProducto: 1, idTipoDispositivo: 5, ignicion: 1, estado: 1, velocidad: 40, intervaloRelojSeg: null };
 
 describe('sin reporte: umbral por unidad', () => {
-  it('vehículo encendido, en movimiento o en alerta: 11 min', () => {
+  it('en marcha: alerta, 20 km/h o más, o ignición de TrackCam/TrackGas: 11 min', () => {
     expect(umbralMinutos(vehiculo)).toBe(11);
-    expect(umbralMinutos({ ...vehiculo, ignicion: null, estado: 2, velocidad: 0 })).toBe(11);
-    expect(umbralMinutos({ ...vehiculo, ignicion: 0, estado: 0, velocidad: 12 })).toBe(11);
+    expect(umbralMinutos({ ...vehiculo, ignicion: 0, estado: 1, velocidad: 0 })).toBe(0);
+    expect(umbralMinutos({ ...vehiculo, idTipoDispositivo: 3, ignicion: null, estado: 2, velocidad: 0 })).toBe(11);
+    expect(umbralMinutos({ ...vehiculo, idTipoDispositivo: 3, ignicion: 0, estado: 10, velocidad: 0 })).toBe(11);
+    expect(umbralMinutos({ ...vehiculo, idTipoDispositivo: 3, ignicion: 1, estado: 1, velocidad: 40 })).toBe(11);
+    expect(umbralMinutos({ ...vehiculo, idTipoDispositivo: 6, ignicion: 1, estado: 0, velocidad: 0 })).toBe(11);
   });
 
-  it('vehículo apagado y detenido: no aplica por omisión (reporta cada 2 h)', () => {
-    const apagado = { ...vehiculo, ignicion: 0, estado: 4, velocidad: 0 };
-    expect(encendida(apagado)).toBe(false);
-    expect(umbralMinutos(apagado)).toBe(0);
-    expect(umbralMinutos(apagado, { ...UMBRALES_DEFECTO, apagadoMin: 150 })).toBe(150);
+  it('AVL detenido con la ignición en 1 o a vuelta de rueda (estacionándose): no aplica (18/11, LORD 109, Kangoo)', () => {
+    const lord = { ...vehiculo, idTipoDispositivo: 3, ignicion: 1, estado: 6, velocidad: 0 };
+    expect(enMarcha(lord)).toBe(false);
+    expect(umbralMinutos(lord)).toBe(0);
+    expect(umbralMinutos({ ...lord, estado: 1, velocidad: 12 })).toBe(0);
+    expect(umbralMinutos({ ...lord, estado: 4 }, { ...UMBRALES_DEFECTO, apagadoMin: 150 })).toBe(150);
+    expect(umbralMinutos({ ...lord, estado: 1, velocidad: 12 }, { ...UMBRALES_DEFECTO, velocidadKmh: 10 })).toBe(11);
   });
 
   it('reloj: el doble de su intervalo, mínimo 11; teléfono 30; panel e inmueble no', () => {
@@ -89,8 +94,8 @@ describe('SinReporteScheduler.abrirNuevos', () => {
     expect(gateway.emitSinReporteMasivo).toHaveBeenCalledWith({ total: 4, porTipoDispositivo: [{ idTipoDispositivo: 5, total: 4 }] });
   });
 
-  it('la que ya llevaba horas se registra sin alerta; la apagada no entra', async () => {
-    const apagada = { ...fila(3, 60), ignicion: 0, estado: 4, velocidad: 0 };
+  it('la que ya llevaba horas se registra sin alerta; el AVL estacionado no entra', async () => {
+    const apagada = { ...fila(3, 60), idTipoDispositivo: 3, ignicion: 1, estado: 6, velocidad: 0 };
     const { s, gateway, query } = armar([fila(2, 300), apagada]);
     expect(await s.abrirNuevos()).toEqual([]);
     expect(gateway.emitSinReporte).not.toHaveBeenCalled();
