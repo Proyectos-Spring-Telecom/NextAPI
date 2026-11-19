@@ -83,3 +83,45 @@ describe('reporte de flota: distancia', () => {
     expect(Math.round(distanciaM({ lat: 19.4, lng: -99.1 }, { lat: 19.401, lng: -99.1 }))).toBe(111);
   });
 });
+
+describe('reporte de flota: cola de direcciones', () => {
+  const { ReporteFlotaService } = jest.requireActual('./reporte-flota.service');
+  const veh = (lat: number) => ({
+    idInstalacion: 7, idCliente: 1, idTipoProducto: 1, idTipoDispositivo: 3, lat, lng: -99.1, velocidad: 60,
+    fechaHora: new Date().toISOString(), fhRegistro: null, sinReporteDesde: null,
+  });
+
+  it('busca la coordenada más reciente de la unidad y luego la reusa cerca', async () => {
+    let lat = 19.4;
+    const monitoreo = { listado: jest.fn(async () => ({ posicion: [veh(lat)] })) };
+    let liberar: () => void = () => undefined;
+    const bloqueo = new Promise<void>((r) => (liberar = r));
+    const geo = {
+      activa: true,
+      enCache: jest.fn(() => undefined),
+      direccion: jest.fn(async (la: number) => {
+        if (geo.direccion.mock.calls.length === 1) await bloqueo;
+        return `calle ${la}`;
+      }),
+    };
+    const config = { get: () => undefined };
+    const s = new ReporteFlotaService(monitoreo, {}, geo, config);
+    const alcance = { userId: 1, idCliente: 1, rol: 1 };
+
+    // Primera consulta: arranca la búsqueda de 19.4 (queda bloqueada).
+    await s.reporte(alcance, 'todas');
+    // Mientras, la unidad avanza dos veces: la cola guarda solo la última coordenada.
+    lat = 19.5; await s.reporte(alcance, 'todas');
+    lat = 19.6; await s.reporte(alcance, 'todas');
+    liberar();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(geo.direccion.mock.calls.map((c) => c[0])).toEqual([19.4, 19.6]);
+
+    // A 100 m de la última encontrada: sale esa dirección y no queda pendiente.
+    lat = 19.6009;
+    const r = await s.reporte(alcance, 'todas');
+    expect(r.unidades[0].direccion).toBe('calle 19.6');
+    expect(r.unidades[0].direccionPendiente).toBe(false);
+  });
+});

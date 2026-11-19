@@ -14,7 +14,7 @@
 import { IGNICION_CONFIABLE } from 'src/monitoreo/sin-reporte.reglas';
 
 /** Metros que puede avanzar una unidad conservando la última dirección encontrada. */
-export const DIRECCION_VIGENTE_M = 300;
+export const DIRECCION_VIGENTE_M = 500;
 
 export type SituacionUnidad = 'movimiento' | 'detenida' | 'sinReporte' | 'sinPosicion';
 

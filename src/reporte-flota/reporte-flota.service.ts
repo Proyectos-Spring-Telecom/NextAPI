@@ -65,6 +65,9 @@ export class ReporteFlotaService {
   private readonly precargaMax: number;
   /** Última dirección encontrada por instalación: la unidad en movimiento cambia de coordenada en cada consulta. */
   private readonly ultimaDireccion = new Map<number, { lat: number; lng: number; texto: string }>();
+  /** Instalaciones esperando dirección, con su coordenada más reciente. */
+  private readonly porResolver = new Map<number, { lat: number; lng: number }>();
+  private trabajando = false;
 
   constructor(
     private readonly monitoreo: MonitoreoService,
@@ -120,12 +123,10 @@ export class ReporteFlotaService {
     });
 
     // Las que faltan se buscan en segundo plano (1 por segundo); la siguiente consulta ya las trae.
-    // Primero las que no tienen ninguna dirección; la cola no pasa de `precargaMax`.
+    // Primero las que no tienen ninguna dirección.
     const sinNinguna = new Set(unidades.filter((u) => u.direccionPendiente).map((u) => u.idInstalacion));
     porBuscar.sort((a, b) => Number(sinNinguna.has(b.id)) - Number(sinNinguna.has(a.id)));
-    for (const c of porBuscar) {
-      this.geo.precargar([c], this.precargaMax, (_, texto) => texto && this.recordar(c.id, c.lat, c.lng, texto));
-    }
+    this.encolar(porBuscar);
 
     // Misma convención que `fechaHora` (hora de pared de México marcada como UTC).
     return { generadoEn: pared.toISOString(), criterio: this.criterio, resumen, unidades };
@@ -144,6 +145,39 @@ export class ReporteFlotaService {
     const dir = v.lat != null && v.lng != null ? await this.geo.direccion(v.lat, v.lng) : null;
     if (dir && v.lat != null && v.lng != null) this.recordar(v.idInstalacion, v.lat, v.lng, dir);
     return this.armar(v, clasificar(v, nowMexicoCityAsUtcDate(), this.criterio), dir, false, ahora);
+  }
+
+  /**
+   * Cola por instalación, no por coordenada: si la unidad ya está en la cola
+   * solo se actualiza su coordenada, y al llegar su turno se busca la más
+   * reciente (la unidad en movimiento avanza mientras espera).
+   */
+  private encolar(items: Array<{ id: number; lat: number; lng: number }>): void {
+    if (!this.geo.activa) return;
+    for (const c of items) {
+      if (this.porResolver.has(c.id) || this.porResolver.size < this.precargaMax) {
+        this.porResolver.set(c.id, { lat: c.lat, lng: c.lng });
+      }
+    }
+    if (!this.trabajando && this.porResolver.size) void this.resolverCola();
+  }
+
+  private async resolverCola(): Promise<void> {
+    this.trabajando = true;
+    try {
+      while (this.porResolver.size) {
+        const [id, c] = this.porResolver.entries().next().value as [number, { lat: number; lng: number }];
+        this.porResolver.delete(id);
+        try {
+          const texto = await this.geo.direccion(c.lat, c.lng);
+          if (texto) this.recordar(id, c.lat, c.lng, texto);
+        } catch {
+          /* se reintenta en la siguiente consulta */
+        }
+      }
+    } finally {
+      this.trabajando = false;
+    }
   }
 
   private recordar(idInstalacion: number, lat: number, lng: number, texto: string): void {
