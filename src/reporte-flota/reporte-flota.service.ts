@@ -4,6 +4,7 @@ import { EnumTipoProducto } from 'src/common/estatus.enum';
 import { TenantFilterService, UsuarioAlcance } from 'src/common/tenant-filter/tenant-filter.service';
 import { MonitoreoVehiculoItem } from 'src/monitoreo/monitoreo.mapper';
 import { MonitoreoService } from 'src/monitoreo/monitoreo.service';
+import { nowMexicoCityAsUtcDate } from 'src/utils/datetime-mexico.util';
 import { GeocodificacionService } from './geocodificacion.service';
 import {
   armarMensaje,
@@ -81,12 +82,13 @@ export class ReporteFlotaService {
   /** Vehículos del alcance del usuario con su resumen; `situacion` filtra la lista (el resumen es de todos). */
   async reporte(alcance: UsuarioAlcance, situacion: SituacionUnidad | 'todas' = 'movimiento'): Promise<ReporteFlotaResponse> {
     const ahora = new Date();
+    const pared = nowMexicoCityAsUtcDate();
     const { posicion } = await this.monitoreo.listado(alcance.userId, alcance.idCliente, alcance.rol);
     const vehiculos = posicion.filter((p) => Number(p.idTipoProducto) === EnumTipoProducto.VEHICULO) as MonitoreoVehiculoItem[];
 
     const resumen = { total: vehiculos.length, enMovimiento: 0, detenidas: 0, sinReporte: 0, sinPosicion: 0 };
     const clasificados = vehiculos.map((v) => {
-      const s = clasificar(v, ahora, this.criterio);
+      const s = clasificar(v, pared, this.criterio);
       if (s === 'movimiento') resumen.enMovimiento++;
       else if (s === 'detenida') resumen.detenidas++;
       else if (s === 'sinReporte') resumen.sinReporte++;
@@ -111,7 +113,8 @@ export class ReporteFlotaService {
         .map((u) => ({ lat: u.lat as number, lng: u.lng as number })),
     );
 
-    return { generadoEn: ahora.toISOString(), criterio: this.criterio, resumen, unidades };
+    // Misma convención que `fechaHora` (hora de pared de México marcada como UTC).
+    return { generadoEn: pared.toISOString(), criterio: this.criterio, resumen, unidades };
   }
 
   /** Una unidad con su dirección ya resuelta (espera a la geocodificación). */
@@ -125,7 +128,7 @@ export class ReporteFlotaService {
     const v = item as MonitoreoVehiculoItem;
     const ahora = new Date();
     const dir = v.lat != null && v.lng != null ? await this.geo.direccion(v.lat, v.lng) : null;
-    return this.armar(v, clasificar(v, ahora, this.criterio), dir, false, ahora);
+    return this.armar(v, clasificar(v, nowMexicoCityAsUtcDate(), this.criterio), dir, false, ahora);
   }
 
   private armar(

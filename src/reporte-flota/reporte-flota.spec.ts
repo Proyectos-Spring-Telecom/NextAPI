@@ -1,7 +1,8 @@
 import { armarMensaje, clasificar, claveCoordenada, direccionDeNominatim } from './reporte-flota.reglas';
 import { GeocodificacionService } from './geocodificacion.service';
 
-const ahora = new Date('2026-11-19T18:00:00Z');
+// Hora de pared de México marcada como UTC, como sale de la base.
+const ahora = new Date('2026-11-19T12:00:00Z');
 const hace = (min: number) => new Date(ahora.getTime() - min * 60_000).toISOString();
 const base = { lat: 19.4, lng: -99.1, fechaHora: hace(2), fhRegistro: hace(2), velocidad: 40, sinReporteDesde: null };
 
@@ -27,16 +28,17 @@ describe('reporte de flota: mensaje', () => {
   const d = {
     economico: '41', placa: 'NV4064B', marca: 'Nissan', modelo: 'NP300', anio: 2022, situacion: 'movimiento' as const,
     velocidad: 62.4, ignicion: 1, idTipoDispositivo: 3, lat: 19.4, lng: -99.1,
-    fechaHora: '2026-11-19T17:58:00.000Z', direccion: 'Av. Reforma, Juárez, Ciudad de México, México',
+    fechaHora: '2026-11-19T11:58:00.000Z', direccion: 'Av. Reforma, Juárez, Ciudad de México, México',
   };
   it('con dirección, sin ignición en AVL', () => {
-    const m = armarMensaje(d, ahora);
+    const m = armarMensaje(d, new Date('2026-11-19T18:00:00Z'));
     expect(m.split('\n')[0]).toBe('*Unidad 41 circulando sobre Av. Reforma, Juárez, Ciudad de México, México*');
     expect(m).toContain('Placas: NV4064B | Nissan NP300 2022');
     expect(m).toContain('Vel: 62 km/h');
     expect(m).not.toContain('Ignición');
     expect(m).toContain('https://maps.google.com/?q=19.4,-99.1');
     expect(m).toContain('Última posición: 11:58');
+    expect(m).toContain('Reporte generado: 19/11/2026, 12:00');
   });
   it('TrackCam informa la ignición; sin dirección da la coordenada', () => {
     const m = armarMensaje({ ...d, idTipoDispositivo: 5, direccion: null }, ahora);

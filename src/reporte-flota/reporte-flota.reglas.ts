@@ -35,11 +35,16 @@ export interface UnidadParaClasificar {
   sinReporteDesde: string | null;
 }
 
-export function clasificar(u: UnidadParaClasificar, ahora: Date, c: CriterioMovimiento = CRITERIO_DEFECTO): SituacionUnidad {
+/**
+ * Las fechas de la base son hora de pared de México marcada como UTC
+ * (`DB_TZ=-00:00`): `ahoraPared` va en la misma convención
+ * (`nowMexicoCityAsUtcDate()`), no `new Date()`.
+ */
+export function clasificar(u: UnidadParaClasificar, ahoraPared: Date, c: CriterioMovimiento = CRITERIO_DEFECTO): SituacionUnidad {
   if (u.fechaHora == null || u.lat == null || u.lng == null) return 'sinPosicion';
   if (u.sinReporteDesde != null) return 'sinReporte';
   const llegada = new Date(u.fhRegistro ?? u.fechaHora).getTime();
-  const reciente = Number.isFinite(llegada) && ahora.getTime() - llegada <= c.vigenciaMin * 60_000;
+  const reciente = Number.isFinite(llegada) && ahoraPared.getTime() - llegada <= c.vigenciaMin * 60_000;
   return reciente && Number(u.velocidad ?? 0) >= c.velocidadKmh ? 'movimiento' : 'detenida';
 }
 
@@ -53,10 +58,12 @@ export function urlMapa(lat: number, lng: number): string {
 
 const TZ = 'America/Mexico_City';
 
-export function horaLocal(iso: string | Date): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+/** HH:mm de una fecha de la base (hora de pared marcada como UTC). */
+export function horaDePared(iso: string | Date): string {
+  return new Date(iso).toLocaleTimeString('es-MX', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+/** Fecha y hora de México de un instante real (`new Date()`). */
 export function fechaHoraLocal(iso: string | Date): string {
   return new Date(iso).toLocaleString('es-MX', {
     timeZone: TZ,
@@ -85,7 +92,7 @@ export interface DatosMensaje {
   direccion: string | null;
 }
 
-/** Texto para WhatsApp (negritas con `*`), mismo formato que el legacy. */
+/** Texto para WhatsApp (negritas con `*`), mismo formato que el legacy. `generadoEn` = instante real. */
 export function armarMensaje(d: DatosMensaje, generadoEn: Date): string {
   const unidad = `Unidad ${d.economico ?? d.placa ?? 's/n'}`;
   const verbo = d.situacion === 'movimiento' ? 'circulando sobre' : 'ubicada en';
@@ -98,7 +105,7 @@ export function armarMensaje(d: DatosMensaje, generadoEn: Date): string {
   const vehiculo = [d.marca, d.modelo, d.anio].filter((x) => x != null && x !== '').join(' ');
   const lineas = [`*${titulo}*`, ''];
   lineas.push([d.placa ? `Placas: ${d.placa}` : null, vehiculo || null].filter(Boolean).join(' | '));
-  if (d.fechaHora) lineas.push(`Última posición: ${horaLocal(d.fechaHora)}`);
+  if (d.fechaHora) lineas.push(`Última posición: ${horaDePared(d.fechaHora)}`);
   const vel = `Vel: ${Math.round(Number(d.velocidad ?? 0))} km/h`;
   lineas.push(
     ignicionConfiable(d.idTipoDispositivo) && d.ignicion != null
