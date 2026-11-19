@@ -74,6 +74,7 @@ export function applyMonitoreoListSelect(
     'v.numeroEconomico AS ecoVehiculo',
     'v.color AS colorVehiculo',
     'v.numeroSerie AS numeroSerieVehiculo',
+    'v.anio AS anioVehiculo',
     'marVeh.nombre AS marcaVehiculo',
     'modVeh.nombre AS modeloVehiculo',
 

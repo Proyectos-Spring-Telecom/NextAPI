@@ -39,7 +39,7 @@ export const UMBRALES_DEFECTO: UmbralesSinReporte = {
 /** Estados de alerta: la unidad en alerta que se calla siempre cuenta (corte de energía, pánico). */
 const ESTADOS_ALERTA: ReadonlySet<number> = new Set([2, 3, 8, 9, 10, 11]);
 /** Equipos cuya ignición es confiable (ACC del propio equipo). */
-const IGNICION_CONFIABLE: ReadonlySet<number> = new Set([EnumTipoDispositivo.TRACKCAM, EnumTipoDispositivo.TRACKGAS]);
+export const IGNICION_CONFIABLE: ReadonlySet<number> = new Set([EnumTipoDispositivo.TRACKCAM, EnumTipoDispositivo.TRACKGAS]);
 
 export interface UltimoReporte {
   idTipoProducto: number;

@@ -796,3 +796,55 @@ Pedido de Lalo (`pedido-alerta-sin-reporte-11min.md`). Código: `src/monitoreo/s
 - Si en toda la flota no llega ninguna posición en 5 min (`SIN_REPORTE_INGESTA_MAX_MIN`), la falla es de Next o de RabbitMQ: no se abre nada.
 - Una unidad que ya llevaba más de su umbral + 30 min (`SIN_REPORTE_AVISO_MAX_MIN`) al detectarse, por ejemplo al desplegar, se registra sin alerta: sale con `sinReporteDesde` pero sin alerta roja.
 - `SIN_REPORTE_ENABLED=false` apaga todo.
+
+## 34. Reporte de flota: unidades en movimiento con texto para WhatsApp (19/11/2026)
+
+Reemplaza la vista legacy de Sion "Monitoreo — Reporte de Vehículos". En Next no hace falta capturar usuario y contraseña: se usa el JWT de la sesión. Mismo alcance que `GET /monitoreo/list`: los roles 1–5 y 8 ven todo, el 6 su cliente y sus hijos, y el 7 y el 9 solo las unidades asignadas. Solo incluye vehículos (tipo de producto 1).
+
+### `GET /reporte-flota?situacion=movimiento`
+
+`situacion` puede ser `movimiento` (por defecto), `detenida`, `sinReporte`, `sinPosicion` o `todas`. Filtra la lista; el `resumen` siempre cuenta todos los vehículos.
+
+```json
+{
+  "generadoEn": "2026-11-19T18:00:00.000Z",
+  "criterio": { "velocidadKmh": 5, "vigenciaMin": 15 },
+  "resumen": { "total": 230, "enMovimiento": 41, "detenidas": 180, "sinReporte": 3, "sinPosicion": 6 },
+  "unidades": [
+    {
+      "idInstalacion": 1234, "idCliente": 15, "cliente": "Paquetería y Carga…",
+      "economico": "41", "placa": "NV4064B", "marca": "Nissan", "modelo": "NP300", "anio": 2022,
+      "numeroSerie": "3N6…", "imei": "861923073491335", "idTipoDispositivo": 3,
+      "situacion": "movimiento", "estado": 1, "velocidad": 62, "rumbo": 180,
+      "ignicion": 1, "ignicionConfiable": false,
+      "lat": 19.4, "lng": -99.1, "fechaHora": "…", "fhRegistro": "…", "sinReporteDesde": null,
+      "direccion": "Av. Reforma, Juárez, Ciudad de México, Ciudad de México, 06600, México",
+      "direccionPendiente": false,
+      "mapaUrl": "https://maps.google.com/?q=19.4,-99.1",
+      "mensaje": "*Unidad 41 circulando sobre Av. Reforma, …*\n\nPlacas: NV4064B | Nissan NP300 2022\nÚltima posición: 11:58\nVel: 62 km/h\nhttps://maps.google.com/?q=19.4,-99.1\n\nReporte generado: 19/11/2026, 12:00"
+    }
+  ]
+}
+```
+
+- **En movimiento:** la última posición llegó hace 15 min o menos (`criterio.vigenciaMin`) y trae 5 km/h o más (`criterio.velocidadKmh`). La ignición no cuenta, porque varios AVL se quedan estacionados con `ignicion = 1`; el legacy los mostraba como "en ruta". Las tarjetas del resumen se arman con `resumen`.
+- **Sin reporte:** tiene abierto un episodio de §33. **Sin posición:** nunca ha reportado en su vigencia.
+- `GET /monitoreo/list` también trae ahora `anioVehiculo` en los vehículos.
+- **`mensaje`:** es el texto para el botón "Copiar texto", con las negritas de WhatsApp (`*`). La línea de ignición solo aparece en TrackCam y TrackGas, porque en los AVL no es confiable.
+- **`direccion`:** la resuelve el back con OpenStreetMap, guarda cada coordenada en caché y consulta como máximo una por segundo. Si `direccionPendiente` es `true`, la dirección todavía se está buscando y `mensaje` trae la coordenada en su lugar. Mientras haya pendientes, volver a pedir el listado cada ~10 s; las que ya se resolvieron llegan con su dirección. **No** pedir una por una todas las tarjetas: el límite de peticiones es de 100 por minuto por usuario.
+- **Mapa de la imagen:** usar la llave de mapas que ya tiene el front. Las del HTML legacy no se deben copiar: quedaron expuestas en el código.
+
+### `GET /reporte-flota/:idInstalacion`
+
+Devuelve el mismo ítem, pero espera a tener la dirección. Sirve para "Copiar texto" o "Descargar imagen" de una tarjeta que todavía tiene `direccionPendiente`. Si la instalación no es de un vehículo responde 400; si está fuera del alcance, 404.
+
+### Variables (back)
+
+| Variable | Defecto | Qué hace |
+|---|---|---|
+| `REPORTE_FLOTA_VELOCIDAD_KMH` | 5 | Velocidad desde la que cuenta como en movimiento |
+| `REPORTE_FLOTA_VIGENCIA_MIN` | 15 | Antigüedad máxima de la última posición para contar como en movimiento |
+| `REPORTE_FLOTA_PRECARGA_MAX` | 30 | Direcciones que se encolan por consulta |
+| `GEOCODIFICACION_ENABLED` | true | `false`: `direccion` siempre `null` |
+| `GEOCODIFICACION_URL` | Nominatim público | Otro servidor compatible con Nominatim |
+| `GEOCODIFICACION_INTERVALO_MS` | 1100 | Pausa entre consultas |

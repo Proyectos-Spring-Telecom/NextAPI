@@ -56,7 +56,7 @@ describe('SinReporteScheduler.abrirNuevos', () => {
     intervalo: null, minutos,
   });
   const armar = (filas: unknown[], segFrescura = 10, env: Record<string, string> = {}) => {
-    const query = jest.fn(async (sql: string) => {
+    const query = jest.fn(async (sql: string, _params?: unknown[]): Promise<any> => {
       if (sql.includes('MAX(FHRegistro)')) return [{ seg: segFrescura }];
       if (sql.includes('FROM Instalaciones i')) return filas;
       if (sql.startsWith('INSERT IGNORE')) return { affectedRows: 1 };
@@ -101,7 +101,7 @@ describe('SinReporteScheduler.abrirNuevos', () => {
     expect(gateway.emitSinReporte).not.toHaveBeenCalled();
     const inserts = query.mock.calls.filter(([sql]) => String(sql).startsWith('INSERT IGNORE'));
     expect(inserts).toHaveLength(1);
-    expect(inserts[0][1][0]).toBe(2);
-    expect(inserts[0][1].at(-1)).toBe(0);
+    expect(inserts[0][1]?.[0]).toBe(2);
+    expect(inserts[0][1]?.at(-1)).toBe(0);
   });
 });

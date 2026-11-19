@@ -123,6 +123,7 @@ export type MonitoreoVehiculoItem = MonitoreoBase &
     modelo: string | null;
     colorVehiculo: string | null;
     numeroSerieVehiculo: string | null;
+    anioVehiculo: number | null;
   };
 
 export type MonitoreoDispositivoItem = MonitoreoBase &
@@ -198,6 +199,7 @@ function mapMonitoreoVehiculo(row: Record<string, unknown>): MonitoreoVehiculoIt
     modelo: str(row.modeloVehiculo),
     colorVehiculo: str(row.colorVehiculo),
     numeroSerieVehiculo: str(row.numeroSerieVehiculo),
+    anioVehiculo: num(row.anioVehiculo),
     ...mapTelemetriaUltimaPosicion(row),
   };
 }

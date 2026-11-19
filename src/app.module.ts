@@ -17,6 +17,7 @@ import { DispositivosModule } from './dispositivos/dispositivos.module';
 import { InstalacionesModule } from './instalaciones/instalaciones.module';
 import { MotorActivosModule } from './motor-activos/motor-activos.module';
 import { VigilanciaTransmisionModule } from './vigilancia-transmision/vigilancia-transmision.module';
+import { ReporteFlotaModule } from './reporte-flota/reporte-flota.module';
 import { OrdenesServicioModule } from './ordenes-servicio/ordenes-servicio.module';
 import { IntegracionCrmModule } from './integracion-crm/integracion-crm.module';
 import { OperadoresModule } from './operadores/operadores.module';
@@ -249,6 +250,8 @@ import * as jwt from 'jsonwebtoken';
     ConsolaModule,
 
     VigilanciaTransmisionModule,
+
+    ReporteFlotaModule,
 
     MessagingModule,
 
