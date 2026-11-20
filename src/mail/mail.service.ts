@@ -39,6 +39,8 @@ export class MailService {
   /** Correo genérico con adjuntos (p. ej. el PDF de una orden de servicio). */
   async enviar(opts: {
     para: string[];
+    /** Copia oculta: los destinatarios no se ven entre ellos. Sin `para`, va a la propia cuenta. */
+    cco?: string[];
     asunto: string;
     html: string;
     adjuntos?: Array<{ filename: string; content: Buffer; contentType: string }>;
@@ -46,7 +48,8 @@ export class MailService {
     try {
       await this.transporter.sendMail({
         from: `"Spring Telecom" <${this.mailUser}>`,
-        to: opts.para.join(', '),
+        to: opts.para.length ? opts.para.join(', ') : this.mailUser,
+        bcc: opts.cco?.length ? opts.cco.join(', ') : undefined,
         subject: opts.asunto,
         html: opts.html,
         attachments: opts.adjuntos,

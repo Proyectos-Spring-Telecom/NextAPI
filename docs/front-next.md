@@ -848,3 +848,48 @@ Devuelve el mismo ítem, pero espera a tener la dirección. Sirve para "Copiar t
 | `GEOCODIFICACION_ENABLED` | true | `false`: `direccion` siempre `null` |
 | `GEOCODIFICACION_URL` | Nominatim público | Otro servidor compatible con Nominatim |
 | `GEOCODIFICACION_INTERVALO_MS` | 1100 | Pausa entre consultas |
+
+## 35. Correo libre y aviso masivo (20/11/2026)
+
+Pedido de Lalo (`correos-libre-y-aviso-masivo.md`). Las rutas y los campos quedan **tal cual** el pedido. Código: `src/correos/`; tablas `AvisosMasivos` y `AvisosMasivosDestinatarios` (`deploy/sql/AvisosMasivos.sql`). `POST /incidentes/:id/enviar-correo` no cambia.
+
+### `POST /correos/enviar` (roles 1–5)
+
+`multipart/form-data` con `correos`, `asunto?`, `mensaje?`, `archivo?`, `origen` e `idReferencia?`.
+
+- De 1 a 5 correos separados por coma. Uno solo va en Para; si son varios, van en **CCO**.
+- `archivo`: PDF, JPG, PNG, WEBP, Word, Excel o CSV, máximo 10 MB, con su nombre original.
+- Si el asunto viene vacío se usa "Aviso de Spring Telecom". Si el mensaje viene vacío se usa el texto por omisión del pedido, con o sin adjunto.
+- Queda en bitácora (módulo Reportes): destinatarios, asunto, `origen`, `idReferencia` y el nombre del adjunto.
+- Respuesta: `{ status: 'success', message: 'Correo enviado', data: { correos, adjunto } }`.
+
+### `POST /correos/aviso-masivo` (roles 1–4)
+
+`multipart/form-data` con `idUsuarios`, `asunto?`, `mensaje?` y `archivo?`.
+
+- **Destinatarios:** usuarios activos que quien envía puede ver (mismo filtro que `GET /usuarios/list`), con un correo válido en `UserName`. Se quitan los correos repetidos. Los demás ids no reciben nada y se cuentan en `omitidos`.
+- **Respuesta inmediata:** `{ status: 'success', message: 'Aviso en proceso de envío', data: { idEnvio, total, omitidos, lotes, minutosEstimados } }`. El envío sigue en segundo plano.
+- **Envío:** por lotes en CCO, de 50 usuarios cada 60 s. Nadie ve los correos de los demás. Si un lote falla, se reintenta a los 15 min, hasta 4 veces. Si NextAPI se reinicia, el envío continúa donde se quedó.
+- **Límites:**
+  - Máximo **300 usuarios por aviso**. Si eligen más, responde 400 "Máximo 300 usuarios por aviso".
+  - Máximo **2 avisos por usuario en una hora**. El tercero responde 429 con un `message` claro.
+- **Avance:** `GET /correos/aviso-masivo/:idEnvio` regresa `{ total, omitidos, enviados, fallidos, pendientes, estatus: 'enviando' | 'terminado', detalleFallidos: [{ idUsuario, correo, error }] }`. Lo puede consultar quien mandó el aviso y los roles 1–3.
+- **`UserName` es el correo:** el front lo puede usar así; el back de todos modos descarta los que no tienen forma de correo. No hay un campo `Correo` aparte.
+
+### Por qué esos límites (cuenta de correo actual)
+
+Next manda todo con una sola cuenta de Zoho Mail: altas de usuarios, órdenes de servicio, reportes y ahora estos avisos. Según los [límites publicados por Zoho](https://www.zoho.com/mail/help/adminconsole/rates-and-limits.html):
+
+- Cada correo admite hasta **150 destinatarios externos** (Para + CC + CCO).
+- Se pueden enviar entre **50 y 500 correos externos por hora**. El número cambia según la reputación de la cuenta y no hay un límite diario fijo.
+- **Zoho no permite envíos masivos.** Si frena la cuenta, ésta deja de mandar **todo** hasta por una hora, no solo el aviso.
+
+Con lotes de 50 cada minuto, un aviso de 300 usuarios son 6 correos y tarda unos 5 minutos. Para avisos más grandes o frecuentes conviene un servicio de envío masivo, como Zoho ZeptoMail o Amazon SES, que deja libre la cuenta de Next.
+
+| Variable | Defecto | Qué hace |
+|---|---|---|
+| `AVISO_MASIVO_MAX` | 300 | Usuarios por aviso |
+| `AVISO_MASIVO_LOTE` | 50 | Destinatarios por correo (CCO); tope 150 |
+| `AVISO_MASIVO_PAUSA_SEG` | 60 | Pausa entre lotes |
+| `AVISO_MASIVO_POR_HORA` | 2 | Avisos por usuario por hora |
+| `AVISO_MASIVO_ESPERA_ERROR_MIN` | 15 | Espera antes de reintentar un lote que falló |
