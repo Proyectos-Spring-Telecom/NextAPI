@@ -912,3 +912,18 @@ Con lotes de 50 cada minuto, un aviso de 300 usuarios son 6 correos y tarda unos
 - Si vienen los dos campos, manda `horas`. `{ "dias": 1 }` sigue funcionando igual.
 - La respuesta agrega `horas`; `dias` llega en `null` cuando se pidió por horas.
 - **Nota:** una unidad apagada que tiene el heartbeat largo puede tardar en reportar. Para "en el transcurso del día" conviene un corte de 1 a 2 horas.
+
+### Consola: solo alerta primaria, geocerca y paneles
+
+- **Desde este despliegue,** solo abren incidente en Consola:
+  - el estado 2 (alerta primaria: pánico, SOS, caída, colisión, volcadura, robo, encendido o desplazamiento ilegal);
+  - el estado 8 (fuera de geocerca);
+  - los paneles.
+- **Ya no abren incidente:**
+  - 3, alerta secundaria (en la TrackCam: falla o antena GNSS y sobrecupo);
+  - 9, batería baja;
+  - 10, falta de energía;
+  - 11, alerta de movimiento.
+- Esas posiciones se siguen guardando y se ven en el mapa y en el histórico con su estado.
+- El incidente de falta de energía que estaba abierto se cierra a mano como cualquier otro.
+- **El front no tiene que cambiar nada;** si tenía botones o filtros para 3, 9, 10 u 11 en Consola, ya no van a traer incidentes nuevos.

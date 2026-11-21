@@ -301,8 +301,8 @@ export class PosicionIngestService {
   }
 
   /**
-   * Solo consulta UltimaPosicion cuando el estado nuevo es de alerta (2, 3, 8,
-   * 9, 10, 11). Si falla la lectura no se abre incidente y el ingest sigue.
+   * Solo consulta UltimaPosicion cuando el estado nuevo es de alerta (2 u 8,
+   * ESTADOS_ALERTA_CONSOLA). Si falla la lectura no se abre incidente y el ingest sigue.
    */
   private async iniciaAlerta(
     manager: EntityManager,

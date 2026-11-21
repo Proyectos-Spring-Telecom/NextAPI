@@ -9,10 +9,11 @@ import {
 
 describe('incidentes-alerta.util', () => {
   it('reconoce solo los estados de alerta de Consola', () => {
-    for (const e of [2, 3, 8, 9, 10, 11, '2']) {
+    for (const e of [2, 8, '2']) {
       expect(esEstadoAlertaConsola(e)).toBe(true);
     }
-    for (const e of [0, 1, 4, 5, 6, 7, null, undefined, '', 'x', 2.5]) {
+    // 20/11/2026: secundaria, batería baja, falta de energía y movimiento ya no abren incidente.
+    for (const e of [0, 1, 3, 4, 5, 6, 7, 9, 10, 11, null, undefined, '', 'x', 2.5]) {
       expect(esEstadoAlertaConsola(e)).toBe(false);
     }
   });
@@ -20,7 +21,8 @@ describe('incidentes-alerta.util', () => {
   it('inicia alerta cuando cambia el estado hacia una alerta', () => {
     expect(iniciaAlertaConsola(2, 0)).toBe(true);
     expect(iniciaAlertaConsola(8, null)).toBe(true);
-    expect(iniciaAlertaConsola(9, 2)).toBe(true);
+    expect(iniciaAlertaConsola(8, 2)).toBe(true);
+    expect(iniciaAlertaConsola(10, 0)).toBe(false);
   });
 
   it('no inicia si la unidad ya estaba en la misma alerta', () => {

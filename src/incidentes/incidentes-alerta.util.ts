@@ -4,14 +4,13 @@ import {
 } from 'src/common/cat-eventos.enum';
 
 /**
- * Estados de Posiciones que la Consola trata como alerta de vehículo
- * (mismos que el grid / botones del header en el front).
- * 2 primaria · 3 secundaria · 8 fuera de geocerca · 9 batería baja ·
- * 10 falta de energía · 11 alerta de movimiento.
+ * Estados de Posiciones que abren incidente en Consola: 2 alerta primaria y
+ * 8 fuera de geocerca (los paneles van por su propio camino, `EventosAlarma`).
+ * Decisión 20/11/2026: ya no abren incidente 3 secundaria (en la TrackCam:
+ * falla o antena GNSS y sobrecupo), 9 batería baja, 10 falta de energía ni
+ * 11 alerta de movimiento; siguen en Posiciones y en el mapa.
  */
-export const ESTADOS_ALERTA_CONSOLA: ReadonlySet<number> = new Set([
-  2, 3, 8, 9, 10, 11,
-]);
+export const ESTADOS_ALERTA_CONSOLA: ReadonlySet<number> = new Set([2, 8]);
 
 /** Catálogo de estados de Posiciones (mismo texto que Monitoreo). */
 export const ETIQUETAS_ESTADO_POSICION: Readonly<Record<number, string>> = {
