@@ -893,3 +893,22 @@ Con lotes de 50 cada minuto, un aviso de 300 usuarios son 6 correos y tarda unos
 | `AVISO_MASIVO_PAUSA_SEG` | 60 | Pausa entre lotes |
 | `AVISO_MASIVO_POR_HORA` | 2 | Avisos por usuario por hora |
 | `AVISO_MASIVO_ESPERA_ERROR_MIN` | 15 | Espera antes de reintentar un lote que falló |
+
+## 36. Asignación de instalaciones y Sin Transmisión por horas (20/11/2026)
+
+### `POST /usuarios/asignacion/instalaciones`
+
+- **Por qué fallaba:** el usuario 22 (Lord Logistic) tenía asignada la instalación 1000079, que se dio de baja el 19/10. `GET` de sus instalaciones la seguía devolviendo, el front la reenviaba con las demás y el back rechazaba la lista completa con 400.
+- **Ahora:**
+  - El listado de instalaciones asignadas solo trae instalaciones activas.
+  - Si la lista trae una instalación que el usuario ya tenía y que se dio de baja o cambió de cliente, se quita en silencio.
+  - Solo responde 400 por las instalaciones **nuevas** que no son válidas, y el `message` dice cuáles son: "Estas instalaciones no existen, no están activas o no pertenecen al cliente del usuario: 123, 456."
+- **El front no tiene que cambiar nada.**
+
+### `POST /consola/sin-transmision`: nuevo campo `horas`
+
+- **Antes:** el corte mínimo era `dias: 1`, así que una unidad que dejó de transmitir hace 3 horas no aparecía. No se filtraba por ignición; el hueco era el corte de un día.
+- **Ahora:** se puede mandar `horas` (1..8760) en lugar de `dias`. Por ejemplo, `{ "horas": 2 }` lista las unidades que no han transmitido en las últimas 2 horas, con el motor prendido o apagado.
+- Si vienen los dos campos, manda `horas`. `{ "dias": 1 }` sigue funcionando igual.
+- La respuesta agrega `horas`; `dias` llega en `null` cuando se pidió por horas.
+- **Nota:** una unidad apagada que tiene el heartbeat largo puede tardar en reportar. Para "en el transcurso del día" conviene un corte de 1 a 2 horas.

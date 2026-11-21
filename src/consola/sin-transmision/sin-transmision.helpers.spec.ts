@@ -1,5 +1,9 @@
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { SinTransmisionDto } from './dto/sin-transmision.dto';
 import {
   evaluarSinTransmision,
+  evaluarSinTransmisionMinutos,
   fechaParedDesdeDate,
   minutosEntreFechasPared,
   restarDiasPared,
@@ -36,6 +40,37 @@ describe('sin-transmision.helpers', () => {
 
     it('excluye si transmitió dentro del periodo', () => {
       expect(evaluarSinTransmision('2026-10-25T13:00:00', ahora, 1).incluir).toBe(false);
+    });
+  });
+
+  describe('por horas (día en curso)', () => {
+    const ahora = '2026-11-20 18:00:00';
+
+    it('incluye la unidad que lleva 3 horas sin transmitir con corte de 2 horas', () => {
+      const r = evaluarSinTransmisionMinutos('2026-11-20T15:00:00', ahora, 2 * 60);
+      expect(r).toEqual({ incluir: true, minutosSinTransmitir: 180 });
+      // Con el corte de 1 día no entraba: ese era el reporte de "solo 7".
+      expect(evaluarSinTransmision('2026-11-20T15:00:00', ahora, 1).incluir).toBe(false);
+    });
+
+    it('excluye la que transmitió dentro de las últimas 2 horas', () => {
+      expect(evaluarSinTransmisionMinutos('2026-11-20T16:30:00', ahora, 120).incluir).toBe(false);
+    });
+  });
+
+  describe('SinTransmisionDto', () => {
+    const errores = (body: object) => validateSync(plainToInstance(SinTransmisionDto, body));
+
+    it('acepta solo dias, solo horas o ambos', () => {
+      expect(errores({ dias: 1 })).toHaveLength(0);
+      expect(errores({ horas: 2 })).toHaveLength(0);
+      expect(errores({ dias: 1, horas: 2 })).toHaveLength(0);
+    });
+
+    it('rechaza sin dias ni horas, y horas fuera de rango', () => {
+      expect(errores({}).length).toBeGreaterThan(0);
+      expect(errores({ horas: 0 }).length).toBeGreaterThan(0);
+      expect(errores({ horas: 9000 }).length).toBeGreaterThan(0);
     });
   });
 });

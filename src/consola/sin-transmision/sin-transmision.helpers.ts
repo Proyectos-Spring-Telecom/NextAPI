@@ -30,9 +30,17 @@ export function minutosEntreFechasPared(desde: string, hasta: string): number | 
   return Number.isFinite(ms) ? Math.floor(ms / 60_000) : null;
 }
 
+/** Límite de horas que se puede pedir (1 año). */
+export const SIN_TRANSMISION_MAX_HORAS = SIN_TRANSMISION_MAX_DIAS * 24;
+
 /** Hora de pared menos `dias` días. */
 export function restarDiasPared(fecha: string, dias: number): string {
-  const ms = msPared(fecha) - dias * 86_400_000;
+  return restarMinutosPared(fecha, dias * 1440);
+}
+
+/** Hora de pared menos `minutos` minutos. */
+export function restarMinutosPared(fecha: string, minutos: number): string {
+  const ms = msPared(fecha) - minutos * 60_000;
   const d = new Date(ms);
   return (
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
@@ -51,8 +59,17 @@ export function evaluarSinTransmision(
   ahora: string,
   dias: number,
 ): { incluir: boolean; minutosSinTransmitir: number | null } {
+  return evaluarSinTransmisionMinutos(ultima, ahora, dias * 1440);
+}
+
+/** Igual que `evaluarSinTransmision`, con el corte en minutos (ahora − minutos). */
+export function evaluarSinTransmisionMinutos(
+  ultima: string | null,
+  ahora: string,
+  minutosCorte: number,
+): { incluir: boolean; minutosSinTransmitir: number | null } {
   if (!ultima) return { incluir: true, minutosSinTransmitir: null };
-  const corte = restarDiasPared(ahora, dias);
+  const corte = restarMinutosPared(ahora, minutosCorte);
   const minutos = minutosEntreFechasPared(ultima, ahora);
   return {
     incluir: ultima.replace('T', ' ') < corte,

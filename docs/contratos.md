@@ -213,7 +213,7 @@ Extras: `GET /cat-marcas/:id/modelos`, `GET /cat-telefonia/:idTelefonia/planes`,
 | Puntos de interés | `POST /puntos-interes`, `GET …/list`, `GET …/cliente/:idCliente`, `GET /puntos-interes` (paginado), `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
 | Números de emergencia | `POST /numeros-emergencia`, `GET …/list`, `GET …/cliente/:idCliente`, `GET /numeros-emergencia` (paginado), `GET …/:id`, `PATCH …/estatus/:id`, `PATCH …/:id` |
 | Reportes | `POST /reportes/paso-por-poi`, `POST /reportes/velocidad`, `POST /reportes/posiciones`, `POST /reportes/ultima-posicion`, `POST /reportes/distancia` (Haversine por IMEI), `POST /reportes/salidas-geocerca`, `POST /reportes/salidas-geocerca-instalacion`, `POST /reportes/salidas-geocerca-instalacion/recorrido`, `POST /reportes/productos-cliente` (productos con su última ubicación) |
-| Consola | `GET /consola/galeria/filtros`, `POST /consola/galeria/resumen`, `POST /consola/galeria`, `POST /consola/galeria/imei`, `POST /consola/transmisiones` (últimas transmisiones por IMEI), `POST /consola/sin-transmision` (unidades sin transmitir en N días) |
+| Consola | `GET /consola/galeria/filtros`, `POST /consola/galeria/resumen`, `POST /consola/galeria`, `POST /consola/galeria/imei`, `POST /consola/transmisiones` (últimas transmisiones por IMEI), `POST /consola/sin-transmision` (unidades sin transmitir en N días o N horas: `dias` u `horas`) |
 | Dashboard | `GET /dashboard` (inicio · centro de mando) |
 | Health | `GET /health/rabbitmq`, `GET /health/rabbitmq/queues` (§12.5) |
 

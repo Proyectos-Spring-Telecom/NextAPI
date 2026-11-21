@@ -36,12 +36,13 @@ export class ConsolaSinTransmisionController {
     summary: 'Unidades que no han transmitido en N días',
     description: [
       'Lista las unidades **activas** (con dispositivo, sin paneles) cuya última transmisión',
-      '(`UltimaPosicion`, una fila por IMEI) es anterior a **ahora − `dias`**, o que **nunca**',
+      '(`UltimaPosicion`, una fila por IMEI) es anterior a **ahora − `dias`** (o **ahora − `horas`**), o que **nunca**',
       'han transmitido. Solo lectura.',
       '',
-      '**Body:** `dias` (1..365, obligatorio), `idCliente?` (opcional, debe estar en el alcance).',
+      '**Body:** `dias` (1..365) **o** `horas` (1..8760; si viene, manda sobre `dias`), `idCliente?` (opcional, debe estar en el alcance).',
+      'No se filtra por ignición: entran prendidas y apagadas.',
       '',
-      '**Respuesta:** `{ dias, fechaConsulta, fechaCorte, totalUnidades, total, data[] }`.',
+      '**Respuesta:** `{ dias, horas, fechaConsulta, fechaCorte, totalUnidades, total, data[] }`.',
       'Cada unidad trae cliente, etiqueta, placas, económico, marca/modelo, IMEI, tipo de equipo,',
       '`ultimaTransmision`, `diasSinTransmitir`, `minutosSinTransmitir`, `nuncaTransmitio`,',
       '`lat`/`lng` de la última posición, `estado` e `ignicion`.',
@@ -56,12 +57,14 @@ export class ConsolaSinTransmisionController {
     examples: {
       unDia: { summary: 'Más de 1 día sin transmitir', value: { dias: 1 } },
       porCliente: { summary: 'Un cliente, 7 días', value: { dias: 7, idCliente: 15 } },
+      dosHoras: { summary: 'Sin transmitir en las últimas 2 horas', value: { horas: 2 } },
     },
   })
   @ApiOkResponse({
     schema: {
       example: {
         dias: 1,
+        horas: null,
         fechaConsulta: '2026-10-26 16:00:00',
         fechaCorte: '2026-10-25 16:00:00',
         totalUnidades: 295,
@@ -94,7 +97,7 @@ export class ConsolaSinTransmisionController {
       },
     },
   })
-  @ApiBadRequestResponse({ description: 'dias fuera de rango (1..365)' })
+  @ApiBadRequestResponse({ description: 'dias fuera de rango (1..365) u horas fuera de rango (1..8760)' })
   @ApiForbiddenResponse({ description: 'Cliente fuera de alcance' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   async consultar(@Body() dto: SinTransmisionDto, @Request() req) {

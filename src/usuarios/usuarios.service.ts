@@ -544,7 +544,11 @@ ORDER BY u.Id DESC`,
         'ui',
         'ui.idInstalacion = i.id AND ui.idUsuario = :idUsuario AND ui.estatus = :uiEstatus',
         { idUsuario, uiEstatus: EstatusEnum.ACTIVO },
-      ).orderBy('i.id', 'ASC');
+      )
+        // Una instalación dada de baja ya no se puede asignar: si saliera aquí,
+        // el front la reenviaría y la asignación entera respondería 400.
+        .andWhere('i.estatus = :iEstatus', { iEstatus: EstatusEnum.ACTIVO })
+        .orderBy('i.id', 'ASC');
 
       if (tenant.idCliente !== undefined) {
         if (typeof tenant.idCliente === 'number') {
@@ -618,25 +622,39 @@ ORDER BY u.Id DESC`,
         assertPuedeAsignarInstalaciones(actor.rol, Number(usuario.idRol));
       }
 
-      const instalacionesIdsUnicos = [
+      const idsRecibidos = [
         ...new Set((dto.instalacionesIds ?? []).map(Number)),
       ];
       const idClienteUsuario = Number(usuario.idCliente);
+      let instalacionesIdsUnicos = idsRecibidos;
 
-      if (instalacionesIdsUnicos.length > 0) {
+      if (idsRecibidos.length > 0) {
         const instalaciones = await instalacionesRepo.find({
           where: {
-            id: In(instalacionesIdsUnicos),
+            id: In(idsRecibidos),
             idCliente: idClienteUsuario,
             estatus: EstatusEnum.ACTIVO,
           },
         });
-
-        if (instalaciones.length !== instalacionesIdsUnicos.length) {
+        const validas = new Set(instalaciones.map((i) => Number(i.id)));
+        // Las que ya tenía asignadas y se dieron de baja (o cambiaron de
+        // cliente) se quitan sin error: el front las reenvía con la lista.
+        const yaAsignadas = new Set(
+          (
+            await usuariosInstalacionesRepo.find({
+              where: { idUsuario: dto.idUsuario, estatus: 1 },
+            })
+          ).map((r) => Number(r.idInstalacion)),
+        );
+        const nuevasInvalidas = idsRecibidos.filter(
+          (id) => !validas.has(id) && !yaAsignadas.has(id),
+        );
+        if (nuevasInvalidas.length > 0) {
           throw new BadRequestException(
-            'Una o más instalaciones no existen, no están activas o no pertenecen al cliente del usuario.',
+            `Estas instalaciones no existen, no están activas o no pertenecen al cliente del usuario: ${nuevasInvalidas.join(', ')}.`,
           );
         }
+        instalacionesIdsUnicos = idsRecibidos.filter((id) => validas.has(id));
       }
 
       await this.sincronizarRelacionesEstatus(

@@ -17,9 +17,9 @@ import {
 } from '../shared/consola-alcance.service';
 import { SinTransmisionDto } from './dto/sin-transmision.dto';
 import {
-  evaluarSinTransmision,
+  evaluarSinTransmisionMinutos,
   fechaParedDesdeDate,
-  restarDiasPared,
+  restarMinutosPared,
 } from './sin-transmision.helpers';
 
 /** Unidad que no ha transmitido en el periodo pedido. */
@@ -36,7 +36,10 @@ export type UnidadSinTransmisionItem = Omit<UnidadConsolaPorImei, 'canalesActivo
 };
 
 export type SinTransmisionResult = {
-  dias: number;
+  /** Días pedidos; null si se pidió por `horas`. */
+  dias: number | null;
+  /** Horas pedidas; null si se pidió por `dias`. */
+  horas: number | null;
   /** Hora de pared de la consulta y del corte (ahora − días). */
   fechaConsulta: string;
   fechaCorte: string;
@@ -69,7 +72,9 @@ export class ConsolaSinTransmisionService {
     rol: number,
   ): Promise<SinTransmisionResult> {
     try {
-      const dias = Math.trunc(Number(dto.dias));
+      const horas = dto.horas != null ? Math.trunc(Number(dto.horas)) : null;
+      const dias = horas == null ? Math.trunc(Number(dto.dias)) : null;
+      const minutosCorte = horas != null ? horas * 60 : (dias as number) * 1440;
       const unidades = await this.alcance.unidadesEnAlcance(
         rol,
         idUsuarioToken,
@@ -81,17 +86,17 @@ export class ConsolaSinTransmisionService {
       }
 
       const fechaConsulta = fechaParedDesdeDate(new Date());
-      const fechaCorte = restarDiasPared(fechaConsulta, dias);
+      const fechaCorte = restarMinutosPared(fechaConsulta, minutosCorte);
       const ultimas = await this.cargarUltimasPosiciones(unidades.map((u) => u.imei));
 
       const data: UnidadSinTransmisionItem[] = [];
       for (const { canalesActivos: _c, ...unidad } of unidades) {
         const up = ultimas.get(unidad.imei) ?? null;
         const ultimaTransmision = up?.fechaHora ?? null;
-        const { incluir, minutosSinTransmitir } = evaluarSinTransmision(
+        const { incluir, minutosSinTransmitir } = evaluarSinTransmisionMinutos(
           ultimaTransmision,
           fechaConsulta,
-          dias,
+          minutosCorte,
         );
         if (!incluir) continue;
         data.push({
@@ -116,6 +121,7 @@ export class ConsolaSinTransmisionService {
 
       return {
         dias,
+        horas,
         fechaConsulta,
         fechaCorte,
         totalUnidades: unidades.length,
