@@ -140,6 +140,36 @@ Equipos: **Cámara** = TrackCam AE-DI5052 (springTrackCam); **TrackGas** = VL802
 - S18: SOS (5) y caída (35) con estado 2; velocidad (6) con 7; batería (3) con 9; apagado (4) sin estado de alerta.
 - Sin GPS, la posición llega con la última ubicación válida y `positionValid = false`; cuando fija, `alarm_location` corrige la ubicación de la alarma.
 
+### 5.2b Suntech ST300 (springST300, en migración desde Server_Socket)
+
+- **Emergencias (EMG):**
+
+  | EMG | Evento | IdEvento | Estado |
+  |---|---|---|---|
+  | 1 | Pánico | 5 | 2 |
+  | 2 / 7 | Desplazamiento ilegal (parking lock / movimiento sin ignición) | 70 | 2 |
+  | 3 | Se quitó la alimentación | 4 | 10 |
+  | 5 / 8 | Robo (antirrobo, golpe) | 68 | 2 |
+  | 6 | Apertura ilegal de puerta | 71 | — |
+
+- **Alertas (ALT):**
+
+  | ALT | Evento | IdEvento | Estado |
+  |---|---|---|---|
+  | 1 | Exceso de velocidad | 6 | 7 |
+  | 3 / 8 | Antena GNSS desconectada / en corto | 40 / 41 | 3 |
+  | 14 | Batería baja | 3 | 9 |
+  | 16 | Colisión | 32 | 2 |
+  | 33 / 34 | Ignición ON / OFF | 1 / 2 | — |
+  | 41 | Alimentación desconectada | 4 | 10 |
+  | 46 / 47 / 48 | Aceleración / frenado / giro brusco | 51 / 52 / 53 | — |
+  | 61 / 62 | Ralentí / estacionamiento excedido | 54 / 62 | — |
+
+  El resto es 9 Transmisión, con el código en `payload.st300`.
+- **STT** a más de 90 km/h (truncado, con ignición) → 6, igual que hacía Server_Socket.
+- **El ACK de emergencia:** el socket contesta `AckEmerg` a cada pánico, así que el equipo deja de repetirlo (Server_Socket no lo contestaba).
+- Código: springST300 `src/telemetry/st300-telemetry.ts`.
+
 ### 5.3 TrackGas (VL802 + UL212)
 
 - Concox: SOS → 5 (estado 2); corte o desconexión → 4 (10); batería → 3 (9); velocidad → 6 (7); puerta y entrada 1 → 8; ACC → 1/2; vibración y remolque → 7.

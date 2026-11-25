@@ -14,6 +14,9 @@ jest.mock('../fa100s/fa100s-events.consumer', () => ({
 jest.mock('../phone/phone-events.consumer', () => ({
   PhoneEventsConsumer: class {},
 }));
+jest.mock('../st300/st300-events.consumer', () => ({
+  St300EventsConsumer: class {},
+}));
 
 function buildMsg(opts: {
   routingKey: string;
@@ -32,6 +35,7 @@ describe('AvlEventsConsumer', () => {
   const jimi = { consume: jest.fn().mockResolvedValue(undefined) };
   const fa100s = { consume: jest.fn().mockResolvedValue(undefined) };
   const phone = { consume: jest.fn().mockResolvedValue(undefined) };
+  const st300 = { consume: jest.fn().mockResolvedValue(undefined) };
   const metrics = { recordProtocol: jest.fn() };
   let consumer: AvlEventsConsumer;
 
@@ -42,6 +46,7 @@ describe('AvlEventsConsumer', () => {
       jimi as never,
       fa100s as never,
       phone as never,
+      st300 as never,
       metrics as never,
     );
   });
@@ -254,5 +259,18 @@ describe('AvlEventsConsumer', () => {
     });
     await expect(consumer.consume(msg, 'alarm')).rejects.toThrow('inválido');
     expect(phone.consume).not.toHaveBeenCalled();
+  });
+  it('st300 va a su consumidor en las dos colas', async () => {
+    for (const kind of ['position', 'alarm'] as const) {
+      await consumer.consume(
+        buildMsg({
+          routingKey: kind === 'position' ? 'st300.position' : 'st300.alarm.panico',
+          headers: { protocol: 'st300', kind, deviceId: '205124563' },
+          body: {},
+        }),
+        kind,
+      );
+    }
+    expect(st300.consume).toHaveBeenCalledTimes(2);
   });
 });
