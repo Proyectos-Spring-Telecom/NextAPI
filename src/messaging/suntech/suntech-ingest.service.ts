@@ -9,27 +9,27 @@ import { PosicionIngestService } from '../shared/posicion-ingest.service';
 import { PosicionIngestResult } from '../shared/posicion-ingest.types';
 import { TelemetriaHuerfanosService } from 'src/telemetria-huerfanos/telemetria-huerfanos.service';
 import { parseFechaHoraPared } from '../shared/fecha-hora-pared.util';
-import { extractSt300Audit, mapSt300ToPosicion, resolveSt300Imei } from './st300-envelope.mapper';
-import { St300TelemetryEnvelope } from './st300.types';
+import { extractSuntechAudit, mapSuntechToPosicion, resolveSuntechImei } from './suntech-envelope.mapper';
+import { SuntechTelemetryEnvelope } from './suntech.types';
 
 /**
- * Adapter Suntech ST300 (springST300) → PosicionIngestService. Lookup por
- * Dispositivos.Imei (= DEV_ID de 9 dígitos, como los dio de alta el legacy).
+ * Adapter Suntech (springSuntech) → PosicionIngestService. Lookup por
+ * Dispositivos.Imei (= DEV_ID sin ceros a la izquierda, como los dio de alta el legacy).
  * - position → Posiciones (siempre con fix GPS).
  * - alarm con coordenadas → solo auditoría; la alarma se ve por la posición
  *   con su IdEvento (el socket publica la posición de la misma trama).
  * - alarm sin coordenadas (sin GPS en la trama) → incidente sin ubicación.
  */
 @Injectable()
-export class St300IngestService {
+export class SuntechIngestService {
   constructor(
     private readonly deviceLookup: DeviceLookupService,
     private readonly posicionIngest: PosicionIngestService,
     private readonly huerfanos: TelemetriaHuerfanosService,
   ) {}
 
-  async handleEnvelope(envelope: St300TelemetryEnvelope, routingKey: string): Promise<PosicionIngestResult> {
-    const imeiKey = resolveSt300Imei(envelope);
+  async handleEnvelope(envelope: SuntechTelemetryEnvelope, routingKey: string): Promise<PosicionIngestResult> {
+    const imeiKey = resolveSuntechImei(envelope);
 
     let imei: string;
     let idTipoDispositivo: number;
@@ -45,7 +45,7 @@ export class St300IngestService {
         error instanceof DeviceImeiMissingError
       ) {
         await this.huerfanos.registrar({
-          protocol: 'st300',
+          protocol: 'suntech',
           deviceId: imeiKey,
           motivo: error instanceof DeviceImeiMissingError ? 'sin_imei' : 'no_registrado',
           routingKey,
@@ -67,7 +67,7 @@ export class St300IngestService {
       idTipoDispositivo,
       idInstalacion,
       estatusDispositivo,
-      auditPayload: extractSt300Audit(envelope.payload),
+      auditPayload: extractSuntechAudit(envelope.payload),
     };
 
     if (envelope.kind === 'alarm') {
@@ -85,6 +85,6 @@ export class St300IngestService {
       return this.posicionIngest.ingestAlarm(base);
     }
 
-    return this.posicionIngest.ingestPosition({ ...base, posicion: mapSt300ToPosicion(imei, envelope.payload) });
+    return this.posicionIngest.ingestPosition({ ...base, posicion: mapSuntechToPosicion(imei, envelope.payload) });
   }
 }

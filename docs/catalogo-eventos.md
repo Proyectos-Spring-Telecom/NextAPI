@@ -140,35 +140,44 @@ Equipos: **Cámara** = TrackCam AE-DI5052 (springTrackCam); **TrackGas** = VL802
 - S18: SOS (5) y caída (35) con estado 2; velocidad (6) con 7; batería (3) con 9; apagado (4) sin estado de alerta.
 - Sin GPS, la posición llega con la última ubicación válida y `positionValid = false`; cuando fija, `alarm_location` corrige la ubicación de la alarma.
 
-### 5.2b Suntech ST300 (springST300, en migración desde Server_Socket)
+### 5.2b Suntech (springSuntech, en migración desde Server_Socket)
 
-- **Emergencias (EMG):**
+Casi toda la flota Suntech usa el **protocolo universal** (ST4315, ST4315B, ST3340, ST4340, ST4345); el ST300/ST340 usa otro formato, con solo 2 equipos.
 
-  | EMG | Evento | IdEvento | Estado |
+- **Universal (`ALT`, ALERT_ID):**
+
+  | ALERT_ID | Evento | IdEvento | Estado |
   |---|---|---|---|
-  | 1 | Pánico | 5 | 2 |
-  | 2 / 7 | Desplazamiento ilegal (parking lock / movimiento sin ignición) | 70 | 2 |
-  | 3 | Se quitó la alimentación | 4 | 10 |
-  | 5 / 8 | Robo (antirrobo, golpe) | 68 | 2 |
-  | 6 | Apertura ilegal de puerta | 71 | — |
-
-- **Alertas (ALT):**
-
-  | ALT | Evento | IdEvento | Estado |
-  |---|---|---|---|
-  | 1 | Exceso de velocidad | 6 | 7 |
-  | 3 / 8 | Antena GNSS desconectada / en corto | 40 / 41 | 3 |
-  | 14 | Batería baja | 3 | 9 |
+  | 42 / 12 | Pánico (botón / entrada a tierra, como lo trata Server_Socket) | 5 | 2 |
+  | 73 | Antirrobo | 68 | 2 |
   | 16 | Colisión | 32 | 2 |
-  | 33 / 34 | Ignición ON / OFF | 1 / 2 | — |
   | 41 | Alimentación desconectada | 4 | 10 |
-  | 46 / 47 / 48 | Aceleración / frenado / giro brusco | 51 / 52 / 53 | — |
-  | 61 / 62 | Ralentí / estacionamiento excedido | 54 / 62 | — |
+  | 14 | Batería baja | 3 | 9 |
+  | 3 / 8 | Antena GNSS desconectada / en corto | 40 / 41 | 3 |
+  | 1 | Exceso de velocidad | 6 | 7 |
+  | 33 / 34 | Ignición ON / OFF | 1 / 2 | — |
+  | 46 / 47 / 48–49 | Aceleración / frenado / giro brusco | 51 / 52 / 53 | — |
+  | 35 | Ralentí excedido | 54 | — |
+  | 5, 6, 74, 79 | Geocercas del equipo | 63 | — |
 
-  El resto es 9 Transmisión, con el código en `payload.st300`.
-- **STT** a más de 90 km/h (truncado, con ignición) → 6, igual que hacía Server_Socket.
-- **El ACK de emergencia:** el socket contesta `AckEmerg` a cada pánico, así que el equipo deja de repetirlo (Server_Socket no lo contestaba).
-- Código: springST300 `src/telemetry/st300-telemetry.ts`.
+- **ST300 (`EMG`, `ALT`):**
+
+  | Código | Evento | IdEvento | Estado |
+  |---|---|---|---|
+  | EMG 1 | Pánico | 5 | 2 |
+  | EMG 2 / 7 | Desplazamiento ilegal | 70 | 2 |
+  | EMG 3, ALT 41 | Corte de energía | 4 | 10 |
+  | EMG 5 / 8 | Robo | 68 | 2 |
+  | ALT 16 | Colisión | 32 | 2 |
+  | ALT 3 / 8 | Antena GNSS | 40 / 41 | 3 |
+  | ALT 14 | Batería baja | 3 | 9 |
+  | ALT 1 | Exceso de velocidad | 6 | 7 |
+  | ALT 33 / 34 | Ignición ON / OFF | 1 / 2 | — |
+
+- El resto es 9 Transmisión, con el código en `payload.suntech`.
+- Un `STT` a más de 90 km/h (truncado, con ignición) → 6, igual que Server_Socket.
+- **El ACK al equipo:** el socket contesta `ACK;DEV;CHK` a los reportes universales que lo piden y `AckEmerg` a la emergencia del ST300. Server_Socket no contestaba ninguno.
+- Código: springSuntech `src/telemetry/suntech-telemetry.ts`.
 
 ### 5.3 TrackGas (VL802 + UL212)
 

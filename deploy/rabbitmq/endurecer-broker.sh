@@ -10,7 +10,7 @@
 #                                                   el .env); no toca a los demás ni las políticas
 #
 # Contraseñas: ~/rabbitmq-usuarios.env (600) con SOCK_TRACKCAM=…, SOCK_TRACKGAS=…,
-# SOCK_PANEL=…, SOCK_FA100S=…, SOCK_S18=…, SOCK_ST300=…, SOCK_SION=…, SENTINELA=…. Se borra al terminar.
+# SOCK_PANEL=…, SOCK_FA100S=…, SOCK_S18=…, SOCK_SUNTECH=…, SOCK_SION=…, SENTINELA=…. Se borra al terminar.
 # Nunca se imprimen. Idempotente: una segunda corrida deja todo igual.
 set -euo pipefail
 VH=/
@@ -66,7 +66,7 @@ usuario sock_panel    "${SOCK_PANEL:-}"    '^$' '^telemetry$' '^telemetry\.comma
 usuario sock_fa100s   "${SOCK_FA100S:-}"   '^$' '^telemetry$' '^telemetry\.commands\.fa100s$'
 usuario sock_s18      "${SOCK_S18:-}"      '^$' '^telemetry$' '^telemetry\.commands\.s18$'
 usuario sock_trackphone "${SOCK_TRACKPHONE:-}" '^$' '^telemetry$' '^telemetry\.commands\.phone$'
-usuario sock_st300    "${SOCK_ST300:-}"    '^$' '^telemetry$' '^telemetry\.commands\.st300$'
+usuario sock_suntech    "${SOCK_SUNTECH:-}"    '^$' '^telemetry$' '^telemetry\.commands\.suntech$'
 # Server_Socket de Sion (.NET, fuera de nuestros servidores): solo publica
 # jimi.position; no recibe comandos. Entra por 5671 con TLS (reemplaza a avl).
 usuario sock_sion     "${SOCK_SION:-}"     '^$' '^telemetry$' '^$'
@@ -85,7 +85,7 @@ $CTL set_policy -p "$VH" --apply-to queues --priority 10 dlq-tope '^telemetry\..
   '{"max-length":50000,"max-length-bytes":104857600,"overflow":"drop-head"}'
 # Comandos: si la cola se llena, el broker rechaza (NextAPI usa confirmaciones) y
 # el comando se queda pendiente en Next en vez de perderse.
-$CTL set_policy -p "$VH" --apply-to queues --priority 10 comandos-tope '^telemetry\.commands\.(jt808|jimi|axpro|fa100s|s18|phone|st300)$' \
+$CTL set_policy -p "$VH" --apply-to queues --priority 10 comandos-tope '^telemetry\.commands\.(jt808|jimi|axpro|fa100s|s18|phone|suntech)$' \
   '{"max-length":10000,"overflow":"reject-publish"}'
 echo "políticas:"; $CTL list_policies -p "$VH"
 

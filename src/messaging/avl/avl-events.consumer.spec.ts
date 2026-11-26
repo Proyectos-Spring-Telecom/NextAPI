@@ -14,8 +14,8 @@ jest.mock('../fa100s/fa100s-events.consumer', () => ({
 jest.mock('../phone/phone-events.consumer', () => ({
   PhoneEventsConsumer: class {},
 }));
-jest.mock('../st300/st300-events.consumer', () => ({
-  St300EventsConsumer: class {},
+jest.mock('../suntech/suntech-events.consumer', () => ({
+  SuntechEventsConsumer: class {},
 }));
 
 function buildMsg(opts: {
@@ -35,7 +35,7 @@ describe('AvlEventsConsumer', () => {
   const jimi = { consume: jest.fn().mockResolvedValue(undefined) };
   const fa100s = { consume: jest.fn().mockResolvedValue(undefined) };
   const phone = { consume: jest.fn().mockResolvedValue(undefined) };
-  const st300 = { consume: jest.fn().mockResolvedValue(undefined) };
+  const suntech = { consume: jest.fn().mockResolvedValue(undefined) };
   const metrics = { recordProtocol: jest.fn() };
   let consumer: AvlEventsConsumer;
 
@@ -46,7 +46,7 @@ describe('AvlEventsConsumer', () => {
       jimi as never,
       fa100s as never,
       phone as never,
-      st300 as never,
+      suntech as never,
       metrics as never,
     );
   });
@@ -260,17 +260,17 @@ describe('AvlEventsConsumer', () => {
     await expect(consumer.consume(msg, 'alarm')).rejects.toThrow('inválido');
     expect(phone.consume).not.toHaveBeenCalled();
   });
-  it('st300 va a su consumidor en las dos colas', async () => {
+  it('suntech va a su consumidor en las dos colas', async () => {
     for (const kind of ['position', 'alarm'] as const) {
       await consumer.consume(
         buildMsg({
-          routingKey: kind === 'position' ? 'st300.position' : 'st300.alarm.panico',
-          headers: { protocol: 'st300', kind, deviceId: '205124563' },
+          routingKey: kind === 'position' ? 'suntech.position' : 'suntech.alarm.panico',
+          headers: { protocol: 'suntech', kind, deviceId: '205124563' },
           body: {},
         }),
         kind,
       );
     }
-    expect(st300.consume).toHaveBeenCalledTimes(2);
+    expect(suntech.consume).toHaveBeenCalledTimes(2);
   });
 });

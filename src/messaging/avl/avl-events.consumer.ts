@@ -6,7 +6,7 @@ import { Fa100sEventsConsumer } from '../fa100s/fa100s-events.consumer';
 import { JimiEventsConsumer } from '../jimi/jimi-events.consumer';
 import { Jt808EventsConsumer } from '../jt808/jt808-events.consumer';
 import { PhoneEventsConsumer } from '../phone/phone-events.consumer';
-import { St300EventsConsumer } from '../st300/st300-events.consumer';
+import { SuntechEventsConsumer } from '../suntech/suntech-events.consumer';
 
 export type AvlExpectedKind = 'position' | 'alarm';
 
@@ -27,7 +27,7 @@ export class AvlEventsConsumer {
     private readonly jimi: JimiEventsConsumer,
     private readonly fa100s: Fa100sEventsConsumer,
     private readonly phone: PhoneEventsConsumer,
-    private readonly st300: St300EventsConsumer,
+    private readonly suntech: SuntechEventsConsumer,
     private readonly metrics: RabbitMqMetricsService,
   ) {}
 
@@ -66,8 +66,8 @@ export class AvlEventsConsumer {
       await this.jimi.consume(msg);
     } else if (protocol === 'fa100s') {
       await this.fa100s.consume(msg);
-    } else if (protocol === 'st300') {
-      await this.st300.consume(msg);
+    } else if (protocol === 'suntech') {
+      await this.suntech.consume(msg);
     } else if (protocol === 'phone' && expectedKind === 'position') {
       await this.phone.consume(msg);
     } else {

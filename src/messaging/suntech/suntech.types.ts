@@ -1,14 +1,14 @@
 /**
- * Contrato AMQP de springST300 (rastreadores Suntech ST300). Mismo envelope
- * que jt808/jimi/fa100s; docs: springST300/docs/protocolo-st300.md.
+ * Contrato AMQP de springSuntech (rastreadores Suntech: protocolo universal y ST300). Mismo envelope
+ * que jt808/jimi/fa100s; docs: springSuntech/docs/protocolo-universal.md.
  * - position: solo con fix GPS (Lat/Lng medidas).
  * - alarm: pánico, robo, desplazamiento ilegal, energía, colisión, antena
  *   GNSS, batería y exceso de velocidad; sin GPS llega con Lat/Lng = null.
- * - deviceId = DEV_ID de 9 dígitos del ST300 (Dispositivos.Imei de los AVL).
+ * - deviceId = DEV_ID sin ceros a la izquierda (9 o 10 dígitos), como lo dio de alta el legacy (Dispositivos.Imei de los AVL).
  */
-export type St300Kind = 'position' | 'alarm';
+export type SuntechKind = 'position' | 'alarm';
 
-export interface St300Payload {
+export interface SuntechPayload {
   Imei: string | number | null;
   Lat: number | null;
   Lng: number | null;
@@ -26,14 +26,14 @@ export interface St300Payload {
   positionValid?: boolean;
   FuentePosicion?: number | null;
   RadioM?: number | null;
-  st300?: Record<string, unknown>;
+  suntech?: Record<string, unknown>;
 }
 
-export interface St300TelemetryEnvelope {
+export interface SuntechTelemetryEnvelope {
   eventId: string;
-  protocol: 'st300';
-  kind: St300Kind;
+  protocol: 'suntech';
+  kind: SuntechKind;
   deviceId: string;
   receivedAt: string;
-  payload: St300Payload;
+  payload: SuntechPayload;
 }
