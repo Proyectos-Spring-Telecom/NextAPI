@@ -20,6 +20,7 @@ import { BitacoraLoggerService } from 'src/bitacora/bitacora.service';
 import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
 import { UpdateDispositivoEstatusDto } from './dto/update-dispositivo-estatus.dto';
+import { CorregirNumeroSerieDto } from './dto/corregir-numero-serie.dto';
 import {
   ApiCrudResponse,
   ApiResponseCommon,
@@ -582,6 +583,83 @@ export class DispositivosService {
       }
       throw new BadRequestException('Error al actualizar el dispositivo');
     }
+  }
+
+  /**
+   * Corrige un número de serie mal capturado aunque el equipo esté instalado o
+   * tenga historial (docs/correccion-numero-serie.md). No cambia de equipo: las
+   * posiciones, instalaciones y comandos van por el Id y la telemetría por el
+   * IMEI, que aquí no se toca. En una TrackCam el número de serie es el ID
+   * JT808: se avisa al gateway (trackcam.updated) para que la reconozca.
+   */
+  async corregirNumeroSerie(
+    id: number,
+    dto: CorregirNumeroSerieDto,
+    alcance: UsuarioAlcance,
+  ): Promise<ApiCrudResponse & { data: { id: number; nombre: string; numeroSerieAnterior: string } }> {
+    const numeroSerie = (dto.numeroSerie ?? '').trim();
+    const motivo = (dto.motivo ?? '').trim();
+    if (!numeroSerie) {
+      throw new BadRequestException('El número de serie es obligatorio.');
+    }
+    if (motivo.length < 10) {
+      throw new BadRequestException('El motivo es obligatorio (mínimo 10 caracteres).');
+    }
+
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException('Dispositivo no encontrado');
+    }
+    await this.tenantFilter.assertClienteVisible(alcance, entity.idCliente, 'Dispositivo');
+
+    const anterior = entity.numeroSerie;
+    if (numeroSerie === anterior) {
+      throw new BadRequestException('El número de serie nuevo es igual al actual.');
+    }
+    const duplicado = await this.repository.findOne({ select: { id: true }, where: { numeroSerie } });
+    if (duplicado && Number(duplicado.id) !== id) {
+      throw new ConflictException(
+        `El número de serie ya está registrado en el dispositivo ${Number(duplicado.id)}. Si es un duplicado, primero dalo de baja.`,
+      );
+    }
+
+    try {
+      const resultado = await this.repository
+        .createQueryBuilder()
+        .update(Dispositivos)
+        .set({ numeroSerie })
+        .where('id = :id AND numeroSerie = :anterior', { id, anterior })
+        .execute();
+      if (!resultado.affected) {
+        throw new ConflictException(
+          'El dispositivo cambió mientras se procesaba la corrección. Vuelva a cargar e intente de nuevo.',
+        );
+      }
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      if (mysqlErrno(error) === 1062) {
+        throw new ConflictException('El número de serie ya está registrado en otro dispositivo.');
+      }
+      throw error;
+    }
+
+    await this.bitacoraLogger.logToBitacora(
+      'Dispositivos',
+      `Se corrigió el número de serie del dispositivo ID: ${id} de ${anterior} a ${numeroSerie}. Motivo: ${motivo}`,
+      'UPDATE',
+      { id, campo: 'NumeroSerie', valorAnterior: anterior, valorNuevo: numeroSerie, motivo },
+      alcance.userId,
+      EnumModulos.DISPOSITIVOS,
+      EstatusEnumBitcora.SUCCESS,
+    );
+    // Solo hace algo si es TrackCam (el gateway la identifica por este número).
+    await this.registroTrackcam.emitir(WebhookEvent.TRACKCAM_UPDATED, [id]);
+
+    return {
+      status: 'success',
+      message: 'El número de serie se corrigió correctamente.',
+      data: { id, nombre: numeroSerie, numeroSerieAnterior: anterior },
+    };
   }
 
   async updateEstatus(

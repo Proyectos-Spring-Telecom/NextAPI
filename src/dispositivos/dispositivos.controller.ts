@@ -31,7 +31,9 @@ import { CreateDispositivosDto } from './dto/create-dispositivos.dto';
 import { UpdateDispositivosDto } from './dto/update-dispositivos.dto';
 import { UpdateDispositivoEstatusDto } from './dto/update-dispositivo-estatus.dto';
 import { DispositivosPaginadoQueryDto } from './dto/dispositivos-paginado-query.dto';
+import { CorregirNumeroSerieDto } from './dto/corregir-numero-serie.dto';
 import { OBTENER_TODOS_API_QUERY } from 'src/common/dto/obtener-todos-query.dto';
+import { EnumRoles } from 'src/common/estatus.enum';
 
 @ApiTags('Dispositivos')
 @ApiBearerAuth('bearer-token')
@@ -199,6 +201,32 @@ export class DispositivosController {
       req.user.userId,
       req.user,
     );
+  }
+
+  @Patch(':id/corregir-numero-serie')
+  @Roles(EnumRoles.SA, EnumRoles.DEV, EnumRoles.ADMIN, EnumRoles.JEFE_MONITOREO)
+  @ApiOperation({
+    summary: 'Corregir el número de serie (error de captura)',
+    description:
+      'Roles 1–4, con motivo (mínimo 10 caracteres). Se permite aunque el dispositivo esté instalado o tenga historial: ' +
+      'no cambia de equipo. Posiciones, instalaciones y comandos siguen ligados al Id del dispositivo y la telemetría al IMEI, ' +
+      'que **no** se puede cambiar por aquí. Reportes y pantallas muestran el número nuevo; lo ya guardado como texto ' +
+      '(bitácora, órdenes) conserva el anterior. Queda en bitácora con valor anterior, nuevo y motivo. En una TrackCam el ' +
+      'número de serie es el ID JT808: se avisa al gateway (`trackcam.updated`). El `PATCH /dispositivos/:id` normal no cambia.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del dispositivo' })
+  @ApiBody({ type: CorregirNumeroSerieDto })
+  @ApiResponse({ status: 200, description: '`data.nombre` = número nuevo; `data.numeroSerieAnterior` = el anterior' })
+  @ApiBadRequestResponse({ description: 'Sin número de serie, igual al actual o motivo de menos de 10 caracteres' })
+  @ApiForbiddenResponse({ description: 'Solo roles 1–4' })
+  @ApiConflictResponse({ description: 'El número ya existe en otro dispositivo, o el dispositivo cambió mientras se procesaba' })
+  @ApiResponse({ status: 404, description: 'Dispositivo no encontrado o fuera del alcance del token' })
+  async corregirNumeroSerie(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorregirNumeroSerieDto,
+    @Request() req,
+  ) {
+    return this.dispositivosService.corregirNumeroSerie(id, dto, req.user);
   }
 
   @Patch(':id')
